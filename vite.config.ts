@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { readFileSync } from 'node:fs';
 // @ts-expect-error — a build script, deliberately plain .mjs with no types.
 import { buildVersion } from './scripts/version.mjs';
 // @ts-expect-error — same: plain .mjs, shared with `scripts/check-chunks.mjs`.
@@ -156,6 +157,15 @@ export default defineConfig({
      * rather than written to a file.
      */
     __APP_VERSION__: JSON.stringify(version),
+    /**
+     * Core's package version, for a pack manifest's `coreRange` to be
+     * checked against. Deliberately not `__APP_VERSION__`, which is the
+     * commit's clock (`2026.8.17.15.0`) and is not semver — see
+     * `scripts/version.mjs`.
+     */
+    __CORE_VERSION__: JSON.stringify(
+      JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
+    ),
   },
   optimizeDeps: {
     // See `contentPackages` above: packs are source, never pre-bundled deps.

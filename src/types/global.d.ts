@@ -1,6 +1,9 @@
 /// <reference types="p5/global" />
 /// <reference types="p5" />
 
+/** Core's own package version, injected by `vite.config.ts` for pack compatibility checks. */
+declare const __CORE_VERSION__: string;
+
 // Declare p5 namespace in global scope (for use in module files)
 declare namespace p5 {
   class Vector {
