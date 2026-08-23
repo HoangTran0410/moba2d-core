@@ -359,8 +359,35 @@ export default defineConfig({
            * tree for a rule to match. The per-champion regex it depended on
            * is gone from this file too — see where it used to sit, further
            * down.
+           *
+           * **Runtime-pack-loading Task 7 adds a third file to this list:
+           * `runtimePacks.ts`.** It is `LoadingScene.ts`'s own orchestrator —
+           * installing every remembered pack during the loading screen, the
+           * same moment `main.ts`'s warm call already installs core and the
+           * reference pack — and, like `registry.ts`, it has to call
+           * `buildContentApi()` and `rebuildContentRegistry()` for real: a
+           * pack fetched from a URL needs an actual `ContentApi` to build
+           * real spell classes against, not the data-only view
+           * `contentCatalog()` gives the rest of `pregame`. Left under the
+           * generic `/src/content/` rule below it would pin to `pregame` by
+           * path alone and open exactly the edge `RULES` in
+           * `scripts/check-chunks.mjs` forbids (`pregame` statically
+           * importing `game`) — measured, not assumed: the first version of
+           * this file did exactly that and `chunks:check` caught it.
+           * Pinning it to `game` instead costs nothing new: `LoadingScene.ts`
+           * imports it from the entry chunk, which is not a chunk `RULES`
+           * restricts and which already depends on `game` today through
+           * `main.ts -> registry.ts`. `runtimePacks.ts` keeps importing
+           * `install.ts` / `packSource.ts` / `installedPackStore.ts`
+           * (`pregame`), which is the same `game -> pregame` edge
+           * `registry.ts` already carries via `catalog.ts`, two paragraphs
+           * up — required, not new.
            */
-          if (id.includes('/src/content/ContentApi') || id.includes('/src/content/registry')) {
+          if (
+            id.includes('/src/content/ContentApi') ||
+            id.includes('/src/content/registry') ||
+            id.includes('/src/content/runtimePacks')
+          ) {
             return 'game';
           }
           /**

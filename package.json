@@ -86,6 +86,7 @@
     "e2e:pack": "node tests/e2e/verify-pack-champion.mjs",
     "e2e:map-picker": "node tests/e2e/verify-map-picker.mjs",
     "e2e:core-alone": "node tests/e2e/verify-core-alone.mjs",
+    "e2e:runtime-pack": "node tests/e2e/verify-runtime-pack.mjs",
     "e2e:chunk-cascade": "node scripts/measure-chunk-cascade.mjs",
     "verify:without-packs": "node scripts/verify-without-packs.mjs",
     "verify:pack-standalone": "node scripts/verify-pack-standalone.mjs"
