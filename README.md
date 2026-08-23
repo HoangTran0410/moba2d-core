@@ -1,6 +1,6 @@
 # League of Legends - 2D (Fan-made)
 
-[![Build](https://github.com/HoangTran0410/LOL2D/actions/workflows/build.yml/badge.svg)](https://github.com/HoangTran0410/LOL2D/actions/workflows/build.yml)
+[![Build](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml/badge.svg)](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml)
 
 Play League-of-Legends-style champions right in the browser — 2D team fights, bot opponents, and an installable PWA you can play offline. This repository is the engine: it ships one champion of its own out of the box, and every larger roster — including a 58-champion Riot-derived one — comes from installing a separate content pack. See "Content packs" below.
 
@@ -161,8 +161,25 @@ ordinary npm package that depends on `@moba2d/core` and never imports its
 internals as a value, only through the published `ContentApi`. A 58-champion
 Riot-derived pack used to live inside this repository at `packs/riot/` and
 now lives in its own; installing it (or any other pack) as a real dependency
-is what turns core from one champion into a full roster. `docs/PACK_AUTHORING.md`
-is the whole guide to writing one, starting from `npx moba2d-pack-new`.
+is what turns core from one champion into a full roster:
+
+```bash
+npm install github:HoangTran0410/moba2d-content-riot
+npm run packs:generate     # rewrites src/generated/installedPacks.ts
+npm run dev
+```
+
+`packs:generate` is what makes the pack visible to `src/content/install.ts`;
+`predev`/`prebuild` already run it, so the middle line is only needed if you
+want to see the barrel change before starting anything. Measured on a clean
+clone: `npm run chunks:check` reports 0 per-champion spell chunks before and
+59 after — 58 champions plus the shared `spell-common` chunk that the five
+prefix-less spells (`Flash`, `Ghost`, `Heal`, `Ignite`, `StealthWard`) land
+in. Uninstalling the package and re-running `packs:generate` puts core back
+to one champion; nothing else has to be undone.
+
+`docs/PACK_AUTHORING.md` is the whole guide to writing one, starting from
+`npx moba2d-pack-new`.
 
 ## Assets
 
