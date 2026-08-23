@@ -284,7 +284,16 @@ export function installRuntimePack(
   api: ContentApi,
   pack: LoadedPack
 ): void {
-  AssetManager.registerPackAssets?.(pack.manifest.id, pack.assetManifest);
+  // `pack.data.manifest.id` is authoritative here, for asset registration
+  // and both registry calls alike: `installCode` can only run against the id
+  // `installData` just wrote, which reads it off the data half, so the data
+  // half's id is the one this function has to agree with itself. It equals
+  // `pack.manifest.id` too — `packSource.ts`'s `loadPack` throws if a pack's
+  // data half disagrees with its own manifest — but that equality is
+  // `packSource.ts`'s guarantee, not this function's, so it is not this
+  // function's to lean on twice.
+  const packId = pack.data.manifest.id;
+  AssetManager.registerPackAssets?.(packId, pack.assetManifest);
   registry.installData(pack.data);
-  registry.installCode(pack.data.manifest.id, pack.code(api));
+  registry.installCode(packId, pack.code(api));
 }

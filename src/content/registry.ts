@@ -33,6 +33,20 @@ export function contentRegistry(): PackRegistry {
 }
 
 /**
+ * The two stores both reset functions below clear — `catalog.ts`'s
+ * registry instance and this module's own `codeInstalled` flag. Never
+ * exported: what differs between the two callers is entirely whether they
+ * force a rebuild afterward, and that split is the behaviour under test in
+ * `registry.test.ts`'s "contentCatalog() alone installs the data half and
+ * nothing more" (see `resetContentRegistryForTests`'s own doc comment), so
+ * it stays out of here rather than becoming a parameter on it.
+ */
+function resetRegistryStores(): void {
+  resetContentCatalogForTests();
+  codeInstalled = false;
+}
+
+/**
  * Forget the registry so the next read builds and installs a fresh one —
  * and hand that fresh one back immediately, both halves installed.
  *
@@ -45,8 +59,7 @@ export function contentRegistry(): PackRegistry {
  * see its own doc comment for the test that needs that.
  */
 export function rebuildContentRegistry(): PackRegistry {
-  resetContentCatalogForTests();
-  codeInstalled = false;
+  resetRegistryStores();
   return contentRegistry();
 }
 
@@ -58,7 +71,7 @@ export function rebuildContentRegistry(): PackRegistry {
  * emptied under it, and nothing outside these two modules holds the
  * reference, so the orphan is collected.
  *
- * Kept as its own body rather than delegating to `rebuildContentRegistry`:
+ * Kept as its own function rather than delegating to `rebuildContentRegistry`:
  * that function eagerly rebuilds *and reinstalls the code half* before
  * returning, which several tests deliberately reset ahead of — see
  * `registry.test.ts`'s "contentCatalog() alone installs the data half and
@@ -68,6 +81,5 @@ export function rebuildContentRegistry(): PackRegistry {
  * this instant.
  */
 export function resetContentRegistryForTests(): void {
-  resetContentCatalogForTests();
-  codeInstalled = false;
+  resetRegistryStores();
 }
