@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   readInstalledPacks,
   writeInstalledPacks,
+  hasSeededDefaultPack,
+  markDefaultPackSeeded,
   PACK_STORE_KEY,
+  PACK_SEEDED_KEY,
 } from '@/content/installedPackStore';
 
 /**
@@ -88,5 +91,52 @@ describe('installedPackStore', () => {
       map.set(PACK_STORE_KEY, blob);
       expect(readInstalledPacks()).toEqual([]);
     }
+  });
+
+  it('hasSeededDefaultPack answers false when nothing is stored', () => {
+    withStorage();
+    expect(hasSeededDefaultPack()).toBe(false);
+  });
+
+  it('hasSeededDefaultPack answers false when localStorage is absent entirely', () => {
+    expect(hasSeededDefaultPack()).toBe(false);
+  });
+
+  it('markDefaultPackSeeded makes hasSeededDefaultPack answer true', () => {
+    withStorage();
+    expect(hasSeededDefaultPack()).toBe(false);
+    markDefaultPackSeeded();
+    expect(hasSeededDefaultPack()).toBe(true);
+  });
+
+  it('hasSeededDefaultPack answers false for any stored value other than the marker', () => {
+    const map = withStorage();
+    for (const blob of ['0', 'true', 'yes', '']) {
+      map.set(PACK_SEEDED_KEY, blob);
+      expect(hasSeededDefaultPack()).toBe(false);
+    }
+  });
+
+  it('never throws out of markDefaultPackSeeded when storage refuses', () => {
+    (globalThis as Record<string, unknown>).localStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+      removeItem: () => {},
+    };
+    expect(() => markDefaultPackSeeded()).not.toThrow();
+  });
+
+  it('hasSeededDefaultPack never throws when storage itself throws on read', () => {
+    (globalThis as Record<string, unknown>).localStorage = {
+      getItem: () => {
+        throw new Error('SecurityError');
+      },
+      setItem: () => {},
+      removeItem: () => {},
+    };
+    expect(() => hasSeededDefaultPack()).not.toThrow();
+    expect(hasSeededDefaultPack()).toBe(false);
   });
 });

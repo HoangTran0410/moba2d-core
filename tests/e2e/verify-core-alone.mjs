@@ -96,6 +96,29 @@ await page.addInitScript(
   ]
 );
 
+// This script's entire subject is "core stands alone, no optional pack
+// installed" — so it has to say that on purpose, not fall into it by
+// leaving the pack store untouched. An untouched store reads as "never ran
+// this game" to `installRuntimePacks()` (`src/content/runtimePacks.ts`),
+// which then seeds and genuinely fetches `DEFAULT_PACK_URL` in the
+// background — a real network request this script never wanted, to a pack
+// that is not published yet, whose resulting console noise used to make
+// check 7 flaky-by-design. Seeding both keys `runtimePacks.ts` reads —
+// `lol2d:packs:v1` empty, `lol2d:packs:seeded:v1` already set — tells it
+// the default has already been offered and declined, so it makes no
+// request at all. Literal key strings, not an import from
+// `@/content/installedPackStore`: this file runs under plain `node`, not
+// through Vite, so `@/` does not resolve here — the same reason
+// `verify-runtime-pack.mjs` seeds `'lol2d:packs:v1'` by hand rather than
+// importing `PACK_STORE_KEY`.
+await page.addInitScript(
+  ([storeKey, seededKey]) => {
+    window.localStorage.setItem(storeKey, JSON.stringify([]));
+    window.localStorage.setItem(seededKey, '1');
+  },
+  ['lol2d:packs:v1', 'lol2d:packs:seeded:v1']
+);
+
 /** Everything this script asserts on, read off the live `Game` — no screenshots. */
 const matchFacts = () =>
   page.evaluate(() => {

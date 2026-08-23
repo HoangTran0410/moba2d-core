@@ -25,6 +25,8 @@ import { rebuildContentRegistry } from '@/content/registry';
 import {
   readInstalledPacks,
   writeInstalledPacks,
+  hasSeededDefaultPack,
+  markDefaultPackSeeded,
   PACK_STORE_KEY,
 } from '@/content/installedPackStore';
 
@@ -57,6 +59,7 @@ describe('installRuntimePacks', () => {
   });
 
   it('seeds the default pack on a first run with nothing stored', async () => {
+    expect(hasSeededDefaultPack()).toBe(false);
     vi.mocked(fetchPackManifest).mockResolvedValue(manifest);
     vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
 
@@ -67,6 +70,34 @@ describe('installRuntimePacks', () => {
     expect(readInstalledPacks()).toEqual([
       { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0' },
     ]);
+    // The offer is spent once it has been made, win or lose — see
+    // `runtimePacks.ts`'s own header.
+    expect(hasSeededDefaultPack()).toBe(true);
+  });
+
+  it('does not seed the default once the flag says it already offered it, even with nothing stored', async () => {
+    // The situation the flag exists for: an old browser whose player
+    // removed every pack looks identical, from the list alone, to a
+    // browser that has never run this game. Only the flag tells them apart.
+    markDefaultPackSeeded();
+
+    const outcomes = await installRuntimePacks();
+
+    expect(fetchPackManifest).not.toHaveBeenCalled();
+    expect(loadPackFromManifest).not.toHaveBeenCalled();
+    expect(installRuntimePack).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([]);
+    expect(readInstalledPacks()).toEqual([]);
+  });
+
+  it('marks the default pack seeded even when the fetch fails, so it is not retried forever', async () => {
+    const { PackLoadError } = await import('@/content/packSource');
+    vi.mocked(fetchPackManifest).mockRejectedValue(new PackLoadError('fetch', 'offline'));
+    expect(hasSeededDefaultPack()).toBe(false);
+
+    await installRuntimePacks();
+
+    expect(hasSeededDefaultPack()).toBe(true);
   });
 
   it('reports a failure instead of throwing, and stores nothing', async () => {

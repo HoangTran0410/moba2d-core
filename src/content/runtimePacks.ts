@@ -5,6 +5,8 @@ import { rebuildContentRegistry } from './registry';
 import {
   readInstalledPacks,
   writeInstalledPacks,
+  hasSeededDefaultPack,
+  markDefaultPackSeeded,
   type InstalledPackRecord,
 } from './installedPackStore';
 
@@ -30,6 +32,21 @@ import {
  * rebuild up front is enough: `installRuntimePack` only needs a registry
  * that already reflects the bundled packs, and every runtime pack after that
  * installs directly into the same instance.
+ *
+ * **An empty stored list seeds the default only once, ever — not once per
+ * empty list.** `readInstalledPacks()` returning `[]` means two different
+ * things: a browser that has never run this game, and a browser whose
+ * player has removed every pack. Seeding the default on both makes an
+ * uninstall impossible to keep — the very next boot would just bring it
+ * back. `installedPackStore.ts`'s `hasSeededDefaultPack()` is what tells
+ * the two apart, and `markDefaultPackSeeded()` is called once a seeding
+ * *attempt* has been made, whether or not it actually installed anything.
+ * That last part is deliberate: the alternative is a browser with no
+ * network phoning an unreachable host on every single launch forever, and
+ * a player who *wants* the default pack after a failed first attempt has
+ * Plan 2's management screen to press "add the official pack" on
+ * purpose — a retry loop no one asked for is not a substitute for that
+ * button.
  */
 
 /**
@@ -60,8 +77,21 @@ export type PackInstallOutcome =
 
 export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   const stored = readInstalledPacks();
-  const wanted: string[] =
-    stored.length > 0 ? stored.map(record => record.manifestUrl) : [DEFAULT_PACK_URL];
+
+  // Seeding the default is a one-time offer, not "whatever the list is
+  // empty this boot": a list that is empty *because a real list already
+  // exists and the player cleared it* must stay empty. See this file's own
+  // header for the full reasoning.
+  let seeding = false;
+  let wanted: string[];
+  if (stored.length > 0) {
+    wanted = stored.map(record => record.manifestUrl);
+  } else if (!hasSeededDefaultPack()) {
+    wanted = [DEFAULT_PACK_URL];
+    seeding = true;
+  } else {
+    wanted = [];
+  }
 
   const outcomes: PackInstallOutcome[] = [];
   const installed: InstalledPackRecord[] = [];
@@ -87,6 +117,10 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
       });
     }
   }
+
+  // The offer is marked spent whether or not it landed — a failed attempt
+  // must not retry forever, only once more per this file's own header.
+  if (seeding) markDefaultPackSeeded();
 
   // Only what actually installed is remembered. A URL that failed is not
   // written, so a first run that could not reach the network retries the

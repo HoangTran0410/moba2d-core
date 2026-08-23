@@ -66,3 +66,42 @@ export function writeInstalledPacks(records: InstalledPackRecord[]): void {
     // A full or blocked storage costs the player this list, nothing more.
   }
 }
+
+/**
+ * Whether this browser has ever been offered the default pack.
+ *
+ * The list alone cannot answer it: an empty list means "never ran" on a
+ * fresh browser and "the player removed everything" on an old one, and
+ * seeding the default on both makes an uninstall impossible to keep. This
+ * flag is what separates them, and it is deliberately a second key rather
+ * than a sentinel inside the list — a list of packs should hold packs.
+ */
+export const PACK_SEEDED_KEY = 'lol2d:packs:seeded:v1';
+
+/**
+ * Defensive the same way `readInstalledPacks` is: a missing key, a blocked
+ * or absent `localStorage`, and any unexpected stored value all answer
+ * `false` rather than throwing. `false` is also the correct reading of "not
+ * present" — the flag exists only once it has been written.
+ */
+export function hasSeededDefaultPack(): boolean {
+  try {
+    return localStorage.getItem(PACK_SEEDED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Records that the default pack has been offered — win or lose. See
+ * `runtimePacks.ts` for why this is called after a seeding *attempt*
+ * regardless of its outcome, not only after a success.
+ */
+export function markDefaultPackSeeded(): void {
+  try {
+    localStorage.setItem(PACK_SEEDED_KEY, '1');
+  } catch {
+    // A full or blocked storage costs the player a retried default fetch on
+    // the next boot, nothing more.
+  }
+}
