@@ -42,7 +42,7 @@
 import { createServer as createStaticServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
-import { startHarness } from './harness.mjs';
+import { CFG_KEY, startHarness } from './harness.mjs';
 
 const PACK_DIST = '/Users/hoangtran/Desktop/Github/moba2d-content-riot/dist';
 const PACK_PORT = 4399;
@@ -78,6 +78,41 @@ const packServer = createStaticServer(async (req, res) => {
 await new Promise(resolve => packServer.listen(PACK_PORT, resolve));
 const PACK_URL = `http://localhost:${PACK_PORT}/manifest.json`;
 
+/**
+ * Nothing else on the map can hit the player mid-cast, and no per-spell mana
+ * bookkeeping — the same shape and the same reasoning as
+ * `verify-pack-champion.mjs`'s own seed. None of it is the behaviour under
+ * test.
+ */
+const CFG_SEED = {
+  player: {
+    mode: 'champion',
+    championName: 'random',
+    summonerD: 'Flash',
+    summonerF: 'Heal',
+    customSlots: Array(7).fill('random'),
+  },
+  ai: { count: 0, autoMove: false, autoAttack: false, autoCast: false, bots: [] },
+  rules: { cooldownReductionPercent: 0, manaFree: true },
+  world: { jungle: false, minions: false },
+};
+
+/**
+ * The champion this script takes into a match. Pack-only — core alone has
+ * exactly one champion (Vera, from the reference pack) and she is not it — so
+ * every ability cast below came over the network or did not happen.
+ */
+const PACK_CHAMPION = 'Ahri';
+
+/**
+ * Core's own fallback spell, by the display name `src/generated/spellCatalog.ts`
+ * ships. A runtime pack whose *code* half was rejected still installs its data
+ * half, so the roster grows and the champion is named right while all seven
+ * slots quietly hold this instead of her kit — which is exactly the failure the
+ * roster checks above cannot see.
+ */
+const BASIC_ATTACK_NAME = 'Đánh Thường (Basic Attack)';
+
 const { url, page, report, check, errors, guard } = await startHarness();
 
 await guard(
@@ -96,6 +131,10 @@ await guard(
         ),
       ['lol2d:packs:v1', PACK_URL]
     );
+    await page.addInitScript(
+      ([key, config]) => window.localStorage.setItem(key, JSON.stringify(config)),
+      [CFG_KEY, CFG_SEED]
+    );
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('#play-btn', { timeout: 45_000 });
 
@@ -113,6 +152,95 @@ await guard(
     check('the runtime pack installed a full roster', champions.length > 50, `${champions.length}`);
     check('a champion that exists only in the pack is offered', champions.includes('Ahri'));
     check('the reference pack survived alongside it', champions.includes('Vera'));
+
+    // ------------------------------------------------------------- Part 1b
+    // The half of the claim the roster cannot make. `installData` and
+    // `installCode` are two separate calls and only the first one is visible
+    // above: a pack whose *code* half is rejected still grows the roster,
+    // still names the champion right, and hands her seven slots of
+    // `BasicAttack`. Casting her Q/W/E/R and watching each cooldown leave 0
+    // is the only thing here that can tell those two apart, and the goal
+    // this whole branch exists for — "playable in a match" — is stated
+    // nowhere else in this script.
+    await page.click(`.kit-shelf[data-champion="${PACK_CHAMPION}"] .kit-shelf-apply`);
+    await page.click(`.kit-shelf[data-champion="${PACK_CHAMPION}"] .kit-apply-all`);
+    await page.click('.kit-bar-btn:not(.secondary)'); // Xác nhận
+    await page.waitForSelector('.loadout-modal', { state: 'detached' });
+    await page.click('#pregame-start-btn'); // Bắt Đầu
+    await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+      timeout: 30_000,
+    });
+    await page.waitForTimeout(500);
+
+    const match = await page.evaluate(() => {
+      const game = window.__lol2d.scene.oScene.game;
+      const subject = game.player;
+      const casts = [];
+      // `SpellHotKeys` is [A, Q, W, E, R, D, F], so `spells[1..4]` is Q/W/E/R.
+      for (let slot = 1; slot <= 4; slot++) {
+        const spell = subject?.spells?.[slot];
+        if (!spell) {
+          casts.push({ slot, name: null, accepted: false, before: null, after: null, ok: false });
+          continue;
+        }
+        spell.currentCooldown = 0;
+        const before = spell.currentCooldown;
+        const at = { x: subject.position.x + 200, y: subject.position.y };
+        game.worldMouse = createVector(at.x, at.y);
+        const context = game.createSpellContext(spell, subject, at);
+        const accepted = context ? spell.press(context) : false;
+        const after = spell.currentCooldown;
+        casts.push({
+          slot,
+          name: spell.name,
+          accepted,
+          before,
+          after,
+          ok: accepted && before === 0 && after > 0,
+        });
+      }
+      return { name: subject?.name ?? null, casts };
+    });
+    report.match = match;
+
+    check(
+      `the match starts with ${PACK_CHAMPION} as the player champion`,
+      match.name === PACK_CHAMPION,
+      `player.name = ${JSON.stringify(match.name)}`
+    );
+    check(
+      "her four slots hold her own abilities, not core's fallback",
+      match.casts.length === 4 &&
+        match.casts.every(cast => cast.name && cast.name !== BASIC_ATTACK_NAME),
+      match.casts.map(cast => cast.name).join(' / ')
+    );
+    const slotLetters = ['A', 'Q', 'W', 'E', 'R'];
+    for (const cast of match.casts) {
+      check(
+        `${slotLetters[cast.slot]} (${cast.name ?? '?'}) casts and its cooldown starts`,
+        Boolean(cast.ok),
+        `accepted=${cast.accepted} cooldown ${cast.before}ms -> ${cast.after}ms`
+      );
+    }
+
+    // The install's own account of itself, which used to exist only as a
+    // `console.warn` — a channel `harness.mjs` does not capture (it records
+    // `console.error` and `pageerror`). That is how this script reported 6/6
+    // green while `installCode` was throwing 61 pairing errors: it had no
+    // way to look. See `src/scenes/packBanner.ts`.
+    const outcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    report.outcomes = outcomes;
+    check(
+      'the install reports itself to the page, not only to a console warning',
+      Array.isArray(outcomes) && outcomes.length === 1,
+      JSON.stringify(outcomes)
+    );
+    check(
+      'and it reports the pack as installed',
+      Array.isArray(outcomes) && outcomes[0]?.ok === true && outcomes[0]?.id === 'riot',
+      JSON.stringify(outcomes)
+    );
+
     check('nothing went wrong on the page', errors.length === 0, errors.join(' | '));
 
     // -------------------------------------------------------------- Part 2
@@ -126,7 +254,44 @@ await guard(
       .then(() => true)
       .catch(() => false);
     check('the menu still opens when the pack host is dead', reachedMenu);
-    check('the player is told', (await page.locator('.pack-banner').count()) > 0);
+    // `isVisible()`, not `count()`. The banner used to be rendered inside
+    // `#loading-scene`, which `LoadingScene.exit()` sets to `display: none`
+    // on the very next line — so it was in the DOM, `count()` was 1, and the
+    // player saw it in 1 sampled frame out of 68. A presence check on a
+    // hidden element is a check that cannot fail. Spec §7 puts the banner on
+    // the menu, which is the screen still on the glass.
+    check(
+      'the player is told, on a screen they are actually looking at',
+      await page.locator('.pack-banner').isVisible()
+    );
+    check('the banner offers a retry', await page.locator('#pack-banner-retry').isVisible());
+    const failedOutcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    report.failedOutcomes = failedOutcomes;
+    check(
+      'and the failure is reported to the page with its stage',
+      Array.isArray(failedOutcomes) &&
+        failedOutcomes[0]?.ok === false &&
+        typeof failedOutcomes[0]?.stage === 'string',
+      JSON.stringify(failedOutcomes)
+    );
+
+    // It does not dismiss itself — spec §7 — and it does not come back once
+    // the player has said so, which is what makes the module-level state in
+    // `packBanner.ts` load-bearing rather than tidy: `MenuScene` unmounts and
+    // remounts on every return from the pregame screen.
+    await page.click('#pack-banner-dismiss');
+    check(
+      "dismissing it is the player's own act, and it sticks",
+      !(await page.locator('.pack-banner').isVisible())
+    );
+    await page.click('#config-btn');
+    await page.waitForSelector('#pregame-scene', { state: 'visible', timeout: 30_000 });
+    await page.click('#practice-close');
+    await page.waitForSelector('#play-btn', { timeout: 30_000 });
+    check(
+      'and it stays dismissed across a menu remount',
+      !(await page.locator('.pack-banner').isVisible())
+    );
   },
   { cleanup: () => packServer.close() }
 );

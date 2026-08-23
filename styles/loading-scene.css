@@ -42,32 +42,3 @@
     text-align: center;
     color: red;
 }
-
-/* Never blocking — a runtime pack that failed to install costs the roster,
-   not the menu. See LoadingScene.ts's boot(). */
-.pack-banner {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    max-width: 320px;
-    margin-left: auto;
-    margin-right: auto;
-    border: 1px solid #e8b04b88;
-    border-radius: 8px;
-    background: #e8b04b1a;
-    color: #f0e6d2;
-    font-size: 0.85rem;
-    text-align: center;
-}
-
-.pack-banner button {
-    padding: 6px 18px;
-    border: 1px solid #c8aa6e;
-    border-radius: 6px;
-    background: #1a1a1a;
-    color: #f0e6d2;
-    cursor: pointer;
-}

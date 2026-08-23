@@ -15,7 +15,6 @@
  */
 import { ref } from 'vue';
 import AssetManager from '@/managers/AssetManager';
-import type { PackInstallOutcome } from '@/content/runtimePacks';
 
 const logo = AssetManager.get('other_logo').url;
 
@@ -26,20 +25,13 @@ const progress = ref(0);
 const showProgress = ref(true);
 
 /**
- * A pack that did not install. Never fatal — see `LoadingScene.ts`'s
- * `boot()` and `runtimePacks.ts`'s own header: the game is already playable
- * on core plus the reference pack before this is ever set, so the banner is
- * an apology, not a blocker.
+ * **The failed-pack banner is not here.** It used to be, set by
+ * `LoadingScene.ts`'s `boot()` on the line before it showed the menu — and
+ * `exit()` hides this whole scene, so the player saw it for as long as the
+ * menu chunk took to arrive and no longer. It lives on the menu now
+ * (`src/scenes/packBanner.ts`, `MenuScene.vue`), which is where spec §7 puts
+ * it and the only screen that is still on the glass afterwards.
  */
-const failures = ref<Extract<PackInstallOutcome, { ok: false }>[]>([]);
-
-/**
- * `location.reload()` rather than retrying `installRuntimePacks()` in place:
- * a dead host is usually a transient network condition, and a full reload
- * re-runs the exact same boot path this component's own `setPackFailures`
- * just reported on, with no extra state to reconcile.
- */
-const retry = () => location.reload();
 
 /**
  * Exposed so `LoadingScene.ts` can drive the screen without a DOM handle. The
@@ -58,10 +50,6 @@ defineExpose({
     error.value = '';
     progress.value = 0;
     showProgress.value = true;
-    failures.value = [];
-  },
-  setPackFailures: (outcomes: Extract<PackInstallOutcome, { ok: false }>[]) => {
-    failures.value = outcomes;
   },
 });
 </script>
@@ -79,13 +67,4 @@ defineExpose({
   <!-- v-html because the failure text carries a <br/> between the sentence
        and the underlying error message -->
   <h2 class="error-text" v-html="error"></h2>
-  <!-- Never blocks the handover to the menu — see `LoadingScene.ts`'s
-       `boot()`. Both `@click` and `@touchend.prevent` on the button: once a
-       `GameScene` is on screen it calls `preventDefault()` on every touch,
-       which stops the browser from synthesising a trailing `click`, so a
-       click-only handler is dead under a thumb. -->
-  <div v-if="failures.length" class="pack-banner" role="alert">
-    <span>Chưa tải được nội dung ({{ failures[0].stage }}). Đang chơi với tướng mặc định.</span>
-    <button type="button" @click="retry" @touchend.prevent="retry">Thử lại</button>
-  </div>
 </template>

@@ -3,6 +3,7 @@ import { Scene } from '@/managers/SceneManager';
 import LoadingSceneView from './LoadingScene.vue';
 import type MenuScene from './MenuScene';
 import { installRuntimePacks, type PackInstallOutcome } from '@/content/runtimePacks';
+import { publishPackInstallOutcomes } from './packBanner';
 
 /** What `LoadingScene.vue` exposes back to the scene driving it. */
 interface LoadingView {
@@ -10,7 +11,6 @@ interface LoadingView {
   setProgress(percent: number): void;
   fail(text: string): void;
   reset(): void;
-  setPackFailures(failures: PackInstallOutcome[]): void;
 }
 
 /**
@@ -53,25 +53,38 @@ export default class LoadingScene extends Scene {
    * screen is on the glass, and `setup()` is synchronous by design (see
    * `content/registry.ts` — the warm call there installs core and the
    * reference pack, which is what makes the game playable if everything
-   * below fails). **Nothing in `installRuntimePacks()` may throw** — see
-   * its own header — so the worst outcome here is a banner, never a dead
-   * screen.
+   * below fails).
+   *
+   * **The `try` is what makes "nothing in `installRuntimePacks()` may throw"
+   * a fact rather than a comment.** `enter()` fires this as `void
+   * this.boot()`, so a throw anywhere above the handover is an unhandled
+   * rejection and the menu never opens — the dead screen the whole design
+   * forbids, reached by the one path that had nothing watching it. The
+   * handover below is deliberately outside every failure branch: whatever
+   * happened to the packs, this method ends by showing the menu.
+   *
+   * The outcomes go to `packBanner.ts` rather than to this screen, because
+   * this screen is about to be `display: none` — see that module's header.
    */
   private async boot() {
-    const outcomes = await installRuntimePacks();
-    // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
-    // this project and cannot narrow a type (see CLAUDE.md), and narrowing
-    // the failure branch of the union is the whole point here — the banner
-    // reads `failures[0].stage`, which only the `ok: false` member has.
-    const failures: Extract<PackInstallOutcome, { ok: false }>[] = [];
-    for (const outcome of outcomes) {
-      if (outcome.ok === false) failures.push(outcome);
+    let outcomes: PackInstallOutcome[] = [];
+    try {
+      outcomes = await installRuntimePacks();
+    } catch (thrown) {
+      // Reported, never rethrown. `installRuntimePacks` already answers with
+      // outcomes rather than rejecting; reaching here means it broke its own
+      // contract, and the player's menu must not be what pays for that.
+      console.error('[packs] the install path threw', thrown);
+      outcomes = [
+        {
+          manifestUrl: '',
+          ok: false,
+          stage: 'install',
+          message: (thrown as Error)?.message ?? String(thrown),
+        },
+      ];
     }
-    if (failures.length > 0) {
-      // Not thrown, on purpose. See `runtimePacks.ts`'s own header.
-      console.warn('[packs] some content did not install', failures);
-    }
-    this.view?.setPackFailures(failures);
+    publishPackInstallOutcomes(outcomes);
 
     // Used to await `AssetManager.ensure('json_summoner_map')` here first —
     // the map's own terrain/turret/fountain data, read synchronously by

@@ -26,6 +26,12 @@ import AssetManager from '@/managers/AssetManager';
 import DomUtils from '@/utils/dom.utils';
 import { applyUpdate, offlineReady, updateDownloading, updateReady } from '@/pwa/updates';
 import { watchPreload, type PreloadState } from './gamePreload';
+import {
+  dismissPackBanner,
+  packBannerDismissed,
+  packInstallFailures,
+  retryPackInstall,
+} from './packBanner';
 
 const emit = defineEmits<{ play: []; openConfig: []; openAbout: [] }>();
 
@@ -104,6 +110,18 @@ const installUpdate = async (): Promise<void> => {
   updating.value = true;
   await applyUpdate();
 };
+
+/**
+ * ## The failed-pack banner
+ *
+ * Spec §7 puts it here rather than on the loading screen, and says it does
+ * not dismiss itself: a game quietly missing 58 champions reads as a broken
+ * game, so the player has to be the one who decides to ignore it. Both refs
+ * are module state (`./packBanner`) for the same reason the update refs
+ * above are — this component remounts on every return to the menu, and a
+ * banner that came back after being dismissed, or a failure list that
+ * nothing ever set again, are the two shapes component state would give.
+ */
 </script>
 
 <template>
@@ -134,6 +152,35 @@ const installUpdate = async (): Promise<void> => {
       Tải dữ liệu chưa xong — bấm Chơi để thử lại.
     </p>
   </template>
+
+  <!-- Both `@click` and `@touchend.prevent` on each button: once a
+       `GameScene` is on screen it calls `preventDefault()` on every touch on
+       the page, which stops the browser synthesising a trailing `click`, so a
+       click-only handler is dead under a thumb. -->
+  <div v-if="packInstallFailures.length && !packBannerDismissed" class="pack-banner" role="alert">
+    <span>
+      Chưa tải được nội dung ({{ packInstallFailures[0].stage }}). Đang chơi với tướng mặc định.
+    </span>
+    <div class="pack-banner-actions">
+      <button
+        id="pack-banner-retry"
+        type="button"
+        @click="retryPackInstall"
+        @touchend.prevent="retryPackInstall"
+      >
+        Thử lại
+      </button>
+      <button
+        id="pack-banner-dismiss"
+        type="button"
+        class="ghost"
+        @click="dismissPackBanner"
+        @touchend.prevent="dismissPackBanner"
+      >
+        Bỏ qua
+      </button>
+    </div>
+  </div>
 
   <button id="about-btn" title="Giới thiệu" @click="emit('openAbout')">
     <i class="fas fa-circle-info" aria-hidden="true"></i>

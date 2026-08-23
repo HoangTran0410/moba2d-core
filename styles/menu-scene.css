@@ -310,3 +310,54 @@
   font-size: 0.75rem;
   opacity: 0.9;
 }
+
+/* ------------------------------------------------------- Failed-pack banner
+   Moved here from loading-scene.css. On the loading screen it was set on the
+   line before `LoadingScene.exit()` set that whole scene to `display: none`,
+   so it was on the glass for as long as the menu chunk took to arrive — 1
+   sample in 68, measured. Spec §7 puts it on the menu and says it does not
+   dismiss itself.
+
+   In the column flow rather than pinned to a corner: it is an apology for a
+   roster the player is about to look at, so it belongs beside the buttons,
+   and the two update notices already own the bottom-right corner. */
+.pack-banner {
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(360px, 86vw);
+  margin-top: 16px;
+  padding: 10px 16px;
+  border: 1px solid #e8b04b88;
+  border-radius: 8px;
+  background: rgba(20, 15, 5, 0.85);
+  color: #f0e6d2;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.pack-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 44px minimum so a thumb can actually hit either one. */
+.pack-banner button {
+  min-height: 44px;
+  padding: 6px 18px;
+  border: 1px solid #c8aa6e;
+  border-radius: 6px;
+  background: #1a1a1a;
+  color: #f0e6d2;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.pack-banner button.ghost {
+  border-color: #c8aa6e55;
+  background: transparent;
+  color: #c8aa6e;
+}
