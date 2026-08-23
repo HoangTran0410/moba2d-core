@@ -66,10 +66,47 @@ jobs:
 
       - run: npm run verify:all
 
+      # ------------------------------------------- the game that gets published
+      # Everything above this line proves CORE, alone: no optional pack in the
+      # tree, `installedPacks` generated empty, one champion. That is what this
+      # repository is and what it must keep being — `package.json` names no
+      # content pack on purpose, and adding one there would quietly make every
+      # gate above run against a roster instead of against the engine.
+      #
+      # So the published artifact is composed here instead. `--no-save` is the
+      # whole trick: the pack lands in `node_modules`, `prebuild`'s
+      # `packs:generate` finds it (scripts/installed-packs.mjs reads
+      # `node_modules`, never `package.json`), and the checkout records no
+      # dependency on it. `npm run build` then produces a dist with content in
+      # it, and that dist is what the Pages steps below upload.
+      #
+      # This is also the only place the two halves are ever built together.
+      # Core's `verify` sees core; the pack's own repository runs the pack's
+      # own gates; neither sees the composition — and the composition is
+      # exactly where the failure that cost a full debugging pass lived, a
+      # pack resolved out of `node_modules` being pre-bundled by esbuild,
+      # which does not honour Vite's `?raw`. The grep is the real assertion:
+      # the barrel is generated from what is installed, so if the pack did not
+      # arrive the string is simply absent and a silent zero-champion build
+      # would otherwise sail through `chunks:check` (which only checks that
+      # the packs it *finds* got their chunks — it is happy with none).
+      - name: Build the published game — core plus the content pack
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          npm install --no-save github:HoangTran0410/moba2d-content-riot
+          npm run build
+          grep -q "@moba2d/content-riot" src/generated/installedPacks.ts \
+            || { echo "::error::the content pack did not reach the build"; exit 1; }
+          npm run chunks:check
+
       # `npm run verify:all` runs core's own `verify` (which ends in `vite
-      # build`, so dist/ is already on disk as the *verified* build) plus
-      # `packs/reference`'s own asset/catalogue/typecheck/seam gates — the one
-      # workspace still inside this repository. CI runs `verify:all` and
+      # build`) plus `packs/reference`'s own asset/catalogue/typecheck/seam
+      # gates — the one workspace still inside this repository. On a push to
+      # main the compose step above then *overwrites* that dist with the
+      # core-plus-content build, and that second one is what ships; the first
+      # is the one `verify` gated. Elsewhere — a pull request, a fork — the
+      # compose step does not run and the verified core-only dist is the only
+      # one there is. CI runs `verify:all` and
       # never plain `verify`, and that is not a temporary arrangement:
       # `verify` is scoped to core *by intent* (content-pack-extraction batch
       # 5 task 6), and a pack's own gates are the pack's own to run —
@@ -95,6 +132,11 @@ jobs:
       # Nothing ships that did not pass typecheck and the whole suite first —
       # that is the point of deploying from here rather than connecting the
       # repo to Cloudflare's own git builds, which would publish a red main.
+      # With the split that sentence needs its second half: the suite that
+      # gated the shipped bytes is *two* suites in two repositories, core's
+      # here and the pack's in its own, and what this job adds on top is the
+      # only check either of them structurally cannot do — that the two
+      # actually compose into a build.
       - name: Deploy to Cloudflare Pages
         if: >-
           github.event_name == 'push'
