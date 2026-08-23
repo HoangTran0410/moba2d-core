@@ -1,6 +1,7 @@
-import { buildContentApi } from './ContentApi';
+import { buildContentApi, type ContentApi } from './ContentApi';
 import { installRuntimePack } from './install';
 import { fetchPackManifest, loadPackFromManifest, PackLoadError } from './packSource';
+import type { PackRegistry } from './PackRegistry';
 import { rebuildContentRegistry } from './registry';
 import {
   readInstalledPacks,
@@ -39,14 +40,31 @@ import {
  * player has removed every pack. Seeding the default on both makes an
  * uninstall impossible to keep — the very next boot would just bring it
  * back. `installedPackStore.ts`'s `hasSeededDefaultPack()` is what tells
- * the two apart, and `markDefaultPackSeeded()` is called once a seeding
- * *attempt* has been made, whether or not it actually installed anything.
- * That last part is deliberate: the alternative is a browser with no
- * network phoning an unreachable host on every single launch forever, and
- * a player who *wants* the default pack after a failed first attempt has
- * Plan 2's management screen to press "add the official pack" on
- * purpose — a retry loop no one asked for is not a substitute for that
- * button.
+ * the two apart.
+ *
+ * **The flag is set on a seed that *worked*, never on one that merely
+ * happened.** It used to be set either way, reasoned as "a browser with no
+ * network must not phone an unreachable host on every launch forever". That
+ * is the wrong trade and it was measured to be: `DEFAULT_PACK_URL` answers
+ * 404 until the pack repository's own publish workflow has run, so every
+ * browser that boots before publication spends its single automatic attempt
+ * on a guaranteed failure, `wanted` is permanently `[]` afterwards, and the
+ * retry offered on the banner is `location.reload()` — which cannot re-seed,
+ * because the flag is already set. One unlucky first launch and that browser
+ * never sees the content again. The cost of the other choice is one failed
+ * `fetch` per launch on a browser with no packs and no network, which is a
+ * few hundred bytes that never leave the machine. The uninstall case the
+ * flag exists for is untouched: a successful seed sets it, so a player who
+ * removes every pack afterwards is not re-seeded.
+ *
+ * **A pack whose id is already installed is skipped, not failed.** Both
+ * content paths can be live at once until Plan 2 retires core's compile-in
+ * step, and the default pack's id (`riot`) is the same id on both. The skip
+ * happens after the manifest — cheap JSON, and the only way to learn the id
+ * — and before the entry is fetched or any asset manifest is registered:
+ * `AssetManager.registerPackAssets` is a bare `Map.set`, so an install that
+ * runs it on the way to a duplicate-id throw silently repoints every one of
+ * that pack's art keys at the remote host for the rest of the session.
  */
 
 /**
@@ -72,7 +90,13 @@ import {
 export const DEFAULT_PACK_URL = 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json';
 
 export type PackInstallOutcome =
-  | { manifestUrl: string; ok: true; id: string }
+  /**
+   * The pack is here. `skipped` is set only when it was *already* here under
+   * this id and this call did nothing — not a failure (the content the
+   * player wanted is installed either way), and deliberately distinguishable
+   * so a caller can say which of the two happened.
+   */
+  | { manifestUrl: string; ok: true; id: string; skipped?: true }
   | { manifestUrl: string; ok: false; stage: string; message: string };
 
 export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
@@ -95,13 +119,44 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
 
   const outcomes: PackInstallOutcome[] = [];
   const installed: InstalledPackRecord[] = [];
-  const api = buildContentApi();
-  const registry = rebuildContentRegistry();
+  // `anyInstalled` means "the pack is in the registry", which a skip
+  // satisfies as much as an install does: the id is present, so the record
+  // is worth remembering and — if this was the seeding run — the offer is
+  // settled. Only a real failure leaves both undone.
   let anyInstalled = false;
+
+  let api: ContentApi;
+  let registry: PackRegistry;
+  try {
+    api = buildContentApi();
+    registry = rebuildContentRegistry();
+  } catch (thrown) {
+    // The two calls the per-pack `try` below never covered, and the reason
+    // this function's "nothing here may throw" was a comment rather than a
+    // fact: `LoadingScene.enter()` fires `void this.boot()`, so a throw here
+    // became an unhandled rejection and the menu handover never ran.
+    return [
+      {
+        manifestUrl: '',
+        ok: false,
+        stage: 'registry',
+        message: (thrown as Error)?.message ?? String(thrown),
+      },
+    ];
+  }
 
   for (const manifestUrl of wanted) {
     try {
       const manifest = await fetchPackManifest(manifestUrl);
+      // Ahead of `loadPackFromManifest`, so a pack core already has is not
+      // re-downloaded, and ahead of any asset registration — see this
+      // file's own header.
+      if (registry.hasPack(manifest.id)) {
+        anyInstalled = true;
+        installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
+        outcomes.push({ manifestUrl, ok: true, id: manifest.id, skipped: true });
+        continue;
+      }
       const pack = await loadPackFromManifest(manifest, manifestUrl);
       installRuntimePack(registry, api, pack);
       anyInstalled = true;
@@ -118,9 +173,11 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
     }
   }
 
-  // The offer is marked spent whether or not it landed — a failed attempt
-  // must not retry forever, only once more per this file's own header.
-  if (seeding) markDefaultPackSeeded();
+  // The offer is spent only once it has actually been taken. See this
+  // file's own header: marking it on a failed attempt locks a browser out
+  // of the default pack permanently, and the retry the banner offers is a
+  // reload, which cannot undo it.
+  if (seeding && anyInstalled) markDefaultPackSeeded();
 
   // Only what actually installed is remembered. A URL that failed is not
   // written, so a first run that could not reach the network retries the

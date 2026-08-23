@@ -13,8 +13,8 @@ vi.mock('@/content/packSource', () => ({
 }));
 vi.mock('@/content/install', () => ({ installRuntimePack: vi.fn() }));
 vi.mock('@/content/registry', () => ({
-  contentRegistry: vi.fn(() => ({})),
-  rebuildContentRegistry: vi.fn(() => ({})),
+  contentRegistry: vi.fn(() => ({ hasPack: () => false })),
+  rebuildContentRegistry: vi.fn(() => ({ hasPack: () => false })),
 }));
 vi.mock('@/content/ContentApi', () => ({ buildContentApi: vi.fn(() => ({})) }));
 
@@ -52,6 +52,12 @@ const manifest = {
 describe('installRuntimePacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` clears recorded calls, not implementations — so a test
+    // that gives `rebuildContentRegistry` a registry of its own would leak it
+    // into every test after it. Re-stated here rather than reached for with
+    // `resetAllMocks`, which would also wipe the factories in the `vi.mock`
+    // calls above.
+    vi.mocked(rebuildContentRegistry).mockReturnValue({ hasPack: () => false } as never);
     withStorage();
   });
   afterEach(() => {
@@ -70,7 +76,7 @@ describe('installRuntimePacks', () => {
     expect(readInstalledPacks()).toEqual([
       { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0' },
     ]);
-    // The offer is spent once it has been made, win or lose — see
+    // The offer is spent only once it has actually been taken — see
     // `runtimePacks.ts`'s own header.
     expect(hasSeededDefaultPack()).toBe(true);
   });
@@ -90,14 +96,86 @@ describe('installRuntimePacks', () => {
     expect(readInstalledPacks()).toEqual([]);
   });
 
-  it('marks the default pack seeded even when the fetch fails, so it is not retried forever', async () => {
+  it('leaves the offer unspent when the seeding attempt fails, so the next boot retries it', async () => {
+    // The reversal the whole-branch review forced, and it was right:
+    // `DEFAULT_PACK_URL` answers 404 until the pack repository publishes, so
+    // marking the flag on a failed attempt locks every browser that booted
+    // before publication out of the content permanently — and the retry the
+    // banner offers is `location.reload()`, which re-runs this same code and
+    // finds the flag already set.
     const { PackLoadError } = await import('@/content/packSource');
     vi.mocked(fetchPackManifest).mockRejectedValue(new PackLoadError('fetch', 'offline'));
     expect(hasSeededDefaultPack()).toBe(false);
 
     await installRuntimePacks();
 
+    expect(hasSeededDefaultPack()).toBe(false);
+  });
+
+  it('tries the default again on the next boot after a failed seeding attempt', async () => {
+    const { PackLoadError } = await import('@/content/packSource');
+    vi.mocked(fetchPackManifest).mockRejectedValue(new PackLoadError('fetch', '404'));
+
+    await installRuntimePacks();
+    await installRuntimePacks();
+
+    expect(fetchPackManifest).toHaveBeenCalledTimes(2);
+    expect(fetchPackManifest).toHaveBeenNthCalledWith(2, DEFAULT_PACK_URL);
+  });
+
+  it('skips a pack whose id is already installed, without fetching its entry', async () => {
+    // Both content paths are live until Plan 2 retires core's compile-in
+    // step, and they answer to the same id. The skip has to happen before
+    // `loadPackFromManifest` (or the pack is downloaded for nothing) and
+    // before `installRuntimePack` (whose asset registration is a bare
+    // `Map.set` that would repoint the local pack's art at the remote host).
+    vi.mocked(rebuildContentRegistry).mockReturnValue({
+      hasPack: (id: string) => id === 'riot',
+    } as never);
+    vi.mocked(fetchPackManifest).mockResolvedValue(manifest);
+
+    const outcomes = await installRuntimePacks();
+
+    expect(loadPackFromManifest).not.toHaveBeenCalled();
+    expect(installRuntimePack).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([
+      { manifestUrl: DEFAULT_PACK_URL, ok: true, id: 'riot', skipped: true },
+    ]);
+  });
+
+  it('counts a skip as content the player has, not as a failure', async () => {
+    vi.mocked(rebuildContentRegistry).mockReturnValue({
+      hasPack: (id: string) => id === 'riot',
+    } as never);
+    vi.mocked(fetchPackManifest).mockResolvedValue(manifest);
+
+    const outcomes = await installRuntimePacks();
+
+    expect(outcomes[0]).toMatchObject({ ok: true, skipped: true });
+    // The id is present, so the one-time offer is settled and the list is
+    // worth remembering — the next boot re-reads it and skips again cheaply,
+    // and installs for real once the compile-in step is gone.
     expect(hasSeededDefaultPack()).toBe(true);
+    expect(readInstalledPacks()).toEqual([
+      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0' },
+    ]);
+  });
+
+  it('answers with an outcome instead of rejecting when the registry itself throws', async () => {
+    // `buildContentApi()` and `rebuildContentRegistry()` sit outside the
+    // per-pack `try`, and `LoadingScene.enter()` calls `boot()` as
+    // `void this.boot()` — so a throw here used to be an unhandled rejection
+    // and the menu handover never ran. "Nothing here may throw" was a
+    // comment enforced by nothing; this is the enforcement.
+    vi.mocked(rebuildContentRegistry).mockImplementation(() => {
+      throw new Error('registry exploded');
+    });
+
+    const outcomes = await installRuntimePacks();
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].ok).toBe(false);
+    expect(outcomes[0]).toMatchObject({ stage: 'registry', message: 'registry exploded' });
   });
 
   it('reports a failure instead of throwing, and stores nothing', async () => {

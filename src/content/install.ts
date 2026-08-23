@@ -183,9 +183,16 @@ const _attackShapesAgree: [ChampionAttack, ChampionAttackTuning] = [
 void _attackShapesAgree;
 
 /**
- * The bundled pack's own `spellDisplay`, plus core's `BasicAttack` entry —
- * core-last, so a (today impossible) id collision resolves to core rather
- * than letting content shadow the one spell every kit presupposes.
+ * A pack's own `spellDisplay`, plus core's `BasicAttack` entry — core-last,
+ * so a (today impossible) id collision resolves to core rather than letting
+ * content shadow the one spell every kit presupposes.
+ *
+ * **Nothing here is about being pack index 0.** It reads only the pack it is
+ * handed and merges core's own catalogue on top, so it is correct for any
+ * pack — which is why `installRuntimePack` below applies the same two folds
+ * to a pack that arrived over the network. The *choice* of which bundled
+ * pack gets it is index 0's (see this file's header: bare ids belong to the
+ * first installed pack); the fold itself carries no such assumption.
  */
 const dataWithCoreSpells = (data: ContentPackData): ContentPackData => ({
   ...data,
@@ -193,8 +200,9 @@ const dataWithCoreSpells = (data: ContentPackData): ContentPackData => ({
 });
 
 /**
- * The bundled pack's own spells, plus core's `BasicAttack` class and `Recall`
- * factory — same core-last merge as `dataWithCoreSpells`, on the code half.
+ * A pack's own spells, plus core's `BasicAttack` class and `Recall`
+ * factory — same core-last merge as `dataWithCoreSpells`, on the code half,
+ * and carrying the same (absence of an) assumption about install order.
  * `BasicAttack`'s entries are already plain classes on `default` — no factory
  * to call, unlike every pack loader `code(api)` already wraps. `Recall` is the
  * opposite of both: not in `coreSpellModules` at all (see
@@ -268,16 +276,41 @@ export function installBundledPackCode(registry: PackRegistry, api: ContentApi):
  * is.
  *
  * This is spec §9.1's Stage 2, and the point of the whole content-pack
- * design is how little it is: the two halves go into the same registry
- * through the same two calls, and the asset manifest is registered the same
- * way the loop above registers a bundled pack's. What differs is only where
- * the factory came from — a static import there, an `import()` of a URL
- * here — and that difference lives entirely in `packSource.ts`.
+ * design is how little it is: the same registry, the same core-spell fold,
+ * the same asset registration. What differs is only where the factory came
+ * from — a static import there, an `import()` of a URL here — and that
+ * difference lives entirely in `packSource.ts`.
  *
- * Order matters and matches the bundled path: data first, then code against
- * it. `PackRegistry` refuses a second install under an id already taken, so
- * a caller that installs the same pack twice gets a throw rather than a
- * half-replaced roster.
+ * **The core-spell fold is not the bundled path's alone**, and leaving it
+ * out is what made the first version of this function ship a roster nobody
+ * could play. Every champion in the reference pack repository declares
+ * `recall: 'Recall'` and a kit whose slot 0 is a bare `BasicAttack`; both
+ * spells live in *core*, not in the pack, and `writeData` qualifies a bare
+ * id against the pack that declared it — so a runtime `riot` pack asks for
+ * `riot:Recall` and `riot:BasicAttack`, which its own code half has never
+ * heard of. `PackRegistry.verifyPairing` then rejects the code half with one
+ * error per champion (61, measured) while the *data* half has already
+ * landed: the roster grows to 59 champions and every one of them walks into
+ * a match with seven slots of `BasicAttack`. `dataWithCoreSpells` /
+ * `codeWithCoreSpells` are what close that, and neither of them assumes
+ * anything about being pack index 0 — see their own doc comments.
+ *
+ * **One `registry.install`, not `installData` then `installCode`.** The
+ * two-call form is what the failure above was able to half-complete: the id
+ * was taken and the champions written before the throw, leaving a pack that
+ * half-exists in a registry with no way to remove it. `install()` validates
+ * both halves *and* their cross-references before it writes anything (see
+ * its own doc comment), so a rejected runtime pack leaves no trace. The
+ * asset manifest is registered last for the same reason: it is a bare
+ * `Map.set` with no undo, so it must not run until the pack is really in.
+ *
+ * The duplicate-id check is ahead of all of it. A second install under a
+ * taken id still throws — but it throws *before* that `Map.set`, so a remote
+ * pack that duplicates one already compiled in cannot repoint the local
+ * pack's art at a remote host on its way out. `runtimePacks.ts` asks
+ * `registry.hasPack` earlier still, before the entry is even fetched, and
+ * reports it as a skip rather than a failure; this is the backstop for a
+ * caller that does not.
  */
 export function installRuntimePack(
   registry: PackRegistry,
@@ -285,15 +318,19 @@ export function installRuntimePack(
   pack: LoadedPack
 ): void {
   // `pack.data.manifest.id` is authoritative here, for asset registration
-  // and both registry calls alike: `installCode` can only run against the id
-  // `installData` just wrote, which reads it off the data half, so the data
-  // half's id is the one this function has to agree with itself. It equals
-  // `pack.manifest.id` too — `packSource.ts`'s `loadPack` throws if a pack's
-  // data half disagrees with its own manifest — but that equality is
-  // `packSource.ts`'s guarantee, not this function's, so it is not this
-  // function's to lean on twice.
+  // and the registry call alike: the registry writes a pack under the id its
+  // own data half declares, so the data half's id is the one this function
+  // has to agree with itself. It equals `pack.manifest.id` too —
+  // `packSource.ts`'s `loadPackFromManifest` throws if a pack's data half
+  // disagrees with its own manifest — but that equality is `packSource.ts`'s
+  // guarantee, not this function's, so it is not this function's to lean on
+  // twice.
   const packId = pack.data.manifest.id;
+  if (registry.hasPack(packId)) {
+    throw new Error(`content pack rejected:\n  pack id "${packId}" is already installed`);
+  }
+  const data = dataWithCoreSpells(pack.data);
+  const code = codeWithCoreSpells(pack.code)(api);
+  registry.install({ ...data, ...code });
   AssetManager.registerPackAssets?.(packId, pack.assetManifest);
-  registry.installData(pack.data);
-  registry.installCode(packId, pack.code(api));
 }

@@ -4,6 +4,7 @@ import {
   loadPackFromManifest,
   satisfiesCoreRange,
   PackLoadError,
+  PACK_LOAD_TIMEOUT_MS,
   type RuntimePackManifest,
 } from '@/content/packSource';
 
@@ -193,5 +194,97 @@ describe('loadPackFromManifest', () => {
     );
     expect(error.stage).toBe('manifest');
     expect(importModule).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A dead host was always handled — the connection is refused and `fetch`
+ * rejects. A *slow* one was not, and it is the worse failure: the menu
+ * handover in `LoadingScene.boot()` sits behind this `await`, so a host that
+ * accepts the connection and then says nothing produces the dead screen the
+ * design forbids without anything ever throwing.
+ *
+ * Both fakes here honour the mechanism under test rather than merely never
+ * settling: the `fetch` double rejects when its `AbortSignal` fires, which is
+ * what a real `fetch` does, and the import double is a promise nothing can
+ * cancel, which is what a real `import()` is.
+ */
+describe('a host that accepts the connection and then stalls', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('gives up on the manifest after PACK_LOAD_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new Error('The operation was aborted'))
+            );
+          })
+      )
+    );
+
+    const pending = fetchPackManifest('https://h/p/manifest.json').catch(e => e);
+    await vi.advanceTimersByTimeAsync(PACK_LOAD_TIMEOUT_MS);
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(PackLoadError);
+    expect(error.stage).toBe('fetch');
+    expect(error.message).toContain(String(PACK_LOAD_TIMEOUT_MS));
+  });
+
+  it('gives up on the entry import after PACK_LOAD_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    const manifest: RuntimePackManifest = {
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '>=1.0.0',
+      name: 'Riot champions',
+      entry: 'pack.js',
+      assets: 'assets/',
+    };
+    const never = () => new Promise<Record<string, unknown>>(() => {});
+
+    const pending = loadPackFromManifest(manifest, 'https://h/p/manifest.json', never).catch(
+      e => e
+    );
+    await vi.advanceTimersByTimeAsync(PACK_LOAD_TIMEOUT_MS);
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(PackLoadError);
+    expect(error.stage).toBe('import');
+    expect(error.message).toContain(String(PACK_LOAD_TIMEOUT_MS));
+  });
+
+  it('does not fire the alarm on a host that answers in time', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'riot',
+          version: '1.0.0',
+          coreRange: '>=1.0.0',
+          name: 'Riot champions',
+          entry: 'pack.js',
+          assets: 'assets/',
+        }),
+      } as unknown as Response)
+    );
+
+    // Passed explicitly rather than leaning on `CORE_VERSION`, which is
+    // `'0.0.0'` under the test runner (see its own doc comment).
+    const manifest = await fetchPackManifest('https://h/p/manifest.json', '1.0.0');
+    // Nothing left armed: a timer still pending here is one that would fire
+    // into a settled promise, and in Node it also keeps the process alive.
+    expect(vi.getTimerCount()).toBe(0);
+    expect(manifest.id).toBe('riot');
   });
 });

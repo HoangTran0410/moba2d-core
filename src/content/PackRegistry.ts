@@ -318,6 +318,24 @@ export class PackRegistry {
     }
   }
 
+  /**
+   * Whether a pack with this id is already installed — the question
+   * `installData` and `install` each answer by throwing, asked without
+   * having to throw.
+   *
+   * It exists for the runtime path. Two content paths can be live at once
+   * today (core's CI still compiles the reference pack in while
+   * `runtimePacks.ts` fetches whatever the browser remembers), and the
+   * remote copy of a pack that is already here is not an error — it is
+   * "already have this one". The caller has to be able to tell those apart
+   * *before* it registers the pack's asset manifest, which is a bare
+   * `Map.set` and would otherwise silently repoint every one of that pack's
+   * art keys at the remote host on its way to a duplicate-id throw.
+   */
+  hasPack(id: string): boolean {
+    return this.installedIds.has(id);
+  }
+
   champions(): readonly QualifiedChampion[] {
     return [...this.championList];
   }

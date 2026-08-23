@@ -93,9 +93,15 @@ export function hasSeededDefaultPack(): boolean {
 }
 
 /**
- * Records that the default pack has been offered — win or lose. See
- * `runtimePacks.ts` for why this is called after a seeding *attempt*
- * regardless of its outcome, not only after a success.
+ * Records that the default pack has been installed at least once.
+ *
+ * Called only after a seeding attempt that actually landed. See
+ * `runtimePacks.ts`'s own header for why: the default pack's URL 404s until
+ * the pack repository has published, so marking a *failed* attempt spends a
+ * browser's single automatic install forever and the banner's retry — a
+ * reload — cannot undo it. Setting it on success alone still buys what this
+ * flag exists for, which is that a player who removes every pack afterwards
+ * is not re-seeded on the next boot.
  */
 export function markDefaultPackSeeded(): void {
   try {
