@@ -97,6 +97,41 @@ const REQUIRED: (keyof RuntimePackManifest)[] = [
 ];
 
 /**
+ * `entry` and `assets` resolve against the manifest's URL, and must land on
+ * the manifest's own origin.
+ *
+ * Not a restriction on *which* hosts a player may install from — any URL is
+ * allowed, by design. It is a restriction on a manifest redirecting
+ * execution somewhere other than where it was fetched from: the player is
+ * shown the origin they are about to trust, and this is what makes that
+ * screen tell the truth. A pack author serving its own files is unaffected.
+ *
+ * The try/catch is not decoration. A relative `manifestUrl` is a valid
+ * `fetch()` argument and an invalid `new URL()` base, so an unguarded
+ * resolve throws a bare `TypeError` with no stage attached.
+ */
+function resolveWithin(path: string, base: string, field: string): string {
+  let resolved: URL;
+  let origin: string;
+  try {
+    origin = new URL(base).origin;
+    resolved = new URL(path, base);
+  } catch {
+    throw new PackLoadError(
+      'manifest',
+      `${base} is not an absolute URL, so ${field} cannot resolve`
+    );
+  }
+  if (resolved.origin !== origin) {
+    throw new PackLoadError(
+      'manifest',
+      `${field} "${path}" leaves the manifest's origin (${origin})`
+    );
+  }
+  return resolved.href;
+}
+
+/**
  * Fetches and checks a manifest. Nothing the pack wrote as *code* has run
  * when this resolves — that is the whole point of it being its own step.
  */
@@ -132,6 +167,9 @@ export async function fetchPackManifest(
   if (missing.length > 0) {
     throw new PackLoadError('manifest', `manifest is missing: ${missing.join(', ')}`);
   }
+  if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
+    throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
+  }
 
   const manifest = candidate as unknown as RuntimePackManifest;
   if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
@@ -140,34 +178,53 @@ export async function fetchPackManifest(
       `pack ${manifest.id} needs core ${manifest.coreRange}, this is ${coreVersion}`
     );
   }
+  // Refused here, before any code has even been fetched, rather than left
+  // for `loadPackFromManifest` to discover — see `resolveWithin`'s own
+  // comment for why this is the design's whole point.
+  resolveWithin(manifest.assets, manifestUrl, 'assets');
   return manifest;
 }
 
 /**
  * Imports the entry and checks the halves it exported.
  *
- * Only the data half goes through `validatePackData`. The code half's
- * `spells` are lazy thunks by construction (`generated/spellModules.ts`), so
- * `validatePackCode` would have to call every one of them to see anything —
- * 237 network round trips to check a shape. `install.ts` already fails
- * loudly on a code half that is not an object, and a thunk that answers
- * wrongly fails at cast time where the spell id is in hand.
+ * Only the data half goes through `validatePackData` here. The code half
+ * cannot be checked yet: `module.default` is an *uninvoked*
+ * `ContentPackFactory`, and turning it into a `ContentPackCode` needs a real
+ * `ContentApi` — the ~80-module engine surface (`Spell`, `SpellObject`,
+ * every buff) this boundary deliberately does not import as a value. The
+ * check is deferred, not skipped: `PackRegistry.installCode` runs
+ * `validatePackCode` once the factory has actually been invoked and a
+ * `ContentPackCode` exists to check.
+ *
+ * `importModule` defaults to a real dynamic `import()` and exists as a seam
+ * for tests: a runtime `import(expr)` is not something `vi.mock` can
+ * intercept, since the specifier is a string built at call time rather than
+ * a static module path.
  */
 export async function loadPackFromManifest(
   manifest: RuntimePackManifest,
-  manifestUrl: string
+  manifestUrl: string,
+  importModule: (url: string) => Promise<Record<string, unknown>> = url =>
+    import(/* @vite-ignore */ url) as Promise<Record<string, unknown>>
 ): Promise<LoadedPack> {
-  const entryUrl = new URL(manifest.entry, manifestUrl).href;
+  const entryUrl = resolveWithin(manifest.entry, manifestUrl, 'entry');
 
   let module: Record<string, unknown>;
   try {
-    module = (await import(/* @vite-ignore */ entryUrl)) as Record<string, unknown>;
+    module = await importModule(entryUrl);
   } catch (cause) {
     throw new PackLoadError('import', `could not load ${entryUrl}: ${(cause as Error).message}`);
   }
 
   if (typeof module.default !== 'function') {
     throw new PackLoadError('shape', `${entryUrl} has no default export function`);
+  }
+  if (
+    module.assetManifest !== undefined &&
+    (typeof module.assetManifest !== 'object' || module.assetManifest === null)
+  ) {
+    throw new PackLoadError('shape', `${entryUrl} assetManifest must be an object when present`);
   }
 
   const checked = validatePackData(module.data);
