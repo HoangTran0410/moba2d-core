@@ -1,0 +1,108 @@
+import type { ContentApi } from '@moba2d/core/content/ContentApi';
+
+/**
+ * __CHAMPION__'s __SLOT__ — a short straight bolt, the smallest ability shape that
+ * still exercises the whole spell / spell-object split. Damage is scaled to
+ * the ~100 health pool the rest of a pack's champions should be tuned
+ * against: an ability lands 15-35, an ultimate 40-60 (core's own
+ * `docs/VFX_STANDARD.md` has the full bar).
+ *
+ * Replace the tuning, the hit and the draw; keep the shape:
+ *   - tuning as exported constants, so a test imports them rather than a
+ *     retune silently becoming a test edit;
+ *   - a factory that takes `api`, memoized — the real game, an e2e script
+ *     and a test each build their own `ContentApi`, and a bare
+ *     `return class ...` here would hand two independent callers two
+ *     different, `instanceof`-incompatible classes with the same name;
+ *   - `getDisplayBoundingBox()` the moment the effect paints past its own
+ *     centre — `MissileSpellObject`'s default is already correct here.
+ */
+export const __SLOT___DAMAGE = 22;
+export const __SLOT___RANGE = 420;
+export const __SLOT___SPEED = 12;
+export const __SLOT___COOLDOWN_MS = 6_000;
+export const __SLOT___MANA = 30;
+
+/**
+ * The bolt itself, a named export separate from the spell's own factory
+ * below so a test can drive its collision behaviour directly, the way
+ * `tests/__CHAMPION_____SLOT__.test.ts` does not need to but a pierce or an AoE would.
+ */
+function __build__CHAMPION_____SLOT___Object(api: ContentApi) {
+  return class __CHAMPION_____SLOT___Object extends api.MissileSpellObject {
+    speed = __SLOT___SPEED;
+    size = 16;
+    damage = __SLOT___DAMAGE;
+    // A single bolt, not a pierce: without this it inherits
+    // `MissileSpellObject`'s default of `Infinity` and damages every enemy
+    // it overlaps along its whole flight.
+    maxHitCount = 1;
+
+    onHit(target: { takeDamage(amount: number, source: unknown): void }): void {
+      target.takeDamage(this.damage, this.owner);
+    }
+
+    draw(): void {
+      // p5 globals in this project (`push`, `fill`, `circle`, `pop`) — a
+      // local of the same name would silently shadow one, so locals here
+      // are named for what they mean in the effect, never for the
+      // quantity's generic word.
+      const bolt = this.position;
+      push();
+      noStroke();
+      fill(120, 200, 255, 220);
+      circle(bolt.x, bolt.y, this.size);
+      fill(220, 245, 255, 160);
+      circle(bolt.x, bolt.y, this.size * 0.5);
+      pop();
+    }
+  };
+}
+const __cache__CHAMPION_____SLOT___Object = new WeakMap<ContentApi, ReturnType<typeof __build__CHAMPION_____SLOT___Object>>();
+export function make__CHAMPION_____SLOT___Object(api: ContentApi) {
+  const cached = __cache__CHAMPION_____SLOT___Object.get(api);
+  if (cached) return cached;
+  const built = __build__CHAMPION_____SLOT___Object(api);
+  __cache__CHAMPION_____SLOT___Object.set(api, built);
+  return built;
+}
+
+function __build__CHAMPION_____SLOT__(api: ContentApi) {
+  const __CHAMPION_____SLOT___Object = make__CHAMPION_____SLOT___Object(api);
+
+  return class __CHAMPION_____SLOT__ extends api.Spell {
+    description = 'TODO: describe what the player sees, in Vietnamese HTML.';
+    coolDown = __SLOT___COOLDOWN_MS;
+    manaCost = __SLOT___MANA;
+    targetingMode = 'DIRECTION' as const;
+    // Read by the base class's `previewRadius`/`declaredRange`, so the HUD
+    // range ring has something to draw.
+    range = __SLOT___RANGE;
+
+    onSpellCast(): void {
+      const shot = new __CHAMPION_____SLOT___Object(this.owner);
+      // `aimPoint` reads the snapshotted cast context, so this resolves the
+      // same way for a bot caster as for the player, and a cursor sitting
+      // exactly on the caster degrades to a small jitter instead of firing
+      // a shot at `(0,0)`.
+      shot.destination = api.utils.VectorUtils.getVectorWithRange(
+        this.owner.position,
+        this.aimPoint,
+        __SLOT___RANGE
+      ).to;
+      this.game.objectManager.addObject(shot);
+    }
+
+    drawPreview(): void {
+      super.drawPreview(api.combat.Reach.effectiveRange(this.range, this.owner));
+    }
+  };
+}
+const __cache__CHAMPION_____SLOT__ = new WeakMap<ContentApi, ReturnType<typeof __build__CHAMPION_____SLOT__>>();
+export default function make__CHAMPION_____SLOT__(api: ContentApi) {
+  const cached = __cache__CHAMPION_____SLOT__.get(api);
+  if (cached) return cached;
+  const built = __build__CHAMPION_____SLOT__(api);
+  __cache__CHAMPION_____SLOT__.set(api, built);
+  return built;
+}

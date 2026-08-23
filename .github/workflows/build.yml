@@ -1,0 +1,113 @@
+name: Build
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Lifted to the job so the deploy step below can ask whether the token
+    # exists: the `secrets` context is not available in an `if:`, but `env` is.
+    # Without that guard a fork — or this repo before the secrets are added —
+    # would go red on a deploy nobody configured.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Playwright's own Chromium, for the real-browser boot step below.
+      # `LOL2D_CHROME_CHANNEL=` (empty) is what makes `tests/e2e/harness.mjs`
+      # use it instead of system Chrome, which no runner has.
+      - run: npx --yes playwright install --with-deps chromium
+
+      # **Content-pack-and-repo-split batch 6 task 10: `packs/riot/` is no
+      # longer in this tree to move**, so `npm run verify:without-packs` (the
+      # departure drill: move the pack aside, reinstall, verify, build, boot
+      # a browser, restore) now finds nothing to depart and exits after
+      # printing "drill skipped — nothing to depart"
+      # (`scripts/verify-without-packs.mjs`) without ever launching a
+      # browser. It is retired-but-kept in `package.json`, not deleted: doc
+      # comments across `vitest.config.ts`, `tests/setup.ts`,
+      # `src/testing/index.ts`, `src/content/install.ts` and others still
+      # point a reader at it as the thing that proved core stands alone, and
+      # it is real again the day a second optional pack exists to drill
+      # against.
+      #
+      # This step is therefore `e2e:core-alone` instead: the only step in
+      # this whole workflow that boots a real browser to a real, playable
+      # match — on the reference pack's map, since no optional pack is
+      # installed — rather than only typechecking and unit-testing one.
+      # `verify:all` below has no e2e step of its own.
+      - run: npm run e2e:core-alone
+        env:
+          LOL2D_CHROME_CHANNEL: ''
+
+      - run: npm run verify:all
+
+      # `npm run verify:all` runs core's own `verify` (which ends in `vite
+      # build`, so dist/ is already on disk as the *verified* build) plus
+      # `packs/reference`'s own asset/catalogue/typecheck/seam gates — the one
+      # workspace still inside this repository. CI runs `verify:all` and
+      # never plain `verify`, and that is not a temporary arrangement:
+      # `verify` is scoped to core *by intent* (content-pack-extraction batch
+      # 5 task 6), and a pack's own gates are the pack's own to run —
+      # `@moba2d/content-riot` runs its own now, in its own repository and
+      # its own workflow, not here.
+      #
+      # This comment used to say that `verify` still compiled and tested the
+      # riot pack — that `src/content/install.ts` statically imported
+      # `packs/riot/pack`, that `vue-tsc` stopped there with `error TS2307`
+      # with `packs/` moved aside, and that closing it was "a later task's
+      # job". That task is content-pack-extraction batch 5 task 8 and it is
+      # done: the barrel that would have named the riot pack,
+      # `src/generated/installedPacks.ts`, is generated empty now that no
+      # optional pack is installed in this tree at all (content-pack-and-
+      # repo-split batch 6 task 10 is what made that permanent rather than a
+      # drill's temporary state), so `verify` passes the same way it always
+      # did with the pack moved aside. `install.ts` is still static and
+      # synchronous, which spec §9.1 requires of it; what became conditional
+      # is the generated list of imports, not the imports themselves — the
+      # departure drill step above is what holds that true rather than a
+      # comment claiming it, on whichever optional pack is installed next.
+      #
+      # Nothing ships that did not pass typecheck and the whole suite first —
+      # that is the point of deploying from here rather than connecting the
+      # repo to Cloudflare's own git builds, which would publish a red main.
+      - name: Deploy to Cloudflare Pages
+        if: >-
+          github.event_name == 'push'
+          && github.ref == 'refs/heads/main'
+          && env.CLOUDFLARE_API_TOKEN != ''
+        run: npx --yes wrangler@4 pages deploy dist --project-name=lol2d --branch=main
+
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v5
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

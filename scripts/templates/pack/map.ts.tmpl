@@ -1,0 +1,17 @@
+import type { MapDefinition } from '@moba2d/core/content/ContentPack';
+
+/**
+ * __PACK_NAME__'s own map — the cheap summary a pregame picker lists.
+ * `geometry` is fetched only once a match actually starts, behind a
+ * dynamic import, so the walls, slots and lanes in `./geometry.ts` never
+ * ride along in a menu's own chunk.
+ *
+ * Replace this with a real world; keep the split.
+ */
+export const map: MapDefinition = {
+  id: '__PACK_ID__-arena',
+  name: '__PACK_NAME__ Arena',
+  size: 1200,
+  factions: [{ id: 'alpha' }, { id: 'beta' }],
+  geometry: () => import('./geometry').then(module => module.geometry),
+};

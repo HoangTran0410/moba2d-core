@@ -1,0 +1,276 @@
+import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import * as seams from '../../src/seams/index';
+import * as contentApi from '../../src/content/ContentApi';
+import * as contentPack from '../../src/content/ContentPack';
+import * as contentTypes from '../../src/content/types';
+import * as testingSetup from '../../src/testing/setup';
+import * as testingVitest from '../../src/testing/vitest.mjs';
+
+/**
+ * `package.json`'s `exports` is the whole answer to "what may a content pack
+ * import from core" — not a convention documented in a doc comment
+ * somewhere, a field a reviewer can see move in a diff. Widening it (adding
+ * a subpath, or pointing one at a different file) is a decision this test
+ * forces to be deliberate: touch the list, touch this test.
+ *
+ * The original measured surface (`docs/superpowers/surveys/2026-08-22-...`)
+ * was three content modules, all `import type`, plus `src/seams/` for the
+ * seam-checker CLI, which is tooling rather than content API. Content-pack-
+ * extraction batch 5 task 6 fix round 2 widened it by three, all the same
+ * shape as `./seams` — build tooling a pack's own standalone `tsc` program
+ * needs, not content API: `./tsconfig.base.json` (the shared compiler
+ * options, and `@/*`, core's own internal alias — resolved relative to
+ * *this* file's location regardless of who extends it, which is what lets a
+ * pack's `tsconfig.json` reach it by package name instead of a `../../`
+ * path into this checkout) and `./types/global.d.ts` /
+ * `./types/poly-decomp.d.ts` (the ambient declarations — p5 in global mode,
+ * the physics library's missing types — a pack's own strict typecheck needs
+ * to see real types through `ContentApi`'s own internals, which are core's
+ * unbundled source and import via `@/*` like the rest of this codebase).
+ * `packs/riot/tsconfig.json`'s own header has the full account.
+ *
+ * Content-pack-and-repo-split batch 6 task 1 widened it by three more, none
+ * of them content API either: `./testing` and `./testing/spell` are the
+ * observer's half of core's surface — the two fixture worlds a pack's own
+ * Vitest suite builds a match against and reads results from, as distinct
+ * from `ContentApi`, which is what a *spell* sees from inside a running
+ * match. `./package.json` is there so a consumer's own tooling can locate
+ * core's package root at all — `require.resolve('@moba2d/core/package.json')`
+ * throws `ERR_PACKAGE_PATH_NOT_EXPORTED` without it.
+ *
+ * Task 3 widened it by two more: `./testing/vitest` is the Vitest config
+ * fragment (`moba2dPackTestConfig`) a pack's own `vitest.config.ts` spreads,
+ * so that config and core's own `vitest.config.ts` run the same
+ * `resolve.alias`/`test.environment`/`test.clearMocks` rather than a
+ * hand-copied approximation. It is a plain `.mjs` file, not `.ts` — a pack's
+ * config loader hands a bare specifier under `node_modules` straight to
+ * Node, which refuses to strip types there, so a `.ts` target here would
+ * break every pack's first `npm test` — and it is not re-exported from
+ * `./testing`'s own barrel: that barrel is loaded by every test file in
+ * every pack, and a config helper reached only once, by a config file, has
+ * no business on that path.
+ *
+ * `./testing/setup` is the fix round that followed the same task, and it
+ * looks redundant with `./testing` until you know what it is guarding
+ * against. `installEngineGlobalsForTests`/`installPackForTests` are also
+ * exported from `./testing` itself, but `export *` evaluates *every* module
+ * a barrel re-exports, not only the bindings a particular import
+ * destructures — so a `setupFiles` entry that imports them from `./testing`
+ * also, for real, evaluates `api.ts`, which value-imports
+ * `content/ContentApi.ts`, which value-imports `Champion`, `packAsset` and
+ * the real `AssetManager`, all before any individual test file's own
+ * `vi.mock(...)` calls have registered. Core's own `tests/setup.ts` hit
+ * exactly this — a mocked `AssetManager` stopped being mocked, and a test
+ * that used to see `undefined` from the mock instead hit the real class's
+ * "Unknown asset key" — and fixed it by importing from this narrower subpath
+ * instead of the barrel. A separated pack's own setup file needs the same
+ * fix available under its own package name, not just inside this checkout,
+ * which is the whole reason this is a published subpath rather than a
+ * comment telling pack authors to import a relative path that does not
+ * resolve outside this repository.
+ *
+ * Content-pack-and-repo-split batch 6 task 7 step 4b added the thirteenth:
+ * `./testing/spells` publishes `src/testing/spellRegistry.ts`
+ * (`loadSpellsForTests`/`resolveSpellBarrel`) on its own, out of the
+ * `./testing` barrel that used to re-export it. The standalone drill
+ * (`verify:pack-standalone`) is what prompted this, but not because
+ * `spellRegistry.ts` leaks — the first reading of its first real failure
+ * said exactly that (`spellRegistry.ts` reaches `src/game/spellRegistry.ts`,
+ * which reaches core's content-install graph and, through it,
+ * `src/generated/installedPacks.ts`, which names an installed pack by
+ * *package* name) and it was wrong: that generated file regenerates with no
+ * pack reference at all the moment a pack is not physically installed in
+ * core's own tree, which `npm run verify:without-packs` already proves on
+ * every run of its own. The actual fault was the drill packing core *with
+ * the pack still installed*, a state core will never ship in — fixed in the
+ * drill itself (`scripts/verify-pack-standalone.mjs` now moves every
+ * optional pack aside and regenerates before `npm pack`), not in this
+ * barrel. `spellRegistry` still left the barrel, on its own merit: `export *`
+ * evaluates the whole module regardless of which binding a caller
+ * destructures, so leaving it in would mean every pack test file that
+ * imports anything at all from `@moba2d/core/testing` evaluates core's
+ * content-install machinery, whether or not that file ever calls
+ * `loadSpellsForTests` — the same eager-loading cost Task 3 measured for
+ * `vi.mock` one level down. A pack that wants the whole registry filled says
+ * so explicitly, at this subpath. Thirteen subpaths and no more.
+ *
+ * The lesson `./testing/setup` cost a fix round to learn: a subpath in this
+ * map publishes the *file's entire export list*, not the bindings anyone
+ * had in mind when they added the subpath. `src/testing/index.ts` re-exports
+ * `installEngineGlobalsForTests`/`installPackForTests` from `./setup` by
+ * name specifically because `./setup` used to also export
+ * `cachedLanesForTests`, an implementation detail — adding `./testing/setup`
+ * to this map made that binding importable by any pack too, invisibly,
+ * because ES modules have no visibility control and this test (correctly)
+ * only checks that each *target file* exists, never what it exports. Moving
+ * `cachedLanesForTests` to an unmapped module (`src/testing/lanes.ts`) is
+ * what actually closed that, not a comment; the check below still only pins
+ * the list of subpaths, not the bindings behind them, so the same shape of
+ * mistake is exactly as available the next time a subpath is added here as
+ * it was this time.
+ */
+
+const repoRoot = join(__dirname, '..', '..');
+const packageJsonPath = join(repoRoot, 'package.json');
+
+function readPackageJson(): Record<string, unknown> {
+  return JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+}
+
+describe('package.json public surface', () => {
+  it('declares exports as exactly the thirteen content-pack-facing subpaths', () => {
+    const pkg = readPackageJson();
+    const exportsMap = pkg.exports as Record<string, string> | undefined;
+
+    expect(exportsMap).toBeDefined();
+    expect(Object.keys(exportsMap!).sort()).toEqual(
+      [
+        './content/ContentApi',
+        './content/ContentPack',
+        './content/types',
+        './seams',
+        './tsconfig.base.json',
+        './types/global.d.ts',
+        './types/poly-decomp.d.ts',
+        './testing',
+        './testing/spell',
+        './testing/spells',
+        './testing/vitest',
+        './testing/setup',
+        './package.json',
+      ].sort()
+    );
+  });
+
+  it('points every exports target at a file that exists on disk', () => {
+    const pkg = readPackageJson();
+    const exportsMap = pkg.exports as Record<string, string> | undefined;
+
+    expect(exportsMap).toBeDefined();
+    for (const [specifier, target] of Object.entries(exportsMap!)) {
+      const absoluteTarget = join(repoRoot, target);
+      expect(existsSync(absoluteTarget), `${specifier} -> ${target} does not exist on disk`).toBe(
+        true
+      );
+    }
+  });
+
+  it('is named @moba2d/core', () => {
+    const pkg = readPackageJson();
+    expect(pkg.name).toBe('@moba2d/core');
+  });
+
+  it('declares exactly four bins: moba2d-check-seams, moba2d-generate-spell-catalog, moba2d-pack-new and moba2d-pack-add', () => {
+    // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
+    // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
+    // into an empty directory, and `moba2d-pack-add` adds one piece of
+    // content — a spell today — plus its test to the pack the current
+    // directory is inside. Both read their templates from
+    // `scripts/templates/pack/`, which is why that directory (and
+    // `scripts/lib/packRoot.mjs`, which `moba2d-pack-add` imports) are in
+    // `files` alongside the two script entries below — `verify:pack-standalone`
+    // is what proves a missing `files` entry here shows up in a real tarball
+    // install rather than only in this checkout.
+    const pkg = readPackageJson();
+    const bin = pkg.bin as Record<string, string> | undefined;
+
+    expect(bin).toBeDefined();
+    expect(bin).toEqual({
+      'moba2d-check-seams': './scripts/check-seams.mjs',
+      'moba2d-generate-spell-catalog': './scripts/generate-spell-catalog.mjs',
+      'moba2d-pack-new': './scripts/pack-new.mjs',
+      'moba2d-pack-add': './scripts/pack-add.mjs',
+    });
+    for (const target of Object.values(bin!)) {
+      expect(existsSync(join(repoRoot, target)), `${target} does not exist on disk`).toBe(true);
+    }
+  });
+});
+
+/**
+ * The gap the tests above cannot see, cost twice already: `package.json`
+ * publishes a subpath's *entire* export list, not the bindings anyone had
+ * in mind when they added it, and the checks above only pin that the
+ * subpath list is exactly thirteen entries and that each target exists on
+ * disk — never what is actually reachable through it. Task 3 published
+ * `./testing/setup` and silently made a checkout-only lane cache
+ * (`cachedLanesForTests`) importable by any pack; Task 5 added
+ * `stripComments` to `src/seams/index.ts`, widening `./seams` with nothing
+ * to notice either time. Both changes were reasonable — the invisibility
+ * was the defect, and this is the same shape `tests/testing/
+ * testingSurface.test.ts` already pins `./testing`, `./testing/spell` and
+ * `./testing/spells` with, for the six subpaths that test does not cover.
+ *
+ * **Runtime bindings only.** `Object.keys()` on an imported namespace never
+ * sees a `type`/`interface` export — those are erased before this file's
+ * `import * as x` even runs — so `./content/types` pins to `[]` below on
+ * purpose: every one of its exports is `export type`, and that empty array
+ * is itself the fact worth pinning (a real value export landing there would
+ * be exactly the kind of unnoticed widening this file exists to catch).
+ * `./content/ContentApi` and `./content/ContentPack` mix interfaces with a
+ * handful of real functions/consts; only the latter show up here. Widening
+ * any list below is allowed and is meant to be a visible act, the same
+ * contract `testingSurface.test.ts` states for its own two lists.
+ */
+describe('what each subpath actually publishes, not just that it exists', () => {
+  it('./seams exports exactly this list', () => {
+    expect(Object.keys(seams).sort()).toEqual(
+      [
+        'checkBuffDeactivate',
+        'checkCastSpecFrozen',
+        'checkCooldowns',
+        'checkDashOnUpdate',
+        'checkManaSpend',
+        'checkPackAssetKey',
+        'checkPackCoreBoundary',
+        'checkSeams',
+        'checkSpellObjectDisplayBox',
+        'checkSpellRuntimeDrive',
+        'checkStatResourceModifier',
+        'checkTargetVision',
+        'checkTargetingModeDeclared',
+        'checkTerrainField',
+        'checkUnitTargetTeam',
+        'checkWorldMouseInSpellCode',
+        'packAssetKeySeam',
+        'packCoreBoundarySeam',
+        'scanImports',
+        'scannedSeamFiles',
+        'seams',
+        'staleSkipEntries',
+        'stripComments',
+      ].sort()
+    );
+  });
+
+  it('./content/ContentApi exports exactly this list', () => {
+    // `ContentApi` itself is an interface — erased. `buildContentApi()` is
+    // core's own installer alone; a pack never calls it (see
+    // `pack-core-boundary`'s own `ALLOWED_TYPE_ONLY`), but it is a real,
+    // reachable export of this module regardless of who is licensed to call
+    // it, which is exactly what this test is pinning.
+    expect(Object.keys(contentApi).sort()).toEqual(['buildContentApi'].sort());
+  });
+
+  it('./content/ContentPack exports exactly this list', () => {
+    expect(Object.keys(contentPack).sort()).toEqual(
+      ['STRUCTURE_KINDS', 'isSpellLoader', 'lazy'].sort()
+    );
+  });
+
+  it('./content/types exports no runtime bindings at all', () => {
+    expect(Object.keys(contentTypes)).toEqual([]);
+  });
+
+  it('./testing/setup exports exactly this list', () => {
+    expect(Object.keys(testingSetup).sort()).toEqual(
+      ['installEngineGlobalsForTests', 'installPackForTests'].sort()
+    );
+  });
+
+  it('./testing/vitest exports exactly this list', () => {
+    expect(Object.keys(testingVitest).sort()).toEqual(['moba2dPackTestConfig'].sort());
+  });
+});

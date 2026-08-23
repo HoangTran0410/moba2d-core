@@ -1,0 +1,52 @@
+# __PACK_NAME__
+
+A `@moba2d/core` content pack, scaffolded by `moba2d-pack-new`: one
+champion (__CHAMPION__), one map, one ability — enough to typecheck, load
+into core, and start growing from.
+
+## Run this next
+
+```
+npm install
+npm test
+npm run check-seams
+```
+
+Both `test` and `check-seams` have to stay green — they are this pack's
+own gate, not core's, and `npm install` never runs them for you.
+
+## Where things live
+
+- `pack.ts` — the whole pack's declaration: the roster, the map, and the
+  code half core's registry calls to build real spell classes.
+- `spells/` — one file per ability. `__CHAMPION___Q.ts` is the example;
+  read it before writing a second one — the shape (tuning as exported
+  constants, a memoized factory, a separate spell-object class) is not
+  decoration, it is what keeps two different callers from building two
+  different, `instanceof`-incompatible classes with the same name.
+- `tests/` — one test per ability, driven through `pressSpell`, never
+  through a lifecycle hook like `onSpellCast()` directly: a hook-calling
+  test cannot see activation, cooldown, resource cost or targeting
+  rejection, and stays green against an ability that does not work at all.
+- `map.ts` / `geometry.ts` — the world this pack ships. `geometry.ts` is
+  fetched lazily, so a pregame picker never downloads the walls and lanes
+  just to list this map's name.
+
+## Add another ability
+
+```
+moba2d-pack-add spell <Name> --champion __CHAMPION__ --slot W
+```
+
+writes the spell file and its test, and registers both in `pack.ts`.
+
+## Next steps
+
+- Write `spells/__CHAMPION___Q.ts`'s `description` and its real artwork.
+  Core's own `docs/VFX_STANDARD.md` is the whole bar in one page: a real
+  windup, damage scaled to a ~100 health pool, and as few layers as it
+  takes to say what the ability does.
+- Replace `geometry.ts` with a map worth playing on.
+- `moba2d-pack-add champion`, `map` and `monster` are not implemented by
+  this generator yet — add a champion, a map or a monster to `pack.ts` by
+  hand, using the one already there as the model.

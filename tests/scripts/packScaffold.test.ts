@@ -1,0 +1,375 @@
+/**
+ * Content-pack-and-repo-split batch 6 task 8: the scaffold.
+ *
+ * `moba2d-pack-new`/`moba2d-pack-add` are what decides whether anyone would
+ * actually want to write a new pack against `@moba2d/core` — everything up
+ * to this task only proved a pack could *leave*. Three things pinned here,
+ * matching the brief's own three bullets:
+ *
+ *  1. `packRootFrom` finds the pack root from a nested directory, and
+ *     throws a named error at core's own root (which has no dependency on
+ *     itself — the same "derive it, don't count `..`s" shape
+ *     `packs/riot/tests/support/packRoot.ts` is the prior art for).
+ *  2. `moba2d-pack-new` into an empty temp directory writes every file the
+ *     template tree declares, and leaves no `__TOKEN__` anywhere in the
+ *     output — the one assertion that catches a template growing a token
+ *     the substitution table does not know about, the failure mode of
+ *     every scaffold ever written.
+ *  3. `moba2d-pack-add spell` into that scaffold adds exactly two files
+ *     (the spell, its test) and edits `pack.ts` — the import, the
+ *     champion's roster entry, and the code half's factory map.
+ *
+ * Every fixture lives under its own `mkdtemp` directory and is spawned
+ * through `node <script>.mjs` directly (never through
+ * `node_modules/.bin/...`), the same shape `tests/scripts/
+ * checkSeams.bin.test.ts` uses for its own non-bin-symlink cases — this
+ * suite does not need a fresh `npm install` to have run to prove the
+ * scripts themselves are correct.
+ */
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it } from 'vitest';
+import { packRootFrom } from '../../scripts/lib/packRoot.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const packNewScript = join(repoRoot, 'scripts/pack-new.mjs');
+const packAddScript = join(repoRoot, 'scripts/pack-add.mjs');
+const templateRoot = join(repoRoot, 'scripts/templates/pack');
+
+const tmpDirs: string[] = [];
+async function freshTmpDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  tmpDirs.push(dir);
+  return dir;
+}
+
+afterEach(async () => {
+  await Promise.all(tmpDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+});
+
+/** Every file under `scripts/templates/pack/`, relative, `.tmpl` included. */
+async function walk(dir: string, base = dir): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const found: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...(await walk(full, base)));
+    else found.push(relative(base, full));
+  }
+  return found;
+}
+
+/** The output path `pack-new`/`pack-add` write a `.tmpl` file's contents to. */
+function outputPathFor(templateRelPath: string): string {
+  const withoutExt = templateRelPath.slice(0, -'.tmpl'.length).replaceAll('__CHAMPION__', 'Hero');
+  const segments = withoutExt.split('/');
+  if (segments[segments.length - 1] === 'gitignore') segments[segments.length - 1] = '.gitignore';
+  return segments.join('/');
+}
+
+function runScript(script: string, args: string[], cwd: string) {
+  return spawnSync('node', [script, ...args], { cwd, encoding: 'utf8' });
+}
+
+async function scaffold(dir: string, extraArgs: string[] = []) {
+  return runScript(
+    packNewScript,
+    [dir, '--id', 'demo-pack', '--name', 'Demo Pack', ...extraArgs],
+    repoRoot
+  );
+}
+
+describe('packRootFrom', () => {
+  it('finds the pack root from a nested directory inside it', async () => {
+    const root = await freshTmpDir('lol2d-packroot-nested-');
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({ name: '@moba2d/content-demo', devDependencies: { '@moba2d/core': '*' } })
+    );
+    const nested = join(root, 'spells', 'deeper');
+    await mkdir(nested, { recursive: true });
+
+    expect(packRootFrom(nested)).toBe(root);
+  });
+
+  it('finds the pack root when @moba2d/core is a plain dependency, not a devDependency', async () => {
+    const root = await freshTmpDir('lol2d-packroot-dep-');
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({ name: '@moba2d/content-demo', dependencies: { '@moba2d/core': '*' } })
+    );
+
+    expect(packRootFrom(root)).toBe(root);
+  });
+
+  it("throws a named error walking up from core's own repository root", () => {
+    // Core's own package.json names itself `@moba2d/core` — it does not
+    // depend on itself — so the walk must climb past it to the filesystem
+    // root and throw, never mistake self-naming for the dependency this
+    // function is actually looking for.
+    expect(() => packRootFrom(repoRoot)).toThrow(/@moba2d\/core/);
+  });
+
+  it('does not stop at an unrelated package.json that does not name @moba2d/core', async () => {
+    const root = await freshTmpDir('lol2d-packroot-unrelated-');
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'unrelated-project' }));
+    const nested = join(root, 'nested');
+    await mkdir(nested, { recursive: true });
+
+    expect(() => packRootFrom(nested)).toThrow(/@moba2d\/core/);
+  });
+});
+
+describe('moba2d-pack-new', () => {
+  it('writes every file the template tree declares, substituting all four tokens', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const templateFiles = (await walk(templateRoot)).filter(f => f.endsWith('.tmpl'));
+    const expectedOutputs = templateFiles.map(outputPathFor).sort();
+    const actualOutputs = (await walk(target)).sort();
+
+    expect(actualOutputs).toEqual(expectedOutputs);
+  });
+
+  it('leaves no __TOKEN__ marker anywhere in the scaffolded output', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-tokens-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const files = await walk(target);
+    const leftovers: string[] = [];
+    for (const file of files) {
+      const content = await readFile(join(target, file), 'utf8');
+      const matches = content.match(/__[A-Z][A-Z0-9_]*__/g);
+      if (matches) leftovers.push(`${file}: ${[...new Set(matches)].join(', ')}`);
+    }
+
+    expect(leftovers).toEqual([]);
+  });
+
+  it('substitutes --id and --name into package.json and pack.ts', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-values-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target, []);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
+    expect(pkg.name).toBe('@moba2d/content-demo-pack');
+
+    const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
+    expect(packSource).toContain("id: 'demo-pack'");
+    expect(packSource).toContain('Demo Pack');
+  });
+
+  it('refuses to write into a non-empty directory', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-nonempty-');
+    const target = join(parent, 'pack');
+    await mkdir(target, { recursive: true });
+    await writeFile(join(target, 'already-here.txt'), 'hello');
+
+    const result = runScript(packNewScript, [target, '--id', 'demo'], repoRoot);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toMatch(/not empty/);
+    // Refused before writing anything else into it.
+    expect((await readdir(target)).sort()).toEqual(['already-here.txt']);
+  });
+});
+
+describe('moba2d-pack-add spell', () => {
+  it('adds exactly two files and edits the barrel', async () => {
+    const parent = await freshTmpDir('lol2d-pack-add-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    const before = new Set(await walk(target));
+    const packBefore = await readFile(join(target, 'pack.ts'), 'utf8');
+
+    const addResult = runScript(
+      packAddScript,
+      ['spell', 'Bolt', '--champion', 'Hero', '--slot', 'W'],
+      target
+    );
+    expect(addResult.status, addResult.stdout + addResult.stderr).toBe(0);
+
+    const after = await walk(target);
+    const added = after.filter(f => !before.has(f)).sort();
+    expect(added).toEqual(['spells/Hero_W.ts', 'tests/Hero_W.test.ts']);
+
+    const packAfter = await readFile(join(target, 'pack.ts'), 'utf8');
+    expect(packAfter).not.toBe(packBefore);
+    expect(packAfter).toContain("import makeHero_W from './spells/Hero_W';");
+    expect(packAfter).toContain("'Hero_W'");
+    expect(packAfter).toContain('Hero_W: makeHero_W(api),');
+    // The original spell's own registration is undisturbed.
+    expect(packAfter).toContain("'Hero_Q'");
+    expect(packAfter).toContain('Hero_Q: makeHero_Q(api),');
+  });
+
+  it('the roster entry itself is written when --champion matches an existing champion name exactly', async () => {
+    // "adds exactly two files and edits the barrel" above already touches
+    // this path incidentally; this pins it directly, against the
+    // mis-registration bug self-review found (a --champion typo used to
+    // silently land the new spell id in whichever champion the roster
+    // marker happened to sit next to). The 8-space indent is
+    // `insertBeforeMarker`'s own roster-array insertion — distinct from
+    // the 4-space, unquoted line the same run also writes into the code
+    // half's factory map — so this can only pass if the entry actually
+    // landed inside champions[].spells, not merely somewhere in the file.
+    const parent = await freshTmpDir('lol2d-pack-add-champion-match-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    const result = runScript(
+      packAddScript,
+      ['spell', 'Bolt', '--champion', 'Hero', '--slot', 'W'],
+      target
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/roster\s+registered/);
+
+    const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
+    expect(packSource).toContain("        'Hero_W',");
+  });
+
+  it('refuses to register into the roster on a --champion typo, but still writes everything else and exits 0', async () => {
+    // The deliberate choice this pins: not a silent mis-registration (the
+    // original bug — landing the spell in the only champion's kit
+    // regardless of what --champion actually said) and not a hard refusal
+    // of the whole command either. The spell and its test are written, the
+    // import and the code-map entry are registered, the roster alone is
+    // skipped, the command still exits 0, and the printed message names
+    // the champion it could not find. A future edit to `insertBeforeMarker`
+    // or to the champion lookup that turns this back into either extreme
+    // has to break this test to do it.
+    const parent = await freshTmpDir('lol2d-pack-add-champion-typo-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    const result = runScript(
+      packAddScript,
+      ['spell', 'Bolt', '--champion', 'NotHero', '--slot', 'W'],
+      target
+    );
+
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/no champion named 'NotHero' in pack\.ts/);
+
+    const spellStat = await stat(join(target, 'spells/NotHero_W.ts'));
+    const testStat = await stat(join(target, 'tests/NotHero_W.test.ts'));
+    expect(spellStat.isFile()).toBe(true);
+    expect(testStat.isFile()).toBe(true);
+
+    const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
+    expect(packSource).toContain("import makeNotHero_W from './spells/NotHero_W';");
+    expect(packSource).toContain('NotHero_W: makeNotHero_W(api),');
+    // The roster array itself was never touched — no quoted 'NotHero_W'
+    // entry anywhere, not just absent from the 8-space kit-array shape.
+    expect(packSource).not.toContain("'NotHero_W'");
+  });
+
+  it('leaves no __TOKEN__ marker in the added spell or test', async () => {
+    const parent = await freshTmpDir('lol2d-pack-add-tokens-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    const addResult = runScript(
+      packAddScript,
+      ['spell', 'Bolt', '--champion', 'Hero', '--slot', 'E'],
+      target
+    );
+    expect(addResult.status, addResult.stdout + addResult.stderr).toBe(0);
+
+    const spell = await readFile(join(target, 'spells/Hero_E.ts'), 'utf8');
+    const test = await readFile(join(target, 'tests/Hero_E.test.ts'), 'utf8');
+    expect(spell.match(/__[A-Z][A-Z0-9_]*__/g)).toBeNull();
+    expect(test.match(/__[A-Z][A-Z0-9_]*__/g)).toBeNull();
+  });
+
+  it('is idempotent about the barrel when the spell file already exists and --force is not passed', async () => {
+    const parent = await freshTmpDir('lol2d-pack-add-exists-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    // Hero_Q already exists — pack-new wrote it.
+    const result = runScript(packAddScript, ['spell', 'Hero', '--slot', 'Q'], target);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toMatch(/already exists/);
+  });
+
+  it('refuses an unknown kind rather than silently doing nothing, with the same plain honesty', async () => {
+    const parent = await freshTmpDir('lol2d-pack-add-badkind-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+
+    const result = runScript(packAddScript, ['relic', 'Something'], target);
+
+    expect(result.status).not.toBe(0);
+    expect(result.status).not.toBeNull();
+    expect(result.stdout + result.stderr).toMatch(/Only `spell` is implemented/);
+  });
+
+  it('rejects champion, map and monster outright, non-zero, naming what is and is not implemented', async () => {
+    // A refusal nobody asserts becomes an acceptance the first time someone
+    // refactors the argument parsing — this pins both the exit code and
+    // that the message plainly says only `spell` works, not merely that
+    // *this* kind failed. Every unimplemented kind must still write
+    // nothing: this generator recognising a verb and doing nothing useful
+    // with it is worse than refusing it outright.
+    const parent = await freshTmpDir('lol2d-pack-add-notimpl-');
+    const target = join(parent, 'pack');
+    const scaffoldResult = await scaffold(target);
+    expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+    const before = new Set(await walk(target));
+
+    for (const kind of ['champion', 'map', 'monster']) {
+      const result = runScript(packAddScript, [kind, 'Something'], target);
+      const output = result.stdout + result.stderr;
+
+      expect(result.status, `${kind} should exit non-zero`).not.toBe(0);
+      expect(result.status).not.toBeNull();
+      expect(output, `${kind}'s own message`).toMatch(new RegExp(`${kind} is not implemented`));
+      expect(output, 'names the one kind that does work').toMatch(/only `spell` is/);
+      expect(output, 'names all three unimplemented kinds together').toMatch(
+        /champion, map, monster are none of them built yet/
+      );
+    }
+
+    // Refused, not merely logged about: nothing was written.
+    const after = await walk(target);
+    expect(after.sort()).toEqual([...before].sort());
+  });
+});
+
+describe('the scaffolded pack is real content, not just files', () => {
+  it('writing the pack once and reading it back describes one champion and one map', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-shape-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
+    const spellStat = await stat(join(target, 'spells/Hero_Q.ts'));
+    const testStat = await stat(join(target, 'tests/Hero_Q.test.ts'));
+
+    expect(spellStat.isFile()).toBe(true);
+    expect(testStat.isFile()).toBe(true);
+    expect(packSource).toContain('champions:');
+    expect(packSource).toContain('maps: [map]');
+  });
+});

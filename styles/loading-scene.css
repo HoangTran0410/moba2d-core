@@ -1,0 +1,44 @@
+#loading-scene {
+    text-align: center;
+}
+
+#loading-scene .logo {
+    width: 80px;
+    margin-bottom: 20px;
+}
+
+.progress {
+    height: 10px;
+    width: 300px;
+    border: 2px solid #61616188;
+    border-radius: 12px;
+    background: #51515140;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #08cbcb;
+    border-image: linear-gradient(#08abac, #01698b) 1;
+    border-radius: 20px;
+    transition: 0.1s linear;
+    transition-property: width, background-color;
+}
+
+@keyframes spinner5 {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    margin-top: 5px;
+    text-align: center;
+}
+
+.error-text {
+    margin-top: 10px;
+    text-align: center;
+    color: red;
+}

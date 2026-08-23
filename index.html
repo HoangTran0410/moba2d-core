@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- `viewport-fit=cover` is what makes `env(safe-area-inset-*)` report
+         anything but 0 — without it the page is laid out inside the safe area
+         and a notch or a home indicator simply eats the edges. styles/main.css
+         turns those four into --safe-* tokens and every pinned control adds
+         them. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+    <!-- No <link rel="manifest"> here: vite-plugin-pwa generates one from
+         vite.config.ts and injects the tag, so the hand-written
+         favicon/site.webmanifest that used to sit here was deleted rather than
+         left to disagree with it. -->
+    <link rel="mask-icon" href="favicon/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#0a1428">
+    <!-- iOS ignores the manifest; these are how an iPhone gets a chrome-less
+         window after "Add to Home Screen". -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LOL2D">
+
+    <title>LOL2D</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/loading-scene.css">
+    <link rel="stylesheet" href="styles/menu-scene.css">
+    <link rel="stylesheet" href="styles/pregame-scene.css">
+    <link rel="stylesheet" href="styles/about-scene.css">
+    <link rel="stylesheet" href="styles/game-scene.css">
+    <link rel="stylesheet" href="styles/hud.css">
+
+    <!-- p5.js must load here (not in <body>) so it is parsed and executes before
+         the deferred ES module — this exposes all p5 globals (loadImage,
+         loadJSON, createVector, background, etc.) to the module below.
+
+         Served from our own origin, not a CDN, and copied out of node_modules by
+         scripts/copy-vendor.mjs — see that file. Losing it is a white screen,
+         which an installed app opened offline cannot afford. Still a plain
+         <script> tag: global mode is the whole reason it is here rather than
+         imported.
+
+         stats.js used to sit beside it, and is gone: a second blocking script
+         on every boot, production included, so that a developer could read
+         three FPS panels. -->
+    <script src="/vendor/p5.min.js"></script>
+</head>
+
+<body>
+    <script type="module" src="/src/main.ts"></script>
+
+    <div class="center-page-container">
+        <div id="game-scene">
+            <div id="InGameHUD"></div>
+        </div>
+
+        <!-- Mount host for LoadingScene.vue, which renders the contents. The
+             wrapper stays here so styles/loading-scene.css keeps working. -->
+        <div id="loading-scene"></div>
+
+        <!-- Mount host for MenuScene.vue, which renders the contents. -->
+        <div id="menu-scene"></div>
+
+        <!-- Mount host for SetupScene.vue, which renders the contents. -->
+        <div id="pregame-scene"></div>
+
+        <!-- Mount host for AboutScene.vue, which renders the contents. -->
+        <div id="about-scene"></div>
+    </div>
+</body>
+
+</html>

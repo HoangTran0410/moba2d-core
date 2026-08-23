@@ -1,0 +1,87 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildTestApi,
+  createGame,
+  indexObjects,
+  stubGameGlobals,
+  type TestGame,
+} from '@moba2d/core/testing';
+import { pressSpell } from '@moba2d/core/testing/spell';
+import make__CHAMPION_____SLOT__, { __SLOT___DAMAGE } from '../spells/__CHAMPION_____SLOT__';
+
+const api = buildTestApi();
+const { AttackableUnit } = api.units;
+type AttackableUnit = InstanceType<typeof api.units.AttackableUnit>;
+const __CHAMPION_____SLOT__ = make__CHAMPION_____SLOT__(api);
+
+/**
+ * Write the player-visible script first and make these the test names:
+ * "press once and X happens", "an enemy in the way takes Y". Then run them,
+ * watch them fail, and read the message — a test that has never failed has
+ * not been shown to test anything.
+ *
+ * Everything here goes through `pressSpell`, never a lifecycle hook like
+ * `onSpellCast()` directly: a hook-calling test cannot see activation,
+ * cooldown, resource cost or targeting rejection, and stays green against
+ * an ability that does not work at all — core's own `check-seams` bans this
+ * for its bundled content (`spell-runtime-drive`); this pack's own
+ * `check-seams` script does not scan `./tests` today, but the reason not to
+ * do it anyway does not change.
+ */
+function unit(game: TestGame, x: number, teamId: string): AttackableUnit {
+  const created = new AttackableUnit({ game, position: createVector(x, 0), teamId });
+  created.stats.mana.baseValue = 100;
+  created.stats.maxMana.baseValue = 100;
+  created.stats.health.baseValue = 100;
+  created.stats.maxHealth.baseValue = 100;
+  return created;
+}
+
+describe('__CHAMPION_____SLOT__', () => {
+  let game: TestGame;
+  let owner: AttackableUnit;
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    owner = unit(game, 0, 'alpha');
+    game.setPlayer(owner);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('lands its payload on an enemy standing in its path', () => {
+    const victim = unit(game, 300, 'beta');
+    indexObjects(game, [owner, victim]);
+
+    const spell = new __CHAMPION_____SLOT__(owner);
+    expect(pressSpell(spell, { at: { x: 300, y: 0 } })).toBe(true);
+
+    // The bolt is queued, not yet in `objects` — drive it forward until it
+    // either lands or times out, the same way a real match's next 60
+    // frames would.
+    const bolt = game.objectManager._objectToBeAdd[0];
+    for (let i = 0; i < 60 && bolt && !bolt.toRemove; i++) bolt.update();
+
+    expect(victim.stats.health.value).toBe(100 - __SLOT___DAMAGE);
+  });
+
+  it('charges its mana cost and starts its cooldown exactly once', () => {
+    indexObjects(game, [owner]);
+    const spell = new __CHAMPION_____SLOT__(owner);
+    expect(pressSpell(spell, { at: { x: 300, y: 0 } })).toBe(true);
+
+    expect(owner.stats.mana.value).toBe(100 - spell.manaCost);
+    expect(spell.currentCooldown).toBeGreaterThan(0);
+  });
+
+  it('refuses the cast when it cannot be paid for', () => {
+    indexObjects(game, [owner]);
+    owner.stats.mana.baseValue = 0;
+    const spell = new __CHAMPION_____SLOT__(owner);
+
+    expect(pressSpell(spell, { at: { x: 300, y: 0 } })).toBe(false);
+  });
+});

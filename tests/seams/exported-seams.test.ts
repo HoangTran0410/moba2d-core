@@ -1,0 +1,801 @@
+import { describe, expect, it, afterEach } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  seams,
+  checkSeams,
+  checkManaSpend,
+  checkDashOnUpdate,
+  checkTargetVision,
+  checkUnitTargetTeam,
+  checkCastSpecFrozen,
+  checkCooldowns,
+  checkTargetingModeDeclared,
+  checkTerrainField,
+  checkBuffDeactivate,
+  checkStatResourceModifier,
+  checkSpellObjectDisplayBox,
+  checkSpellRuntimeDrive,
+  checkWorldMouseInSpellCode,
+  checkPackCoreBoundary,
+  checkPackAssetKey,
+  packCoreBoundarySeam,
+  packAssetKeySeam,
+  staleSkipEntries,
+} from '@/seams';
+
+/**
+ * `src/seams/` is core's rules exported as runnable functions — "callable
+ * against an arbitrary tree" (task-9-brief.md, Step 2) is the actual claim
+ * under test here, not just "matches the inline scan it was extracted from".
+ * So every seam below gets a *fresh, synthetic* directory — never
+ * `packs/riot/spells` — with one planted violation and one clean neighbour,
+ * proving the exported function generalises past the one tree it happens to
+ * have been proven against in tests/game/spells/*-seam.test.ts.
+ */
+
+const dirs: string[] = [];
+
+function tempTree(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'lol2d-seams-'));
+  dirs.push(dir);
+  for (const [name, contents] of Object.entries(files)) {
+    const path = join(dir, name);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, contents, 'utf8');
+  }
+  return dir;
+}
+
+afterEach(() => {
+  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
+});
+
+describe('the seams module is a real, documented entry point', () => {
+  it('exports one Seam per rule, each with an id, a summary and a check function', () => {
+    expect(seams.length).toBe(13);
+    for (const seam of seams) {
+      expect(typeof seam.id).toBe('string');
+      expect(seam.id.length).toBeGreaterThan(0);
+      expect(typeof seam.summary).toBe('string');
+      expect(seam.summary.length).toBeGreaterThan(10);
+      expect(typeof seam.check).toBe('function');
+    }
+    // ids are unique, so a report naming one is unambiguous
+    expect(new Set(seams.map(s => s.id)).size).toBe(seams.length);
+  });
+
+  it('checkSeams tags every violation with the seam that raised it', () => {
+    // targetingMode declared so targeting-mode-declared — which, unlike the
+    // other twelve, has no "is this even a spell?" gate and fires on any
+    // file lacking it — stays quiet and this is a single-seam violation.
+    const dir = tempTree({
+      'Bad.ts': `targetingMode = 'SELF' as const;\nowner.stats.mana.baseValue -= 10;\n`,
+    });
+    const violations = checkSeams(dir);
+    expect(violations).toEqual([expect.objectContaining({ seamId: 'mana-spend', file: 'Bad.ts' })]);
+  });
+
+  it('an empty tree is clean across every seam at once', () => {
+    const dir = tempTree({ 'Clean.ts': `targetingMode = 'SELF' as const;\n` });
+    expect(checkSeams(dir)).toEqual([]);
+  });
+});
+
+describe('each exported check catches its violation on an arbitrary tree', () => {
+  it('mana-spend: a direct write to stats.mana', () => {
+    const dir = tempTree({
+      'Good.ts': `this.spendMana(this.manaCost);\n`,
+      'Bad.ts': `this.owner.stats.mana.baseValue -= this.manaCost;\n`,
+    });
+    expect(checkManaSpend(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('dash-onupdate: an instance assignment onto onUpdate', () => {
+    const dir = tempTree({
+      'Good.ts': `dash.onDashUpdate = () => {};\n`,
+      'Bad.ts': `dash.onUpdate = () => {};\n`,
+    });
+    expect(checkDashOnUpdate(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('target-vision: an auto-lock query with no visibleTo filter', () => {
+    const dir = tempTree({
+      'Good.ts': `queryObjects(pos, r, [PredefinedFilters.visibleTo(this.owner)]); let nearestDistance = 1;\n`,
+      'Bad.ts': `queryObjects(pos, r, []); let nearestDistance = 1;\n`,
+    });
+    expect(checkTargetVision(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('target-vision: reading the fog draw flag', () => {
+    const dir = tempTree({ 'Bad.ts': `if (target.visibleToPlayerTeam) cast();\n` });
+    expect(checkTargetVision(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('unit-target-team: a UNIT spell missing targetTeam', () => {
+    const dir = tempTree({
+      'Good.ts': `
+        get castSpec() { return { targeting: 'UNIT', targetingRequest: { targetTeam: 'ENEMY' } }; }
+        press(ctx) { return super.press(ctx); }
+      `,
+      'Bad.ts': `get castSpec() { return { targeting: 'UNIT', targetingRequest: {} }; }\n`,
+    });
+    const offenders = checkUnitTargetTeam(dir).map(v => v.file);
+    expect(offenders).toContain('Bad.ts');
+    expect(offenders).not.toContain('Good.ts');
+  });
+
+  it('castspec-frozen: a cast spec reading a mutable field', () => {
+    const dir = tempTree({
+      'Good.ts': `get castSpec() { return { cooldown: { durationMs: this.coolDown } }; }\n`,
+      'Bad.ts': `get castSpec() { return { cooldown: { durationMs: this.shotsRemaining <= 1 ? this.coolDown : 500 } }; }\n`,
+    });
+    expect(checkCastSpecFrozen(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('castspec-frozen: the grandfathered list is honoured', () => {
+    const dir = tempTree({
+      'Bad.ts': `get castSpec() { return { cooldown: { durationMs: this.charges } }; }\n`,
+    });
+    expect(checkCastSpecFrozen(dir).map(v => v.file)).toEqual(['Bad.ts']);
+    expect(
+      checkCastSpecFrozen(dir, { grandfathered: new Set(['Bad.ts']) }).map(v => v.file)
+    ).toEqual([]);
+  });
+
+  it('cooldowns: a numeric cooldown over the ceiling', () => {
+    const dir = tempTree({
+      'Good.ts': `coolDown = 8000;\n`,
+      'Bad.ts': `coolDown = 15000;\n`,
+    });
+    expect(checkCooldowns(dir).map(v => v.file)).toEqual(['Bad.ts']);
+    // a pack that wants a different pace passes its own ceiling
+    expect(checkCooldowns(dir, { maxMs: 20_000 }).map(v => v.file)).toEqual([]);
+  });
+
+  it('targeting-mode-declared: a spell with neither a literal nor a field', () => {
+    const dir = tempTree({
+      'Good.ts': `class Good extends Spell { targetingMode = 'DIRECTION' as const; }\n`,
+      'Bad.ts': `class Bad extends Spell { coolDown = 1000; }\n`,
+    });
+    expect(checkTargetingModeDeclared(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('targeting-mode-declared: a non-spell file is never flagged, even with neither', () => {
+    // The gate itself: `map.ts`, `pack.ts` and `provingGroundsGeometry.ts`
+    // under `packs/reference/` name no `class X extends Spell` and are not
+    // spells — scanning a pack's whole source root (the CLI's own
+    // documented invocation) must stay quiet on them.
+    const dir = tempTree({
+      'map.ts': `export const referenceMap = { id: 'x' };\n`,
+      'pack.ts': `export const data = {};\n`,
+    });
+    expect(checkTargetingModeDeclared(dir)).toEqual([]);
+  });
+
+  it('terrain-field: reaching past sweepToWall for a half-answer', () => {
+    const dir = tempTree({
+      'Good.ts': `const stop = sweepToWall(game, a, b);\n`,
+      'Bad.ts': `if (pointInWall(game, x, y)) break;\n`,
+    });
+    expect(checkTerrainField(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('buff-deactivate: calling .deactivate() on a buff', () => {
+    const dir = tempTree({
+      'Good.ts': `someBuff.deactivateBuff();\n`,
+      'Bad.ts': `someBuff.deactivate();\n`,
+    });
+    expect(checkBuffDeactivate(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('stat-resource-modifier: a bonus on the health or mana pool', () => {
+    const dir = tempTree({
+      'Good.ts': `const bonuses = { maxHealth: { baseBonus: 50 } };\n`,
+      'Bad.ts': `const bonuses = { health: { baseBonus: 50 } };\n`,
+    });
+    expect(checkStatResourceModifier(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('stat-resource-modifier: a pinned line is exempt, a different resource line in the same file is not', () => {
+    const dir = tempTree({
+      'Unit.ts':
+        `stats: { mana: { value: 100 }, health: { value: 100 } },\n` +
+        `other: { mana: { value: 200 }, health: { value: 200 } },\n`,
+    });
+
+    const result = checkStatResourceModifier(dir, {
+      pinnedResourceLines: new Set(['Unit.ts:1:stats: { mana: { value: 100 }, health: { value: 100 } },']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        message: '2: other: { mana: { value: 200 }, health: { value: 200 } },',
+      }),
+    ]);
+  });
+
+  it('stat-resource-modifier: a pinned line that no longer shapes a resource as a stat is stale', () => {
+    const dir = tempTree({ 'Unit.ts': `const nothing = 1;\n` });
+
+    const result = checkStatResourceModifier(dir, {
+      pinnedResourceLines: new Set(['Unit.ts:1:health: { value: 100 },']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: 'stale-exemption',
+        file: 'Unit.ts:1:health: { value: 100 },',
+      }),
+    ]);
+  });
+
+  it('spell-object-display-box: a SpellObject with no stated extent', () => {
+    const dir = tempTree({
+      'Good.ts': `class GoodObject extends SpellObject { visionRadius = 100; }\n`,
+      'Bad.ts': `class BadObject extends SpellObject { draw() {} }\n`,
+    });
+    const offenders = checkSpellObjectDisplayBox(dir).map(v => v.message);
+    expect(offenders).toEqual(['BadObject inherits a zero-area display box']);
+  });
+
+  it('spell-object-display-box: the grandfatheredClasses list is honoured', () => {
+    const dir = tempTree({ 'Old.ts': `class OldObject extends SpellObject {}\n` });
+    expect(checkSpellObjectDisplayBox(dir).length).toBe(1);
+    expect(
+      checkSpellObjectDisplayBox(dir, { grandfatheredClasses: new Set(['OldObject']) })
+    ).toEqual([]);
+  });
+
+  it('spell-runtime-drive: a test calling a runtime hook directly', () => {
+    const dir = tempTree({
+      'Good.test.ts': `pressSpell(spell, { at: { x: 0, y: 0 } });\n`,
+      'Bad.test.ts': `spell.onSpellCast();\n`,
+      'NotATest.ts': `spell.onSpellCast(); // ignored: not a *.test.ts file\n`,
+    });
+    expect(checkSpellRuntimeDrive(dir).map(v => v.file)).toEqual(['Bad.test.ts']);
+  });
+
+  it('world-mouse-in-spell-code: a spell reading the shared cursor', () => {
+    const dir = tempTree({
+      'Good.ts': `const p = this.aimPoint;\n`,
+      'Bad.ts': `const angle = getAngle(this.owner.position, this.game.worldMouse);\n`,
+    });
+    expect(checkWorldMouseInSpellCode(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it('world-mouse-in-spell-code: a pinned line is exempt, every other line on the same file is not', () => {
+    // Fix round 1, content-pack-extraction batch 5 task 6: before `pinned`
+    // existed, the only lever to exempt Blitzcrank_E.ts's one known
+    // `worldMouse` line was `skip`, which removes the *whole file* from
+    // *every* seam. This proves the finer-grained replacement: the pinned
+    // line is exempt, a second, unrelated `worldMouse` line in the same
+    // file is still caught.
+    const dir = tempTree({
+      'Bad.ts':
+        `const p = this.aimPoint;\n` +
+        `const angle = getAngle(this.owner.position, this.game.worldMouse);\n` +
+        `const other = this.game.worldMouse;\n`,
+    });
+
+    expect(checkWorldMouseInSpellCode(dir).map(v => v.message)).toEqual([
+      '2: const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      '3: const other = this.game.worldMouse;',
+    ]);
+
+    const withPin = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set([
+        'Bad.ts:2:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      ]),
+    });
+    expect(withPin.map(v => v.message)).toEqual(['3: const other = this.game.worldMouse;']);
+  });
+});
+
+// A "checkSeams against this repo's own pack, with its known debt declared"
+// case used to live here, hand-listing packs/riot's grandfathered/exempt
+// sets inline. Content-pack-extraction batch 5 task 6 gave the pack a real
+// build-time gate of its own (`packs/riot/package.json`'s `check-seams`
+// script) with those same sets declared once, on the pack's own side
+// (`packs/riot/spells/seam-debt.mjs`) — so this file hand-listing a second copy
+// was a duplicate that could silently drift from the one that actually
+// gates anything. `tests/scripts/checkSeams.bin.test.ts`'s "still finds
+// packs/riot's own spells clean, its known debt declared through
+// seam-debt.mjs" is that same proof now, run the way the pack's own build
+// really runs it (through the bin, from the pack's own directory) rather
+// than by re-deriving the pack's debt inline in a core test.
+
+describe('an exemption entry that matches nothing is reported, distinctly, and fails the run', () => {
+  // Content-pack-extraction batch 5 task 6 fix round 3: "you broke a rule"
+  // and "you are exempting something that no longer offends" are opposite
+  // problems, so a stale entry carries `kind: 'stale-exemption'` rather
+  // than being indistinguishable from an ordinary violation.
+
+  it('noPressOverride: a stale entry (the file already has press()) is reported and a live one is not', () => {
+    const dir = tempTree({
+      // Declares targetTeam so only the press()-related check is under
+      // test here — already has press(), so the exemption does nothing.
+      'Stale.ts': `
+        get castSpec() { return { targeting: 'UNIT', targetingRequest: { targetTeam: 'ENEMY' } }; }
+        press(ctx) { return super.press(ctx); }
+      `,
+      // Genuinely missing press() — the exemption is load-bearing.
+      'Live.ts': `get castSpec() { return { targeting: 'UNIT', targetingRequest: { targetTeam: 'ENEMY' } }; }`,
+    });
+
+    const result = checkUnitTargetTeam(dir, {
+      noPressOverride: new Set(['Stale.ts', 'Live.ts']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        file: 'Stale.ts',
+        kind: 'stale-exemption',
+      }),
+    ]);
+  });
+
+  it('noTargetingRequestOverride: a stale entry (the file already supplies targetingRequest) is reported and a live one is not', () => {
+    const dir = tempTree({
+      // Has targetingRequest — the exemption does nothing.
+      'Stale.ts': `
+        get castSpec() { return { targeting: 'UNIT', targetingRequest: { targetTeam: 'ENEMY' } }; }
+        press(ctx) { return super.press(ctx); }
+      `,
+      // Declares targetTeam and has press(), so only the
+      // targetingRequest-related check is under test here — genuinely
+      // never supplies one — the exemption is load-bearing.
+      'Live.ts': `
+        get castSpec() { return { targeting: 'UNIT', targetTeam: 'ENEMY' }; }
+        press(ctx) { return super.press(ctx); }
+      `,
+    });
+
+    const result = checkUnitTargetTeam(dir, {
+      noTargetingRequestOverride: new Set(['Stale.ts', 'Live.ts']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        file: 'Stale.ts',
+        kind: 'stale-exemption',
+      }),
+    ]);
+  });
+
+  it('noPressOverride and noTargetingRequestOverride do not cross-consume: the same file name in both, each judged on its own check', () => {
+    // Both fields are keyed the same way (relative path or bare basename),
+    // so the same name can legally sit in both sets for the same file. A
+    // shared `consumed` set would let one field's real use mask the
+    // other's entry going stale; this proves they are tracked separately.
+    const dir = tempTree({
+      // Missing targetingRequest (that exemption is load-bearing) but has
+      // press() (so noPressOverride's own entry for this file is never
+      // even asked the question, and must still report stale on its own).
+      'Foo.ts': `
+        get castSpec() { return { targeting: 'UNIT', targetTeam: 'ENEMY' }; }
+        press(ctx) { return super.press(ctx); }
+      `,
+    });
+
+    const result = checkUnitTargetTeam(dir, {
+      noPressOverride: new Set(['Foo.ts']),
+      noTargetingRequestOverride: new Set(['Foo.ts']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        file: 'Foo.ts',
+        kind: 'stale-exemption',
+        message: expect.stringContaining('noPressOverride'),
+      }),
+    ]);
+  });
+
+  it('castspec-frozen: a stale grandfathered entry (no longer reads live state) is reported and a live one is not', () => {
+    const dir = tempTree({
+      'Stale.ts': `get castSpec() { return { cooldown: { durationMs: this.coolDown } }; }\n`,
+      'Live.ts': `get castSpec() { return { cooldown: { durationMs: this.charges } }; }\n`,
+    });
+
+    const result = checkCastSpecFrozen(dir, {
+      grandfathered: new Set(['Stale.ts', 'Live.ts']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ file: 'Stale.ts', kind: 'stale-exemption' }),
+    ]);
+  });
+
+  it('castspec-frozen: a grandfathered entry naming a file that does not exist is stale', () => {
+    const dir = tempTree({ 'Real.ts': `export const real = 1;\n` });
+
+    const result = checkCastSpecFrozen(dir, { grandfathered: new Set(['GhostFile.ts']) });
+
+    expect(result).toEqual([
+      expect.objectContaining({ file: 'GhostFile.ts', kind: 'stale-exemption' }),
+    ]);
+  });
+
+  it('spell-object-display-box: a stale grandfatheredClasses entry (now states its own extent) is reported and a live one is not', () => {
+    const dir = tempTree({
+      'Stale.ts': `class StaleObject extends SpellObject { visionRadius = 100; }\n`,
+      'Live.ts': `class LiveObject extends SpellObject { draw() {} }\n`,
+    });
+
+    const result = checkSpellObjectDisplayBox(dir, {
+      grandfatheredClasses: new Set(['StaleObject', 'LiveObject']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ file: 'StaleObject', kind: 'stale-exemption' }),
+    ]);
+  });
+
+  it('world-mouse-in-spell-code: a pinned entry is checked against its exact line, not just its file', () => {
+    // The sharpest staleness case (the brief's own words): the file still
+    // reads worldMouse, but not on the pinned line any more — a file-level
+    // check would miss this entirely.
+    const dir = tempTree({
+      'Drifted.ts':
+        `const a = 1;\n` + // line 1
+        `const angle = getAngle(this.owner.position, this.game.worldMouse);\n`, // line 2, not line 1
+    });
+
+    const result = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set(['Drifted.ts:1:const a = 1;']),
+    });
+
+    // The real offense on line 2 is still caught, as an ordinary violation
+    // (no `kind`, unlike the stale pin)...
+    expect(result[0]).toMatchObject({ file: 'Drifted.ts' });
+    expect(result[0].kind).toBeUndefined();
+    // ...and the stale pin on line 1 is reported separately.
+    expect(result[1]).toEqual(
+      expect.objectContaining({ file: 'Drifted.ts:1:const a = 1;', kind: 'stale-exemption' })
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  it('world-mouse-in-spell-code: a pinned entry naming the real line is not stale', () => {
+    const dir = tempTree({
+      'Pinned.ts': `const angle = getAngle(this.owner.position, this.game.worldMouse);\n`,
+    });
+
+    const result = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set([
+        'Pinned.ts:1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      ]),
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('skip: an entry matching no file anywhere in the tree is stale', () => {
+    const dir = tempTree({ 'Real.ts': `export const real = 1;\n` });
+
+    const stale = staleSkipEntries(dir, { skip: new Set(['index.ts', 'Real.ts']) });
+
+    expect(stale).toEqual([expect.objectContaining({ file: 'index.ts', kind: 'stale-exemption' })]);
+  });
+
+  it('checkSeams surfaces a stale skip entry tagged seamId "skip"', () => {
+    const dir = tempTree({ 'Real.ts': `export const real = 1;\n` });
+
+    const violations = checkSeams(dir, { skip: new Set(['GhostBarrel.ts']) });
+
+    expect(violations).toEqual([
+      expect.objectContaining({
+        seamId: 'skip',
+        file: 'GhostBarrel.ts',
+        kind: 'stale-exemption',
+      }),
+    ]);
+  });
+});
+
+describe('one keying rule for every exemption set', () => {
+  // Content-pack-extraction batch 5 task 6 fix round 4. `skip` matched a
+  // basename at any depth; the seam-specific sets matched a path relative to
+  // the scanned root; nothing said so, and both kinds sat side by side in one
+  // `seamDebt` object. On a tree with a subdirectory — `walkTsFiles` has
+  // always been recursive — the result was the worst of both: the author's
+  // live, load-bearing entry failed to suppress the violation it was written
+  // for *and* was reported stale.
+
+  it('a basename entry exempts a file in a subdirectory, and is not reported stale', () => {
+    const dir = tempTree({
+      'nested/Nested_Q.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
+    });
+
+    expect(checkCastSpecFrozen(dir, { grandfathered: new Set(['Nested_Q.ts']) })).toEqual([]);
+  });
+
+  it('the full relative path works too, and is what disambiguates two same-named files', () => {
+    const dir = tempTree({
+      'a/Dup.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
+      'b/Dup.ts': `get castSpec() { return { durationMs: this.charges }; }\n`,
+    });
+
+    const result = checkCastSpecFrozen(dir, { grandfathered: new Set(['a/Dup.ts']) });
+
+    expect(result).toEqual([expect.objectContaining({ file: 'b/Dup.ts' })]);
+  });
+
+  it('a skip entry names a nested file by basename, as it always did', () => {
+    const dir = tempTree({
+      'nested/Barrel.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
+    });
+
+    expect(checkCastSpecFrozen(dir, { skip: new Set(['Barrel.ts']) })).toEqual([]);
+    expect(staleSkipEntries(dir, { skip: new Set(['Barrel.ts']) })).toEqual([]);
+  });
+
+  it('a skip entry naming a real file that violates nothing is not stale, on purpose', () => {
+    // `skip` means "not spell-shaped code at all" — a barrel, a scaffolding
+    // template — so demanding that it suppress a violation to earn its place
+    // would report the correct, quiet answer as stale. Existence is the only
+    // thing that can go wrong with it, and that is what is checked. Both
+    // `src/seams/index.ts` and the pack's own `seam-debt.mjs` used to claim
+    // consumption checking here; fix round 4 corrected them rather than the
+    // check.
+    const dir = tempTree({ 'index.ts': `export * from './Real';\n` });
+
+    expect(staleSkipEntries(dir, { skip: new Set(['index.ts']) })).toEqual([]);
+  });
+
+  it('node_modules is never walked, whatever the tree contains', () => {
+    const dir = tempTree({
+      'Mine.ts': `export const mine = 1;\n`,
+      'node_modules/dep/Theirs.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
+    });
+
+    expect(checkCastSpecFrozen(dir)).toEqual([]);
+  });
+});
+
+describe('a pinned line is a licence for a line, not for a line number', () => {
+  // Fix round 4. Round 3 closed the drift direction (the pinned line moves,
+  // the entry reports stale) and left the other one open: different code
+  // written at the same number inherited the licence. Reproduced on the real
+  // tree first — replacing `Blitzcrank_E.ts:83` with a new
+  // `this.game.worldMouse` read left the pack's `check-seams` printing
+  // `scanned 237 file(s), clean`.
+
+  it('different code at the pinned line number is caught, and the pin reports stale', () => {
+    const dir = tempTree({
+      'Moved.ts': `const zzzNewCode = this.game.worldMouse.copy();\n`,
+    });
+
+    const result = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set([
+        'Moved.ts:1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      ]),
+    });
+
+    expect(result[0]).toMatchObject({
+      file: 'Moved.ts',
+      message: '1: const zzzNewCode = this.game.worldMouse.copy();',
+    });
+    expect(result[0].kind).toBeUndefined();
+    expect(result[1]).toMatchObject({ kind: 'stale-exemption' });
+    expect(result).toHaveLength(2);
+  });
+
+  it('an entry that is not <file>:<line>:<code> can never match, and says so', () => {
+    const dir = tempTree({ 'Bad.ts': `const a = this.game.worldMouse;\n` });
+
+    const result = checkWorldMouseInSpellCode(dir, { pinned: new Set(['Bad.ts']) });
+
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        file: 'Bad.ts',
+        kind: 'stale-exemption',
+        message: expect.stringContaining('can never match a line'),
+      })
+    );
+  });
+});
+
+describe("core's own attackableUnits exceptions are stated one line at a time", () => {
+  // Fix round 4: the directory used to be excluded from core's `check-seams`
+  // wholesale, which left five clean files permanently unchecked to carve out
+  // five legitimate exceptions in the other two. These are the two fields
+  // that made stating them individually possible.
+
+  it('mana-spend: a pinned line is exempt, a different mana line in the same file is not', () => {
+    const dir = tempTree({
+      'Unit.ts':
+        `this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);\n` +
+        `this.stats.mana.baseValue -= 10;\n`,
+    });
+
+    const result = checkManaSpend(dir, {
+      pinnedManaLines: new Set([
+        'Unit.ts:1:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
+      ]),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ message: '2: this.stats.mana.baseValue -= 10;' }),
+    ]);
+  });
+
+  it('mana-spend: a pinned line that no longer names a mana stat is stale', () => {
+    const dir = tempTree({ 'Unit.ts': `const nothing = 1;\n` });
+
+    const result = checkManaSpend(dir, {
+      pinnedManaLines: new Set(['Unit.ts:1:this.stats.mana.baseValue = 0;']),
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: 'stale-exemption',
+        file: 'Unit.ts:1:this.stats.mana.baseValue = 0;',
+      }),
+    ]);
+  });
+
+  it('target-vision: the file declaring the fog flag is exempt, another file reading it is not', () => {
+    const dir = tempTree({
+      'Unit.ts': `visibleToPlayerTeam = true;\n`,
+      'Spell.ts': `const target = candidates.find(c => c.visibleToPlayerTeam);\n`,
+    });
+
+    const result = checkTargetVision(dir, { grandfatheredFogReads: new Set(['Unit.ts']) });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        file: 'Spell.ts',
+        message: expect.stringContaining('fog draw flag'),
+      }),
+    ]);
+  });
+
+  it('target-vision: an entry naming a file that no longer reads the flag is stale', () => {
+    const dir = tempTree({ 'Unit.ts': `const nothing = 1;\n` });
+
+    expect(checkTargetVision(dir, { grandfatheredFogReads: new Set(['Unit.ts']) })).toEqual([
+      expect.objectContaining({ file: 'Unit.ts', kind: 'stale-exemption' }),
+    ]);
+  });
+
+  it('spell-runtime-drive: its renamed set exempts a test, and reports a stale entry', () => {
+    const dir = tempTree({
+      'Live.test.ts': `spell.onSpellCast(context);\n`,
+      'Clean.test.ts': `pressSpell(spell, context);\n`,
+    });
+
+    expect(checkSpellRuntimeDrive(dir, { grandfatheredTests: new Set(['Live.test.ts']) })).toEqual(
+      []
+    );
+    expect(checkSpellRuntimeDrive(dir, { grandfatheredTests: new Set(['Clean.test.ts']) })).toEqual(
+      [
+        expect.objectContaining({ file: 'Live.test.ts', message: '.onSpellCast(' }),
+        expect.objectContaining({ file: 'Clean.test.ts', kind: 'stale-exemption' }),
+      ]
+    );
+  });
+});
+
+describe('pack-core-boundary: a pack reaches core through its public subpaths and nowhere else', () => {
+  // The rule the whole extraction rests on, and until fix round 4 the one
+  // rule enforced on the wrong side: `tsconfig.base.json` publishes core's
+  // `@/*` alias so a pack's `tsc` can see types through `ContentApi.ts`'s own
+  // imports, and the side effect was that a pack could name any core
+  // internal with its own typecheck and its own check-seams both exiting 0.
+  // Only `tests/content/packBoundary.test.ts`, in *core's* tree, caught it.
+
+  it('is exported as a seam, and deliberately not one of the thirteen', () => {
+    // It is scoped to a package rather than to the scanned tree, and it does
+    // not apply to core's own trees at all — `scripts/check-seams.mjs` runs
+    // it separately, against the package that owns the tree.
+    expect(packCoreBoundarySeam.id).toBe('pack-core-boundary');
+    expect(seams.map(seam => seam.id)).not.toContain('pack-core-boundary');
+  });
+
+  it('catches every way into core that is not a public content subpath', () => {
+    const dir = tempTree({
+      'Alias.ts': `import type Slow from '@/game/gameObject/buffs/Slow';\n`,
+      'BareSrc.ts': `import { Vision } from 'src/game/combat/Vision';\n`,
+      'Escape.ts': `import { thing } from '../../src/managers/AssetManager';\n`,
+      'Private.ts': `import type { Game } from '@moba2d/core/game/Game';\n`,
+      'Value.ts': `import { buildContentApi } from '@moba2d/core/content/ContentApi';\n`,
+    });
+
+    expect(
+      checkPackCoreBoundary(dir)
+        .map(v => `${v.file} ${v.message.split(' —')[0]}`)
+        .sort()
+    ).toEqual([
+      'Alias.ts @/game/gameObject/buffs/Slow',
+      'BareSrc.ts src/game/combat/Vision',
+      'Escape.ts ../../src/managers/AssetManager',
+      'Private.ts @moba2d/core/game/Game',
+      'Value.ts @moba2d/core/content/ContentApi',
+    ]);
+  });
+
+  it("leaves the three type-only public subpaths, and the pack's own relative imports, alone", () => {
+    // Laid out like a real pack — the file under `spells/`, the vfx module
+    // it reaches for a sibling directory up — because "outside this package"
+    // is what the rule bans, not "up a directory".
+    const dir = tempTree({
+      'spells/Ok.ts':
+        `import type { ContentApi } from '@moba2d/core/content/ContentApi';\n` +
+        `import type { CastContext } from '@moba2d/core/content/types';\n` +
+        `import type { ContentPackFactory } from '@moba2d/core/content/ContentPack';\n` +
+        `import { helper } from './nested/helper';\n` +
+        `import { effect } from '../vfx/Effect';\n`,
+      'spells/nested/helper.ts': `export const helper = 1;\n`,
+      'vfx/Effect.ts': `export const effect = 1;\n`,
+    });
+
+    expect(checkPackCoreBoundary(dir)).toEqual([]);
+  });
+
+  it('reads through comments rather than around them', () => {
+    // The rule's own documentation names the specifiers it bans; a scan that
+    // did not strip comments would flag every file that explains it.
+    const dir = tempTree({
+      'Documented.ts': `// never write import x from '@/game/Game';\nexport const fine = 1;\n`,
+    });
+
+    expect(checkPackCoreBoundary(dir)).toEqual([]);
+  });
+});
+
+describe("pack-asset-key: a pack resolves art through its own manifest, never core's", () => {
+  // Moved here by the whole-branch review of batch 5: it used to be
+  // `tests/content/packAssetKeyBoundary.test.ts`, a scan of all of `packs/`
+  // living in core's own suite, so a violation planted in a pack spell
+  // reddened *core's* build — the inversion `pack-core-boundary` had already
+  // been created to fix a task earlier, and one with the same shelf life
+  // (once the pack is a sibling repository there is no `packs/` here to walk).
+
+  it('is exported as a seam, and deliberately not one of the thirteen', () => {
+    expect(packAssetKeySeam.id).toBe('pack-asset-key');
+    expect(seams.map(seam => seam.id)).not.toContain('pack-asset-key');
+  });
+
+  it("catches a bare key that resolves out of core's manifest", () => {
+    // `spell_basic_attack` is a real key in core's generated manifest —
+    // planting a made-up string proves nothing, which is exactly how the
+    // review's first two attempts at this plant passed.
+    const dir = tempTree({
+      'package.json': `{ "name": "@moba2d/content-example" }\n`,
+      'Bad.ts': `image = api.asset('spell_basic_attack');\n`,
+      'Good.ts': `image = api.asset('example_own_art');\n`,
+    });
+
+    expect(checkPackAssetKey(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+
+  it("leaves buff icons, qualified keys and the pack's own held-in-core art alone", () => {
+    const dir = tempTree({
+      // `@moba2d/content-reference` -> local id `reference`, so a
+      // `reference_*` key in core's manifest is core holding *this pack's*
+      // art — a debt legible in the key itself, not a boundary crossing.
+      'package.json': `{ "name": "@moba2d/content-reference" }\n`,
+      'Buff.ts': `icon = api.asset('buff_slow');\n`,
+      'Qualified.ts': `icon = api.asset('riot:spell_ahri_q');\n`,
+      'Own.ts': `icon = api.asset('reference_vera_q');\n`,
+      'Documented.ts': `// never write api.asset('spell_basic_attack')\nexport const fine = 1;\n`,
+    });
+
+    expect(checkPackAssetKey(dir)).toEqual([]);
+  });
+
+  it('applies the pack-id exemption to that pack only', () => {
+    // The exemption is "core is holding *your* art", not "reference_* is
+    // free for everyone".
+    const dir = tempTree({
+      'package.json': `{ "name": "@moba2d/content-other" }\n`,
+      'Bad.ts': `icon = api.asset('reference_vera_q');\n`,
+    });
+
+    expect(checkPackAssetKey(dir).map(v => v.file)).toEqual(['Bad.ts']);
+  });
+});

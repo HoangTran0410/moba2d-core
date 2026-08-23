@@ -1,0 +1,102 @@
+/* Spell description palette.
+   Descriptions are authored once, on the spell class, as Vietnamese HTML with
+   <span class="damage|buff|time"> markup — and rendered in two unrelated places:
+   the in-game HUD (hud.css) and the pregame setup screen (pregame-scene.css).
+   The colours live here so those two cannot drift apart; each keeps its own
+   selector, because the element they hang off differs. */
+:root {
+    --spell-damage: #ff5858;
+    --spell-buff: #88f;
+    --spell-time: #c1ffb6;
+
+    /* Hextech palette. Same story as the three above, for the same reason:
+       the loadout picker exists twice — before the match (pregame-scene.css)
+       and during it (hud.css) — and the two are meant to be the same screen,
+       so the colours cannot live in one file and be retyped in the other.
+       These are the values the pregame screen already wore, lifted out of it
+       verbatim; the in-game picker used to have a palette of its own (#111 /
+       #fff3 / #7fd3ff), and that is what made the two read as different
+       features even after they were given the same layout and the same
+       gestures. Anything that is one screen's alone still belongs in that
+       screen's file — only what both wear is here. */
+    --hextech-bg: #1e2328;
+    /* a card or a shelf sitting on top of --hextech-bg */
+    --hextech-panel: #23282e;
+    /* an empty slot: reads as a hole, not a tile */
+    --hextech-sunken: #14171c;
+    --hextech-line: #3c3c41;
+    /* gold means "chosen"; teal means "active" or "left to chance" */
+    --hextech-gold: #c8aa6e;
+    --hextech-gold-dim: #785a28;
+    /* gold at a fraction of itself, for the ground under a pressed chip */
+    --hextech-gold-wash: #2c2418;
+    --hextech-teal: #08abac;
+    --hextech-teal-deep: #01698b;
+    /* body text, and what gold turns into on hover */
+    --hextech-text: #f0e6d2;
+    --hextech-muted: #a09b8c;
+
+    /* ------------------------------------------------- Safe area
+
+       The four insets a phone reserves for hardware and browser furniture — a
+       notch, a home indicator, rounded corners — as tokens, so a control that
+       is pinned to an edge can add one without every file restating the
+       `env(..., 0px)` fallback. Zero everywhere else, including desktop, so
+       adding them costs nothing where they do not apply.
+
+       They only report a real number because index.html asks for
+       `viewport-fit=cover`; they are *not* the answer to a retracting browser
+       toolbar, which is what `dvh` is for. Both are needed and neither
+       substitutes for the other. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #1E1E1E;
+    color: #eee;
+
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Every scene is one full-viewport box, centred here so only the active one is
+   `display: block`.
+
+   The `transform` is not only centring: a transformed element is the containing
+   block for `position: fixed` descendants, so each scene root is what its own
+   pinned chrome — the menu's About and fullscreen buttons, its version stamp —
+   is positioned against, not the viewport. A root taller than the screen
+   therefore does not merely overflow; it carries those buttons off both edges
+   with it, which is exactly what a mobile browser's `100vh` does. Hence
+   `height: 100vh; height: 100dvh;` on every root: `dvh` is the height actually
+   on screen with the toolbars showing, and `vh` stays first as the fallback for
+   a browser that cannot parse it. Safe-area insets are a separate question
+   (--safe-* above) and neither substitutes for the other. */
+.center-page-container>div {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    display: none;
+}
+
+* {
+    -webkit-touch-callout: none;
+    /* iOS Safari */
+    -webkit-user-select: none;
+    /* Safari */
+    -khtml-user-select: none;
+    /* Konqueror HTML */
+    -moz-user-select: none;
+    /* Firefox */
+    -ms-user-select: none;
+    /* Internet Explorer/Edge */
+    user-select: none;
+    /* Non-prefixed version, currently supported by Chrome, Opera and Firefox */
+}

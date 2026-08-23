@@ -1,0 +1,64 @@
+import type { ContentApi } from '@moba2d/core/content/ContentApi';
+import type { ContentPackCode, ContentPackData } from '@moba2d/core/content/ContentPack';
+import { map } from './map';
+// moba2d-pack-add spell: new imports go above this line
+import make__CHAMPION___Q, { Q_COOLDOWN_MS, Q_MANA } from './spells/__CHAMPION___Q';
+
+/**
+ * __PACK_NAME__ — one champion, one map, one ability: the smallest thing
+ * that is actually a pack, not the smallest thing that would compile.
+ *
+ * Split into a data half (`ContentPackData` — a roster, a map to list) and
+ * a code half (`ContentPackCode` — real engine classes), because the data
+ * half has to be readable without ever building a `ContentApi` — a menu
+ * screen that only wants names and icons should never have to load the
+ * engine first. See `@moba2d/core/content/ContentPack`'s own header for
+ * the full reasoning.
+ *
+ * Grow this with `moba2d-pack-add spell --champion __CHAMPION__ --slot W`,
+ * or by copying `spells/__CHAMPION___Q.ts` and wiring the copy in by hand
+ * the same way this file wires the original in below.
+ */
+export const data: ContentPackData = {
+  manifest: { id: '__PACK_ID__', version: '1.0.0', coreRange: '^1' },
+  champions: [
+    {
+      id: '__CHAMPION__'.toLowerCase(),
+      name: '__CHAMPION__',
+      // A pack-relative asset key, or `null` for a champion with no
+      // portrait yet — this scaffold ships no art pipeline, so every art
+      // field here is `null` until you add one.
+      image: null,
+      playable: true,
+      attack: { damage: 14, attacksPerSecond: 1.1, range: 300 },
+      spells: [
+        '__CHAMPION___Q',
+        // moba2d-pack-add spell: new slot ids go above this line
+      ],
+    },
+  ],
+  // Every number below is imported from the spell file it describes, never
+  // restated by hand, so a description can never disagree with the ability
+  // it describes. `moba2d-pack-add spell` does not write an entry here yet
+  // — add one for a new spell by hand, the same shape as this one.
+  spellDisplay: {
+    __CHAMPION___Q: {
+      name: '__CHAMPION__ Q',
+      description: 'TODO: describe what the player sees, in Vietnamese HTML.',
+      iconKey: null,
+      coolDownMs: Q_COOLDOWN_MS,
+      manaCost: Q_MANA,
+      specCoolDownMs: Q_COOLDOWN_MS,
+    },
+  },
+  maps: [map],
+};
+
+const code = (api: ContentApi): ContentPackCode => ({
+  spells: {
+    __CHAMPION___Q: make__CHAMPION___Q(api),
+    // moba2d-pack-add spell: new entries go above this line
+  },
+});
+
+export default code;

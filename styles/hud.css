@@ -1,0 +1,1673 @@
+#InGameHUD {
+  z-index: 100;
+}
+
+/* ============================ Bottom HUD ============================  */
+.bottom-HUD {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 100px;
+  /* height: 100px; */
+  padding: 5px;
+  margin-bottom: 10px;
+  background-color: #111c;
+  border-radius: 5px;
+  border-top-left-radius: 50px;
+  border: solid 2px #fff3;
+
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.bottom-HUD .champion-avatar img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid #aaa;
+}
+
+.champion-avatar {
+  position: relative;
+}
+
+.champion-avatar .revive-counter {
+  position: absolute;
+
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #1119;
+  text-align: center;
+  line-height: 80px;
+
+  color: #eee;
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.champion-details {
+  margin-left: 10px;
+}
+
+/* =============== Spells =============== */
+.spells {
+  display: flex;
+  flex-direction: row;
+}
+
+.spell {
+  position: relative;
+
+  width: 3em;
+  height: 3em;
+
+  cursor: pointer;
+}
+
+/* The grey mat and its hover flash belong to the cast strip's tiles, not to
+   every `.spell` on the page. Scoped rather than left global because the
+   hover was `!important`, which no rule elsewhere could have beaten — the
+   deleted picker's roster reused this class and had to fight it. */
+.spells .spell {
+  margin-right: 5px;
+
+  /* background: -moz-linear-gradient(top left, #e8c17d 0%, #705424 100%);
+    background: -webkit-linear-gradient(top left, #e8c17d 0%, #705424 100%);
+    background: linear-gradient(to bottom right, #e8c17d 0%, #705424 100%); */
+  background: #aaa6;
+  padding: 2px;
+}
+
+.spells .spell:hover {
+  /* border: 2px solid #ddd !important; */
+  background: #eee;
+  cursor: pointer;
+}
+
+.spell img {
+  width: 100%;
+  height: 100%;
+}
+
+.spell.small {
+  width: 2em !important;
+  height: 2em !important;
+}
+
+/* Stack counter for spells that accumulate. Sits opposite the
+   hotkey so the two never collide, and shows at 0 so a stacking spell reads as
+   one before it has any stacks. */
+.spell .stacks {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #1b1206cc;
+  border: 1px solid #c8a15e;
+  color: #ffe6ae;
+  font-size: 0.78em;
+  font-weight: bold;
+  line-height: 15px;
+  text-align: center;
+  z-index: 11;
+}
+
+/* Mana cost, bottom-left — the one corner the stack badge (top-left) and the
+   hotkey (bottom-right) both leave free. Hidden entirely at 0 so the free
+   spells and the summoner spells stay uncluttered.
+   Unlike those two this sits *inside* the icon: the bar leaves only a 5px gap
+   between icons, which the neighbour's hotkey already hangs into, so a badge
+   poking out to the left lands on top of it. */
+.spell .mana-cost {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #061426cc;
+  border: 1px solid #3d7fb8;
+  color: #9ed4ff;
+  font-size: 0.78em;
+  font-weight: bold;
+  line-height: 15px;
+  text-align: center;
+  z-index: 11;
+}
+
+/* Not enough mana in the pool right now: the icon greys out, and the badge
+   says which resource is missing rather than leaving the player guessing. */
+.spell .mana-cost.short {
+  background: #2a0a0acc;
+  border-color: #b8503d;
+  color: #ff9e9e;
+}
+
+.spell .hotKey {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  color: #e8c17d;
+  font-size: 0.9em;
+  font-weight: bold;
+  z-index: 10;
+
+  /* text shadow */
+  text-shadow: #000 1px 0 10px;
+}
+
+/* =============== Hồi Thành =============== */
+
+/* The recall control, at the end of the cast strip and deliberately quieter
+   than everything to its left: 2em against an ability's 3em, no grey mat,
+   just an outline. It is a utility that lives on `Champion.recall` and never
+   enters `spells[]` (see `Recall.ts`), and the bar has to keep reading as
+   four abilities plus two summoners at a glance.
+
+   Start-or-cancel is `Game.recall()`'s rule, not this button's. */
+.recall-btn {
+  position: relative;
+  align-self: flex-start;
+  margin-left: 10px;
+  padding: 0;
+  overflow: hidden;
+
+  width: 2em;
+  height: 2em;
+
+  border: 1px solid #fff3;
+  border-radius: 6px;
+  background: #0d1420cc;
+  color: #cbb894;
+  font-size: 1em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.recall-btn:hover {
+  color: var(--hextech-gold);
+  border-color: #fff6;
+}
+
+/* Dead, silenced, or the recall itself disabled — the same "you cannot press
+   this" the spell icons say by greying out. */
+.recall-btn.unavailable {
+  color: #6b6b6b;
+  border-color: #ffffff1a;
+  cursor: default;
+}
+
+/* Running: gold, because the pad under the champion's feet is gold, and the
+   button is a cancel now. */
+.recall-btn.channeling {
+  color: #ffe09e;
+  border-color: #c8a15e;
+}
+
+.recall-btn i {
+  position: relative;
+  z-index: 2;
+}
+
+/* 2em is not enough room for a house and a countdown at once, and the
+   countdown is the thing worth reading while the channel runs. */
+.recall-btn.channeling i {
+  visibility: hidden;
+}
+
+.recall-btn .hotKey {
+  position: absolute;
+  bottom: -3px;
+  right: 1px;
+  z-index: 3;
+
+  color: #e8c17d;
+  font-size: 0.62em;
+  font-weight: bold;
+  text-shadow: #000 1px 0 10px;
+}
+
+/* The channel, filling from the bottom. The same clock `RecallPad`'s arc
+   draws on the ground, so the strip and the world cannot disagree about how
+   far along the trip is. */
+.recall-btn .recall-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+
+  background: rgba(255, 205, 120, 0.32);
+}
+
+.recall-btn .recall-count {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #fff;
+  font-size: 0.85em;
+  font-weight: bold;
+  text-shadow: #000 1px 0 6px;
+}
+
+.cooldown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  transition: opacity 0.3s ease;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cooldown p {
+  color: #eee;
+  text-align: center;
+  font-weight: bold;
+}
+
+.spell.in-cooldown .cooldown {
+  opacity: 0.7;
+  transition: none;
+}
+
+.spell .cooldown-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0%;
+  background-color: #111d;
+  transform-origin: bottom;
+  border-top: 2px solid #eee;
+}
+
+/*
+ * The basic attack's countdown is its swing interval, not a lockout: it runs
+ * whenever the champion is fighting. The opaque wedge and the seconds-left stamp
+ * would leave that slot unreadable for the whole game, so the rhythm gets a
+ * translucent warm sweep that the icon still shows through.
+ */
+.spell .cooldown-overlay.rhythm {
+  background-color: rgba(255, 208, 132, 0.22);
+  border-top: 2px solid rgba(255, 226, 176, 0.85);
+}
+
+.spell.in-cooldown img {
+  filter: grayscale(100%);
+}
+
+/* Spell info */
+.spell-info {
+  position: fixed;
+  padding: 10px;
+  background-color: #111;
+  box-shadow: 0px 0px 10px 0px #999b;
+  color: #eee;
+  font-size: 1em;
+  width: 300px;
+  pointer-events: none;
+  transition: all 0.08s ease-in;
+  z-index: 100;
+}
+
+.spell-info .header,
+.spell-info .header > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.spell-info img {
+  width: 50px;
+  margin-right: 10px;
+  border: 2px solid #9999;
+}
+
+.spell-info h4 {
+  font-size: 1em;
+  font-weight: bold;
+  margin: 0;
+  padding: 0;
+}
+
+.spell-info span {
+  margin: 0;
+  padding: 0;
+  margin-left: 5px;
+  font-weight: bold;
+  color: #e8c17d;
+}
+
+.spell-info .costs {
+  gap: 8px;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.spell-info .costs .mana {
+  color: #9ed4ff;
+}
+
+.spell-info .body {
+  margin-top: 10px;
+  color: #eee;
+}
+
+.spell-info .body span {
+  /* font-weight: bold; */
+  /* font-weight: normal; */
+  font-style: italic;
+  padding: 0;
+  margin: 0;
+}
+
+.spell-info .body .damage {
+  color: var(--spell-damage);
+}
+
+.spell-info .body .buff {
+  color: var(--spell-buff);
+}
+
+.spell-info .body .time {
+  color: var(--spell-time);
+}
+
+/* =============== Healthbar =============== */
+.health-bar {
+  margin-top: 10px;
+  text-align: center;
+  color: #eee;
+}
+
+.health-bar .bar {
+  height: 15px;
+  width: 100%;
+  position: relative;
+}
+
+.health-bar .bar div {
+  transition: width 0.1s ease;
+  height: 100%;
+}
+
+.health-bar .bar p {
+  margin: 0;
+  padding: 0;
+  font-size: 0.8em;
+  line-height: 100%;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+/* =============== Buffs =============== */
+.buffs {
+  position: absolute;
+  top: -3px;
+  transform: translateY(-100%);
+  display: flex;
+  flex-direction: row;
+}
+
+.buffs .buff {
+  width: 35px;
+  height: 35px;
+  background-color: #1119;
+  position: relative;
+}
+
+.buffs .buff img {
+  width: 100%;
+  height: 100%;
+}
+
+.buffs .buff span {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-size: 0.8em;
+  color: #eee;
+  background-color: #111e;
+  padding: 0 5px;
+}
+
+/* stack count sits opposite the countdown so the two never overlap */
+.buffs .buff span.stacks {
+  bottom: auto;
+  right: auto;
+  top: 0;
+  left: 0;
+  color: #ffd97a;
+  font-weight: bold;
+}
+
+/* ============== Practice panel ============== */
+/* The modal box: one compact layout for both modes. It used to be a wide
+   (80vw, up to 1000px) multi-column grid on the desktop and a narrow vertical
+   scroll under `body.touch-ui`; the narrow one reads better, so it is the only
+   one — a centred column that is near-full-width on a phone and a bounded
+   sheet on a monitor. The former `body.touch-ui` overrides are folded into
+   these base rules.
+ *
+ * Everything below wears the hextech skin (`--hextech-*` in styles/main.css),
+ * not the dark grey the rest of the HUD does, because this modal opens the
+ * pregame loadout editor itself — same slot row, same roster, same two
+ * gestures, same batched Huỷ / Xác nhận (see
+ * src/scenes/setup/LoadoutEditorModal.vue). It carried its own palette
+ * (`#111` / `#fff3` / `#7fd3ff`) and its own roster density for as long as
+ * the two screens were unrelated, and that was the only thing still making
+ * them look like two different features. Sizes are matched to
+ * `.pregame-modal` / `.kit-shelf` / `.catalog-spell-card` in
+ * styles/pregame-scene.css deliberately — change one, change both.
+ *
+ * All of that used to live on `.spell-picker`, which was the modal root
+ * before the panel wrapped it in a tab bar and that tab was deleted.
+ * `.practice-tab-body` is the element that scrolls now. */
+.practice-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 92vw);
+  /* A *fixed* height, not `max-height`, and this is the whole of the fix for a
+     panel that jumped under the cursor. Content-sized, the box was 855px tall
+     on the tallest tab (a roster that overflows, so it pinned to the old
+     `max-height: 90vh`) and 92px tall on Trận đấu — and because it is centred
+     with `translate(-50%, -50%)`, the shrink also re-centred it, moving its top
+     edge from y=48 to y=429. Switching tabs moved the tab bar you had just
+     clicked, out from under the pointer.
+     `height` over the alternatives on purpose:
+       - `min-height` fixes nothing on its own: the jump is content *growing*
+         past the floor, which is the same jump.
+       - "size to the tallest tab" is what this already is. The tallest tab is
+         the roster, which at the bot cap overflows any screen this game runs
+         on, so its height is 90vh whatever else is in the panel — a measured
+         px value would only be that number, stale.
+     90vh, so the tab the panel opens on keeps exactly the geometry it had; the
+     short tabs stop shrinking to fit and fill the frame instead. The two
+     media queries below replace this with `100dvh` full-bleed, where the panel
+     was already stable for the same reason. */
+  height: 90vh;
+}
+
+/* The tab bar. `.pregame-tabs`/`.pregame-tab` in styles/pregame-scene.css do
+   the work — including `body.touch-ui`'s 44px minimum on the buttons; these
+   two rules only fit that control into a modal with less vertical room than a
+   full setup screen, and sit it flush above the tab body instead of 1.2rem
+   clear of it. `flex: none` so it keeps its height while the body below
+   absorbs everything left over. */
+.practice-tabs {
+  flex: none;
+  margin-bottom: 0;
+  padding: 0.5rem 0.8rem 0;
+}
+
+.practice-tab {
+  padding: 0.5rem 0.3rem;
+  font-size: 0.85em;
+}
+
+/* The shell's close, at the end of the tab row (see PracticePanel.vue). Not a
+   `.pregame-tab`: it does not select anything, so it must not take the
+   selected-tab underline or a tab's `flex: 1` share of the row. 44px square so
+   a thumb hits it, which also matches the height `body.touch-ui .pregame-tab`
+   gives its neighbours. */
+.practice-close {
+  flex: none;
+  width: 44px;
+  align-self: stretch;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--hextech-muted);
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.practice-close:hover {
+  color: var(--hextech-text);
+}
+
+/* Each tab's body is the panel's one scroll region: `flex: 1 1 auto` with
+   `min-height: 0`, so it takes whatever height the tab bar left and scrolls
+   inside it. `flex-basis: auto` (not `0`) on purpose — the body's
+   hypothetical size stays its full content height, the panel therefore grows
+   to its own `max-height`, and the body shrinks into the remainder with a
+   *definite* height to scroll in. `flex: 1 1 0` is the version that collapses
+   (see PracticePanel.vue's file comment, which has the story). */
+.practice-tab-body {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.practice-tab-body {
+  padding: 0.8rem;
+}
+
+.practice-render-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.practice-render-settings select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 2.2rem 0 0.7rem;
+  border: 1px solid var(--hextech-line);
+  border-radius: 3px;
+  color: var(--hextech-text);
+  background: rgb(10, 20, 28);
+  font: inherit;
+}
+
+.practice-render-settings select:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------- Đấu thủ tab (RosterTab.vue)
+   One row per live unit, following `.participant-card` in
+   styles/pregame-scene.css — the setup screen's Players tab answers the same
+   question about a match that has not started, and the two are meant to read
+   as one control. Same panel/line colours, same 44px delete column, same
+   dashed add button. What differs is the row's second line: the three
+   per-bot behaviour toggles, which the setup screen has no per-row equivalent
+   of (its three flags are global, in the Settings tab), so the card grows a
+   `flex-direction: column` and a flag strip under the main row rather than
+   trying to fit six controls across a 760px modal. */
+/* The roster's own body drops the shared bottom padding, and the sticky add
+   button below wants it gone: a sticky box is clamped to its containing block's
+   *content* box, so with the padding in place the pinned button stopped 12.8px
+   short of the frame and left a strip of whichever row was scrolling underneath
+   showing through. Measured — a negative bottom margin on the button was tried
+   first and does not move the clamp, only the scroll height. */
+.practice-roster-body {
+  padding-bottom: 0;
+}
+
+/* -------------------------------------------------- Team sections (RosterTab)
+   The roster is split into Đội Xanh / Đội Đỏ. A section is a heading plus its
+   rows; the two are told apart by the dot and the accent, not by boxing each
+   side in a frame the panel is too narrow to afford twice. */
+.practice-team {
+  margin-bottom: 0.8rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+/* A faint wash of the side's own colour behind the whole block, so "these rows
+   are Blue / these are Red" reads at a glance rather than only from the dot in
+   the header. Kept very low so the rows sitting on it stay legible. */
+.practice-team--blue {
+  background: rgba(74, 158, 255, 0.07);
+  border-color: rgba(74, 158, 255, 0.18);
+}
+.practice-team--red {
+  background: rgba(224, 86, 79, 0.07);
+  border-color: rgba(224, 86, 79, 0.18);
+}
+
+.practice-team-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.2rem 0.4rem;
+  border-bottom: 1px solid var(--hextech-line);
+  margin-bottom: 0.6rem;
+}
+
+.practice-team-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* The two sides' colours, the same blue and red the fountains and health bars
+   already use so "which side is this" reads the same on the panel as on the
+   map. */
+.practice-team--blue .practice-team-dot {
+  background: #4a9eff;
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.6);
+}
+.practice-team--red .practice-team-dot {
+  background: #e0564f;
+  box-shadow: 0 0 6px rgba(224, 86, 79, 0.6);
+}
+
+.practice-team-name {
+  flex: 1;
+  font-size: 0.9em;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.practice-team--blue .practice-team-name {
+  color: #7ab8ff;
+}
+.practice-team--red .practice-team-name {
+  color: #ec8580;
+}
+
+.practice-team-count {
+  min-width: 1.6em;
+  padding: 0 0.4em;
+  text-align: center;
+  color: var(--hextech-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+  border: 1px solid var(--hextech-line);
+  border-radius: 999px;
+}
+
+.practice-team-empty {
+  margin: 0 0 0.6rem;
+  padding: 0 0.2rem;
+  color: var(--hextech-muted);
+  font-size: 0.78em;
+  font-style: italic;
+}
+
+/* The move-to-the-other-side control: a 44px column ruled off the row like the
+   delete beside it, but teal rather than red — it rearranges, it does not
+   destroy. On the player's row it is the only control in this strip. */
+.practice-team-switch {
+  flex-shrink: 0;
+  width: 44px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--hextech-line);
+  color: var(--hextech-teal);
+  font-size: 0.95em;
+  cursor: pointer;
+}
+
+.practice-team-switch:hover {
+  background: rgba(80, 200, 200, 0.12);
+}
+
+.practice-roster-row {
+  display: flex;
+  flex-direction: column;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+  margin-bottom: 0.6rem;
+}
+
+/* Same gold-ish tint `.participant-card-player` uses to mark the human. */
+.practice-roster-row.is-player {
+  border-color: rgba(120, 90, 40, 0.53);
+}
+
+.practice-roster-main {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* The portrait-and-name zone: everything that means "who this is", and the
+   whole of what tapping opens the loadout editor.
+
+   `.practice-roster-open` is `.participant-card-open`'s invisible overlay, and
+   it took two goes to land here. The overlay was rejected once, correctly: a
+   sheet across the *whole row* would have sat over the drawer toggle, the side
+   switch and the delete, which is the overlapping tap target the roster's
+   redesign removed. Scoped to this zone it covers none of them — the only
+   things stacked over it are the kit icons, exactly the situation the setup
+   screen's card used it in.
+
+   Why an overlay at all: the icons are buttons now (they open the ability
+   description, in both places, which used to work only on the setup screen),
+   and a `<button>` inside a `<button>` is not valid markup. */
+.practice-roster-identity {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.6rem 0.8rem;
+}
+
+.practice-roster-identity:hover {
+  background: #2a2f36;
+}
+
+.practice-roster-open {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.practice-roster-portrait {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--hextech-gold-dim);
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.practice-roster-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A unit with no avatar handle yet — the same teal die
+   `.participant-portrait-random` uses for a loadout left to chance. */
+.practice-roster-portrait.is-empty {
+  border-style: dashed;
+  border-color: var(--hextech-teal);
+  color: var(--hextech-teal);
+}
+
+.practice-roster-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.practice-roster-label {
+  color: var(--hextech-gold);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* The champion standing on the map right now, not the loadout behind it — see
+   RosterTab.vue's file comment on why those are two different facts. */
+.practice-roster-name {
+  color: var(--hextech-muted);
+  font-size: 0.85em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The champion's Q/W/E/R at a glance, under the name. Small on purpose, but a
+   real control: tapping one opens that ability's description. `position:
+   relative` is what wins the click against `.practice-roster-open` stacked
+   underneath. An empty slot shows its letter instead of a broken icon, and has
+   nothing to describe — hence `.is-inert`. */
+.practice-roster-spells {
+  display: flex;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.practice-roster-spell {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.practice-roster-spell:not(.is-inert):hover {
+  border-color: var(--hextech-teal);
+}
+
+.practice-roster-spell.is-inert {
+  cursor: default;
+}
+
+/* A cheat that outlives the session has to be visible without opening the
+   drawer that set it — see `CheatConfig` in PregameConfig.ts. */
+.practice-roster-badge {
+  margin-left: 4px;
+  color: var(--hextech-teal);
+  font-size: 0.9em;
+}
+
+/* Section headings inside a tab body. The Cài đặt tab is four groups deep
+   (controls, targeting, display, debug) and reads as one long list without
+   them. */
+.practice-section-title {
+  margin: 1rem 0 0.5rem;
+  color: var(--hextech-gold);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* The panel's own footer, and only outside a match: "Bắt Đầu" is the one
+   control the menu opened this panel to reach, so it does not live in a tab.
+   In a match there is no footer — closing the panel resumes play. */
+.match-config-actions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-top: 2px solid var(--hextech-line);
+}
+
+/* The menu's own `.hextech-btn` is 18px type in 0.75rem/2rem padding — 72px of
+   a 370px panel spent on one word, while the roster above it is the thing the
+   player is actually reading. Scoped to this bar, so the menu's buttons keep
+   their full size; still 44px tall, which is the thumb minimum. */
+.match-config-actions .hextech-btn {
+  min-height: 44px;
+  padding: 0.4rem 1.6rem;
+  font-size: 15px;
+}
+
+.practice-roster-spell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.practice-roster-spell-empty {
+  color: var(--hextech-muted);
+  font-size: 0.62em;
+  font-weight: bold;
+}
+
+/* `.participant-remove`'s column, to the pixel: 44px wide, ruled off from the
+   row by the same border, and the same muted red. */
+.practice-remove-bot {
+  flex-shrink: 0;
+  width: 44px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--hextech-line);
+  color: #d98a8a;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.practice-remove-bot:hover {
+  background: #3a2222;
+}
+
+/* The bot's three AI-behaviour toggles and the tier it plays at, now the top of
+   the Luyện tập card (see RosterTab.vue) rather than a strip on the collapsed
+   row. Stacked, and ruled off from the cheats below so "how it plays" reads
+   apart from "practice tools". `.pregame-toggle` supplies the layout and the
+   44px-tall label that is the real tap target. */
+.practice-cheat-behaviour {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.practice-cheat-flag {
+  margin-bottom: 0;
+  min-height: 34px;
+}
+
+/* Dễ / Thường / Khó, one press each — the same segmented shape as the input-mode
+   row on Cài đặt (`.input-mode-btn`), scaled down to sit inside a roster row's
+   drawer. Three equal buttons rather than a `<select>`: the whole range is one
+   tap wide and the current tier is readable without opening anything, which is
+   what a control the player retunes mid-match wants. */
+.practice-difficulty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 34px;
+  margin-top: 0.15rem;
+}
+
+.practice-difficulty-title {
+  font-size: 0.78em;
+  color: #bbb;
+}
+
+.practice-difficulty-row {
+  display: flex;
+  flex: 1;
+  gap: 0.3rem;
+}
+
+.practice-difficulty-btn {
+  flex: 1;
+  /* 34px is the row's own height; the button is the tap target, so it takes all
+     of it rather than sitting in the middle of it. */
+  min-height: 30px;
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+  color: #bbb;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.76em;
+  cursor: pointer;
+}
+
+.practice-difficulty-btn:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.practice-difficulty-btn.selected {
+  border-color: var(--hextech-teal);
+  color: var(--hextech-text);
+  background: #102426;
+}
+
+/* `.participant-add-btn`'s dashed teal call to action, plus a live count:
+   `MatchDirector.addBot` returns null at AI_COUNT_MAX, and a disabled button
+   that never says why is how a cap becomes a bug report.
+
+   `position: sticky` against the tab body, which is the panel's scroll region
+   (`.practice-tab-body` above): ten two-line rows are ~1100px and the panel is
+   90vh, so a button at the end of that flow is off screen in every viewport
+   this game runs on, so native scrolling should not be required before the
+   primary action is reachable. */
+/* One per side, at the end of that side's rows, scrolling with them.
+   It used to be a single `position: sticky; bottom: 0` bar across the scroller,
+   which cost a permanent 45px strip over the roster on every tab it appeared on
+   — on a 370px-tall window that strip plus the footer left 214px of list, under
+   two rows. Scrolling with the content costs nothing when you are not at the
+   bottom, and the button's *position* now also says which side the bot joins. */
+.practice-add-bot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 34px;
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  background: transparent;
+  border: 1px dashed var(--hextech-line);
+  border-radius: 4px;
+  color: var(--hextech-teal);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+/* The 44px thumb minimum `body.touch-ui .pregame-tab` sets for its own row. */
+body.touch-ui .practice-add-bot {
+  min-height: 44px;
+}
+
+.practice-add-bot:hover:not(:disabled) {
+  border-color: var(--hextech-teal);
+}
+
+.practice-add-bot:disabled {
+  color: var(--hextech-muted);
+  cursor: not-allowed;
+}
+
+.practice-add-bot-count {
+  color: var(--hextech-muted);
+  font-size: 0.85em;
+}
+
+/* The loadout editor is teleported to <body> so its `position: fixed`
+   backdrop resolves against the viewport rather than against `.practice-panel`
+   (which is a transformed element, and so the containing block for any fixed
+   descendant — see RosterTab.vue). `display: contents` keeps that wrapper out
+   of the layout entirely while leaving native DOM events intact. */
+.practice-editor-host {
+  display: contents;
+}
+
+/* ------------------------------------------- Stat sheet (participantStats.ts)
+   The K/D/CS score, which doubles as the button that opens the stat + cheat
+   drawer. It rides *in* the row's top strip now (`.practice-roster-main`),
+   right of the name and its Q/W/E/R, so the empty middle of a wide row carries
+   it instead of a full-width strip of its own below — one fewer line on the
+   short landscape panel. A left rule sets it off from the name button; the full
+   labels it used to caption with live in the drawer's Thành tích section. */
+.practice-stat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0 0.7rem;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--hextech-line);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.practice-stat-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.practice-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05em;
+}
+
+/* Killed / died / farmed, coloured the way the health bars already are: the
+   game's green is "yours and healthy", its red is "someone took damage". */
+.practice-score-k {
+  color: #43c41d;
+}
+.practice-score-d {
+  color: #c4431d;
+}
+.practice-score-cs {
+  color: var(--hextech-gold);
+}
+
+.practice-score-sep {
+  color: #666;
+}
+
+.practice-stat-caret {
+  flex-shrink: 0;
+  color: #999;
+  font-size: 0.8em;
+}
+
+/* The drawer is two zones: the stats on the left and the cheats on the right.
+   `flex-wrap` sits them side by side on a wide (landscape) panel — where the
+   old single grid left the whole right half empty — and stacks them on a narrow
+   one. Each zone declares a flex-basis so the wrap point is the panel's own
+   width, not the viewport's (the modal is 760px on desktop and near-viewport on
+   a handset, and only the container query the flex-basis stands in for tracks
+   that). */
+.practice-stat-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1.2rem;
+  padding: 0.5rem 0.8rem 0.7rem;
+  border-top: 1px solid var(--hextech-line);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* The stats zone. Its own auto-fit grid, so within whatever width the flex
+   parent grants it the four groups still reflow — two columns on a wide panel,
+   one on a phone (160px + the gap is just over half of a full-bleed body, so a
+   handset gets a single column). */
+.practice-stat-columns {
+  flex: 1 1 300px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.2rem 1.2rem;
+  align-content: start;
+}
+
+.practice-stat-title {
+  margin: 0.4rem 0 0.2rem;
+  color: var(--hextech-gold);
+  font-size: 0.72em;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.practice-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1px 0;
+  font-size: 0.8em;
+}
+
+.practice-stat-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--hextech-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The stat's icon: a fixed-width, dimmer-than-the-text anchor so a column of
+   them lines up and reads as a margin rail rather than competing with the
+   label. The word beside it stays the source of truth (participantStats.ts). */
+.practice-stat-icon {
+  flex-shrink: 0;
+  width: 0.95em;
+  text-align: center;
+  color: var(--hextech-gold-dim, #8a7a4a);
+  font-size: 0.92em;
+}
+
+/* Tabular figures so a column of numbers lines up on the decimal point rather
+   than wandering with the glyph widths. */
+.practice-stat-value {
+  flex-shrink: 0;
+  color: #ddd;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The folded-in per-unit cheats — the drawer's right zone on a wide panel, its
+   bottom one when stacked. A recessed card rather than a bordered row, so it
+   reads as its own block whichever way it lands next to the stats without a
+   top-rule that only lines up in one of the two layouts. `flex-basis` a touch
+   under the stats' so a wide panel gives the numbers the larger share. */
+.practice-cheat-group {
+  flex: 1 1 220px;
+  align-self: stretch;
+  padding: 0.3rem 0.55rem 0.45rem;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--hextech-line);
+  border-radius: 4px;
+}
+
+.practice-cheat-invuln {
+  margin-bottom: 0.2rem;
+  min-height: 36px;
+}
+
+/* Native range controls still need a generous hit box: the browser track is
+   ~16px tall, while a thumb target should be at least 44px.
+
+   `touch-action: pan-y` is the load-bearing line on a phone. The body scrolls
+   vertically (`.practice-tab-body` above is `pan-y` too), but `touch-action`
+   does not inherit, so a slider left at the default `auto` eats a vertical drag
+   that began on it as a value change — the finger meant to scroll the tab drags
+   the CDR or zoom instead. `pan-y` hands every vertical-dominant gesture back to
+   the scroller; only a tap or a deliberate horizontal drag reaches the slider,
+   which is exactly "update when you press it, ignore a scroll". */
+.practice-tab-body input[type='range'] {
+  height: 44px;
+  touch-action: pan-y;
+}
+
+/* The same rule for the tab's selects, checkboxes and the labels that wrap
+   them: a vertical drag that starts on any of them is a scroll, not an
+   interaction. A checkbox toggles on a tap anywhere on its `.pregame-toggle`
+   label, so the label needs the rule too, or a drag beginning on the text still
+   flips the box. Checkboxes get their size below; all of these opt out of eating
+   the scroll here. */
+.practice-tab-body select,
+.practice-tab-body input[type='checkbox'],
+.practice-tab-body .pregame-toggle,
+.practice-tab-body .pregame-field {
+  touch-action: pan-y;
+}
+
+/* "Takes effect when you close the panel" (RulesTab.vue). An aside under the
+   controls it qualifies, not a warning: the delay is the design (the match is
+   paused, so `ObjectManager.update()` cannot sweep), and the note is only
+   there so an empty jungle that has not moved yet does not read as a broken
+   switch. */
+.practice-note {
+  margin: 0.8rem 0 0;
+  color: var(--hextech-muted);
+  font-size: 0.75em;
+  font-style: italic;
+}
+
+/* ----------------------------------- Per-unit cheats, folded onto the roster
+   These classes used to live behind a unit picker on the Gian lận tab; the
+   picker is gone (each control is now inside its own champion's drawer on the
+   Đội tab — see RosterTab.vue), but the control styles below are shared, so they
+   stayed. `.practice-cheat-actions` and the stack rows render inside
+   `.practice-cheat-group`; the debug grid further down is what Gian lận keeps. */
+.practice-cheat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+/* The one button style this tab needs, held to the 44px thumb minimum the rest
+   of the panel is held to. Quieter than `.hextech-btn` on purpose: these fire
+   on a single press with no confirm, and a row of loud buttons over a paused
+   match reads like a commitment. */
+.practice-cheat-btn {
+  min-height: 44px;
+  padding: 0.3rem 0.8rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font: inherit;
+  font-size: 0.85em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.practice-cheat-btn:hover {
+  border-color: var(--hextech-teal);
+}
+
+/* One row per stacking spell: what it is and how many, then the four setters.
+   Wraps rather than shrinking the buttons — on a narrow phone the name takes
+   the first line and the buttons the second, both still full-size targets. */
+.practice-cheat-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--hextech-line);
+}
+
+.practice-cheat-stack-name {
+  font-size: 0.85em;
+  color: var(--hextech-muted);
+}
+
+.practice-cheat-stack-count {
+  margin-left: 0.4rem;
+  color: var(--hextech-gold);
+}
+
+.practice-cheat-stack-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* The debug layers (src/game/debug/DebugOverlay.ts), on the Gian lận tab
+   alongside the one global cheat (reveal map) — the two things that change the
+   whole match rather than a single champion.
+
+   Two columns: five of these plus the reveal-map toggle above them is more
+   than a landscape phone shows at once, and none of the labels is long enough
+   to need the full width. */
+.practice-debug {
+  margin-bottom: 0.8rem;
+}
+
+.practice-debug-title {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--hextech-muted);
+  font-size: 0.7em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.practice-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 0.6rem;
+}
+
+/* `.pregame-toggle`'s own bottom margin is sized for a stack of full-width
+   rows; inside the grid the row gap does that job. */
+.practice-debug-toggle {
+  margin-bottom: 0.3rem;
+  min-height: 28px;
+}
+
+/* The two irreversible controls, at the bottom of Trận đấu (RulesTab.vue):
+   reset the configuration, and leave the match.
+
+   Deliberately not in the tab row beside `.practice-close`: adjacent controls
+   whose outcomes differ by an entire match are the mis-hit this whole change
+   exists to design out, so these are far from that one, danger-coloured, and
+   both confirm.
+
+   `margin-top: auto` would need a flex column; the tab body is a plain block,
+   so the separation is a wide gap instead. They wrap to a column on a narrow
+   phone rather than shrinking below a thumb's width — `Đặt lại mặc định` is a
+   long label and a squeezed 44px target is not a target. */
+.practice-tab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.6rem;
+}
+
+.practice-exit,
+.practice-reset {
+  display: flex;
+  flex: 1 1 11rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.7rem;
+  background: transparent;
+  border: 2px solid rgba(190, 70, 70, 0.5);
+  color: rgba(230, 130, 130, 0.9);
+  font: inherit;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+/* Amber, not red: this one costs you a configuration, the one beside it costs
+   you the match. Same shape, different weight of consequence. */
+.practice-reset {
+  border-color: rgba(190, 145, 60, 0.5);
+  color: rgba(226, 190, 120, 0.9);
+}
+
+.practice-exit:hover {
+  border-color: rgba(220, 90, 90, 0.9);
+  color: rgb(245, 165, 165);
+}
+
+.practice-reset:hover {
+  border-color: rgba(220, 175, 80, 0.9);
+  color: rgb(245, 215, 150);
+}
+
+/* Armed. Filled rather than merely brighter, so "one more press and it is
+   gone" is a different *kind* of button, not a shade of the same one. */
+.practice-exit.confirming {
+  background: rgba(150, 40, 40, 0.35);
+  border-color: rgb(220, 90, 90);
+  color: rgb(255, 210, 210);
+  font-weight: bold;
+}
+
+.practice-reset.confirming {
+  background: rgba(150, 110, 30, 0.35);
+  border-color: rgb(220, 175, 80);
+  color: rgb(255, 235, 195);
+  font-weight: bold;
+}
+
+/* Same shape as the two buttons below it, in the panel's own blue rather than
+   red or amber: nothing about this one is a consequence. Full width because it
+   has no partner to sit beside and because a phone should not have to aim. */
+.practice-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 1rem;
+  padding: 0.7rem;
+  background: transparent;
+  border: 2px solid rgba(90, 150, 200, 0.5);
+  color: rgba(160, 205, 240, 0.9);
+  font: inherit;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.practice-fullscreen:hover {
+  border-color: rgba(120, 190, 240, 0.9);
+  color: rgb(200, 230, 255);
+}
+
+/* 22px so a checkbox is a real tap target (the native control is ~13px), a
+   size that reads fine with a mouse too. */
+.practice-tab-body input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+}
+
+/* A narrow phone held upright. The twin of `@media (max-width: 640px)` in
+   styles/pregame-scene.css, and full-bleed for the same reason it is there:
+   at this width the 3px border and the backdrop margin around it cost about
+   a row of the roster, which is more than the framing is worth. Opening this
+   modal pauses the game (`hudInteractions.ts` calls `game.pause()`), so
+   covering the canvas costs the player nothing — there is nothing moving
+   under it to watch. */
+@media (max-width: 640px) {
+  .practice-panel {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-width: 0;
+  }
+
+  .practice-render-settings {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* A landscape phone — the natural way to hold this game, and the shape the
+   panel most has to survive. Keyed on height, not orientation, so a short
+   desktop window is treated the same way. The twin of the `@media
+   (max-height: 480px)` block at the end of styles/pregame-scene.css: full
+   height, no frame, and a tab row shortened below the usual thumb minimum to
+   buy back a row of whatever the tab is listing. */
+@media (max-height: 480px) {
+  .practice-panel {
+    height: 100vh;
+    height: 100dvh;
+    border-width: 0;
+  }
+
+  /* The tab bar buys back a row of the roster the same way
+     `.kit-bar-btn`/`.kit-slot-pill` do in styles/pregame-scene.css's own
+     `@media (max-height: 480px)` block: below the 44px thumb minimum, because
+     a screen this short has ~210px of list and the labels across the top are
+     a wide target even when they are a short one. */
+  .practice-tabs {
+    padding-top: 0.25rem;
+  }
+
+  .practice-tab,
+  body.touch-ui .practice-tab {
+    min-height: 34px;
+    padding: 0.25rem 0.3rem;
+    font-size: 0.78em;
+  }
+}
+
+/* =====================================================================
+   Touch layout
+   =====================================================================
+
+   Everything below hangs off one class on <body>, set by
+   Game.applyTouchUiClass from the same toggle that switches the controls.
+
+   A mode flag rather than a viewport breakpoint, deliberately. What has to
+   change here is not how much room there is — it is whether the player has a
+   hover, a keyboard and a pixel-accurate pointer. A narrow desktop window has
+   all three and wants the desktop HUD; a wide tablet has none of them and
+   wants this one. Scoping every rule under the class also means the desktop
+   layout is untouched by construction: none of these selectors can match
+   unless the mode is on.
+
+   The bottom-HUD used to move up to the top-left in touch mode — a compact
+   loadout readout instead of a cast surface, since the bottom band belongs
+   to two thumbs in a Wild Rift-shaped control scheme. It does not render in
+   touch mode at all any more (see `MobileHudView.vue`'s file comment for
+   the audit behind that: health, mana, buff stacks, CC and the revive
+   countdown all already draw on the canvas over the champion's own head).
+   `.bottom-HUD` and its children stay unscoped below — `DesktopHudView`
+   still renders them, unconditionally, exactly as before — so nothing here
+   needs a `body.touch-ui` override any more. */
+
+/* =============== Description panel =============== */
+/* Fixed 300px is most of a phone held sideways. The width and the side it
+   opens on are set from InGameHUD.showSpellInfo, which also flips it below
+   the icon — the strip is at the top now, so "above" is off the screen. */
+body.touch-ui .spell-info {
+  font-size: 0.85em;
+  padding: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+body.touch-ui .spell-info img {
+  width: 36px;
+  margin-right: 8px;
+}
+
+/* =============== Corner control =============== */
+/* The practice panel's entry point, in both modes. The desktop's bottom-HUD
+   icons still open it pre-aimed at the slot that was clicked (straight into
+   the loadout editor on that slot), but that is a shortcut for someone who
+   already knows the panel exists — this is how they find out. In touch mode the strip does not render at all (see
+   MobileHudView.vue), so there it is the only way in. Anchored top-right
+   like the old mode toggle was, but alone now: the toggle moved to the
+   pregame setup screen's Settings tab, a global preference rather than a
+   permanent in-game control (see InGameHUD.vue's file comment). */
+.corner-btn {
+  position: fixed;
+  top: 6px;
+  right: 6px;
+  z-index: 120;
+
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid #fff3;
+  background-color: #111c;
+  color: #999;
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+.corner-btn:hover {
+  color: #ddd;
+  border-color: #fff6;
+}
+
+/* The one gold thing on the canvas overlay, because it is the way into the
+   gold screen. Its own frame stays HUD-grey (`.corner-btn` above) — that
+   button sits over the game, not inside the dialog. */
+.spell-picker-btn {
+  color: var(--hextech-gold);
+}
+
+.spell-picker-btn:hover {
+  color: var(--hextech-text);
+  border-color: rgba(200, 170, 110, 0.53);
+}
+
+body.touch-ui .corner-btn {
+  width: 46px;
+  height: 46px;
+  font-size: 1.25em;
+}
+
+/* ---------------------------------------------------------------- Xoay ngang
+
+   The portrait hint (`OrientationHint.vue`). Covers everything, including the
+   corner button and the touch controls drawn on the canvas: while it is up,
+   the answer is "turn the phone", and letting a stray thumb cast a spell
+   through it would be the wrong kind of helpful. Its own dismiss button is the
+   way past, for a device whose rotation the OS has locked.
+
+   Above `.corner-btn`'s 120, which is the highest thing in this file: the
+   panel and its opener both have to go under, or a phone still shows two live
+   controls on top of a prompt that says the screen is unusable. */
+.orientation-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(4, 8, 14, 0.94);
+  text-align: center;
+}
+
+.orientation-hint-card {
+  max-width: 22rem;
+  color: var(--hextech-text, #cdbe91);
+}
+
+/* The turn itself, animated: a static phone icon says "phone", a rotating one
+   says "rotate", and there is no room here for a sentence nobody reads. */
+.orientation-hint-card > i {
+  display: block;
+  margin-bottom: 1.25rem;
+  font-size: 3.5rem;
+  color: var(--hextech-gold, #c8aa6e);
+  animation: orientation-hint-turn 2.4s ease-in-out infinite;
+}
+
+@keyframes orientation-hint-turn {
+  0%,
+  30% {
+    transform: rotate(0deg);
+  }
+  55%,
+  85% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.orientation-hint-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.15em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.orientation-hint-note {
+  margin: 0 0 1.75rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+.orientation-hint-dismiss {
+  min-height: 44px;
+  padding: 0.7rem 1.5rem;
+  background: transparent;
+  border: 2px solid rgba(200, 170, 110, 0.4);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.orientation-hint-dismiss:hover {
+  border-color: rgba(200, 170, 110, 0.8);
+  opacity: 1;
+}

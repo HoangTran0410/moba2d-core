@@ -1,0 +1,1740 @@
+#pregame-scene {
+  width: 100vw;
+  height: 100vh;
+  /* Both, in this order — see `.center-page-container > div` in main.css. */
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+}
+
+.pregame-panel {
+  width: min(920px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  padding: 1.5rem 2rem 2rem;
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+}
+
+.pregame-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.pregame-header h1 {
+  flex: 1;
+  font-size: 1.4em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+  color: var(--hextech-gold);
+}
+
+.pregame-icon-btn {
+  background: transparent;
+  border: none;
+  color: #bbb;
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+.pregame-icon-btn:hover {
+  color: var(--hextech-text);
+}
+
+/* =============== Tabs =============== */
+
+.pregame-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.pregame-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--hextech-muted);
+  padding: 0.6rem 0.4rem;
+  font-size: 0.95em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.pregame-tab:hover {
+  color: var(--hextech-text);
+}
+
+.pregame-tab.selected {
+  color: var(--hextech-gold);
+  border-bottom-color: var(--hextech-teal);
+}
+
+.pregame-hint {
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+  margin: 0 0 0.8rem;
+}
+
+/* =============== Players tab: participant list =============== */
+
+.participant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.participant-card {
+  display: flex;
+  align-items: stretch;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+}
+
+.participant-card-player {
+  border-color: rgba(120, 90, 40, 0.53);
+}
+
+.participant-card-main {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  min-width: 0;
+}
+
+.participant-card-main:has(.participant-card-open:hover) {
+  background: #2a2f36;
+}
+
+/* Invisible, covers the whole row — opens the loadout editor. The kit-icon
+   buttons below are real, visible buttons stacked above it (`position:
+   relative` wins the paint order over an absolutely-positioned, `z-index:
+   auto` sibling regardless of DOM order), so they intercept their own clicks
+   and open a description instead. See ParticipantCard.vue's file comment. */
+.participant-card-open {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.participant-portrait {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--hextech-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.participant-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.participant-portrait-random {
+  font-size: 1.3em;
+  color: var(--hextech-teal);
+}
+
+.participant-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.participant-name {
+  font-weight: bold;
+  color: var(--hextech-gold);
+  font-size: 0.95em;
+}
+
+.participant-summary {
+  font-size: 0.82em;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.participant-kit-icons {
+  display: flex;
+  gap: 3px;
+  margin-top: 0.3rem;
+}
+
+/* Real, visible buttons — see `.participant-card-open` above and
+   ParticipantCard.vue's file comment: `position: relative` is what lets
+   these win the click instead of opening the loadout editor underneath. */
+.kit-icon-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--hextech-line);
+  border-radius: 3px;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.kit-icon-btn:hover {
+  border-color: #7fd3ff;
+}
+
+.kit-icon-btn img,
+.kit-icon-btn .fa-random {
+  width: 40px;
+  height: 40px;
+}
+
+.participant-chevron {
+  align-self: center;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.participant-remove {
+  flex-shrink: 0;
+  width: 44px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--hextech-line);
+  color: #d98a8a;
+  cursor: pointer;
+  font-size: 1em;
+}
+
+.participant-remove:hover {
+  background: #3a2222;
+}
+
+.participant-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--hextech-panel);
+  border: 2px dashed var(--hextech-line);
+  color: var(--hextech-teal);
+  padding: 0.7rem;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.participant-add-btn:hover {
+  border-color: var(--hextech-teal);
+}
+
+/* =============== Settings tab =============== */
+
+.pregame-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.pregame-column h2 {
+  font-size: 0.95em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-muted);
+  border-bottom: 1px solid var(--hextech-line);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+
+.pregame-field {
+  display: block;
+  margin-bottom: 0.8rem;
+  font-size: 0.85em;
+}
+
+.pregame-field span {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.pregame-field input[type='range'] {
+  width: 100%;
+}
+
+.pregame-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85em;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+}
+
+/* =============== Input mode (InputModePanel.vue) =============== */
+/* A three-way row rather than a two-state switch on purpose — "Tự động" is
+   shaped in from day one, disabled until the tri-state preference lands in
+   game/input/TouchControls.ts. See that component's file comment. */
+
+.input-mode-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.input-mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+  color: #bbb;
+  padding: 0.5rem 0.4rem;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+
+.input-mode-btn:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.input-mode-btn.selected {
+  border-color: var(--hextech-teal);
+  color: var(--hextech-text);
+  background: #102426;
+}
+
+.input-mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .pregame-columns {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* =============== Loadout editor modal =============== */
+/* One dialog, one view: a header, the pinned slot bar, a hint line and the
+   scrolling roster. There is no second view to swap in and no dialog on a
+   dialog — see LoadoutEditorModal.vue's file comment for what this replaced.
+   `.spell-preview-modal` shares the shell. */
+
+.pregame-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.pregame-modal {
+  position: relative;
+  /* Without this, `height: 100dvh` + `padding` (see the `@media
+       (max-width: 640px)` block below) renders ~22px taller than the
+       viewport — no scroll region involved, just the default `content-box`
+       sizing model adding padding *on top of* an already-100%-of-viewport
+       height. That was quietly clipping the footer (summoner row / commit
+       button) below the fold on a real phone even before this pass;
+       `border-box` is what makes `height: 100dvh` actually mean "100dvh,
+       padding included." */
+  box-sizing: border-box;
+  width: min(760px, 92vw);
+  max-height: 90vh;
+  /* The frame itself never scrolls — exactly one region inside it does.
+       See `.pregame-modal-body` just below. */
+  overflow: hidden;
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  padding: 1rem 1.2rem 1.2rem;
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Narrower than the loadout editor — one spell's icon, name, cost and
+   description, not a grid or a catalogue. */
+.spell-preview-modal {
+  width: min(480px, 92vw);
+  max-height: 70vh;
+}
+
+/* The single scrolling region a `.pregame-modal` ever has — the loadout
+   picker's roster, or a read-only ability preview (`LoadoutEditorModal.vue`,
+   `SpellPreviewModal.vue`). Everything around it — the header, the slot bar,
+   the hint line — is a fixed sibling within the same column, so it never
+   scrolls out of reach. There is exactly one scroller per dialog and no
+   second view to swap in that would need its own: the picker is one screen
+   now (see LoadoutEditorModal.vue's file comment). */
+.pregame-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.pregame-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.pregame-modal-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05em;
+  color: var(--hextech-gold);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ------------------------------------------------------------- slot bar
+   The seven kit slots plus the two actions, pinned above the roster and
+   never scrolling — this is the control the whole screen is organised
+   around: which slot the next tap in the roster fills, what has changed so
+   far, and the way out. Modelled on `.slot-picker` in styles/hud.css (the
+   in-game HUD picker's identical row) and wrapping the same way when there
+   is no room for pills and buttons on one line, so the two screens read as
+   one system.
+
+   Compact on purpose. The old editor spent this space on a mode toggle, a
+   96px champion-card grid and a separate summoner footer; on a landscape
+   phone that left the list it sat above almost nothing. */
+
+.kit-slot-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.kit-slot-pill {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.kit-slot-pill img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kit-slot-pill .fa-random {
+  font-size: 1em;
+  line-height: 38px;
+  color: var(--hextech-teal);
+}
+
+.kit-slot-pill:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+/* The slot the roster is currently filling. */
+.kit-slot-pill.active {
+  border-color: var(--hextech-teal);
+  box-shadow: 0 0 0 2px rgba(8, 171, 172, 0.3);
+}
+
+/* Differs from what the player walked in with — the visible scope of "Xác
+   nhận", in the same gold the rest of this screen uses for a chosen thing. */
+.kit-slot-pill.changed {
+  border-color: var(--hextech-gold);
+}
+
+.kit-slot-pill.changed.active {
+  border-color: var(--hextech-teal);
+}
+
+.kit-slot-pill-key {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  min-width: 13px;
+  padding: 0 2px;
+  line-height: 13px;
+  font-size: 0.62em;
+  font-weight: bold;
+  text-align: center;
+  color: var(--hextech-text);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* Leaves the selected slot to chance. Sized like a slot pill because it sits
+   in the same group and acts on the same thing, but dashed and glyph-only so
+   it never reads as an eighth slot — the same dashed-teal "random" language
+   `.catalog-random-card` and `.participant-portrait-random` already use. */
+.kit-slot-random {
+  border-style: dashed;
+  color: var(--hextech-teal);
+  line-height: 0;
+}
+
+.kit-slot-random:hover:not(:disabled) {
+  border-color: var(--hextech-teal);
+}
+
+.kit-slot-random:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.kit-slot-random .fa-random {
+  line-height: 38px;
+}
+
+/* Overrides `.hextech-btn`'s menu-scale sizing (18px uppercase, .75rem 2rem
+   padding) — that button headlines the main menu; here three of them share a
+   row with seven slot pills. `margin-left: auto` on the first of the three
+   pushes the group to the right end, and lets them drop to their own line
+   together when the row wraps; since "Lưu bộ" joined them that first one is
+   `.saved-kit-save`, immediately below. */
+.kit-bar-btn,
+.saved-kit-save {
+  min-height: 42px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+  border-width: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* Below this the slot bar is eight pills and four buttons on a landscape
+   phone, and the words are what stops fitting. The icons and the
+   `title`/`aria-label` on every one of them carry the meaning through — see
+   LoadoutEditorModal.vue. */
+@media (max-width: 640px) {
+  .kit-bar-label {
+    display: none;
+  }
+
+  .kit-bar-btn,
+  .saved-kit-save {
+    padding: 0.3rem 0.7rem;
+  }
+}
+
+.kit-bar-btn.secondary {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.9rem;
+}
+
+@keyframes hextechConfirmPulse {
+  0%, 100% {
+    box-shadow: 0 0 6px 1px rgba(200, 170, 110, 0.4), inset 0 0 8px rgba(200, 170, 110, 0.2);
+    border-color: var(--hextech-gold);
+  }
+  50% {
+    box-shadow: 0 0 16px 4px rgba(200, 170, 110, 0.85), inset 0 0 12px rgba(200, 170, 110, 0.45);
+    border-color: #ffd700;
+  }
+}
+
+.kit-bar-btn.has-changes {
+  animation: hextechConfirmPulse 1.8s ease-in-out infinite;
+  border-color: var(--hextech-gold);
+  color: var(--hextech-gold);
+  font-weight: bold;
+}
+
+/* The three actions as one thing. They used to hold the right end by passing
+   `margin-left: auto` between them, which only worked while all three fit on
+   the row — the view toggle made it 42px wider and Xác nhận wrapped alone,
+   under the two it belongs beside. A group wraps as a unit and owns the auto
+   margin itself, so nothing has to be un-set on a sibling. */
+.kit-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+/* ------------------------------------------------------- saving a kit
+   "Lưu bộ" shares the slot bar with Xác nhận but is not one of them:
+   it neither commits the draft nor discards it, it copies it into the
+   library (see LoadoutEditorModal.vue). It is first of the three in
+   `.kit-bar-actions`, which is what now holds the group at the right end —
+   the auto margin it used to carry itself moved there. */
+
+/* Held open while the name row is showing, so the button reads as the toggle
+   it is. `.hextech-btn` paints its border with a `border-image` gradient,
+   which wins over `border-color` until it is switched off. */
+.saved-kit-save.open {
+  border-image: none;
+  border-color: var(--hextech-gold);
+}
+
+/* One row, and only while you are naming something. */
+.saved-kit-form {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.saved-kit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.3rem 0.6rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+.saved-kit-input:focus {
+  outline: none;
+  border-color: var(--hextech-teal);
+}
+
+.saved-kit-confirm {
+  min-height: 38px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+  border-width: 2px;
+}
+
+/* Blank name: `saveKit` would throw, so the button says no first. */
+.saved-kit-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.saved-kit-error {
+  font-size: 0.72em;
+  color: var(--hextech-gold);
+}
+
+.kit-hint {
+  flex-shrink: 0;
+  margin: 0 0 0.5rem;
+  font-size: 0.72em;
+  color: var(--hextech-muted);
+  font-style: italic;
+}
+
+/* ------------------------------------------- roster search
+   Pinned above the scrolling body, so it is still there once the ~50-tile list
+   has been scrolled. Borrows the saved-kit input's sizing so the two text
+   fields in this modal read as the same control. */
+.kit-search {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.kit-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+  pointer-events: none;
+}
+
+.kit-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  /* Room for the icon on the left and the clear button on the right. */
+  padding: 0.3rem 2.2rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+.kit-search-input:focus {
+  outline: none;
+  border-color: var(--hextech-teal);
+}
+
+/* The browser's own clear affordance, which only some of them draw and none of
+   them draw the same. Ours is always there and is a real thumb target. */
+.kit-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.kit-search-clear {
+  position: absolute;
+  right: 0.25rem;
+  min-height: 30px;
+  min-width: 30px;
+}
+
+.kit-search-empty {
+  font-style: normal;
+  color: var(--hextech-gold);
+}
+
+/* ------------------------------------------- unsaved changes dialog */
+.kit-unsaved-dialog-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 15, 0.84);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 220;
+  padding: 1rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.kit-unsaved-dialog {
+  width: min(440px, 94%);
+  background: var(--hextech-bg);
+  border: 2px solid transparent;
+  border-image: linear-gradient(var(--hextech-gold), var(--hextech-teal)) 1;
+  box-shadow: 0 0 25px 5px rgba(0, 0, 0, 0.75), 0 0 15px rgba(200, 170, 110, 0.25);
+  padding: 1.2rem 1.4rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.kit-unsaved-title {
+  margin: 0;
+  font-size: 1.05em;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--hextech-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.kit-unsaved-title .fa-circle-exclamation {
+  color: #f59e0b;
+}
+
+.kit-unsaved-text {
+  margin: 0;
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: #ddd;
+}
+
+.kit-unsaved-text strong {
+  color: var(--hextech-gold);
+}
+
+.kit-unsaved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.4rem;
+}
+
+.kit-unsaved-actions .hextech-btn {
+  min-height: 38px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.kit-unsaved-apply {
+  flex: 1 1 100%;
+  font-weight: bold;
+}
+
+.kit-unsaved-discard,
+.kit-unsaved-stay {
+  flex: 1 1 calc(50% - 0.25rem);
+}
+
+/* ---------------------------------------------------------------- roster
+   Every spell in the game, shelved by champion — see KitRoster.vue.
+
+   Shelves sit side by side, several to a row, rather than one champion per
+   full-width row: a twenty-champion roster is a few flicks that way and
+   twenty rows the other. The ability icons under a heading are the buttons
+   themselves at 48px, not 32px thumbnails inside 84px cards — the layout
+   the in-game picker has always had, which is why that one was the quicker
+   of the two to read. `.spell-picker .list` / `.group` / `.spell` in
+   styles/hud.css are now the same three rules; change one, change both.
+
+   A grid rather than a wrapping flex row on purpose: a flex container sizes
+   its items from their max-content, and a shelf's max-content is "the
+   champion's name and every one of its icons on a single line" — wide,
+   ragged, and different for a four-ability shelf than for the five-summoner
+   one. A fixed track means every shelf is the same width whatever is in it,
+   with long names ellipsised inside it (`.kit-shelf-name`). 220px is four
+   48px icons plus their gaps and the shelf's own padding, so a champion's
+   kit never wraps to a second line. */
+
+/* Champion tiles — a portrait over a name — so the track is a tile's width
+   rather than "a name over four 48px icons". There used to be a second, wider
+   layout behind a compact/expanded toggle; opening one shelf in place replaced
+   both of them, so this is now the only grid. See `KitRoster.vue`. */
+.kit-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  align-items: start;
+  gap: 0.4rem;
+}
+
+/* ------------------------------------------------ closed tiles, one open shelf
+   Everything a closed tile does not show hides rather than unmounts: the roster
+   is ~50 shelves and ~200 icons, and `KitRoster.vue` keeps them all mounted so
+   opening one is instant instead of a rebuild (`loading="lazy"` already means
+   an icon nobody scrolled to never fetched). The e2e drives count `.kit-shelf`
+   and `.catalog-spell-card` expecting the whole catalogue in the DOM, and check
+   what is actually *visible* separately. */
+
+/* The two shelves that are not a champion — the basic attack and the summoner
+   spells. `has-kit` is the same predicate that gives a shelf its tile button,
+   so this cannot select a shelf that would have had nothing to open. */
+.kit-roster .kit-shelf:not(.has-kit),
+.kit-roster .catalog-group-row {
+  display: none;
+}
+
+/* ...except whichever shelf is open, which spans the grid and pushes the tiles
+   after it down — an accordion, so the champion stays where it was tapped
+   instead of the list jumping.
+
+   Placed immediately after the hide rules, and that is load-bearing: both
+   selectors carry three classes, so they have equal specificity and the later
+   one wins. Moving this block above them silently turns the feature off. */
+.kit-roster .kit-shelf.open {
+  display: block;
+  grid-column: 1 / -1;
+  border-color: var(--hextech-gold);
+  background: linear-gradient(180deg, rgba(200, 170, 110, 0.08) 0%, var(--hextech-panel) 100%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 10px rgba(200, 170, 110, 0.15);
+}
+
+.kit-roster .kit-shelf.open .catalog-group-row {
+  display: flex;
+  animation: shelfExpand 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Back to the ordinary horizontal heading — the column layout below is for a
+   tile, and an open shelf's heading is a row again. */
+.kit-roster .kit-shelf.open .kit-shelf-heading {
+  flex-direction: row;
+  margin-bottom: 0.35rem;
+  text-align: left;
+}
+
+.kit-roster .kit-shelf.open .kit-shelf-name {
+  width: auto;
+  text-align: left;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--hextech-text);
+}
+
+.kit-roster .kit-shelf.open .catalog-group-avatar {
+  width: 35px;
+  height: 35px;
+}
+
+/* A closed tile carries no chip: the portrait sits on top of the name rather
+   than beside it, which is what lets the track be 132px, and there is nothing
+   to advertise when tapping only opens. The open shelf gets the chip back as
+   its close affordance.
+
+   Scoped to the roster rather than the shelf so the saved-kit rows keep the
+   behaviour they already had — `.saved-kit-apply` reuses `.kit-apply-chip`, and
+   its chip has been hidden here since compact became the default. */
+.kit-roster .kit-apply-chip {
+  display: none;
+}
+
+.kit-roster .kit-shelf.open .kit-apply-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.kit-roster .kit-shelf-heading {
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0;
+  text-align: center;
+}
+
+.kit-roster .catalog-group-avatar {
+  width: 52px;
+  height: 52px;
+}
+
+.kit-roster .kit-shelf-name {
+  width: 100%;
+  text-align: center;
+}
+
+.kit-roster .kit-shelf {
+  padding: 0.5rem 0.35rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.catalog-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kit-tile-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--hextech-gold);
+  color: #0c141c;
+  font-size: 9px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.kit-shelf-chevron {
+  color: var(--hextech-muted);
+  font-size: 0.68em;
+  margin-top: 1px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.kit-shelf-apply:hover .kit-shelf-chevron {
+  color: var(--hextech-gold);
+}
+
+.kit-shelf-state {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.kit-selected-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(200, 170, 110, 0.2);
+  color: var(--hextech-gold);
+  border: 1px solid var(--hextech-gold-dim);
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* The open shelf's two answers, on one row above its abilities: the whole-kit
+   button, and a line naming the slot a tapped ability would land in. The note
+   is what keeps the ability icons from being a guess — they fill the slot
+   selected up in the bar, which is somewhere else on the screen. */
+.kit-shelf-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  margin-bottom: 0.45rem;
+  padding-top: 0.15rem;
+  animation: shelfExpand 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.kit-apply-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.32rem 0.75rem;
+  font-size: 0.85em;
+  font-weight: 600;
+  border-radius: 3px;
+}
+
+.kit-apply-all.is-active-kit {
+  background: rgba(200, 170, 110, 0.22);
+  border-color: var(--hextech-gold);
+  color: var(--hextech-gold);
+  box-shadow: 0 0 8px rgba(200, 170, 110, 0.25);
+}
+
+.kit-keys-preview {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.kit-key-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--hextech-gold);
+  border: 1px solid rgba(200, 170, 110, 0.3);
+  line-height: 1.1;
+}
+
+.kit-slot-target-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--hextech-muted);
+  font-size: 0.78em;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.kit-guide-divider {
+  font-size: 0.7em;
+  font-weight: 700;
+  color: var(--hextech-muted);
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  padding: 1px 5px;
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+}
+
+.kit-guide-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--hextech-text);
+  font-size: 0.95em;
+}
+
+.kit-target-slot-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 0.85em;
+  font-weight: 700;
+  color: var(--hextech-gold);
+  background: rgba(200, 170, 110, 0.15);
+  border: 1px solid var(--hextech-gold);
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(200, 170, 110, 0.3);
+}
+
+.kit-guide-arrow {
+  color: var(--hextech-gold);
+  font-size: 0.8em;
+  animation: bounceGuideArrow 1.5s ease-in-out infinite;
+}
+
+@keyframes shelfExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounceGuideArrow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+/* `text-transform`/`letter-spacing` are reset explicitly: this sits inside
+   `.kit-shelf`, whose heading styling uppercases and tracks out its text, and a
+   sentence of guidance rendered in spaced capitals reads as a label rather than
+   as something to follow. */
+.kit-cta-note {
+  min-width: 0;
+  color: var(--hextech-muted);
+  font-size: 0.78em;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* The saved-kit library, ahead of everything else in the roster: it is the
+   shortest path to a whole loadout and the only one in here the player built
+   themselves. Full width like `.catalog-random-card`, the grid's other
+   whole-loadout row, and above it — a kit you named beats a dice roll. */
+.saved-kit-shelf {
+  grid-column: 1 / -1;
+  border: 1px solid var(--hextech-line);
+  background: var(--hextech-panel);
+  padding: 0.35rem;
+}
+
+.saved-kit-heading {
+  margin: 0 0 0.35rem;
+  font-size: 0.8em;
+  font-weight: normal;
+  color: var(--hextech-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* A wrapping row of chips rather than the shelf grid used below: a saved kit
+   is one line of text of its own width, not four fixed-size icons. */
+.saved-kit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.saved-kit {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--hextech-line);
+  background: var(--hextech-sunken);
+}
+
+.saved-kit:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.saved-kit-apply {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  /* One roster track wide, so a long name ellipsises instead of stretching
+     the shelf past the grid beneath it. */
+  max-width: 220px;
+  padding: 0.25rem 0.5rem;
+  background: none;
+  border: none;
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.8em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.saved-kit-apply:hover .kit-apply-chip {
+  border-color: var(--hextech-gold);
+  background: var(--hextech-gold-wash);
+  color: var(--hextech-text);
+}
+
+.saved-kit-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Same two colours as `.participant-remove`, the screen's other delete. */
+.saved-kit-delete {
+  padding: 0 0.5rem;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--hextech-line);
+  color: #d98a8a;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.saved-kit-delete:hover {
+  background: #3a2222;
+}
+
+.kit-shelf {
+  border: 1px solid var(--hextech-line);
+  background: var(--hextech-panel);
+  padding: 0.35rem;
+}
+
+.kit-shelf:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+/* The loadout is currently a whole-champion pick of this shelf. */
+.kit-shelf.selected {
+  background: rgba(200, 170, 110, 0.08);
+  border-color: var(--hextech-gold);
+}
+
+.kit-shelf-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0.35rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* The same row, as a button. No chrome of its own — what marks it pressable
+   is the `Dùng bộ` chip and the hover colour, not a box drawn around a
+   heading. Full width so the whole row is the target. */
+.kit-shelf-apply {
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.8em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kit-shelf-apply:hover {
+  color: var(--hextech-text);
+}
+
+.kit-shelf-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-apply-chip {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid rgba(200, 170, 110, 0.4);
+  color: var(--hextech-gold);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.kit-shelf-apply:hover .kit-apply-chip {
+  border-color: var(--hextech-gold);
+  background: var(--hextech-gold-wash);
+  color: var(--hextech-text);
+}
+
+/* --------------------------------------------------------- description
+   Hover with a mouse, hold with a thumb — the second gesture on an icon
+   whose first one equips it (see useSpellPeek.ts). `position: fixed` and
+   above `.pregame-modal-backdrop`'s z-index 200, because it is anchored to
+   an icon inside the modal's own scroller and must not be clipped by it.
+   Never a click target: a description that could swallow the tap meant for
+   the icon underneath it would recreate the exact ambiguity this screen was
+   rebuilt to remove. */
+.spell-peek {
+  position: fixed;
+  z-index: 300;
+  overflow-y: auto;
+  pointer-events: none;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  background: var(--hextech-bg);
+  border: 2px solid var(--hextech-gold-dim);
+  box-shadow: 0 0 20px 4px rgba(0, 0, 0, 0.6);
+  color: var(--hextech-text);
+}
+
+/* The pane is a panel here, not a column inside a bordered dialog, so it
+   drops the top rule/padding it uses in `SpellPreviewModal`. */
+.spell-peek .spell-detail-header {
+  padding-top: 0;
+  margin-top: 0;
+}
+
+/* The dismiss layer for a description a thumb opened, and the only thing
+   that closes one — see `heldOpen` in useSpellPeek.ts and the comment on
+   `.spell-peek-scrim` in LoadoutEditorModal.vue. One below the panel it
+   dismisses, so a tap on the panel closes it too; above everything else, so
+   the tap that closes it does nothing else on the way. The dim is what makes
+   it legible as a thing to tap out of rather than a dead screen. */
+.spell-peek-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* Says out loud what the scrim behind it does, since a tap-anywhere target
+   is invisible by construction. Only rendered with the scrim — a hover
+   description says nothing, because moving the mouse already ends it. */
+.spell-peek-dismiss {
+  margin: 0.5rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--hextech-line);
+  font-size: 0.78em;
+  text-align: center;
+  color: var(--hextech-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.catalog-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0.8rem 0 0.4rem;
+}
+
+.catalog-group-heading:first-child {
+  margin-top: 0;
+}
+
+/* The champion's portrait (or the ability's own icon for single-spell
+   groups) beside the group name — see SpellGroups[i].image. */
+.catalog-group-avatar {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--hextech-sunken);
+  flex-shrink: 0;
+}
+
+/* The icons under a shelf's heading, wrapping within its track. */
+.catalog-group-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* The icon *is* the button — 48px of picture with a border around it and
+   nothing else. It used to be a 32px thumbnail centred in an 84px card, which
+   spent most of a crowded screen on padding and made a champion's four
+   abilities hard to tell apart at a glance. Comfortably over the 44px thumb
+   target in every mode, so the touch overrides below no longer resize it. */
+.catalog-spell-card {
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  width: 48px;
+  height: 48px;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  padding: 0;
+  cursor: pointer;
+  color: var(--hextech-text);
+  line-height: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.catalog-spell-card:hover {
+  border-color: var(--hextech-gold-dim);
+  transform: translateY(-1px);
+}
+
+.catalog-spell-card.selected {
+  border-color: var(--hextech-gold);
+  background: var(--hextech-gold-wash);
+  box-shadow: 0 0 8px rgba(200, 170, 110, 0.3);
+}
+
+.catalog-spell-card.matches-slot {
+  border-color: rgba(200, 170, 110, 0.55);
+}
+
+.spell-slot-tag {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  z-index: 2;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgba(12, 20, 28, 0.85);
+  color: var(--hextech-gold);
+  border: 1px solid rgba(200, 170, 110, 0.4);
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.catalog-spell-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* The one full-width row in the roster's grid. */
+.catalog-random-card {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--hextech-panel);
+  border: 2px dashed var(--hextech-line);
+  padding: 0.5rem;
+  cursor: pointer;
+  color: var(--hextech-teal);
+  font-size: 0.85em;
+  width: 100%;
+}
+
+.catalog-random-card:hover,
+.catalog-random-card.selected {
+  border-color: var(--hextech-teal);
+}
+
+/* ---------------------------------------------------------- spell detail —
+   the same description markup the in-game HUD renders, so the colours come
+   from the shared --spell-* custom properties in styles/main.css. */
+
+.spell-detail-header {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+}
+
+.spell-detail-header img {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 2px solid #9999;
+  flex-shrink: 0;
+}
+
+.spell-detail-header h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1em;
+}
+
+.spell-detail-costs {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+
+.spell-detail-cooldown {
+  color: #e8c17d;
+}
+
+.spell-detail-mana {
+  color: #9ed4ff;
+}
+
+.spell-detail-body {
+  margin-top: 0.8rem;
+  color: #eee;
+  font-size: 0.9em;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.spell-detail-body span {
+  font-style: italic;
+}
+
+.spell-detail-body .damage {
+  color: var(--spell-damage);
+}
+
+.spell-detail-body .buff {
+  color: var(--spell-buff);
+}
+
+.spell-detail-body .time {
+  color: var(--spell-time);
+}
+
+/* ------------------------------------------------------------------ nav */
+
+.pregame-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* ================================================================
+   Touch layout — body.touch-ui, not a viewport breakpoint. What differs
+   here is *interaction*: whether the player has a hover, a keyboard and a
+   precise pointer — hit-target sizes, and tap-driven affordances instead
+   of hover. Not how wide the window
+   is, and not the dialog's own size: a touch-capable laptop with a wide
+   screen still gets a bounded, centred dialog (see the `@media (max-width:
+   640px)` block further down) — only *interaction* rides on this flag. See
+   Game.applyTouchUiClass's file comment and useTouchUi.ts. 44px is the
+   smallest target a thumb hits reliably, the same number styles/hud.css's
+   touch layout uses throughout.
+   ================================================================ */
+
+/* `.catalog-spell-card` is not in this list: it is a 48px square in every
+   mode now, already over the thumb target, and a `min-height` on it would
+   only stretch it out of square. */
+body.touch-ui .pregame-tab,
+body.touch-ui .participant-card-main,
+body.touch-ui .participant-remove,
+body.touch-ui .participant-add-btn,
+body.touch-ui .catalog-random-card,
+body.touch-ui .input-mode-btn,
+body.touch-ui .kit-bar-btn,
+body.touch-ui .saved-kit-save,
+body.touch-ui .saved-kit-input,
+body.touch-ui .saved-kit-confirm,
+body.touch-ui .saved-kit-apply,
+body.touch-ui .saved-kit-delete {
+  min-height: 44px;
+}
+
+/* The only glyph-only button on the saved-kit chip, and 0.5rem of padding
+   leaves it a 27px-wide target — full 44px like `.participant-remove`, the
+   delete it is modelled on. */
+body.touch-ui .saved-kit-delete {
+  min-width: 44px;
+}
+
+/* Participant kit icons keep their visual size but get a full 44px tap
+   target via centred padding, rather than growing the icon itself. */
+body.touch-ui .kit-icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.touch-ui .participant-portrait {
+  width: 56px;
+  height: 56px;
+}
+
+/* Seven of these share one wrapping row above the roster, so they grow to a
+   thumb-sized square rather than only gaining height. */
+body.touch-ui .kit-slot-pill {
+  width: 46px;
+  height: 46px;
+}
+
+body.touch-ui .kit-slot-pill .fa-random {
+  line-height: 42px;
+}
+
+/* The description panel is opened by a hold here, not a hover, and lands
+   over a roster the thumb is already scrolling — so it is capped tighter
+   than the pointer default and scrolls its own overflow. The `max-height`
+   `useSpellPeek.place()` writes inline is the same 50vh; this only bounds
+   the prose inside it. */
+body.touch-ui .spell-peek {
+  font-size: 0.92em;
+}
+
+body.touch-ui .spell-peek .spell-detail-body {
+  max-height: 34vh;
+  overflow-y: auto;
+}
+
+/* ================================================================
+   Dialog size — driven by the viewport, not the interaction mode. A
+   touch-capable desktop monitor in touch mode still gets the bounded,
+   centred 760px dialog above; only a viewport this narrow gets the
+   edge-to-edge sheet. 640px matches `.pregame-columns`' own breakpoint
+   above — the width this file already treats as "too small to keep a
+   bordered dialog with margin around it" for the two-column settings grid,
+   reused here so the screen has one definition of "small", not two.
+   ================================================================ */
+
+@media (max-width: 640px) {
+  /* Applies to both `.pregame-modal` (below) and `.spell-preview-modal`,
+       whose own explicit width (see the "Loadout editor modal" section
+       above) still wins over this — a single spell's description does not
+       need to go edge to edge just because the viewport is a phone's. */
+  .pregame-modal-backdrop {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .pregame-modal {
+    width: 100vw;
+    max-width: none;
+    /* `100vh` on a real phone is the *layout* viewport — taller than
+           what's actually visible above the address bar — which clipped the
+           footer (summoner row / commit button) below the fold. `100dvh`
+           (dynamic viewport height) tracks the address bar and is what
+           actually fits; `100vh` stays first as a fallback for a browser
+           that doesn't parse `dvh` (that declaration is simply invalid and
+           dropped there, leaving `100vh` in effect). */
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-width: 0;
+    padding: 0.7rem;
+  }
+}
+
+/* ================================================================
+   Short viewport — a landscape phone (~360–430px tall), the natural way
+   to hold a game. The touch chrome above is sized for a *tall* portrait
+   screen: 46px slot pills, 44px buttons, each with its own margin. Stacked
+   inside a landscape-height modal they crush the one region that must stay
+   usable and scroll — the picker's roster — down to a sliver (see the
+   measurements in the tests/e2e/_repro screenshots that prompted this).
+   This reclaims the vertical space they waste: tighter margins around the
+   fixed chrome, smaller fixed icons, and a floor under the scroll region
+   so it can never collapse to a sliver again. Keyed on height, not
+   orientation, so a short desktop window is treated the same way.
+
+   There is far less to compact than there used to be: the mode toggle, the
+   96px champion-card grid, the separate D/F footer and the selector's
+   detail sheet + commit button are all gone, replaced by one slot bar and
+   one hint line above one list.
+   ================================================================ */
+@media (max-height: 480px) {
+  /* The narrow-viewport block above, applied to the other axis and for the
+     same reason: at this height the dialog's 3px border, its 1.2rem padding
+     and the 10vh of backdrop margin around it add up to about a full row of
+     the roster — more than the framing is worth on a screen this short. The
+     width stays bounded (`min(760px, 92vw)`), so a short *desktop* window
+     gets a wide, edge-to-edge-in-height sheet rather than a phone layout.
+
+     Scoped to `.loadout-modal`, not `.pregame-modal`: the other dialog
+     sharing that shell is a single spell's description
+     (`SpellPreviewModal.vue`), which has no scroll region begging for room
+     and would just be a mostly-empty full-height panel. The explicit height
+     needs no `align-items: stretch` on the backdrop to take effect — a flex
+     item with a set cross-size keeps it while still being centred, which is
+     what leaves the preview dialog alone. */
+  .loadout-modal {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-width: 0;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .pregame-modal-header {
+    margin-bottom: 0.4rem;
+  }
+
+  .kit-slot-bar {
+    gap: 0.3rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .kit-slot-pill,
+  body.touch-ui .kit-slot-pill {
+    width: 38px;
+    height: 38px;
+  }
+
+  body.touch-ui .kit-slot-pill .fa-random {
+    line-height: 34px;
+  }
+
+  .kit-bar-btn,
+  .kit-bar-btn.secondary,
+  body.touch-ui .kit-bar-btn,
+  .saved-kit-save,
+  body.touch-ui .saved-kit-save,
+  .saved-kit-confirm,
+  body.touch-ui .saved-kit-confirm,
+  body.touch-ui .saved-kit-input {
+    min-height: 38px;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  /* The name row is transient chrome over the same starved list the hint
+     line was pulled out of, so it gives back what it can. */
+  .saved-kit-form {
+    gap: 0.3rem;
+    margin-bottom: 0.3rem;
+  }
+
+  /* The hint is the first thing to go: it is one line of prose above a list
+     that has none to spare, and everything it says is also said by which
+     slot pill is lit. */
+  .kit-hint {
+    display: none;
+  }
+
+  .spell-detail-header h3 {
+    margin-bottom: 0.2rem;
+  }
+
+  body.touch-ui .catalog-random-card {
+    min-height: 34px;
+    padding: 0.3rem 0.5rem;
+  }
+
+  /* The roster's own rows, compacted. A landscape phone has ~210px of list, so
+     what buys back a row here is a narrower tile track and a smaller icon —
+     44px, still exactly a thumb target, rather than the 48px a roomier screen
+     gets. The track was 200px when a row was a name over four icons; a tile is
+     a portrait over a name, so it wants roughly half that. */
+  .kit-roster {
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  }
+
+  .catalog-spell-card {
+    width: 44px;
+    height: 44px;
+  }
+
+  .kit-shelf {
+    padding: 0.25rem;
+  }
+
+  .kit-shelf-heading {
+    margin-bottom: 0.25rem;
+  }
+
+  /* The roster is the scroller — it always shows real rows, never a sliver. */
+  .pregame-modal-body {
+    min-height: 120px;
+  }
+
+  body.touch-ui .spell-peek .spell-detail-body {
+    max-height: 26vh;
+  }
+}

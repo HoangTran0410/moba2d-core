@@ -1,0 +1,129 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": [
+    "src/types/**/*.d.ts",
+    "src/game/spell/**/*.ts",
+    "src/game/combat/**/*.ts",
+    // The pure half of the touch layer — geometry, stick maths and aim
+    // resolution. TouchControls.ts is deliberately not here: it draws, so it
+    // reaches for p5 globals, and it is covered by the ordinary typecheck.
+    "src/game/input/TouchLayout.ts",
+    "src/game/input/VirtualJoystick.ts",
+    "src/game/input/SpellAim.ts",
+    "tests/game/spell/**/*.ts",
+    "tests/game/combat/**/*.ts",
+    "src/game/gameObject/spellObjects/**/*.ts",
+    "src/game/gameObject/GameObject.ts",
+    "src/game/gameObject/SpellObject.ts",
+    "src/game/gameObject/Buff.ts",
+    "src/game/gameObject/attackableUnits/AttackableUnit.ts",
+    "src/game/gameObject/attackableUnits/Champion.ts",
+    "src/game/gameObject/attackableUnits/AIChampion.ts",
+    "src/game/gameObject/attackableUnits/DummyChampion.ts",
+    "src/game/gameObject/attackableUnits/Monster.ts",
+    "src/game/gameObject/structures/Turret.ts",
+    "src/game/gameObject/structures/Fountain.ts",
+    "src/game/gameObject/buffs/**/*.ts",
+    "src/game/managers/ObjectManager.ts",
+    "src/game/managers/UnitCollisionSystem.ts",
+    "tests/game/UnitCollisionSystem.test.ts",
+    // The seven individually-listed strict spells (Lux_R, Janna_R, Janna_Q,
+    // Anivia_R, Varus_Q, Pantheon_Q, Malphite_Q) moved into `packs/riot/spells/`
+    // in batch 4 task 3. `packs/**/*.ts` used to cover their new path here;
+    // batch 5 task 2 moved that glob to the pack's own `tsconfig.pack-riot.json`
+    // (wired into root `verify` as `typecheck:riot`, beside `typecheck:core`,
+    // until batch 5 task 6 relocated it to `packs/riot/package.json`'s own
+    // `typecheck` script, reached through the new `verify:all` instead — fix
+    // round 2 then gave the pack its own self-contained `tsconfig.json`
+    // rather than one living at this repo's own root). This program used to
+    // still resolve ~255 pack files transitively regardless, through
+    // `AIChampion.ts` -> `preset.ts` -> `spellRegistry.ts` ->
+    // `@/content/install`, which re-exported `BUNDLED_PACK_ID` straight from
+    // `packs/riot/pack` — see the `exclude` block's own comment below for
+    // what changed. Content-pack-and-repo-split batch 6 task 10 is what
+    // finally made "no pack present" true of this config: `install.ts` now
+    // reaches the pack only through the generated
+    // `src/generated/installedPacks.ts` barrel, which is empty with no
+    // optional pack installed, so this same transitive chain resolves
+    // nothing pack-shaped any more.
+    "src/game/vfx/**/*.ts",
+    "src/generated/**/*.ts",
+    "src/managers/AssetManager.ts",
+    // `tests/game/spells/representative-spells.test.ts` used to need a NOT
+    // here: it imported real pack spells by path (Anivia_R, Janna_Q,
+    // Janna_R, Lux_R, Malphite_Q, Pantheon_Q, Varus_Q, ...) and was a test
+    // *about pack spells* — batch 5 task 2 fix round 1 moved its strict
+    // coverage out of this program after finding it transitively pulled 256
+    // of 257 pack files into this one, defeating the point of the split
+    // above; task 6 fix round 2 gave it `tsconfig.strict-core-boundary.json`
+    // instead of the pack's own config, since it was core's own test file,
+    // not the pack's. Content-pack-and-repo-split batch 6 task 10 fix
+    // round 1 is what finally moved the file itself: what it actually
+    // proved was a fact about those seven spells' own activation-pattern
+    // declarations (`SpellRuntime`'s own mechanism is covered elsewhere,
+    // exhaustively, by `tests/game/spell/SpellRuntime.test.ts`), so it now
+    // lives in the pack's own suite, and there is no carve-out left to make
+    // here — the file this comment used to name is not in this tree.
+    "tests/game/types/BaseObjectTypes.test.ts",
+    "tests/game/types/BuffUnitTypes.test.ts",
+    "tests/game/types/ChampionTypes.test.ts",
+    "tests/game/config/spellCatalogId.types.test.ts",
+    // `src/seams/` and the tests that certify it. The whole-branch review of
+    // batch 5 measured `tsc --listFiles` for all three programs and found
+    // **zero** files under `tests/seams/` in any of them — 900-odd lines,
+    // most of them written by that batch, that nothing typechecked. The
+    // consequence was already sitting in the tree: `exported-seams.test.ts`
+    // imported `checkSpellRuntimeDrive` twice in one clause, which Node's own
+    // ESM parser rejects outright (`SyntaxError`) and esbuild silently
+    // dedupes, so the suite was green over a latent syntax error in the file
+    // that certifies core's public seam exports. Here rather than in
+    // `tsconfig.json` because `src/seams/` is pure TypeScript over `node:fs`
+    // with no p5 global and no Vue in sight — the exact shape this strict
+    // program exists for.
+    "src/seams/**/*.ts",
+    "tests/seams/**/*.ts",
+    "src/testing/**/*.ts"
+  ],
+  // Only one path below now matches `tests/game/spell/**/*.ts` or
+  // `tests/game/combat/**/*.ts` above but is carved back out: `Vision.test.ts`
+  // still has a real conditional pack import (`packIsInstalled('riot') ?
+  // (await import('../../../packs/riot/spells/Warwick_R'))… : null`) — an
+  // `import()` Vite leaves unresolved unless evaluated, so it typechecks fine
+  // whether or not the path exists, but it is still naming a path this
+  // repository cannot resolve, so it stays out of the strict program the same
+  // way it stays out of the ordinary one.
+  //
+  // The other five that used to sit here — `registry.ts` (value-imported the
+  // whole `packs/riot/spells/index` barrel), `AttackProfiles.test.ts`,
+  // `Pet.test.ts`, `ExecuteMarks.test.ts` and `Reach.test.ts` (each imported a
+  // specific pack spell by path, or called `registry.ts`'s loader) — were
+  // rewritten by this batch to stop reaching the pack at all: `registry.ts`
+  // now builds its barrel from `packs/reference/spells` through
+  // `src/testing/spellRegistry`'s `loadSpellsForTests`, and the four
+  // `*.test.ts` files import only `src/` and `tests/game/fixtures.ts` /
+  // `tests/game/spell/fixtures.ts`. None of the five names a `packs/riot/`
+  // path any more, so none needed excluding after that rewrite — the
+  // whole-branch fix pass found the rewrite had happened but the exclusion
+  // hadn't been revisited, dropped all five back into strict coverage, and
+  // confirmed `typecheck:core` still passes (see this batch's own fix report
+  // for what, if anything, that turned up). Their engine-mechanism assertions
+  // (Pet ownership, Reach/range, Execute marks, basic attack profiles) are
+  // exactly what strict coverage was protecting before the pack ever left,
+  // and there is no more reason for them to be dormant than any other file
+  // under `tests/game/combat/`.
+  //
+  // Before this task, this program still resolved ~255 pack files
+  // transitively regardless of the exclusion above — see the `include`
+  // block's own comment for what that chain was and why it, too, is gone
+  // now that `src/generated/installedPacks.ts` regenerates empty.
+  "exclude": [
+    "node_modules",
+    "testzone",
+    "tools",
+    "dist",
+    "tests/game/combat/Vision.test.ts"
+  ]
+}

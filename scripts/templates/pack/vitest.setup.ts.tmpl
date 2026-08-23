@@ -1,0 +1,35 @@
+import { installEngineGlobalsForTests, installPackForTests } from '@moba2d/core/testing/setup';
+// `setActiveLanes` has no subpath of its own, so it comes from the barrel —
+// harmless *only* because nothing in this file, or in any test this setup
+// runs before, calls `vi.mock(...)`. The two imports above come from
+// `/testing/setup` specifically to dodge the trap this line is still in:
+// the barrel's `export *` eagerly evaluates its whole closure (real
+// `ContentApi`, real `AssetManager`) before a test file's own `vi.mock`
+// registers, so a mock aimed at something this setup file's import graph
+// already touched will not take. If a test in this pack ever needs
+// `vi.mock('.../AssetManager', ...)` or similar and mysteriously sees the
+// real implementation, look here first.
+import { setActiveLanes } from '@moba2d/core/testing';
+import { data } from './pack';
+
+/**
+ * Every test file's own environment, run once per file before its own
+ * top-level code. Imported from `@moba2d/core/testing/setup`, **not** from
+ * `@moba2d/core/testing` (the barrel that also re-exports these two): the
+ * barrel's `export *` eagerly evaluates its whole closure — including the
+ * real `ContentApi`/`AssetManager` — before any test file's own
+ * `vi.mock(...)` calls register. See that subpath's own header.
+ */
+installEngineGlobalsForTests();
+await installPackForTests({ id: data.manifest.id, assetManifest: {}, data });
+
+/**
+ * This pack's own map as the active match's lane set, the same way core's
+ * own test setup installs a default so a test that reads lane waypoints
+ * without constructing a real `Game` still gets something real.
+ */
+const map = data.maps?.[0];
+if (map) {
+  const geometry = typeof map.geometry === 'function' ? await map.geometry() : map.geometry;
+  setActiveLanes(geometry.lanes ?? []);
+}

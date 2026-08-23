@@ -1,0 +1,36 @@
+// This pack's own strict typecheck program — self-contained inside this
+// repository, no path reaching up into core's checkout.
+//
+// `extends` core by its package name, not a relative path, so this file
+// keeps working unchanged whether `@moba2d/core` is a workspace symlink
+// (inside core's own monorepo, while this pack is still developed beside
+// it) or a real npm dependency (once this pack is a repository of its
+// own). `@moba2d/core/tsconfig.base.json` is the shared compiler-options
+// base core's own root program also extends — including `@/*`, core's own
+// internal alias, resolved relative to *that config file's own location*
+// regardless of where this one lives, which is what makes it portable
+// rather than a second `../../` in disguise. This pack's own code may
+// still never write `@/...` itself — that is the `pack-core-boundary`
+// seam's rule, an import scan `npm run check-seams` runs over this whole
+// package, not a typecheck one — but this pack's compiler needs the alias
+// resolvable to see real types *through* `@moba2d/core`'s exported entry
+// points, which are core's own unbundled source and import via `@/*`
+// internally like the rest of that codebase.
+//
+// `types` fills two ambient-declaration gaps that go with it: `vite/client`
+// for Vite's own `'...png?url'` asset-import syntax, and core's
+// `global.d.ts` (p5 in global mode) and `poly-decomp.d.ts` (the physics
+// library's own missing types), both published the same way
+// `tsconfig.base.json` is.
+{
+  "extends": "@moba2d/core/tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "types": [
+      "vite/client",
+      "@moba2d/core/types/global.d.ts",
+      "@moba2d/core/types/poly-decomp.d.ts"
+    ]
+  },
+  "include": ["**/*.ts"]
+}
