@@ -34,6 +34,7 @@
     "public",
     "scripts/check-seams.mjs",
     "scripts/generate-spell-catalog.mjs",
+    "scripts/installed-packs.mjs",
     "scripts/pack-new.mjs",
     "scripts/pack-add.mjs",
     "scripts/lib/packRoot.mjs",

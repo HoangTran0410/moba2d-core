@@ -4,8 +4,33 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 // @ts-expect-error — a build script, deliberately plain .mjs with no types.
 import { buildVersion } from './scripts/version.mjs';
+// @ts-expect-error — same: plain .mjs, shared with `scripts/check-chunks.mjs`.
+import { installedContentPackages } from './scripts/installed-packs.mjs';
 
 const version: string = buildVersion();
+
+/**
+ * Every installed `@moba2d/content-*` package, by package name.
+ *
+ * A content pack is **source Vite must transform**, not a built dependency,
+ * and the difference is not cosmetic. A pack ships `.ts` with Vite-specific
+ * import queries in it — `packs/riot/maps/summonersRiftGeometry.ts` imports
+ * `./summoner_map.json?raw` precisely because `assetsInclude` below claims
+ * `.json` ahead of Vite's JSON plugin. `?raw` is Vite's syntax, and
+ * dependency pre-bundling is esbuild's: esbuild does not honour it, resolves
+ * the specifier to the JSON *module*, and the pack's `JSON.parse(mapJsonRaw)`
+ * then throws `"[object Object]" is not valid JSON` at module-eval time in
+ * the browser. The match never boots and nothing in `verify` can see it —
+ * Vitest runs its own transform, and `vite build` never evaluates the module.
+ *
+ * This could not happen while a pack was a directory in this repository or a
+ * workspace symlink, because Vite does not pre-bundle either. It starts
+ * happening the moment a pack is what the split makes it: an ordinary
+ * `node_modules` dependency.
+ */
+const contentPackages: string[] = installedContentPackages(__dirname).map(
+  (pack: { packageName: string }) => pack.packageName
+);
 
 export default defineConfig({
   root: '.',
@@ -131,6 +156,10 @@ export default defineConfig({
      * rather than written to a file.
      */
     __APP_VERSION__: JSON.stringify(version),
+  },
+  optimizeDeps: {
+    // See `contentPackages` above: packs are source, never pre-bundled deps.
+    exclude: contentPackages,
   },
   assetsInclude: ['**/*.json'],
   build: {

@@ -31,6 +31,17 @@ jobs:
       # use it instead of system Chrome, which no runner has.
       - run: npx --yes playwright install --with-deps chromium
 
+      # p5 is a global loaded by `index.html` from `/vendor/p5.min.js`, and
+      # `public/vendor/` is git-ignored — `scripts/copy-vendor.mjs` fills it,
+      # from `predev`/`prebuild`. `tests/e2e/harness.mjs` starts Vite through
+      # its API, so neither hook runs, and a checkout that has not built yet
+      # serves a 404 for p5: the game never boots, `#play-btn` never appears,
+      # and the browser step below times out after 30s. Locally this hides —
+      # any earlier `npm run dev` or `npm run build` has already left the file
+      # on disk. Cheap enough to run unconditionally rather than depend on
+      # step ordering.
+      - run: npm run vendor:copy
+
       # **Content-pack-and-repo-split batch 6 task 10: `packs/riot/` is no
       # longer in this tree to move**, so `npm run verify:without-packs` (the
       # departure drill: move the pack aside, reinstall, verify, build, boot
