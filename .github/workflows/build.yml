@@ -102,15 +102,27 @@ jobs:
           && env.CLOUDFLARE_API_TOKEN != ''
         run: npx --yes wrangler@4 pages deploy dist --project-name=lol2d --branch=main
 
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Opt-in, exactly like the Cloudflare step above is opt-in on its
+      # secret — and for the same reason, learned the same way. That step
+      # guards on `CLOUDFLARE_API_TOKEN != ''` so a repository nobody
+      # configured to deploy does not go red on a deploy nobody asked for;
+      # these three steps had no such guard, only "is this main", so the
+      # first push to a *second* core repository failed on
+      # `configure-pages`: "Get Pages site failed. Please verify that the
+      # repository has Pages enabled". Every engine gate in the job had
+      # already passed. Publishing is a property of one repository, not of
+      # the branch name — set the `PUBLISH_PAGES` repository variable to
+      # `true` where the game actually ships from, and a fork or a test
+      # clone stays green without publishing anything.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_PAGES == 'true'
         uses: actions/configure-pages@v5
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
