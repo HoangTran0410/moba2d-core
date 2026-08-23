@@ -36,8 +36,23 @@ import {
  * Where the game's own content comes from when a player has never installed
  * anything. Seeded into the stored list on first run, after which it is an
  * ordinary entry the player can remove.
+ *
+ * **`hoangtran99.is-a.dev`, not the `hoangtran0410.github.io` alias for the
+ * same repository.** The `github.io` form was the original choice, on the
+ * reasoning that the name survives a future custom-domain change — true,
+ * and the wrong thing to optimise for: measured with `curl -sI`, that form
+ * 301-redirects to `http://hoangtran99.is-a.dev/...` (a downgrade to plain
+ * HTTP) and the redirect response itself carries no
+ * `access-control-allow-origin` header. A browser `fetch()` requires *every*
+ * hop in a cross-origin redirect chain to carry CORS headers, not just the
+ * final one, so the `github.io` form cannot ever succeed from a page — not
+ * "not published yet", structurally broken. The `is-a.dev` host, fetched
+ * directly, answers `200`/`404` with `access-control-allow-origin: *`, the
+ * same as any other path on it. If this ever needs to move again, measure
+ * the redirect chain with `curl -sI` first — a name that "should" be more
+ * stable is not a reason to reopen this.
  */
-export const DEFAULT_PACK_URL = 'https://hoangtran0410.github.io/moba2d-content-riot/manifest.json';
+export const DEFAULT_PACK_URL = 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json';
 
 export type PackInstallOutcome =
   | { manifestUrl: string; ok: true; id: string }
