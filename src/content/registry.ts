@@ -33,12 +33,39 @@ export function contentRegistry(): PackRegistry {
 }
 
 /**
+ * Forget the registry so the next read builds and installs a fresh one —
+ * and hand that fresh one back immediately, both halves installed.
+ *
+ * A newly installed runtime pack has to become visible without a page
+ * reload, and the registry is memoised in two places (here and
+ * `catalog.ts`). This is the one call that clears both and forces the
+ * rebuild right away, rather than leaving it for whatever reads the
+ * registry next. `resetContentRegistryForTests` below predates this by
+ * name only — it clears the same two stores — but stays lazy on purpose;
+ * see its own doc comment for the test that needs that.
+ */
+export function rebuildContentRegistry(): PackRegistry {
+  resetContentCatalogForTests();
+  codeInstalled = false;
+  return contentRegistry();
+}
+
+/**
  * Forget the registry, so the next read builds and installs a fresh one —
  * both halves. Discards the instance (via `catalog.ts`'s own reset) rather
  * than calling `PackRegistry.reset()` on it: a test that has already
  * captured the old registry keeps a coherent object instead of one silently
  * emptied under it, and nothing outside these two modules holds the
  * reference, so the orphan is collected.
+ *
+ * Kept as its own body rather than delegating to `rebuildContentRegistry`:
+ * that function eagerly rebuilds *and reinstalls the code half* before
+ * returning, which several tests deliberately reset ahead of — see
+ * `registry.test.ts`'s "contentCatalog() alone installs the data half and
+ * nothing more", which needs the reset to stay lazy so it can observe
+ * `spellIds()` still empty. Same reset, evaluated at the same two call
+ * sites `rebuildContentRegistry` clears, just without forcing the rebuild
+ * this instant.
  */
 export function resetContentRegistryForTests(): void {
   resetContentCatalogForTests();

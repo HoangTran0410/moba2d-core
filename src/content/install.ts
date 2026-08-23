@@ -7,6 +7,7 @@ import type {
   SpellSource,
 } from './ContentPack';
 import type { PackRegistry } from './PackRegistry';
+import type { LoadedPack } from './packSource';
 import type { ChampionAttackTuning } from '@/game/gameObject/attackableUnits/Champion';
 import AssetManager from '@/managers/AssetManager';
 // **Every optional pack arrives through this one generated barrel**, and the
@@ -260,4 +261,30 @@ export function installBundledPackCode(registry: PackRegistry, api: ContentApi):
   for (let i = 0; i < BUNDLED_PACKS.length; i++) {
     registry.installCode(BUNDLED_PACK_DATA[i].manifest.id, BUNDLED_PACKS[i](api));
   }
+}
+
+/**
+ * A pack that arrived over the network, installed the same way a bundled one
+ * is.
+ *
+ * This is spec §9.1's Stage 2, and the point of the whole content-pack
+ * design is how little it is: the two halves go into the same registry
+ * through the same two calls, and the asset manifest is registered the same
+ * way the loop above registers a bundled pack's. What differs is only where
+ * the factory came from — a static import there, an `import()` of a URL
+ * here — and that difference lives entirely in `packSource.ts`.
+ *
+ * Order matters and matches the bundled path: data first, then code against
+ * it. `PackRegistry` refuses a second install under an id already taken, so
+ * a caller that installs the same pack twice gets a throw rather than a
+ * half-replaced roster.
+ */
+export function installRuntimePack(
+  registry: PackRegistry,
+  api: ContentApi,
+  pack: LoadedPack
+): void {
+  AssetManager.registerPackAssets?.(pack.manifest.id, pack.assetManifest);
+  registry.installData(pack.data);
+  registry.installCode(pack.data.manifest.id, pack.code(api));
 }
