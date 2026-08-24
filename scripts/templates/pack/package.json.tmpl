@@ -6,10 +6,13 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "check-seams": "moba2d-check-seams ./spells"
+    "check-seams": "moba2d-check-seams ./spells",
+    "build": "vite build && node scripts/write-manifest.mjs",
+    "manifest:write": "node scripts/write-manifest.mjs",
+    "verify": "npm run typecheck && npm run check-seams && npm test && npm run build"
   },
   "devDependencies": {
-    "@moba2d/core": "*",
+    "@moba2d/core": "__CORE_SPEC__",
     "@types/node": "^22.20.1",
     "@types/p5": "^1.7.6",
     "typescript": "^5.4.0",

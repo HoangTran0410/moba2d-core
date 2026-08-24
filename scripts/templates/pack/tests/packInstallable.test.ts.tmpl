@@ -1,0 +1,34 @@
+/**
+ * This pack passes the check core runs before it installs anything.
+ *
+ * The one test here that is not about an ability, and the one that used to
+ * be impossible to run: `validatePackData` is what stands between a pack and
+ * `PackLoadError('shape', ...)`, and before it was reachable from a pack the
+ * only place to meet it was a browser, after a deploy, as a red toast with
+ * the pack already live at a URL. Every message it produces names a field
+ * and a champion, and every one of them is a two-minute fix — but only if
+ * you can see it here, in seconds, instead of there.
+ *
+ * It reads the data half only, which is the half a runtime install validates
+ * before running any of this pack's code. The code half needs a real
+ * `ContentApi`, which is what the ability tests beside this one build.
+ *
+ * Keep this file. Growing a pack is exactly what breaks it: a fifth ability
+ * added to a champion's kit, a portrait left `null` on a new champion, a map
+ * whose lanes name a faction it never declared.
+ */
+import { describe, expect, it } from 'vitest';
+import { validatePackData } from '@moba2d/core/testing';
+import { data } from '../pack';
+
+describe('__PACK_NAME__', () => {
+  it('is a pack core would install', () => {
+    const checked = validatePackData(data);
+    expect(checked.ok === true ? [] : checked.errors).toEqual([]);
+  });
+
+  it('declares at least one champion a player can pick', () => {
+    const playable = (data.champions ?? []).filter(champion => champion.playable);
+    expect(playable.length).toBeGreaterThan(0);
+  });
+});

@@ -1,0 +1,88 @@
+/**
+ * Writes `dist/manifest.json` — the file core fetches *before* it runs any
+ * of this pack's code, and the URL a player pastes into "Tìm pack".
+ *
+ * Runs after `vite build` (see this package's `build` script) and reads the
+ * built `dist/pack.js` rather than importing `../pack.ts`: this is plain
+ * Node with no TypeScript loader, and by the time it runs that file already
+ * exists as plain ESM. Only the *data* half is read — inert data, no
+ * `ContentApi` constructed — so nothing of the engine is needed here.
+ */
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const dist = join(root, 'dist');
+
+/**
+ * The oldest core this pack is known to work against.
+ *
+ * Core parses exactly two shapes — `*` and `>=X.Y.Z` — and treats anything
+ * else as unsatisfiable, which a player meets as "pack cần core <range>"
+ * with no way forward. A range like `^1` or `>=1.0` is therefore not a
+ * loose declaration, it is a pack that refuses to install. Raise the floor
+ * deliberately when this pack starts depending on something newer.
+ */
+const coreRange = '>=1.0.0';
+
+const { data } = await import(pathToFileURL(join(dist, 'pack.js')).href);
+const championCount = data.champions.filter(champion => champion.playable).length;
+
+/**
+ * Every file this build emitted, relative to the manifest and POSIX-separated
+ * — the list core's background prefetch walks to fill its offline cache.
+ *
+ * A static host offers no directory listing, so a prefetch that is not handed
+ * a list can only cache what a match happens to ask for, which is the
+ * champion the player already picked and therefore already has. The ones
+ * they have not played are exactly what the offline case is about.
+ *
+ * `manifest.json` excludes itself: core already has it — fetching it is what
+ * produced this list.
+ */
+function emittedFiles(dir, prefix = '') {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...emittedFiles(join(dir, entry.name), rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+const files = emittedFiles(dist)
+  .filter(name => name !== 'manifest.json')
+  .sort();
+
+writeFileSync(
+  join(dist, 'manifest.json'),
+  JSON.stringify(
+    {
+      id: '__PACK_ID__',
+      version: pkg.version,
+      coreRange,
+      // The name core shows wherever this pack appears — the install
+      // confirmation, the installed row, and the section header over this
+      // pack's champions in the picker. Core re-reads this manifest on every
+      // boot and rewrites its stored record from it, so renaming here reaches
+      // a browser that installed under the old name without anyone
+      // reinstalling anything.
+      name: '__PACK_NAME__',
+      // Both resolve against this manifest's own URL, and both must land on
+      // its own origin — core refuses a manifest that points execution
+      // somewhere other than where the player was shown it came from.
+      entry: 'pack.js',
+      assets: 'assets/',
+      champions: championCount,
+      files,
+    },
+    null,
+    2
+  ) + '\n'
+);
+
+console.log(
+  `manifest written: __PACK_ID__@${pkg.version}, ${championCount} champion(s), ${files.length} file(s)`
+);

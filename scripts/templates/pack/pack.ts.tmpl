@@ -3,10 +3,20 @@ import type { ContentPackCode, ContentPackData } from '@moba2d/core/content/Cont
 import { map } from './map';
 // moba2d-pack-add spell: new imports go above this line
 import make__CHAMPION___Q, { Q_COOLDOWN_MS, Q_MANA } from './spells/__CHAMPION___Q';
+import make__CHAMPION___W, { W_COOLDOWN_MS, W_MANA } from './spells/__CHAMPION___W';
+import make__CHAMPION___E, { E_COOLDOWN_MS, E_MANA } from './spells/__CHAMPION___E';
+import make__CHAMPION___R, { R_COOLDOWN_MS, R_MANA } from './spells/__CHAMPION___R';
 
 /**
- * __PACK_NAME__ — one champion, one map, one ability: the smallest thing
+ * __PACK_NAME__ — one champion, one map, four abilities: the smallest thing
  * that is actually a pack, not the smallest thing that would compile.
+ *
+ * Four and not one because core validates a pack before installing it, and
+ * a `playable` champion there means exactly this: a portrait, and a kit of
+ * four. A pack that ships three is not a pack with a gap in it, it is a
+ * pack that fails to install, in a browser, after it is already published.
+ * The four here are deliberately the same bolt four times — your job is to
+ * make them different, and the shape is already in place for it.
  *
  * Split into a data half (`ContentPackData` — a roster, a map to list) and
  * a code half (`ContentPackCode` — real engine classes), because the data
@@ -17,22 +27,31 @@ import make__CHAMPION___Q, { Q_COOLDOWN_MS, Q_MANA } from './spells/__CHAMPION__
  *
  * Grow this with `moba2d-pack-add spell --champion __CHAMPION__ --slot W`,
  * or by copying `spells/__CHAMPION___Q.ts` and wiring the copy in by hand
- * the same way this file wires the original in below.
+ * the same way this file wires the originals in below.
  */
 export const data: ContentPackData = {
-  manifest: { id: '__PACK_ID__', version: '1.0.0', coreRange: '^1' },
+  // `coreRange` is the oldest core this pack works against. Core parses
+  // exactly two shapes — `*` and `>=X.Y.Z` — and treats anything else as
+  // unsatisfiable, so `^1` is not a loose range, it is a pack that refuses
+  // to install. `scripts/write-manifest.mjs` states the same floor for the
+  // published manifest; raise both together.
+  manifest: { id: '__PACK_ID__', version: '1.0.0', coreRange: '>=1.0.0' },
   champions: [
     {
       id: '__CHAMPION__'.toLowerCase(),
       name: '__CHAMPION__',
-      // A pack-relative asset key, or `null` for a champion with no
-      // portrait yet — this scaffold ships no art pipeline, so every art
-      // field here is `null` until you add one.
-      image: null,
+      // A key in this pack's own `assetManifest.ts`, never one of core's —
+      // see that file, and the `pack-asset-key` seam. A `playable` champion
+      // must have one; only a non-playable roster row (a shelf, a summoner
+      // spell list) may leave it `null`.
+      image: 'champ_hero',
       playable: true,
       attack: { damage: 14, attacksPerSecond: 1.1, range: 300 },
       spells: [
         '__CHAMPION___Q',
+        '__CHAMPION___W',
+        '__CHAMPION___E',
+        '__CHAMPION___R',
         // moba2d-pack-add spell: new slot ids go above this line
       ],
     },
@@ -40,7 +59,7 @@ export const data: ContentPackData = {
   // Every number below is imported from the spell file it describes, never
   // restated by hand, so a description can never disagree with the ability
   // it describes. `moba2d-pack-add spell` does not write an entry here yet
-  // — add one for a new spell by hand, the same shape as this one.
+  // — add one for a new spell by hand, the same shape as these.
   spellDisplay: {
     __CHAMPION___Q: {
       name: '__CHAMPION__ Q',
@@ -50,6 +69,30 @@ export const data: ContentPackData = {
       manaCost: Q_MANA,
       specCoolDownMs: Q_COOLDOWN_MS,
     },
+    __CHAMPION___W: {
+      name: '__CHAMPION__ W',
+      description: 'TODO: describe what the player sees, in Vietnamese HTML.',
+      iconKey: null,
+      coolDownMs: W_COOLDOWN_MS,
+      manaCost: W_MANA,
+      specCoolDownMs: W_COOLDOWN_MS,
+    },
+    __CHAMPION___E: {
+      name: '__CHAMPION__ E',
+      description: 'TODO: describe what the player sees, in Vietnamese HTML.',
+      iconKey: null,
+      coolDownMs: E_COOLDOWN_MS,
+      manaCost: E_MANA,
+      specCoolDownMs: E_COOLDOWN_MS,
+    },
+    __CHAMPION___R: {
+      name: '__CHAMPION__ R',
+      description: 'TODO: describe what the player sees, in Vietnamese HTML.',
+      iconKey: null,
+      coolDownMs: R_COOLDOWN_MS,
+      manaCost: R_MANA,
+      specCoolDownMs: R_COOLDOWN_MS,
+    },
   },
   maps: [map],
 };
@@ -57,6 +100,9 @@ export const data: ContentPackData = {
 const code = (api: ContentApi): ContentPackCode => ({
   spells: {
     __CHAMPION___Q: make__CHAMPION___Q(api),
+    __CHAMPION___W: make__CHAMPION___W(api),
+    __CHAMPION___E: make__CHAMPION___E(api),
+    __CHAMPION___R: make__CHAMPION___R(api),
     // moba2d-pack-add spell: new entries go above this line
   },
 });

@@ -54,6 +54,11 @@ describe('@moba2d/core/testing', () => {
         'setActiveLanes',
         'stubGameGlobals',
         'validatePack',
+        // The data half's own validator, added so a pack can run core's
+        // install check on itself: before it was reachable from a pack, the
+        // only place to meet `PackLoadError('shape', ...)` was a browser,
+        // after a deploy, with the pack already live at a URL.
+        'validatePackData',
         'withWalls',
       ].sort()
     );

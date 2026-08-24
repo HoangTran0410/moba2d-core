@@ -1,52 +1,85 @@
 # __PACK_NAME__
 
-A `@moba2d/core` content pack, scaffolded by `moba2d-pack-new`: one
-champion (__CHAMPION__), one map, one ability — enough to typecheck, load
-into core, and start growing from.
+A `@moba2d/core` content pack: one champion (__CHAMPION__) with a full kit,
+one map, its own art path, and the build that publishes it — enough to
+install into the game today and start growing from.
 
 ## Run this next
 
 ```
 npm install
-npm test
-npm run check-seams
+npm run verify
 ```
 
-Both `test` and `check-seams` have to stay green — they are this pack's
-own gate, not core's, and `npm install` never runs them for you.
+`verify` is typecheck + `check-seams` + tests + the published build, in that
+order. It is **this pack's own gate**: `npm install` never runs it for you,
+and core's own `verify` never reaches into a pack it does not own.
+
+## Publish it
+
+`npm run build` writes `dist/`, and `dist/manifest.json` is the whole pack
+behind one URL. `.github/workflows/publish.yml` does that on every push to
+`main` and puts the result on GitHub Pages — turn Pages on once, by hand, at
+**Settings → Pages → Source: GitHub Actions**, or every run fails at the
+deploy step.
+
+Players then install from:
+
+```
+https://<owner>.github.io/<repo>/manifest.json
+```
+
+pasted into the game's **Tìm pack** field. Any static host that serves
+`access-control-allow-origin: *` and a JavaScript MIME type for `.js` works
+the same way; Pages does both.
 
 ## Where things live
 
 - `pack.ts` — the whole pack's declaration: the roster, the map, and the
   code half core's registry calls to build real spell classes.
-- `spells/` — one file per ability. `__CHAMPION___Q.ts` is the example;
-  read it before writing a second one — the shape (tuning as exported
-  constants, a memoized factory, a separate spell-object class) is not
-  decoration, it is what keeps two different callers from building two
-  different, `instanceof`-incompatible classes with the same name.
+- `spells/` — one file per ability, four to a champion. `__CHAMPION___Q.ts`
+  is the example; read it before writing a second one. The shape (tuning as
+  exported constants, every class wrapped in `packClass`, a separate
+  spell-object class) is not decoration.
+- `packClass.ts` — the memo every class factory goes through. Its header
+  says why a pack cannot simply `class X extends Spell`.
+- `assetManifest.ts` — this pack's art, under this pack's own keys. Ships
+  one placeholder tile; replace it with real files.
 - `tests/` — one test per ability, driven through `pressSpell`, never
   through a lifecycle hook like `onSpellCast()` directly: a hook-calling
   test cannot see activation, cooldown, resource cost or targeting
   rejection, and stays green against an ability that does not work at all.
+  `packInstallable.test.ts` is the other kind — it runs core's own
+  validator over this pack, so a change that would make the pack refuse to
+  install fails here instead of in a player's browser.
 - `map.ts` / `geometry.ts` — the world this pack ships. `geometry.ts` is
   fetched lazily, so a pregame picker never downloads the walls and lanes
   just to list this map's name.
+- `runtime-entry.ts` / `vite.config.ts` / `scripts/write-manifest.mjs` —
+  the published build. Each carries its own header; `vite.config.ts`'s
+  four settings are load-bearing and every one of them is a failure that
+  has actually happened.
 
-## Add another ability
+## Add a champion
+
+By hand, in `pack.ts`, using __CHAMPION__ as the model — `moba2d-pack-add
+champion` is not implemented and says so rather than pretending. Then fill
+its four slots:
 
 ```
-moba2d-pack-add spell <Name> --champion __CHAMPION__ --slot W
+moba2d-pack-add spell <Name> --champion <NewChampion> --slot Q
 ```
 
-writes the spell file and its test, and registers both in `pack.ts`.
+which writes the spell file and its test and registers both in `pack.ts`.
+A **playable** champion needs a portrait and exactly four abilities — core
+refuses to install anything else, and `tests/packInstallable.test.ts` is
+what tells you before a player would.
 
 ## Next steps
 
-- Write `spells/__CHAMPION___Q.ts`'s `description` and its real artwork.
-  Core's own `docs/VFX_STANDARD.md` is the whole bar in one page: a real
-  windup, damage scaled to a ~100 health pool, and as few layers as it
-  takes to say what the ability does.
+- Make the four abilities different from each other. They ship as the same
+  bolt four times on purpose: the shape is in place, the content is yours.
+- Write real `description`s and artwork. Core's own `docs/VFX_STANDARD.md`
+  is the whole bar in one page: a real windup, damage scaled to a ~100
+  health pool, and as few layers as it takes to say what the ability does.
 - Replace `geometry.ts` with a map worth playing on.
-- `moba2d-pack-add champion`, `map` and `monster` are not implemented by
-  this generator yet — add a champion, a map or a monster to `pack.ts` by
-  hand, using the one already there as the model.

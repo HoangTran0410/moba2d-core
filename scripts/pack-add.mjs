@@ -22,7 +22,8 @@
  * `spell` writes `spells/<Champion>_<Slot>.ts` and
  * `tests/<Champion>_<Slot>.test.ts` from the same two template files
  * `moba2d-pack-new` renders its own sample ability from
- * (`scripts/templates/pack/spells/__CHAMPION___Q.ts.tmpl` and its test),
+ * (`scripts/templates/pack/spells/__CHAMPION_____SLOT__.ts.tmpl` and its
+ * test),
  * substituting the champion and slot actually asked for rather than the
  * scaffold's fixed `Hero`/`Q` default — then registers the new spell in
  * `pack.ts`: the import, the champion's own `spells: [...]` roster entry,
@@ -124,8 +125,8 @@ if (existsSync(spellFile) && !force) {
   die(`spells/${slug}.ts already exists. Pass --force to overwrite it.`);
 }
 
-const spellTemplatePath = join(TEMPLATE_ROOT, 'spells/__CHAMPION___Q.ts.tmpl');
-const testTemplatePath = join(TEMPLATE_ROOT, 'tests/__CHAMPION___Q.test.ts.tmpl');
+const spellTemplatePath = join(TEMPLATE_ROOT, 'spells/__CHAMPION_____SLOT__.ts.tmpl');
+const testTemplatePath = join(TEMPLATE_ROOT, 'tests/__CHAMPION_____SLOT__.test.ts.tmpl');
 if (!existsSync(spellTemplatePath) || !existsSync(testTemplatePath)) {
   die(
     'scripts/templates/pack is missing from this install of @moba2d/core — ' +

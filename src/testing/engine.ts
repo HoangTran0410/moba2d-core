@@ -118,3 +118,23 @@ export { PackRegistry } from '../content/PackRegistry';
  * The same, for shape validation without a full install.
  */
 export { validatePack } from '../content/validate';
+
+/**
+ * The data half's own validator — the same check a *runtime* install runs,
+ * beside the whole-pack one above.
+ *
+ * Published for a reason of its own: `validatePackData` is what stands
+ * between a published pack and `PackLoadError('shape', ...)`, and until it
+ * was reachable from a pack the only place to meet it was a browser, after a
+ * deploy, with the pack already live at a URL. Every failure it reports names
+ * a field and a champion and takes a minute to fix — a scaffolded pack ships
+ * four abilities and a portrait because this function requires them of
+ * anything `playable` — and none of them could be discovered in less than a
+ * deploy cycle. The scaffold's own `tests/packInstallable.test.ts` is what
+ * says so out loud, in that pack's test run.
+ *
+ * `validatePack` above is the stricter one and needs the code half too; this
+ * is the half `loadPackFromManifest` checks before any of a pack's code runs.
+ */
+export { validatePackData } from '../content/validate';
+export type { DataValidationResult } from '../content/validate';

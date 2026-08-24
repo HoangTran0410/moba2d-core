@@ -1,0 +1,24 @@
+# The gate on a pull request.
+#
+# Pushes to `main` are deliberately not listed: `publish.yml` already runs
+# `npm run verify` before it deploys, so a second workflow doing the same
+# work on the same commit would only spend minutes to reach the same answer.
+name: Verify
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No `cache: npm`, no `npm ci` — see publish.yml for why.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run verify

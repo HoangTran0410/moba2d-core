@@ -1,0 +1,64 @@
+# Builds this pack and publishes `dist/` to GitHub Pages, which is the URL
+# players install from.
+#
+# Turn it on once, by hand, in the repository's Settings -> Pages ->
+# "Build and deployment" -> Source: **GitHub Actions**. Until that is set,
+# every run of this workflow fails at the deploy step with a permissions
+# error that reads like something is wrong with the token; nothing is.
+#
+# The published manifest then lives at
+# `https://<owner>.github.io/<repo>/manifest.json` — that whole string,
+# `manifest.json` included, is what goes into core's "Tìm pack" field.
+#
+# GitHub Pages serves `access-control-allow-origin: *` and a JavaScript MIME
+# type for `.js`, which is the whole of what core needs from a host: it
+# `fetch`es the manifest and `import()`s the entry cross-origin. Any static
+# host that does both works exactly as well.
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One publish at a time; a queued run replaces a pending one rather than
+# racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No `cache: npm`: `actions/setup-node`'s npm cache keys off a
+      # lockfile, and this repository commits none (see `.gitignore`), so
+      # asking for it fails the job outright with "Dependencies lock file is
+      # not found". Same reason the install below is `npm install`, not
+      # `npm ci` — and @moba2d/core is a git dependency, not a registry one.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      # Nothing reaches Pages that did not typecheck, pass its own tests and
+      # clear the seam scan first.
+      - run: npm run verify
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

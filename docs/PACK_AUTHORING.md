@@ -1,104 +1,190 @@
 # Writing a content pack
 
-A content pack is a plain npm package that depends on `@moba2d/core` and
-exports a roster, a map, and the real spell classes that make the roster
-playable. This repository ships two of them (`packs/reference/`, `1`
-champion, and — if installed as a dependency — a Riot-derived one living in
-its own repository), and nothing about either is special: this guide is
-everything you need to write a third one, starting from an empty directory.
+A content pack is a repository of its own that depends on `@moba2d/core`,
+declares a roster and a map, and ships the real spell classes that make the
+roster playable. Players install one by pasting a URL into the game's **Tìm
+pack** field; nothing about a pack is built into the game.
 
-If you have not read anything else in this repository first: `npx
-moba2d-pack-new my-pack` below is real, its output is copied from an actual
-run, and every command after it is one you can type verbatim against the pack
-it creates.
+This page is the whole path from an empty directory to that URL. Every
+command below was run, in order, on a machine with nothing installed but
+Node and git — including the failures, which is why the two commands the
+first version of this document recommended are not here.
 
-## Scaffold one
+## The runbook
 
-```sh
-npx moba2d-pack-new my-pack --id my-pack --name "My Pack"
-```
-
-```
-  My Pack (@moba2d/content-my-pack) scaffolded at .../my-pack — 11 file(s) written.
-
-  Next:
-
-    cd .../my-pack
-    npm install
-    npm test
-```
-
-This writes a complete, runnable pack: one champion (fixed at `Hero`), one
-ability (`Hero_Q`), one map, a strict `tsconfig.json`, a Vitest config and
-setup file, and a README that repeats the next steps. Nothing here is a
-placeholder that fails to typecheck or fails its own test — `npm install &&
-npm test` on the untouched scaffold passes, every time, which is what makes
-it a starting point rather than a lecture.
-
-Before `npm install` will resolve anything, point the scaffolded
-`package.json`'s `"@moba2d/core": "*"` at a real install of core — a registry
-version once one is published, or in the meantime a git dependency
-(`"github:<owner>/<repo>#<branch>"`) or a `file:` path to a local checkout or
-tarball. `npm install` after that, then:
+**Stand outside core.** `moba2d-pack-new` writes into the directory you run
+it from, so running it inside a checkout of core creates the pack inside
+core's own tree — a pack you then cannot commit anywhere, because those files
+belong to a repository that is not yours. Pick any empty directory.
 
 ```sh
-npm test           # vitest run — 1 file, 3 tests, all green
-npm run check-seams # moba2d-check-seams ./spells — clean
-npm run typecheck   # tsc -p tsconfig.json — clean
+cd ~/somewhere-that-is-not-core
+npx --package=github:HoangTran0410/moba2d-core moba2d-pack-new my-pack \
+  --id my-pack --name "My Pack"
 ```
 
-Both `test` and `check-seams` are **this pack's own gate**, not core's —
-`npm install` never runs them for you, and core's own `verify` never reaches
-into a pack it does not own.
+`--package=github:...` is not optional and is the whole trick: neither
+`@moba2d/core` nor `moba2d-pack-new` is published to any npm registry, so a
+bare `npx moba2d-pack-new` fails with a 404 and always has. npx resolves a
+git spec directly, which takes about fifteen seconds and needs nothing
+installed first.
+
+```sh
+cd my-pack
+npm install
+npm run verify
+```
+
+`verify` is `typecheck` + `check-seams` + tests + the published build. On the
+untouched scaffold every part of it passes — 14 tests, `dist/manifest.json`
+written — and that is the point: this is a starting point, not a lecture with
+`TODO`s that fail.
+
+Then make it a repository of your own:
+
+```sh
+git init
+git add -A
+git commit -m "scaffold my-pack"
+gh repo create my-pack --public --source=. --push
+```
+
+**Turn Pages on once, by hand:** the new repository's **Settings → Pages →
+Build and deployment → Source: GitHub Actions**. The scaffolded
+`.github/workflows/publish.yml` builds and deploys on every push to `main`,
+and until that setting is changed every run of it fails at the deploy step
+with a permissions error that reads like a broken token. Nothing is broken;
+Pages simply has not been enabled.
+
+The published manifest then lives at — and this whole string, `manifest.json`
+included, is what a player pastes:
+
+```
+https://<owner>.github.io/<repo>/manifest.json
+```
+
+Any static host works as well as Pages. Core needs exactly two things from
+one: `access-control-allow-origin: *`, because it fetches the manifest and
+`import()`s the entry cross-origin, and a JavaScript MIME type for `.js`.
+
+### Developing beside a local core
+
+`--core` writes a different dependency spec into the scaffolded
+`package.json`. Use it when you are changing core and the pack together:
+
+```sh
+node /path/to/moba2d-core/scripts/pack-new.mjs my-pack \
+  --id my-pack --core file:/path/to/moba2d-core
+```
+
+Anything npm understands is accepted verbatim — a `file:` path, a fork, a
+branch, a tarball. The default is `github:HoangTran0410/moba2d-core#main`.
+
+## What core refuses, and when you find out
+
+Four rules decide whether a published pack installs at all. Each of them used
+to be discoverable only in a browser, after a deploy, with the URL already
+handed out — so each of them is now something the scaffold gets right and
+`npm run verify` re-checks every run.
+
+- **A playable champion has a portrait and exactly four abilities.**
+  `validatePackData` says so, and says it in those words. Three abilities is
+  not a pack with a gap in it, it is a pack that fails to install. The
+  scaffold ships four (the same bolt four times — making them different is
+  your first job) and `tests/packInstallable.test.ts` runs core's own
+  validator over your pack on every `npm test`.
+- **`coreRange` is `*` or `>=X.Y.Z`, and nothing else.** Core's parser reads
+  those two shapes and treats everything else as unsatisfiable, so `^1` — the
+  ordinary npm way to write it — is not a loose range, it is a pack that
+  refuses to install with a message that reads like a real version conflict.
+  It is stated twice, in `pack.ts` and in `scripts/write-manifest.mjs`; raise
+  both together.
+- **A manifest needs `id`, `version`, `coreRange`, `name`, `entry` and
+  `assets`,** and `entry` and `assets` must resolve onto the manifest's own
+  origin. A pack may be served from anywhere, but it may not point execution
+  somewhere other than where the player was shown it came from — that
+  disclosure is the whole security model of the install prompt.
+- **The pack's `manifest.id` and its data half's `manifest.id` must agree.**
+  Two places, one string, and core checks them against each other.
 
 ## Where things live
 
 ```
 my-pack/
-├── package.json       # name, @moba2d/core dependency, the three scripts above
-├── tsconfig.json       # extends @moba2d/core's own strict base config
-├── pack.ts             # the whole pack's declaration — see below
-├── map.ts               # the cheap summary a pregame picker lists
-├── geometry.ts            # the real walls/lanes, fetched only once a match starts
+├── package.json           # name, the @moba2d/core spec, the five scripts
+├── tsconfig.json          # extends @moba2d/core's own strict base config
+├── pack.ts                # the whole pack's declaration — see below
+├── packClass.ts           # the memo every class factory goes through
+├── assetManifest.ts       # this pack's art, under this pack's own keys
+├── map.ts                 # the cheap summary a pregame picker lists
+├── geometry.ts            # the real walls/lanes, fetched once a match starts
 ├── spells/
-│   └── Hero_Q.ts          # one file per ability
+│   └── Hero_Q.ts          # one file per ability, four to a champion
 ├── tests/
-│   └── Hero_Q.test.ts     # one test per ability, driven through press()
-├── vitest.config.ts
-└── vitest.setup.ts
+│   ├── Hero_Q.test.ts     # one test per ability, driven through press()
+│   └── packInstallable.test.ts   # core's own install check, run locally
+├── runtime-entry.ts       # the single module a runtime install imports
+├── vite.config.ts         # the published build
+├── scripts/write-manifest.mjs    # writes dist/manifest.json
+└── .github/workflows/     # publish.yml (Pages) + verify.yml (PRs)
 ```
 
-`pack.ts` is split into a **data half** (`ContentPackData` — roster, map
-list, spell display metadata: names, icons, cooldowns) and a **code half**
+`pack.ts` is split into a **data half** (`ContentPackData` — roster, map list,
+spell display metadata: names, icons, cooldowns) and a **code half**
 (`ContentPackCode` — real engine classes, built from `api`). The split exists
 because the data half has to be readable without ever building a
 `ContentApi`: a menu screen that only wants champion names and portraits
 should never have to load the engine first. `@moba2d/core/content/ContentPack`
-carries the full reasoning in its own header — read it once if you want the
-"why", not just the "what".
+carries the full reasoning in its own header.
 
 ```ts
 export const data: ContentPackData = {
-  manifest: { id: 'my-pack', version: '1.0.0', coreRange: '^1' },
-  champions: [{ id: 'hero', name: 'Hero', playable: true, spells: ['Hero_Q'], /* ... */ }],
+  manifest: { id: 'my-pack', version: '1.0.0', coreRange: '>=1.0.0' },
+  champions: [{ id: 'hero', name: 'Hero', image: 'champ_hero', playable: true,
+                spells: ['Hero_Q', 'Hero_W', 'Hero_E', 'Hero_R'] }],
   spellDisplay: { Hero_Q: { name: 'Hero Q', coolDownMs: Q_COOLDOWN_MS, /* ... */ } },
   maps: [map],
 };
 
 const code = (api: ContentApi): ContentPackCode => ({
-  spells: { Hero_Q: makeHero_Q(api) },
+  spells: { Hero_Q: makeHero_Q(api), /* ... */ },
 });
 
 export default code;
 ```
 
-Three comment markers inside the scaffolded `pack.ts` —
-`// moba2d-pack-add spell: ... above this line`, one each for the import, the
-champion's `spells: [...]` array, and the code half's factory map — are the
-insertion points `moba2d-pack-add spell` writes into. They are plain,
-greppable strings on purpose, not a parser hunting for "the end of this
-object literal", which is the shape that breaks the day someone reformats a
-spacing the generator did not predict.
+Three comment markers inside `pack.ts` — `// moba2d-pack-add spell: ... above
+this line`, one each for the import, the champion's `spells: [...]` array, and
+the code half's factory map — are the insertion points `moba2d-pack-add spell`
+writes into. They are plain, greppable strings on purpose, not a parser
+hunting for "the end of this object literal", which is the shape that breaks
+the day someone reformats a spacing the generator did not predict.
+
+### Every class is a factory, and `packClass` is why that is one line
+
+A pack may not value-import core. `Spell`, `SpellObject`,
+`MissileSpellObject` and the rest arrive on the injected `api`, so a class
+body cannot `extends Spell` — it can only be built inside a function that has
+been handed an `api`. That much is the boundary (`pack-core-boundary`, below),
+not a preference.
+
+The factory also has to be memoized per `api`: the real game, an e2e script
+and a test each build their own `ContentApi`, and an unmemoized factory hands
+two callers two different classes with the same name, between which every
+`instanceof` answers false.
+
+Written out by hand that is three top-level declarations per class — a
+`__build`, a `__cache` WeakMap and a `make` that reads and writes it. The
+codemod that first moved a 237-file pack onto `api` did exactly that, 650
+times, and the result reads like build output rather than like source.
+`packClass.ts` is the eight lines that collapse it:
+
+```ts
+export default packClass(api => class Hero_Q extends api.Spell { /* ... */ });
+```
+
+It imports nothing of core but a type, so it costs the pack nothing at
+runtime and stays the pack's own to change.
 
 ## Add another ability
 
@@ -106,32 +192,20 @@ spacing the generator did not predict.
 moba2d-pack-add spell Bolt --champion Hero --slot W
 ```
 
-```
-  Hero_W written into .
-    spell    spells/Hero_W.ts
-    test     tests/Hero_W.test.ts
-    import   registered
-    roster   registered
-    code     registered
-  Next:
-    1. Write the player-visible script into the test names before touching
-       the spell body — "press once and X happens" — then run it, watch it
-       fail, and read the message.
-    2. Fill in spells/Hero_W.ts, and add a spellDisplay entry for 'Hero_W'
-       to pack.ts — this command does not write one.
-    3. npm test && npm run check-seams
-```
+Found by walking up from wherever you run it (never a hardcoded path or a
+directory literally named `packs`), so it works the same from a pack's own
+root, from a nested directory inside it, or inside a genuinely separate pack
+repository. It writes `spells/<Champion>_<Slot>.ts` and its test from the same
+template `moba2d-pack-new` renders its own abilities from, then wires the
+import, the kit-slot roster entry, and the code-half factory into `pack.ts`.
+It does **not** write a `spellDisplay` entry (name, icon, description); that
+has no template because it is content, not mechanism, and the command says so
+in its own "Next" output.
 
-This is found by walking up from wherever you run it (never a hardcoded path
-or a directory literally named `packs`), so it works the same from a pack's
-own root, from a nested directory inside it, or inside a genuinely separate
-pack repository. It writes `spells/<Champion>_<Slot>.ts` and its test from
-the same template `moba2d-pack-new` renders its own sample ability from,
-substituting the champion and slot you asked for — then wires the import, the
-kit-slot roster entry, and the code-half factory into `pack.ts` for you. It
-does **not** write a `spellDisplay` entry (name, icon, description); that has
-no template because it is content, not mechanism, and the command tells you
-so in its own "Next" output.
+Note that a **playable** champion's kit is full at four, so this command is
+for a champion you have just added, or for a slot you are replacing
+(`--force`). Adding a fifth ability to a playable champion produces a pack
+core will not install — which `npm test` will tell you.
 
 **Only `spell` is implemented.** `moba2d-pack-add champion`, `map` and
 `monster` are named in the command's own usage line and every one of them
@@ -139,8 +213,7 @@ refuses to run, loudly, non-zero — deliberately, rather than pretending to
 succeed and leaving you to discover later that no file was written. Add a
 champion, a map or a monster to `pack.ts` by hand, using the one already
 there as the model — the scaffold's own `pack.ts`, `map.ts` and `geometry.ts`
-are real, typechecked files, not documentation, so "the one already there" is
-never far away.
+are real, typechecked files, not documentation.
 
 ## The two doors
 
@@ -155,29 +228,28 @@ for two different callers:
   z-index, and so on. `packs/reference/spells/Vera_Q.ts`, in core's own
   checkout, is the worked example with the full surface exercised.
 - **`@moba2d/core/testing`** (plus its subpaths — `/testing/spell` and
-  `/testing/setup`, below, and `/testing/spells`, which exports
+  `/testing/setup`, and `/testing/spells`, which exports
   `loadSpellsForTests(...barrels)`: the pack-parameterised way to fill a real
   spell registry for a test file that wants more than one spell resolvable by
   id, without hard-importing a barrel) is what an *observer* — a test — sees:
   `buildTestApi()` builds a real `ContentApi` without a browser,
   `createGame()`/`stubGameGlobals()` give a test a real match to drop units
-  into, and `@moba2d/core/testing/spell`'s `pressSpell(spell, context)`
-  drives a cast exactly the way a keypress does — never a lifecycle hook like
+  into, `validatePackData` is the install check core itself runs, and
+  `@moba2d/core/testing/spell`'s `pressSpell(spell, context)` drives a cast
+  exactly the way a keypress does — never a lifecycle hook like
   `onSpellCast()` directly, which cannot see activation, cooldown, resource
   cost, or targeting rejection, and stays green against an ability that does
   not work at all. The scaffolded `Hero_Q.test.ts` is the worked example:
   read it before writing a second test, the same way you read `Hero_Q.ts`
-  before writing a second spell — the shape (tuning as exported constants, a
-  memoized factory, `pressSpell` never a hook) is not decoration, it is what
-  keeps this pack's own tests honest.
+  before writing a second spell.
 
-The same preset a separated pack's `vitest.config.ts` spreads
+The same preset a pack's `vitest.config.ts` spreads
 (`@moba2d/core/testing/vitest`) is what core's own suite runs under too — so
 core is the preset's first real consumer, not just its publisher, and the two
 cannot silently drift the way two independently hand-written test setups
 would.
 
-## What `pack-core-boundary` refuses, and why
+## What `check-seams` refuses, and why
 
 `npm run check-seams` runs `moba2d-check-seams ./spells`, which is the
 `moba2d-check-seams` bin wrapping the same rule functions core publishes as
@@ -203,8 +275,8 @@ your pack's own script needs to run a specific rule (`checkManaSpend`,
   `types`) are declared `devDependencies`, never `dependencies`: this pack
   needs nothing of core at runtime, only the object `api` hands it.
 - **`pack-asset-key`** fails the scan on a bare asset key reused from core's
-  own manifest. A pack resolves art through **its own** generated manifest,
-  never core's — `api.asset('spell_hero_q')` looks the key up in whichever
+  own manifest. A pack resolves art through **its own** `assetManifest.ts`,
+  never core's — `api.asset('champ_hero')` looks the key up in whichever
   manifest belongs to the pack that called it, and a key that happens to
   exist in core's own art (because you copied an example without renaming
   it) is exactly the failure this rule exists to catch before it ships.
@@ -222,6 +294,21 @@ page — unique-per-champion motifs, no instant pop-in, damage scaled to a
 player has to find on the ground, and the two traps `tsc` cannot catch
 (`getDisplayBoundingBox()`, `onDashUpdate`). Read it there rather than a copy
 here — a second copy is a second thing that can drift from the first.
+
+The scaffold's `assetManifest.ts` ships one placeholder tile inlined as a
+data URI, so the art path works before you have any art. Real art is a file:
+
+```ts
+import heroPortrait from './assets/champ_hero.png?url';
+```
+
+`?url` is Vite's own syntax and hands back the emitted file's URL rather than
+its bytes, which is what keeps `vite.config.ts`'s `assetsInlineLimit: 0`
+meaningful — art lands in `dist/assets/` as real files, and `pack.js`, which
+a player downloads before the menu can draw, carries none of it. A pack with
+more than a handful of images generates that file rather than writing it;
+core's own `scripts/generate-assets.mjs` is the worked example, and the
+scaffold's `.gitignore` already ignores a `generated/` directory for it.
 
 ## The full spell-authoring mechanism
 

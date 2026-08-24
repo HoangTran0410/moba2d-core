@@ -1,4 +1,4 @@
-import type { ContentApi } from '@moba2d/core/content/ContentApi';
+import { packClass } from '../packClass';
 
 /**
  * __CHAMPION__'s __SLOT__ — a short straight bolt, the smallest ability shape that
@@ -10,10 +10,11 @@ import type { ContentApi } from '@moba2d/core/content/ContentApi';
  * Replace the tuning, the hit and the draw; keep the shape:
  *   - tuning as exported constants, so a test imports them rather than a
  *     retune silently becoming a test edit;
- *   - a factory that takes `api`, memoized — the real game, an e2e script
- *     and a test each build their own `ContentApi`, and a bare
- *     `return class ...` here would hand two independent callers two
- *     different, `instanceof`-incompatible classes with the same name;
+ *   - every class wrapped in `packClass` — a pack may not value-import
+ *     core, so `Spell` and `MissileSpellObject` arrive on `api` and a class
+ *     can only be built from it; the memo inside `packClass` is what stops
+ *     two callers with two different `ContentApi`s getting two
+ *     `instanceof`-incompatible classes with the same name;
  *   - `getDisplayBoundingBox()` the moment the effect paints past its own
  *     centre — `MissileSpellObject`'s default is already correct here.
  */
@@ -28,7 +29,7 @@ export const __SLOT___MANA = 30;
  * below so a test can drive its collision behaviour directly, the way
  * `tests/__CHAMPION_____SLOT__.test.ts` does not need to but a pierce or an AoE would.
  */
-function __build__CHAMPION_____SLOT___Object(api: ContentApi) {
+export const make__CHAMPION_____SLOT___Object = packClass(api => {
   return class __CHAMPION_____SLOT___Object extends api.MissileSpellObject {
     speed = __SLOT___SPEED;
     size = 16;
@@ -57,17 +58,9 @@ function __build__CHAMPION_____SLOT___Object(api: ContentApi) {
       pop();
     }
   };
-}
-const __cache__CHAMPION_____SLOT___Object = new WeakMap<ContentApi, ReturnType<typeof __build__CHAMPION_____SLOT___Object>>();
-export function make__CHAMPION_____SLOT___Object(api: ContentApi) {
-  const cached = __cache__CHAMPION_____SLOT___Object.get(api);
-  if (cached) return cached;
-  const built = __build__CHAMPION_____SLOT___Object(api);
-  __cache__CHAMPION_____SLOT___Object.set(api, built);
-  return built;
-}
+});
 
-function __build__CHAMPION_____SLOT__(api: ContentApi) {
+export default packClass(api => {
   const __CHAMPION_____SLOT___Object = make__CHAMPION_____SLOT___Object(api);
 
   return class __CHAMPION_____SLOT__ extends api.Spell {
@@ -97,12 +90,4 @@ function __build__CHAMPION_____SLOT__(api: ContentApi) {
       super.drawPreview(api.combat.Reach.effectiveRange(this.range, this.owner));
     }
   };
-}
-const __cache__CHAMPION_____SLOT__ = new WeakMap<ContentApi, ReturnType<typeof __build__CHAMPION_____SLOT__>>();
-export default function make__CHAMPION_____SLOT__(api: ContentApi) {
-  const cached = __cache__CHAMPION_____SLOT__.get(api);
-  if (cached) return cached;
-  const built = __build__CHAMPION_____SLOT__(api);
-  __cache__CHAMPION_____SLOT__.set(api, built);
-  return built;
-}
+});

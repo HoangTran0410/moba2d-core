@@ -33,6 +33,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { packRootFrom } from '../../scripts/lib/packRoot.mjs';
+import { satisfiesCoreRange } from '@/content/packSource';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const packNewScript = join(repoRoot, 'scripts/pack-new.mjs');
@@ -62,12 +63,25 @@ async function walk(dir: string, base = dir): Promise<string[]> {
   return found;
 }
 
-/** The output path `pack-new`/`pack-add` write a `.tmpl` file's contents to. */
-function outputPathFor(templateRelPath: string): string {
+/**
+ * The output path(s) `pack-new` writes a `.tmpl` file's contents to.
+ *
+ * Plural because a `__SLOT__` in the *path* means one template and four
+ * files: core refuses to install a `playable` champion with any number of
+ * abilities but four, so the scaffold renders its one spell template once
+ * per slot rather than shipping a pack that cannot be published.
+ */
+function outputPathsFor(templateRelPath: string): string[] {
   const withoutExt = templateRelPath.slice(0, -'.tmpl'.length).replaceAll('__CHAMPION__', 'Hero');
   const segments = withoutExt.split('/');
   if (segments[segments.length - 1] === 'gitignore') segments[segments.length - 1] = '.gitignore';
-  return segments.join('/');
+  // `github/` -> `.github/`, the same reason `gitignore` has no leading dot
+  // on disk: a real `.github/` under this repository's own
+  // `scripts/templates/` is a directory GitHub's own tooling scans.
+  if (segments[0] === 'github') segments[0] = '.github';
+  const joined = segments.join('/');
+  if (!joined.includes('__SLOT__')) return [joined];
+  return ['Q', 'W', 'E', 'R'].map(slot => joined.replaceAll('__SLOT__', slot));
 }
 
 function runScript(script: string, args: string[], cwd: string) {
@@ -80,6 +94,28 @@ async function scaffold(dir: string, extraArgs: string[] = []) {
     [dir, '--id', 'demo-pack', '--name', 'Demo Pack', ...extraArgs],
     repoRoot
   );
+}
+
+/**
+ * Takes one slot back out of a scaffolded pack — the two files and all three
+ * of its registrations — leaving the kit with a hole in it.
+ *
+ * The scaffold ships all four slots filled, because core installs no other
+ * kind of playable champion, so "a free slot to add" is a state that has to
+ * be arranged rather than assumed. It is not a contrived one: a kit with a
+ * hole is exactly what a pack looks like halfway through being written, and
+ * it is the only state in which `moba2d-pack-add spell` has anything to do.
+ */
+async function openSlot(target: string, slot: string): Promise<void> {
+  await rm(join(target, `spells/Hero_${slot}.ts`));
+  await rm(join(target, `tests/Hero_${slot}.test.ts`));
+  const packPath = join(target, 'pack.ts');
+  const source = await readFile(packPath, 'utf8');
+  const dropped = source
+    .split('\n')
+    .filter(line => !new RegExp(`\\bHero_${slot}\\b`).test(line))
+    .join('\n');
+  await writeFile(packPath, dropped);
 }
 
 describe('packRootFrom', () => {
@@ -132,7 +168,7 @@ describe('moba2d-pack-new', () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
 
     const templateFiles = (await walk(templateRoot)).filter(f => f.endsWith('.tmpl'));
-    const expectedOutputs = templateFiles.map(outputPathFor).sort();
+    const expectedOutputs = templateFiles.flatMap(outputPathsFor).sort();
     const actualOutputs = (await walk(target)).sort();
 
     expect(actualOutputs).toEqual(expectedOutputs);
@@ -190,6 +226,7 @@ describe('moba2d-pack-add spell', () => {
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+    await openSlot(target, 'W');
 
     const before = new Set(await walk(target));
     const packBefore = await readFile(join(target, 'pack.ts'), 'utf8');
@@ -229,6 +266,7 @@ describe('moba2d-pack-add spell', () => {
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+    await openSlot(target, 'W');
 
     const result = runScript(
       packAddScript,
@@ -284,6 +322,7 @@ describe('moba2d-pack-add spell', () => {
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
+    await openSlot(target, 'E');
 
     const addResult = runScript(
       packAddScript,
@@ -371,5 +410,175 @@ describe('the scaffolded pack is real content, not just files', () => {
     expect(testStat.isFile()).toBe(true);
     expect(packSource).toContain('champions:');
     expect(packSource).toContain('maps: [map]');
+  });
+});
+
+/**
+ * The scaffold has to produce a pack someone can *publish*, not only one
+ * that typechecks against a checkout of core sitting next to it.
+ *
+ * Every assertion below is a step that was measured to fail on the scaffold
+ * as it shipped, in the order a stranger meets them:
+ *
+ *  1. `npm install` — 404. The template pinned `"@moba2d/core": "*"`, and
+ *     core is not on any registry, so the scaffold's own printed "Next:
+ *     npm install" was a step nobody could complete.
+ *  2. `npm run build` — no such script, and no `vite.config.ts`,
+ *     `runtime-entry.ts` or `write-manifest.mjs` for one to run. A pack
+ *     with no `dist/manifest.json` is a package; only a manifest makes it
+ *     something a player can paste a URL to.
+ *  3. Install refused — `pack.ts` declared `coreRange: '^1'`, and
+ *     `satisfiesCoreRange` (imported here rather than restated, so this
+ *     cannot drift from the parser that actually decides) reads `*` or
+ *     `>=X.Y.Z` and nothing else. A pack that shipped that string was
+ *     rejected by core with a message that reads like a real version
+ *     conflict.
+ */
+describe('the scaffolded pack is publishable, not only buildable', () => {
+  it('declares a @moba2d/core spec npm can actually resolve', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-dep-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
+    const spec = pkg.devDependencies?.['@moba2d/core'];
+
+    expect(spec, '@moba2d/core must be declared').toBeTypeOf('string');
+    expect(spec, 'a registry range 404s: core is published nowhere').not.toBe('*');
+    expect(spec).toMatch(/^(github:|git\+|file:|https:)/);
+  });
+
+  it('takes --core to point at a local checkout instead', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-core-flag-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target, ['--core', 'file:../moba2d-core']);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@moba2d/core']).toBe('file:../moba2d-core');
+  });
+
+  it('ships the four files a runtime install is served by', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-runtime-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const files = await walk(target);
+    for (const required of [
+      'runtime-entry.ts',
+      'vite.config.ts',
+      'scripts/write-manifest.mjs',
+      '.github/workflows/publish.yml',
+    ]) {
+      expect(files, `${required} is missing from the scaffold`).toContain(required);
+    }
+
+    const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
+    expect(pkg.scripts.build, 'build must produce both halves').toMatch(/vite build/);
+    expect(pkg.scripts.build).toMatch(/write-manifest/);
+  });
+
+  it('exports off runtime-entry exactly what loadPackFromManifest reads', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-entry-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const entry = await readFile(join(target, 'runtime-entry.ts'), 'utf8');
+    // `packSource.loadPackFromManifest` reads `module.default` (the factory)
+    // and `module.data` (the half it validates). Nothing else is mandatory.
+    expect(entry).toMatch(/export\s*\{[^}]*\bdefault\b/);
+    expect(entry).toMatch(/\bdata\b/);
+  });
+
+  it('declares a coreRange core can parse, in every file that states one', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-range-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const stated: string[] = [];
+    for (const file of await walk(target)) {
+      const content = await readFile(join(target, file), 'utf8');
+      for (const [, range] of content.matchAll(/coreRange:\s*'([^']+)'/g)) {
+        stated.push(`${file}: ${range}`);
+        expect(satisfiesCoreRange(range, '1.0.0'), `${file} declares ${range}`).toBe(true);
+      }
+    }
+
+    expect(stated.length, 'no file states a coreRange at all').toBeGreaterThan(0);
+  });
+
+  it('keeps the build output out of git', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-ignore-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const ignored = await readFile(join(target, '.gitignore'), 'utf8');
+    expect(ignored.split('\n').map(line => line.trim())).toContain('dist');
+  });
+});
+
+/**
+ * The scaffold is the shape every pack in the world copies, so the shape is
+ * worth pinning.
+ *
+ * `packClass` exists because the alternative was measured: the codemod that
+ * first moved 237 spell files onto the injected `api` wrote each class as
+ * three top-level declarations — `__buildX`, a `__cacheX` WeakMap, and a
+ * `makeX` that reads and writes it — 650 times, which is a few thousand
+ * lines of ceremony and the reason that pack reads like build output rather
+ * than like something a person wrote. The memo is real and the factory is
+ * required by `pack-core-boundary`; spelling both out at every call site is
+ * not.
+ */
+describe('the scaffolded spell reads like source, not like codemod output', () => {
+  it('wraps its classes in packClass instead of hand-rolling a memo per class', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-shape-factory-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const spell = await readFile(join(target, 'spells/Hero_Q.ts'), 'utf8');
+    expect(spell).toContain("import { packClass } from '../packClass';");
+    expect(spell).toMatch(/export default packClass\(/);
+    expect(spell, 'no hand-rolled build/cache pair').not.toMatch(/__build|__cache/);
+    expect(spell, 'no WeakMap per class').not.toContain('new WeakMap');
+
+    // And the helper it leans on is the pack's own, importing nothing of
+    // core but a type — `pack-core-boundary` is what makes that mandatory.
+    const helper = await readFile(join(target, 'packClass.ts'), 'utf8');
+    expect(helper).toContain('export function packClass');
+    expect(helper).toMatch(/import type \{ ContentApi \}/);
+    expect(helper, 'a value import of core would not resolve outside a monorepo').not.toMatch(
+      /^import \{/m
+    );
+  });
+
+  it('gives the champion a full kit, because core installs no other kind', async () => {
+    const parent = await freshTmpDir('lol2d-pack-new-kit-');
+    const target = join(parent, 'pack');
+    const result = await scaffold(target);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+
+    const files = await walk(target);
+    for (const slot of ['Q', 'W', 'E', 'R']) {
+      expect(files).toContain(`spells/Hero_${slot}.ts`);
+      expect(files).toContain(`tests/Hero_${slot}.test.ts`);
+    }
+
+    const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
+    expect(packSource, 'a playable champion needs a portrait key').toMatch(/image: '[^']+'/);
+    expect(packSource).not.toContain('image: null');
+
+    // The pack carries its own check for this, so growing it cannot quietly
+    // produce something core refuses to install.
+    expect(files).toContain('tests/packInstallable.test.ts');
+    const installable = await readFile(join(target, 'tests/packInstallable.test.ts'), 'utf8');
+    expect(installable).toContain("from '@moba2d/core/testing'");
+    expect(installable).toContain('validatePackData');
   });
 });

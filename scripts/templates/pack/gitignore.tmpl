@@ -1,2 +1,9 @@
 node_modules
 generated
+dist
+
+# No lockfile. @moba2d/core is a git dependency, and a committed lockfile
+# pins it to one commit — this pack would then keep building against a core
+# that has moved on, until someone remembers to reinstall. CI installs fresh
+# every run for the same reason.
+package-lock.json
