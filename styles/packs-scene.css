@@ -97,6 +97,169 @@
   padding: 1rem 1.2rem 1.4rem;
 }
 
+/* ------------------------------------------------------------- Sections
+
+   Three of them, in the order a player meets them: what is installed, the
+   shelf, and the URL field last. The rule of the whole screen is that the
+   installed list's classes (`.packs-row`, `.packs-origin`) are its own — the
+   shelf below wears `.packs-card*` instead, so a Playwright read of
+   `.packs-origin` cannot silently pick up a suggestion instead of an
+   install. */
+
+.packs-section {
+  margin-bottom: 1.4rem;
+}
+
+.packs-section:last-child {
+  margin-bottom: 0;
+}
+
+.packs-section-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-muted);
+  border-bottom: 1px solid var(--hextech-line);
+  padding-bottom: 0.35rem;
+}
+
+/* `main.css` sets `user-select: none` on `*`, which is right for a game
+   canvas and wrong for a URL a player is being told to use. Every string on
+   this screen that someone might want to send to themselves opts back in. */
+.packs-selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.packs-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: var(--hextech-muted);
+}
+
+/* --------------------------------------------------------------- The shelf
+
+   `packs/suggestedPacks.ts` rendered as cards. What this replaced was a
+   single `<span>` holding the default pack's URL: not clickable, not
+   installable, and — because of the `user-select: none` above — not even
+   copyable, so the one thing the screen told a player to do with that string
+   was the one thing the screen prevented.
+
+   A grid rather than a column: it is one card today and the whole point of
+   the file behind it is that it is a list. `minmax(260px, 1fr)` gives one
+   column on a phone and two on the 720px panel without a breakpoint. */
+.packs-catalog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.8rem;
+}
+
+.packs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+}
+
+.packs-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.packs-card-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--hextech-gold);
+}
+
+.packs-card-installed {
+  flex: none;
+  font-size: 0.78em;
+  color: #7fd4a0;
+}
+
+.packs-card-desc {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+/* Deliberately not `.packs-origin`: that class belongs to the installed list
+   (see `.packs-section`'s comment). Same never-elided treatment, though — a
+   URL a player is about to install must be readable in full. */
+.packs-card-url {
+  margin: 0;
+  font-size: 0.76em;
+  color: var(--hextech-muted);
+  word-break: break-all;
+}
+
+.packs-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+/* 40px floor on all three: they sit side by side, and the middle one of three
+   adjacent thumb targets is the one that gets mis-hit. */
+.packs-card-install,
+.packs-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--hextech-line);
+  background: transparent;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.8em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.packs-card-action:hover {
+  color: var(--hextech-text);
+  border-color: var(--hextech-muted);
+}
+
+/* The one that starts something. Teal, like every other "this is the action"
+   control on this screen (`.packs-add-row button`, `.pack-confirm` border) —
+   and not red: pressing it opens the confirmation, it does not install. */
+.packs-card-install {
+  border-color: var(--hextech-teal);
+  color: var(--hextech-teal);
+}
+
+.packs-card-install:hover:not(:disabled) {
+  background: #102426;
+  color: var(--hextech-text);
+}
+
+.packs-card-install:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Already installed: still on the screen, still saying so, but plainly not
+   an offer. A hidden button would leave a player wondering where it went. */
+.packs-card-install.done {
+  border-color: var(--hextech-line);
+  color: var(--hextech-muted);
+}
+
 /* ----------------------------------------------------------- Add by URL */
 
 .packs-add {
@@ -266,6 +429,27 @@
   justify-content: center;
   padding: 1rem;
   z-index: 20;
+}
+
+/* `tabindex="-1"`, so it can hold focus itself while both buttons are
+   disabled mid-install — see `PackInstallConfirm.vue`'s focus trap. It never
+   shows a ring of its own for that: the dialog is already the only thing on
+   screen, and a border round the whole box reads as an error state. */
+.pack-confirm:focus {
+  outline: none;
+}
+
+/* The buttons do, though. The trap moves focus with the keyboard, and a
+   dialog that steals focus without showing where it went is worse than one
+   that never took it. `:focus-visible`, so a mouse press does not leave a
+   ring behind. */
+.pack-confirm-actions button:focus-visible,
+.packs-card-install:focus-visible,
+.packs-card-action:focus-visible,
+.packs-add-row button:focus-visible,
+.packs-remove:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
 }
 
 .pack-confirm {

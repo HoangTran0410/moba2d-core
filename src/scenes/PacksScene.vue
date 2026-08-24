@@ -29,6 +29,13 @@
  * `@/game/`, so keeping it dynamic here is what actually keeps it true
  * rather than merely untested.
  *
+ * The screen is three sections in the order a player meets them: **Đã cài**
+ * (what this browser has), **Pack có sẵn** (the shelf, from
+ * `./packs/suggestedPacks.ts`), and **Thêm bằng URL** last. Add-by-URL was
+ * first when it was the only way to add anything; the shelf's Cài button runs
+ * the same `checkUrl` a pasted URL runs, so being on the shelf buys a pack a
+ * button and not a shortcut past the origin disclosure.
+ *
  * `<script setup>` is this component's setup function — see CLAUDE.md — so
  * every ref below is rebuilt on each `enter()`. Nothing here needs to
  * outlive an unmount: the installed-pack list itself lives in
@@ -37,7 +44,7 @@
  * own header on why that is safe rather than a leak: nothing installs until
  * "Cài đặt" is actually pressed.
  */
-import { defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   readInstalledPacks,
   writeInstalledPacks,
@@ -46,6 +53,7 @@ import {
 import { packBaseFor, packCacheUsage, forgetPack } from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
 import { packStageLabel } from './packStageLabel';
+import { SUGGESTED_PACKS, type SuggestedPack } from './packs/suggestedPacks';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -59,15 +67,6 @@ interface PackRow {
   entries: number;
   bytes: number;
 }
-
-/**
- * Duplicated from `src/content/runtimePacks.ts`'s own `DEFAULT_PACK_URL`
- * rather than imported: that module is the one `src/content/` file pinned to
- * the `game` chunk (see this file's header), so reaching it — even just for
- * a string literal — would fetch the whole match to render an empty-state
- * hint. See that file's own doc comment for why this particular host.
- */
-const DEFAULT_PACK_URL = 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json';
 
 const rows = ref<PackRow[]>([]);
 
@@ -327,6 +326,112 @@ const confirmInstall = async (): Promise<void> => {
     installing.value = false;
   }
 };
+
+// ------------------------------------------------------------ Suggested packs
+
+/**
+ * Is this shelf entry already installed?
+ *
+ * By id *or* by URL, not by URL alone: `installPackNow` refuses a second copy
+ * of an id already in the registry (`skipped: true`) whatever URL it came
+ * from, so a player who installed the riot pack from a mirror would otherwise
+ * be offered a "Cài" button that can only ever answer "đã được cài rồi".
+ */
+const isInstalled = (pack: SuggestedPack): boolean => {
+  for (const row of rows.value) {
+    if (row.manifestUrl === pack.manifestUrl || row.id === pack.id) return true;
+  }
+  return false;
+};
+
+/**
+ * The shelf's one-press install.
+ *
+ * It fills the URL field and runs the *same* `checkUrl` a pasted URL runs —
+ * it does not reach `installPackNow`, and it must not start. Being listed in
+ * `packs/suggestedPacks.ts` buys a pack a button, not trust: the origin
+ * disclosure in `PackInstallConfirm.vue` stands in front of a suggested pack
+ * exactly as it stands in front of a stranger's, and that is the whole of the
+ * security model (see that component's own header).
+ *
+ * Filling the field rather than passing the URL straight to `checkUrl` is
+ * deliberate too: whatever happens next — a confirmation, an error line — the
+ * player can see which URL it was about.
+ */
+const installSuggested = (pack: SuggestedPack): void => {
+  if (checking.value || pendingManifest.value || isInstalled(pack)) return;
+  url.value = pack.manifestUrl;
+  void checkUrl();
+};
+
+/** Which URL the copy button last managed to copy — the label flips back on a timer. */
+const copiedUrl = ref<string | null>(null);
+const copyFailed = ref(false);
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+const flashCopied = (value: string | null): void => {
+  copiedUrl.value = value;
+  copyFailed.value = value === null;
+  if (copyTimer) clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => {
+    copiedUrl.value = null;
+    copyFailed.value = false;
+  }, 1800);
+};
+
+/**
+ * The pre-Clipboard-API copy, for where the modern one does not exist.
+ *
+ * `navigator.clipboard` is undefined outside a secure context, and this game
+ * is served over plain `http` in every Playwright run and on any LAN address
+ * a second device on the sofa would use — which is exactly the device whose
+ * player wants to send themselves a URL.
+ *
+ * `user-select` is set inline because `styles/main.css` sets `user-select:
+ * none` on `*`: without it the selection is empty, `execCommand('copy')`
+ * returns true anyway, and the button says "Đã chép" having copied nothing.
+ */
+const copyByExecCommand = (value: string): boolean => {
+  const field = document.createElement('textarea');
+  field.value = value;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.top = '-1000px';
+  field.style.opacity = '0';
+  field.style.userSelect = 'text';
+  document.body.appendChild(field);
+  try {
+    field.select();
+    field.setSelectionRange(0, value.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+  }
+};
+
+const copyUrl = async (value: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(value);
+    flashCopied(value);
+    return;
+  } catch {
+    // No clipboard API, or the page does not have permission. Fall through.
+  }
+  flashCopied(copyByExecCommand(value) ? value : null);
+};
+
+/**
+ * Shown under the shelf only while nothing is installed — with a pack on the
+ * list the screen already says what it has, and the sentence becomes noise.
+ */
+const nothingInstalled = computed(() => rows.value.length === 0);
+
+onBeforeUnmount(() => {
+  if (copyTimer) clearTimeout(copyTimer);
+  copyTimer = null;
+});
 </script>
 
 <template>
@@ -347,60 +452,145 @@ const confirmInstall = async (): Promise<void> => {
 
     <div class="packs-body-shell">
       <div class="packs-body">
-        <div class="packs-add">
-          <label class="packs-add-label" for="pack-url-input">Thêm bằng URL</label>
-          <div class="packs-add-row">
-            <input
-              id="pack-url-input"
-              v-model="url"
-              type="url"
-              inputmode="url"
-              autocomplete="off"
-              placeholder="https://vi-du.com/pack/manifest.json"
-              :disabled="checking"
-              @keyup.enter="checkUrl"
-            />
-            <button
-              type="button"
-              id="pack-url-check"
-              :disabled="checking || !url.trim()"
-              @click="checkUrl"
-              @touchend.prevent="checkUrl"
-            >
-              {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
-            </button>
-          </div>
-          <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
-        </div>
+        <!-- 1. What this browser already has. First, because on a return
+             visit it is the answer to the question the screen was opened
+             with. `.packs-row` and `.packs-origin` are the installed list's
+             alone — the shelf below uses classes of its own, so a Playwright
+             `.packs-origin` read cannot silently pick up a suggestion. -->
+        <section class="packs-section">
+          <h2 class="packs-section-title">Đã cài</h2>
 
-        <ul v-if="rows.length" class="packs-list">
-          <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
-            <div class="packs-row-head">
-              <span class="packs-id">{{ row.id }}</span>
-              <span class="packs-version">v{{ row.version }}</span>
-            </div>
-            <p class="packs-origin">{{ row.origin }}</p>
-            <p class="packs-usage">{{ row.entries }} tệp · ~{{ formatApproxMB(row.bytes) }} MB</p>
-            <button
-              type="button"
-              class="packs-remove"
-              :class="{ confirming: confirmingUrl === row.manifestUrl }"
-              :disabled="removingUrl === row.manifestUrl"
-              @click="requestRemove(row)"
-              @touchend.prevent="requestRemove(row)"
-            >
-              <i class="fas fa-trash" aria-hidden="true"></i>
-              <span>{{ removeLabel(row) }}</span>
-            </button>
-          </li>
-        </ul>
+          <ul v-if="rows.length" class="packs-list">
+            <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
+              <div class="packs-row-head">
+                <span class="packs-id">{{ row.id }}</span>
+                <span class="packs-version">v{{ row.version }}</span>
+              </div>
+              <p class="packs-origin packs-selectable">{{ row.origin }}</p>
+              <p class="packs-usage">{{ row.entries }} tệp · ~{{ formatApproxMB(row.bytes) }} MB</p>
+              <button
+                type="button"
+                class="packs-remove"
+                :class="{ confirming: confirmingUrl === row.manifestUrl }"
+                :disabled="removingUrl === row.manifestUrl"
+                @click="requestRemove(row)"
+                @touchend.prevent="requestRemove(row)"
+              >
+                <i class="fas fa-trash" aria-hidden="true"></i>
+                <span>{{ removeLabel(row) }}</span>
+              </button>
+            </li>
+          </ul>
 
-        <div v-else class="packs-empty">
-          <p>Chưa cài pack nào.</p>
-          <p class="packs-empty-hint">
-            Pack mặc định: <span class="packs-origin">{{ DEFAULT_PACK_URL }}</span>
+          <p v-else class="packs-empty">
+            Chưa cài pack nào — game đang chạy với đúng một tướng mặc định.
           </p>
-        </div>
+        </section>
+
+        <!-- 2. The shelf. Every entry is a real card: a name, what it gives
+             you, its URL as selectable text, and three things you can press.
+             This replaced one unclickable, uncopyable `<span>` — see
+             `packs/suggestedPacks.ts`'s own header. -->
+        <section class="packs-section">
+          <h2 class="packs-section-title">Pack có sẵn</h2>
+
+          <ul class="packs-catalog">
+            <li v-for="pack in SUGGESTED_PACKS" :key="pack.manifestUrl" class="packs-card">
+              <div class="packs-card-head">
+                <span class="packs-card-name">{{ pack.name }}</span>
+                <span v-if="isInstalled(pack)" class="packs-card-installed">
+                  <i class="fas fa-circle-check" aria-hidden="true"></i> Đã cài
+                </span>
+              </div>
+
+              <p class="packs-card-desc">{{ pack.description }}</p>
+
+              <!-- Selectable on purpose: `styles/main.css` sets
+                   `user-select: none` on `*`, which is what made the old hint
+                   impossible to copy by hand. The button beside it is the
+                   easy path; this is the one that still works when the
+                   clipboard API does not. -->
+              <p class="packs-card-url packs-selectable">{{ pack.manifestUrl }}</p>
+
+              <div class="packs-card-actions">
+                <button
+                  type="button"
+                  class="packs-card-install"
+                  :class="{ done: isInstalled(pack) }"
+                  :disabled="isInstalled(pack) || checking || Boolean(pendingManifest)"
+                  @click="installSuggested(pack)"
+                  @touchend.prevent="installSuggested(pack)"
+                >
+                  <i
+                    :class="isInstalled(pack) ? 'fas fa-check' : 'fas fa-download'"
+                    aria-hidden="true"
+                  ></i>
+                  <span>{{ isInstalled(pack) ? 'Đã cài' : 'Cài' }}</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="packs-card-action"
+                  @click="copyUrl(pack.manifestUrl)"
+                  @touchend.prevent="copyUrl(pack.manifestUrl)"
+                >
+                  <i class="fas fa-copy" aria-hidden="true"></i>
+                  <span>{{ copiedUrl === pack.manifestUrl ? 'Đã chép' : 'Chép URL' }}</span>
+                </button>
+
+                <a
+                  class="packs-card-action"
+                  :href="pack.repoUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <i class="fab fa-github" aria-hidden="true"></i>
+                  <span>Mã nguồn</span>
+                </a>
+              </div>
+            </li>
+          </ul>
+
+          <p v-if="copyFailed" class="packs-add-error">
+            Trình duyệt không cho chép tự động — bạn chọn và chép URL ở trên nhé.
+          </p>
+          <p v-if="nothingInstalled" class="packs-hint">
+            Bấm <strong>Cài</strong> rồi xem kỹ tên miền ở màn xác nhận trước khi đồng ý.
+          </p>
+        </section>
+
+        <!-- 3. The power path, last: a URL from anywhere at all. It was first
+             on the screen when it was the only way to add anything. -->
+        <section class="packs-section">
+          <h2 class="packs-section-title">Thêm bằng URL</h2>
+          <div class="packs-add">
+            <label class="packs-add-label" for="pack-url-input">
+              Dán link manifest.json của pack
+            </label>
+            <div class="packs-add-row">
+              <input
+                id="pack-url-input"
+                v-model="url"
+                type="url"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="https://vi-du.com/pack/manifest.json"
+                :disabled="checking"
+                @keyup.enter="checkUrl"
+              />
+              <button
+                type="button"
+                id="pack-url-check"
+                :disabled="checking || !url.trim()"
+                @click="checkUrl"
+                @touchend.prevent="checkUrl"
+              >
+                {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
+              </button>
+            </div>
+            <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
+          </div>
+        </section>
       </div>
 
       <!-- A sibling of `.packs-body`, not a child of it: `.packs-body`
