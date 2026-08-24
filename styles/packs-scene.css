@@ -97,6 +97,107 @@
   padding: 1rem 1.2rem 1.4rem;
 }
 
+/* -------------------------------------------------------------------- Tabs
+
+   Two jobs, two tabs — see `PacksScene.vue`'s own header. Inside
+   `.packs-body-shell` and not beside the header, so `PackInstallConfirm`'s
+   backdrop covers them: a pending confirmation must not have the tab switched
+   out from under it. */
+
+.packs-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+/* 44px, because these are the screen's primary navigation and the first thing
+   a thumb reaches for. */
+.packs-tab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.packs-tab:hover {
+  color: var(--hextech-text);
+}
+
+.packs-tab.selected {
+  color: var(--hextech-gold);
+  border-bottom-color: var(--hextech-gold);
+}
+
+.packs-tab:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: -2px;
+}
+
+/* How many are installed, on the tab that manages them — the one number worth
+   knowing before you switch. */
+.packs-tab-count {
+  min-width: 1.35em;
+  padding: 0 0.3em;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  border-radius: 999px;
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: var(--hextech-text);
+}
+
+/* ------------------------------------------------------------------ Avatar
+
+   One tile, two sources. An installed pack draws its own icon (`<img>`); a
+   pack that is not installed draws a monogram core derived itself — see
+   `scenes/packs/packMonogram.ts` for why the line falls exactly there. Same
+   box either way, so the list does not reflow when one arrives. */
+
+.packs-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--hextech-line);
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.packs-avatar-img {
+  object-fit: cover;
+  background: var(--hextech-sunken);
+}
+
+.packs-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.packs-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 /* --------------------------------------------------------------- Explainer
 
    "Pack là gì?" — what moved here from the About screen, which is where the
@@ -264,7 +365,7 @@
 
 .packs-card-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.6rem;
 }
 
@@ -434,7 +535,7 @@
   padding: 0.7rem 0.9rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.55rem;
 }
 
 .packs-row-head {
@@ -506,6 +607,28 @@
   color: var(--hextech-muted);
   font-size: 0.95em;
   line-height: 1.5;
+}
+
+/* An empty tab that only says "nothing here" is a dead end. This is the way
+   out of it, and it is the same press the other tab is. */
+.packs-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin-top: 0.8rem;
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 2px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-empty-cta:hover {
+  background: #102426;
+  color: var(--hextech-text);
 }
 
 .packs-empty-hint {

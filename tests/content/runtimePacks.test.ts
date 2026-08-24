@@ -10,6 +10,20 @@ vi.mock('@/content/packSource', () => ({
   },
   fetchPackManifest: vi.fn(),
   loadPackFromManifest: vi.fn(),
+  // A real implementation, not a bare `vi.fn()`, for the reason the
+  // `packCache` mock below gives: what this returns lands in the stored
+  // record, and several cases assert on that record whole. A stub returning
+  // `undefined` would make every one of them pass without the field ever
+  // being derived.
+  resolvePackIcon: (manifest: { icon?: string }, manifestUrl: string) => {
+    if (!manifest.icon) return undefined;
+    try {
+      const resolved = new URL(manifest.icon, manifestUrl);
+      return resolved.origin === new URL(manifestUrl).origin ? resolved.href : undefined;
+    } catch {
+      return undefined;
+    }
+  },
 }));
 vi.mock('@/content/install', () => ({ installRuntimePack: vi.fn() }));
 vi.mock('@/content/registry', () => ({
@@ -96,8 +110,11 @@ describe('installRuntimePacks', () => {
 
     expect(fetchPackManifest).toHaveBeenCalledWith(DEFAULT_PACK_URL);
     expect(outcomes).toEqual([{ manifestUrl: DEFAULT_PACK_URL, ok: true, id: 'riot' }]);
+    // `name` is stored too: the packs screen lists a pack the way its author
+    // named it, and derives its monogram from that, so a record without it
+    // would show a machine id in both places.
     expect(readInstalledPacks()).toEqual([
-      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0' },
+      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot' },
     ]);
     // The offer is spent only once it has actually been taken — see
     // `runtimePacks.ts`'s own header.
@@ -180,7 +197,7 @@ describe('installRuntimePacks', () => {
     // and installs for real once the compile-in step is gone.
     expect(hasSeededDefaultPack()).toBe(true);
     expect(readInstalledPacks()).toEqual([
-      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0' },
+      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot' },
     ]);
   });
 
@@ -492,7 +509,7 @@ describe('installPackNow', () => {
 
     expect(readInstalledPacks()).toEqual([
       { manifestUrl: 'https://other/manifest.json', id: 'other', version: '1.0.0' },
-      { manifestUrl: packUrl, id: 'riot', version: '2.0.0' },
+      { manifestUrl: packUrl, id: 'riot', version: '2.0.0', name: 'Riot' },
     ]);
   });
 

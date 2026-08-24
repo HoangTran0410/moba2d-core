@@ -10,6 +10,7 @@ import {
   fetchPackManifest,
   loadPackFromManifest,
   PackLoadError,
+  resolvePackIcon,
   type RuntimePackManifest,
 } from './packSource';
 import type { PackRegistry } from './PackRegistry';
@@ -130,8 +131,28 @@ export type PackInstallOutcome =
    * player wanted is installed either way), and deliberately distinguishable
    * so a caller can say which of the two happened.
    */
-  | { manifestUrl: string; ok: true; id: string; skipped?: true }
+  | { manifestUrl: string; ok: true; id: string; skipped?: true; icon?: string }
   | { manifestUrl: string; ok: false; stage: string; message: string };
+
+/**
+ * One stored record, from a manifest and where it came from.
+ *
+ * Three call sites write the installed list — two in `installRuntimePacks`
+ * and one in `installPackNow` — and they all go through here so a field
+ * added to `InstalledPackRecord` cannot land in two of them and be missing
+ * from the third. `icon` is `undefined` for a manifest that declared none,
+ * and `JSON.stringify` drops the key entirely, which is what the store's own
+ * defensive read expects.
+ */
+function recordFor(manifestUrl: string, manifest: RuntimePackManifest): InstalledPackRecord {
+  return {
+    manifestUrl,
+    id: manifest.id,
+    version: manifest.version,
+    name: manifest.name,
+    icon: resolvePackIcon(manifest, manifestUrl),
+  };
+}
 
 export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   const stored = readInstalledPacks();
@@ -208,7 +229,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
       // file's own header.
       if (registry.hasPack(manifest.id)) {
         anyInstalled = true;
-        installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
+        installed.push(recordFor(manifestUrl, manifest));
         outcomes.push({ manifestUrl, ok: true, id: manifest.id, skipped: true });
         registerForCaching(manifestUrl, manifest);
         continue;
@@ -216,7 +237,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
       const pack = await loadPackFromManifest(manifest, manifestUrl);
       installRuntimePack(registry, api, pack);
       anyInstalled = true;
-      installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
+      installed.push(recordFor(manifestUrl, manifest));
       outcomes.push({ manifestUrl, ok: true, id: manifest.id });
       registerForCaching(manifestUrl, manifest);
     } catch (thrown) {
@@ -336,7 +357,7 @@ export async function installPackNow(
     for (const record of stored) {
       if (record.manifestUrl !== manifestUrl) next.push(record);
     }
-    next.push({ manifestUrl, id: manifest.id, version: manifest.version });
+    next.push(recordFor(manifestUrl, manifest));
     writeInstalledPacks(next);
     // The player has just made their own choice of pack, by URL — the
     // automatic offer this flag guards is spent either way. Without this,
@@ -365,7 +386,7 @@ export async function installPackNow(
         void prefetchPackFiles(base, manifest.files).catch(() => {});
       }
     }
-    return { manifestUrl, ok: true, id: manifest.id };
+    return { manifestUrl, ok: true, id: manifest.id, icon: resolvePackIcon(manifest, manifestUrl) };
   } catch (thrown) {
     const error = thrown as PackLoadError;
     return { manifestUrl, ok: false, stage: error.stage ?? 'import', message: error.message };

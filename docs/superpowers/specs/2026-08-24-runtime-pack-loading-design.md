@@ -96,6 +96,23 @@ Tuỳ chọn, không bắt buộc: pack không khai `files` vẫn cài, vẫn ch
 thường, chỉ là không có gì được kéo trước. Đo trên pack thật: 238 chunk, 351
 asset, 1 entry — 590 mục, ~21KB JSON trước gzip.
 
+### 3.2 `icon` — thêm sau, lúc làm màn Pack
+
+```json
+"icon": "icon.png"
+```
+
+Tương đối so với manifest như `entry`/`assets`, và đi qua đúng `resolveWithin`
+đó: một pack không được trỏ `<img src>` của core sang host khác. Tuỳ chọn.
+
+Nó **chỉ hiện cho pack đã cài**. Pack đã cài thì code của nó đang chạy với toàn
+quyền trên trang rồi, thêm một tấm ảnh không đổi gì; pack **chưa** cài vẫn là
+người lạ, và tranh do người lạ chọn nằm cạnh tên miền trong màn xin quyền chính
+là cách cổ điển để mua lòng tin mà dòng tên miền sinh ra để không cho — vẽ một ổ
+khoá, một cái khiên, hay logo của pack khác. Nên màn "Pack có sẵn" và màn xác
+nhận đều dùng monogram core tự suy ra từ tên + id (`scenes/packs/packMonogram.ts`),
+không gửi request nào tới host chưa được đồng ý.
+
 **Vì sao manifest tách khỏi bundle.** Ba bước, và ranh giới nằm giữa bước 2 và 3:
 
 1. `fetch(manifestUrl)` — JSON thuần, chưa chạy code nào

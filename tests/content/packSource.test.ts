@@ -5,6 +5,7 @@ import {
   satisfiesCoreRange,
   PackLoadError,
   PACK_LOAD_TIMEOUT_MS,
+  resolvePackIcon,
   type RuntimePackManifest,
 } from '@/content/packSource';
 
@@ -117,6 +118,62 @@ describe('fetchPackManifest', () => {
     vi.stubGlobal('fetch', respondWith({ ...MANIFEST, files: ['a.js', 42] }));
     const manifest = await fetchPackManifest('https://h/p/manifest.json', '1.0.0');
     expect(manifest.files).toEqual(['a.js']);
+  });
+
+  it('reports the manifest stage when icon is present but not a string', async () => {
+    vi.stubGlobal('fetch', respondWith({ ...MANIFEST, icon: 42 }));
+    const error = await fetchPackManifest('https://h/p/manifest.json', '1.0.0').catch(e => e);
+    expect(error.stage).toBe('manifest');
+    expect(error.message).toContain('icon');
+  });
+
+  /**
+   * The same rule `entry` and `assets` obey, and it matters more here than it
+   * looks: an icon is an `<img src>` core renders on its own page, so a pack
+   * pointing it at some other host would make the packs screen fetch from
+   * there. Refused at manifest time, before the confirmation is ever shown.
+   */
+  it('reports the manifest stage when icon leaves the manifest origin', async () => {
+    vi.stubGlobal('fetch', respondWith({ ...MANIFEST, icon: 'https://evil.example/logo.png' }));
+    const error = await fetchPackManifest('https://h/p/manifest.json', '1.0.0').catch(e => e);
+    expect(error.stage).toBe('manifest');
+    expect(error.message).toContain('icon');
+  });
+
+  it('accepts a manifest with no icon at all', async () => {
+    vi.stubGlobal('fetch', respondWith(MANIFEST));
+    const manifest = await fetchPackManifest('https://h/p/manifest.json', '1.0.0');
+    expect(manifest.icon).toBeUndefined();
+  });
+});
+
+describe('resolvePackIcon', () => {
+  const base = { ...MANIFEST } as RuntimePackManifest;
+
+  it('resolves a relative icon against the manifest', () => {
+    expect(resolvePackIcon({ ...base, icon: 'icon.png' }, 'https://h/p/manifest.json')).toBe(
+      'https://h/p/icon.png'
+    );
+  });
+
+  it('answers undefined when the pack declared none', () => {
+    expect(resolvePackIcon(base, 'https://h/p/manifest.json')).toBeUndefined();
+  });
+
+  /**
+   * `fetchPackManifest` has already refused these, so this path is only
+   * reachable through a hand-built manifest — but it is a `src/` function
+   * whose result goes straight into an `<img src>`, so it answers `undefined`
+   * rather than throwing or handing back a foreign origin.
+   */
+  it('answers undefined rather than a foreign origin', () => {
+    expect(
+      resolvePackIcon({ ...base, icon: 'https://evil.example/x.png' }, 'https://h/p/manifest.json')
+    ).toBeUndefined();
+    expect(
+      resolvePackIcon({ ...base, icon: '//evil.example/x.png' }, 'https://h/p/manifest.json')
+    ).toBeUndefined();
+    expect(resolvePackIcon({ ...base, icon: 'icon.png' }, 'not-a-url')).toBeUndefined();
   });
 });
 

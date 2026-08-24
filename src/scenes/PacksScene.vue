@@ -58,22 +58,72 @@ import { packBaseFor, packCacheUsage, forgetPack } from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
 import { packStageLabel } from './packStageLabel';
 import { SUGGESTED_PACKS, type SuggestedPack } from './packs/suggestedPacks';
+import { packMonogram } from './packs/packMonogram';
 
 const emit = defineEmits<{ close: [] }>();
 
 interface PackRow {
   manifestUrl: string;
   id: string;
+  /**
+   * What the pack's author called it. The row leads with this and demotes the
+   * id, and — more to the point — it is what the monogram's letters come from,
+   * so the tile beside an installed pack is the same tile it had on the shelf.
+   * Falls back to the id for a record written before the field existed.
+   */
+  name: string;
   version: string;
   /** The origin, unabbreviated. The whole reason this screen exists. */
   origin: string;
   base: string;
+  /**
+   * The pack's own mark, absolute and on the manifest's origin — only ever
+   * set for a pack that is already installed. See `packs/packMonogram.ts` for
+   * why a pack that is not gets a monogram instead. Cleared on a load error,
+   * which is what an offline visit to a pack that never cached its icon does.
+   */
+  icon?: string;
   /** `-1` until `packCacheUsage` answers — see `usageLabel`. */
   entries: number;
   bytes: number;
 }
 
 const rows = ref<PackRow[]>([]);
+
+/**
+ * The screen does two jobs — manage what you have, and go get more — and they
+ * were one scroll. A tab each, because with several packs installed the shelf
+ * was below the fold, and because "Tìm pack" answers by name the question a
+ * player with nothing installed actually arrives with.
+ *
+ * Which is also why the default depends on the list rather than being fixed:
+ * opening on an empty "Đã cài" is a screen that says nothing to exactly the
+ * player who needs it most. Local state, not a module the way
+ * `hud/practice/panelTab.ts` is — there is nothing here worth surviving an
+ * unmount, and re-deciding the default on every visit is the behaviour.
+ */
+type PacksTab = 'installed' | 'browse';
+const tab = ref<PacksTab>('browse');
+
+const showTab = (next: PacksTab): void => {
+  tab.value = next;
+};
+
+/**
+ * The mark for a pack with no icon of its own — which is every pack on the
+ * shelf, by design. See `packs/packMonogram.ts`.
+ */
+const monogramFor = (name: string, id: string) => packMonogram(name, id);
+
+/**
+ * A pack's icon is fetched from the pack's own origin, so it can be missing:
+ * offline, or a pack that stopped serving it. Falling back to the monogram
+ * costs one property write and is indistinguishable from a pack that never
+ * declared one.
+ */
+const onIconError = (row: PackRow): void => {
+  row.icon = undefined;
+};
 
 /**
  * What this browser has cached of a pack, in a sentence rather than in two
@@ -139,14 +189,17 @@ for (const record of readInstalledPacks()) {
   initialRows.push({
     manifestUrl: record.manifestUrl,
     id: record.id,
+    name: record.name || record.id,
     version: record.version,
     origin: originOf(record.manifestUrl, base),
     base,
+    icon: record.icon,
     entries: -1,
     bytes: 0,
   });
 }
 rows.value = initialRows;
+tab.value = initialRows.length > 0 ? 'installed' : 'browse';
 
 onMounted(() => {
   // Fetched per row, not awaited as a batch before the list ever renders:
@@ -340,13 +393,19 @@ const confirmInstall = async (): Promise<void> => {
       const newRow: PackRow = {
         manifestUrl,
         id: outcome.id,
+        name: manifest.name || outcome.id,
         version: manifest.version,
         origin: originOf(manifestUrl, base),
         base,
+        icon: outcome.icon,
         entries: -1,
         bytes: 0,
       };
       rows.value = [...rows.value, newRow];
+      // Straight to the list, so the answer to "did that work" is the pack
+      // itself sitting there rather than a badge changing on the card behind
+      // the dialog that just closed.
+      tab.value = 'installed';
       void packCacheUsage(base).then(usage => {
         const current = rows.value.find(candidate => candidate.manifestUrl === manifestUrl);
         if (current) {
@@ -487,60 +546,79 @@ onBeforeUnmount(() => {
     </header>
 
     <div class="packs-body-shell">
+      <!-- Two jobs, two tabs — see `tab`'s own comment. Inside
+           `.packs-body-shell` rather than beside the header on purpose:
+           `PackInstallConfirm`'s backdrop covers this element, so a pending
+           confirmation cannot have the tab switched out from under it, while
+           the header's close button stays reachable above it. -->
+      <div class="packs-tabs" role="tablist">
+        <button
+          type="button"
+          id="packs-tab-installed"
+          class="packs-tab"
+          :class="{ selected: tab === 'installed' }"
+          role="tab"
+          :aria-selected="tab === 'installed'"
+          @click="showTab('installed')"
+          @touchend.prevent="showTab('installed')"
+        >
+          <i class="fas fa-box-open" aria-hidden="true"></i>
+          <span>Đã cài</span>
+          <span v-if="rows.length" class="packs-tab-count">{{ rows.length }}</span>
+        </button>
+        <button
+          type="button"
+          id="packs-tab-browse"
+          class="packs-tab"
+          :class="{ selected: tab === 'browse' }"
+          role="tab"
+          :aria-selected="tab === 'browse'"
+          @click="showTab('browse')"
+          @touchend.prevent="showTab('browse')"
+        >
+          <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+          <span>Tìm pack</span>
+        </button>
+      </div>
+
       <div class="packs-body">
-        <!-- 0. What a pack even is. It was a section of the About screen —
-             one scene away from every button that acts on it, and the reason
-             that screen had grown to twice its length. Open by default only
-             while nothing is installed: a returning player has answered this
-             question already, and three steps at the top of every visit is
-             the same noise the About screen was. -->
-        <details class="packs-intro" :open="nothingInstalled">
-          <summary class="packs-intro-summary">
-            <i class="fas fa-circle-question" aria-hidden="true"></i>
-            <span>Pack là gì?</span>
-          </summary>
-          <p class="packs-intro-text">
-            Pack là gói nội dung: tướng, chiêu, quái rừng, bản đồ. Game không kèm sẵn tướng nào —
-            pack mới là thứ mang chúng vào.
-          </p>
-          <ol class="packs-steps">
-            <li class="packs-step">
-              <i class="fas fa-download" aria-hidden="true"></i>
-              <span>
-                Bấm <strong>Cài</strong> ở pack có sẵn, hoặc dán link <code>manifest.json</code> của
-                pack khác.
-              </span>
-            </li>
-            <li class="packs-step">
-              <i class="fas fa-shield-halved" aria-hidden="true"></i>
-              <span>
-                Xem kỹ <strong>tên miền</strong> ở màn xác nhận — pack chạy với toàn quyền trên
-                trang này. Chỉ cài từ nguồn bạn tin.
-              </span>
-            </li>
-            <li class="packs-step">
-              <i class="fas fa-play" aria-hidden="true"></i>
-              <span>Cài xong chọn tướng mới ngay, không phải tải lại trang.</span>
-            </li>
-          </ol>
-        </details>
-
-        <!-- 1. What this browser already has. First, because on a return
-             visit it is the answer to the question the screen was opened
-             with. `.packs-row` and `.packs-origin` are the installed list's
-             alone — the shelf below uses classes of its own, so a Playwright
-             `.packs-origin` read cannot silently pick up a suggestion. -->
-        <section class="packs-section">
-          <h2 class="packs-section-title">Đã cài</h2>
-
+        <!-- ------------------------------------------------------- Đã cài -->
+        <template v-if="tab === 'installed'">
           <ul v-if="rows.length" class="packs-list">
             <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
-              <div class="packs-row-head">
-                <span class="packs-id">{{ row.id }}</span>
-                <span class="packs-version">v{{ row.version }}</span>
+              <!-- The pack's own mark, and only here: this pack is installed,
+                   so its code is already running with the page's authority and
+                   an image from it costs nothing. A pack that is *not*
+                   installed gets the monogram — see `packs/packMonogram.ts`. -->
+              <div class="packs-row-main">
+                <img
+                  v-if="row.icon"
+                  class="packs-avatar packs-avatar-img"
+                  :src="row.icon"
+                  alt=""
+                  @error="onIconError(row)"
+                />
+                <span
+                  v-else
+                  class="packs-avatar"
+                  :style="{
+                    background: monogramFor(row.name, row.id).background,
+                    color: monogramFor(row.name, row.id).foreground,
+                  }"
+                  aria-hidden="true"
+                  >{{ monogramFor(row.name, row.id).text }}</span
+                >
+
+                <div class="packs-row-text">
+                  <div class="packs-row-head">
+                    <span class="packs-id">{{ row.name }}</span>
+                    <span class="packs-version">v{{ row.version }}</span>
+                  </div>
+                  <p class="packs-origin packs-selectable">{{ row.origin }}</p>
+                  <p class="packs-usage">{{ usageLabel(row) }}</p>
+                </div>
               </div>
-              <p class="packs-origin packs-selectable">{{ row.origin }}</p>
-              <p class="packs-usage">{{ usageLabel(row) }}</p>
+
               <button
                 type="button"
                 class="packs-remove"
@@ -555,125 +633,174 @@ onBeforeUnmount(() => {
             </li>
           </ul>
 
-          <p v-else class="packs-empty">
-            Chưa cài pack nào — game đang chạy với đúng một tướng mặc định.
-          </p>
-        </section>
-
-        <!-- 2. The shelf. Every entry is a real card: a name, what it gives
-             you, its URL as selectable text, and three things you can press.
-             This replaced one unclickable, uncopyable `<span>` — see
-             `packs/suggestedPacks.ts`'s own header. -->
-        <section class="packs-section">
-          <h2 class="packs-section-title">Pack có sẵn</h2>
-
-          <ul class="packs-catalog">
-            <li v-for="pack in SUGGESTED_PACKS" :key="pack.manifestUrl" class="packs-card">
-              <div class="packs-card-head">
-                <span class="packs-card-name">{{ pack.name }}</span>
-                <span v-if="isInstalled(pack)" class="packs-card-installed">
-                  <i class="fas fa-circle-check" aria-hidden="true"></i> Đã cài
-                </span>
-              </div>
-
-              <p class="packs-card-desc">{{ pack.description }}</p>
-
-              <!-- Selectable on purpose: `styles/main.css` sets
-                   `user-select: none` on `*`, which is what made the old hint
-                   impossible to copy by hand. The button beside it is the
-                   easy path; this is the one that still works when the
-                   clipboard API does not. -->
-              <p class="packs-card-url packs-selectable">{{ pack.manifestUrl }}</p>
-
-              <div class="packs-card-actions">
-                <button
-                  type="button"
-                  class="packs-card-install"
-                  :class="{ done: isInstalled(pack) }"
-                  :disabled="isInstalled(pack) || checking || Boolean(pendingManifest)"
-                  @click="installSuggested(pack)"
-                  @touchend.prevent="installSuggested(pack)"
-                >
-                  <i
-                    :class="isInstalled(pack) ? 'fas fa-check' : 'fas fa-download'"
-                    aria-hidden="true"
-                  ></i>
-                  <span>{{ isInstalled(pack) ? 'Đã cài' : 'Cài' }}</span>
-                </button>
-
-                <button
-                  type="button"
-                  class="packs-card-action"
-                  @click="copyUrl(pack.manifestUrl)"
-                  @touchend.prevent="copyUrl(pack.manifestUrl)"
-                >
-                  <i class="fas fa-copy" aria-hidden="true"></i>
-                  <span>{{ copiedUrl === pack.manifestUrl ? 'Đã chép' : 'Chép URL' }}</span>
-                </button>
-
-                <a
-                  class="packs-card-action"
-                  :href="pack.repoUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <i class="fab fa-github" aria-hidden="true"></i>
-                  <span>Mã nguồn</span>
-                </a>
-              </div>
-            </li>
-          </ul>
-
-          <p v-if="copyFailed" class="packs-add-error">
-            Trình duyệt không cho chép tự động — bạn chọn và chép URL ở trên nhé.
-          </p>
-          <p v-if="nothingInstalled" class="packs-hint">
-            Bấm <strong>Cài</strong> rồi xem kỹ tên miền ở màn xác nhận trước khi đồng ý.
-          </p>
-        </section>
-
-        <!-- 3. The power path, last: a URL from anywhere at all. It was first
-             on the screen when it was the only way to add anything. -->
-        <section class="packs-section">
-          <h2 class="packs-section-title">Thêm bằng URL</h2>
-          <div class="packs-add">
-            <label class="packs-add-label" for="pack-url-input">
-              Dán link manifest.json của pack
-            </label>
-            <div class="packs-add-row">
-              <!-- `readonly` and `aria-disabled`, never `disabled`, while a
-                   check is in flight. A browser blurs an element the moment it
-                   becomes disabled, so `:disabled="checking"` moved focus to
-                   `<body>` before the confirmation had even mounted — and the
-                   confirmation's own focus restore then had nothing to give
-                   back to. Both still refuse input: the field is `readonly`,
-                   and `checkUrl` has guarded against a second run since it was
-                   written. -->
-              <input
-                id="pack-url-input"
-                v-model="url"
-                type="url"
-                inputmode="url"
-                autocomplete="off"
-                placeholder="https://vi-du.com/pack/manifest.json"
-                :readonly="checking"
-                :aria-busy="checking"
-                @keyup.enter="checkUrl"
-              />
-              <button
-                type="button"
-                id="pack-url-check"
-                :disabled="!url.trim()"
-                :aria-disabled="checking"
-                @click="checkUrl"
-                @touchend.prevent="checkUrl"
-              >
-                {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
-              </button>
-            </div>
-            <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
+          <div v-else class="packs-empty">
+            <p>Chưa cài pack nào — game đang chạy với đúng một tướng mặc định.</p>
+            <button
+              type="button"
+              class="packs-empty-cta"
+              @click="showTab('browse')"
+              @touchend.prevent="showTab('browse')"
+            >
+              <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+              <span>Tìm pack</span>
+            </button>
           </div>
-        </section>
+        </template>
+
+        <!-- ----------------------------------------------------- Tìm pack -->
+        <template v-else>
+          <!-- What a pack even is. It was a section of the About screen — one
+               scene away from every button that acts on it, and the reason
+               that screen had grown to twice its length. Open by default only
+               while nothing is installed: a returning player has answered this
+               question already. -->
+          <details class="packs-intro" :open="nothingInstalled">
+            <summary class="packs-intro-summary">
+              <i class="fas fa-circle-question" aria-hidden="true"></i>
+              <span>Pack là gì?</span>
+            </summary>
+            <p class="packs-intro-text">
+              Pack là gói nội dung: tướng, chiêu, quái rừng, bản đồ. Game không kèm sẵn tướng nào —
+              pack mới là thứ mang chúng vào.
+            </p>
+            <ol class="packs-steps">
+              <li class="packs-step">
+                <i class="fas fa-download" aria-hidden="true"></i>
+                <span>
+                  Bấm <strong>Cài</strong> ở pack có sẵn, hoặc dán link
+                  <code>manifest.json</code> của pack khác.
+                </span>
+              </li>
+              <li class="packs-step">
+                <i class="fas fa-shield-halved" aria-hidden="true"></i>
+                <span>
+                  Xem kỹ <strong>tên miền</strong> ở màn xác nhận — pack chạy với toàn quyền trên
+                  trang này. Chỉ cài từ nguồn bạn tin.
+                </span>
+              </li>
+              <li class="packs-step">
+                <i class="fas fa-play" aria-hidden="true"></i>
+                <span>Cài xong chọn tướng mới ngay, không phải tải lại trang.</span>
+              </li>
+            </ol>
+          </details>
+
+          <section class="packs-section">
+            <h2 class="packs-section-title">Pack có sẵn</h2>
+
+            <ul class="packs-catalog">
+              <li v-for="pack in SUGGESTED_PACKS" :key="pack.manifestUrl" class="packs-card">
+                <div class="packs-card-head">
+                  <!-- A monogram, never the pack's own art: nothing here has
+                       been agreed to yet, so core draws the tile itself and
+                       sends no request to the pack's host. -->
+                  <span
+                    class="packs-avatar"
+                    :style="{
+                      background: monogramFor(pack.name, pack.id).background,
+                      color: monogramFor(pack.name, pack.id).foreground,
+                    }"
+                    aria-hidden="true"
+                    >{{ monogramFor(pack.name, pack.id).text }}</span
+                  >
+                  <span class="packs-card-name">{{ pack.name }}</span>
+                  <span v-if="isInstalled(pack)" class="packs-card-installed">
+                    <i class="fas fa-circle-check" aria-hidden="true"></i> Đã cài
+                  </span>
+                </div>
+
+                <p class="packs-card-desc">{{ pack.description }}</p>
+
+                <!-- Selectable on purpose: `styles/main.css` sets
+                     `user-select: none` on `*`, which is what made the old
+                     hint impossible to copy by hand. -->
+                <p class="packs-card-url packs-selectable">{{ pack.manifestUrl }}</p>
+
+                <div class="packs-card-actions">
+                  <button
+                    type="button"
+                    class="packs-card-install"
+                    :class="{ done: isInstalled(pack) }"
+                    :disabled="isInstalled(pack) || checking || Boolean(pendingManifest)"
+                    @click="installSuggested(pack)"
+                    @touchend.prevent="installSuggested(pack)"
+                  >
+                    <i
+                      :class="isInstalled(pack) ? 'fas fa-check' : 'fas fa-download'"
+                      aria-hidden="true"
+                    ></i>
+                    <span>{{ isInstalled(pack) ? 'Đã cài' : 'Cài' }}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="packs-card-action"
+                    @click="copyUrl(pack.manifestUrl)"
+                    @touchend.prevent="copyUrl(pack.manifestUrl)"
+                  >
+                    <i class="fas fa-copy" aria-hidden="true"></i>
+                    <span>{{ copiedUrl === pack.manifestUrl ? 'Đã chép' : 'Chép URL' }}</span>
+                  </button>
+
+                  <a
+                    class="packs-card-action"
+                    :href="pack.repoUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <i class="fab fa-github" aria-hidden="true"></i>
+                    <span>Mã nguồn</span>
+                  </a>
+                </div>
+              </li>
+            </ul>
+
+            <p v-if="copyFailed" class="packs-add-error">
+              Trình duyệt không cho chép tự động — bạn chọn và chép URL ở trên nhé.
+            </p>
+          </section>
+
+          <section class="packs-section">
+            <h2 class="packs-section-title">Thêm bằng URL</h2>
+            <div class="packs-add">
+              <label class="packs-add-label" for="pack-url-input">
+                Dán link manifest.json của pack
+              </label>
+              <div class="packs-add-row">
+                <!-- `readonly` and `aria-disabled`, never `disabled`, while a
+                     check is in flight. A browser blurs an element the moment
+                     it becomes disabled, so `:disabled="checking"` moved focus
+                     to `<body>` before the confirmation had even mounted — and
+                     the confirmation's own focus restore then had nothing to
+                     give back to. Both still refuse input: the field is
+                     `readonly`, and `checkUrl` has guarded against a second
+                     run since it was written. -->
+                <input
+                  id="pack-url-input"
+                  v-model="url"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="off"
+                  placeholder="https://vi-du.com/pack/manifest.json"
+                  :readonly="checking"
+                  :aria-busy="checking"
+                  @keyup.enter="checkUrl"
+                />
+                <button
+                  type="button"
+                  id="pack-url-check"
+                  :disabled="!url.trim()"
+                  :aria-disabled="checking"
+                  @click="checkUrl"
+                  @touchend.prevent="checkUrl"
+                >
+                  {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
+                </button>
+              </div>
+              <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
+            </div>
+          </section>
+        </template>
       </div>
 
       <!-- A sibling of `.packs-body`, not a child of it: `.packs-body`

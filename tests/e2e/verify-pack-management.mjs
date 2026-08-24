@@ -86,6 +86,22 @@ const closePacksScreen = async () => {
   await page.waitForSelector('#play-btn', { timeout: 30_000 });
 };
 
+/**
+ * The screen is two tabs — Đã cài and Tìm pack — and each half's controls
+ * only exist while its own tab is showing (`v-if`, not `display: none`), so
+ * every part below says which half it is acting on rather than assuming the
+ * one the screen happened to open on. Which tab that is *is* under test:
+ * `packsOpensOn` below reads it.
+ */
+const showTab = async name => {
+  await page.click(`#packs-tab-${name}`);
+  await page.waitForSelector(`#packs-tab-${name}.selected`, { timeout: 10_000 });
+};
+
+/** Which tab the screen chose for itself, as its id suffix. */
+const packsOpensOn = () =>
+  page.evaluate(() => document.querySelector('.packs-tab.selected')?.id ?? null);
+
 await guard(
   async () => {
     await page.addInitScript(
@@ -106,8 +122,19 @@ await guard(
     await openPacksScreen();
     check('the packs screen opens from the menu', await page.locator('.packs-panel').isVisible());
 
+    // With nothing installed, opening on an empty "Đã cài" would be a screen
+    // that says nothing to exactly the player who needs it most.
+    const openedOn = await packsOpensOn();
+    check(
+      'with nothing installed it opens on Tìm pack',
+      openedOn === 'packs-tab-browse',
+      `${openedOn}`
+    );
+
+    await showTab('installed');
     const initialRows = await page.locator('.packs-row').count();
     check('it starts empty when nothing is installed', initialRows === 0, `rows=${initialRows}`);
+    await showTab('browse');
 
     // -------------------------------------------------------------- Part 2
     // Paste the URL and press Kiểm tra. `waitForSelector` here is soft
@@ -206,6 +233,15 @@ await guard(
     await page.click('#pack-confirm-install');
     await page.waitForSelector('#pack-install-confirm', { state: 'detached', timeout: 20_000 });
 
+    // The answer to "did that work" is the pack sitting in the list, not a
+    // badge changing on a card behind the dialog that just closed.
+    const afterInstall = await packsOpensOn();
+    check(
+      'a finished install moves to Đã cài by itself',
+      afterInstall === 'packs-tab-installed',
+      `${afterInstall}`
+    );
+
     const installedRows = await page.locator('.packs-row').count();
     check('confirming installs it', installedRows === 1, `rows=${installedRows}`);
 
@@ -218,6 +254,13 @@ await guard(
     );
 
     await openPacksScreen();
+    const reopenedOn = await packsOpensOn();
+    check(
+      'and a later visit opens on Đã cài, now that there is something in it',
+      reopenedOn === 'packs-tab-installed',
+      `${reopenedOn}`
+    );
+
     const listedOrigin = (await page.locator('.packs-origin').first().textContent())?.trim();
     check(
       'and the screen now lists it with its origin',
@@ -230,6 +273,7 @@ await guard(
     // either, because `installPackNow` refuses a duplicate id whatever URL it
     // came from: matching on URL alone would leave a Cài button that can only
     // ever answer "đã được cài rồi".
+    await showTab('browse');
     const shelfInstalledLabel = (
       await page.locator('.packs-card-install').first().textContent()
     )?.trim();
@@ -256,8 +300,9 @@ await guard(
     await page.click('#pack-confirm-cancel');
     await page.waitForSelector('#pack-install-confirm', { state: 'detached', timeout: 20_000 });
 
-    const rowsAfterCancel = await page.locator('.packs-row').count();
     const inputAfterCancel = await page.inputValue('#pack-url-input');
+    await showTab('installed');
+    const rowsAfterCancel = await page.locator('.packs-row').count();
     check(
       'cancelling installs nothing',
       rowsAfterCancel === 1 && inputAfterCancel === PACK_URL,
@@ -271,6 +316,7 @@ await guard(
     await page.waitForSelector('#play-btn', { timeout: 30_000 }); // removal reloads
 
     await openPacksScreen();
+    await showTab('installed');
     const rowsAfterRemove = await page.locator('.packs-row').count();
     check('removing it empties the list', rowsAfterRemove === 0, `rows=${rowsAfterRemove}`);
 
@@ -285,6 +331,7 @@ await guard(
     // second origin. Whatever that fetch does afterwards, it cannot disturb a
     // check that has already run.
     await openPacksScreen();
+    await showTab('browse');
     const shelfCards = await page.locator('.packs-card').count();
     check(
       'the screen offers a pack shelf, not a line of dead text',
