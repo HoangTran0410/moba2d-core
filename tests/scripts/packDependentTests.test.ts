@@ -84,6 +84,29 @@ describe('which tests need a pack this checkout does not have', () => {
     expect(withoutRiot).not.toContain('tests/seams/importScan.test.ts');
   });
 
+  it("does not mistake core's own src/scenes/packs directory for a content pack", () => {
+    // `src/scenes/packs/` is the packs *screen* — `PackInstallConfirm.vue` and
+    // the suggested-pack shelf. Its specifiers read
+    // `@/scenes/packs/suggestedPacks`, and the deriver's `packs/<name>`
+    // pattern reported that as a content pack called `suggestedPacks`. No
+    // checkout has one, so the first importer of that directory dropped
+    // itself — and `tests/scenes/packsBootPath.test.ts` with it — out of
+    // every run including `npm run verify`, with nothing but a smaller total
+    // to notice by. The case above catches it as a number; this names the two
+    // files, so the fix is pinned where it can be read.
+    const everything = packDependentTests(ROOT, ['reference', 'riot']);
+    const withoutRiot = packDependentTests(ROOT, ['reference']);
+    for (const named of [
+      'tests/scenes/packsSuggested.test.ts',
+      'tests/scenes/packsBootPath.test.ts',
+    ]) {
+      // Or both `not.toContain`s below are vacuously true.
+      expect(existsSync(join(ROOT, named)), `${named} no longer exists`).toBe(true);
+      expect(everything).not.toContain(named);
+      expect(withoutRiot).not.toContain(named);
+    }
+  });
+
   it('leaves a scan that asks whether the pack is installed in the run', () => {
     // Task 7's four scans each *derive* — and therefore name — `packs/riot/…`
     // roots, and each guards with `packIsInstalled`. Skipping them would undo
