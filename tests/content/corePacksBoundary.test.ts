@@ -85,8 +85,23 @@ const EXEMPT_FILES = new Set(['content/install.ts', 'generated/installedPacks.ts
  * exists to stop core reaching into a pack could not see the one new file
  * that does. Adding the second pattern is what keeps this check aimed at the
  * rule rather than at the spelling the rule happened to have.
+ *
+ * **Tightened again, runtime-pack-offline-and-management Task 7.** A bare
+ * `\/packs\/` matched any path segment literally named `packs`, anywhere —
+ * including `src/scenes/packs/`, the packs *screen*'s own subdirectory
+ * (`./packs/PackInstallConfirm.vue`, a same-directory descent), which has
+ * nothing to do with the top-level content-pack tree this scan exists to
+ * guard. The real shapes that name a content pack all *ascend* into it
+ * (`../../packs/reference/pack`) or name it from the root (the
+ * `import.meta.glob` case below, `/packs/...`) or by package
+ * (`@moba2d/content-*`) — never by descending into a same-named sibling
+ * directory. Requiring `packs/` to be preceded by `..` (an ascent) rather
+ * than any path separator is what tells the two apart; a bare `^packs/`
+ * (no leading `./` or `../` at all) is kept for a specifier with no relative
+ * prefix, which is not a real shape used today but was not the thing this
+ * fix set out to narrow.
  */
-const PACK_SPECIFIER = /(?:^|\/)packs\/|^@moba2d\/content-/;
+const PACK_SPECIFIER = /(?:^|\.\.\/)packs\/|^\/packs\/|^@moba2d\/content-/;
 
 /**
  * `relativePath -> the exact specifiers that file may name, and only as

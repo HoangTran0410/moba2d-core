@@ -6,9 +6,14 @@ import {
   prefetchPackFiles,
   type PrefetchReport,
 } from './packCache';
-import { fetchPackManifest, loadPackFromManifest, PackLoadError } from './packSource';
+import {
+  fetchPackManifest,
+  loadPackFromManifest,
+  PackLoadError,
+  type RuntimePackManifest,
+} from './packSource';
 import type { PackRegistry } from './PackRegistry';
-import { rebuildContentRegistry } from './registry';
+import { contentRegistry, rebuildContentRegistry } from './registry';
 import {
   readInstalledPacks,
   writeInstalledPacks,
@@ -273,6 +278,60 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   }
 
   return outcomes;
+}
+
+/**
+ * Installs one pack into the live registry, without a reload — spec §5.2.
+ *
+ * Takes the manifest rather than fetching it, because the caller has already
+ * fetched it: spec §3 splits the fetch from the import precisely so a player
+ * can be shown the origin in between, and a function that did both would put
+ * that screen back inside the same call it exists to interrupt.
+ *
+ * Everything after this point is what `installRuntimePacks` does per pack,
+ * minus the loop: the same duplicate-id skip, the same registry, the same
+ * store write, the same base announcement and prefetch.
+ */
+export async function installPackNow(
+  manifestUrl: string,
+  manifest: RuntimePackManifest
+): Promise<PackInstallOutcome> {
+  try {
+    const registry = contentRegistry();
+    if (registry.hasPack(manifest.id)) {
+      return { manifestUrl, ok: true, id: manifest.id, skipped: true };
+    }
+    const pack = await loadPackFromManifest(manifest, manifestUrl);
+    installRuntimePack(registry, buildContentApi(), pack);
+
+    const stored = readInstalledPacks();
+    // A plain loop, not `.filter` — see CLAUDE.md.
+    const next: InstalledPackRecord[] = [];
+    for (const record of stored) {
+      if (record.manifestUrl !== manifestUrl) next.push(record);
+    }
+    next.push({ manifestUrl, id: manifest.id, version: manifest.version });
+    writeInstalledPacks(next);
+
+    const base = packBaseFor(manifestUrl);
+    if (base) {
+      // Every base, not just this one: the message replaces the worker's whole
+      // list, so sending one would drop the packs installed at boot.
+      const bases: string[] = [];
+      for (const record of next) {
+        const recordBase = packBaseFor(record.manifestUrl);
+        if (recordBase) bases.push(recordBase);
+      }
+      announcePackBases(bases);
+      if (manifest.files && manifest.files.length > 0) {
+        void prefetchPackFiles(base, manifest.files).catch(() => {});
+      }
+    }
+    return { manifestUrl, ok: true, id: manifest.id };
+  } catch (thrown) {
+    const error = thrown as PackLoadError;
+    return { manifestUrl, ok: false, stage: error.stage ?? 'import', message: error.message };
+  }
 }
 
 /**

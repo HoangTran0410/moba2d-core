@@ -24,15 +24,11 @@ const PACKS_DIR = join(SRC, 'scenes', 'packs');
 /**
  * `PacksScene.ts`/`.vue` plus every file `scenes/packs/` holds.
  *
- * That directory does not exist yet — Task 7 creates `PackInstallConfirm.vue`
- * there — so `existsSync` below makes its absence silent rather than a
- * failure, the same way `aboutFiles()` treats `scenes/about/`. Unlike that
- * function, this one's own "finds the files it claims to check" case does
- * NOT assert the directory contributed anything: doing so here would make
- * this test shape the code it is meant to check, forcing an empty
- * placeholder component into existence just to satisfy a population floor
- * this task has no file to put there. Task 7 adds that assertion in the same
- * commit that creates the directory's first file.
+ * `existsSync` below makes the directory's absence silent rather than a
+ * failure, the same way `aboutFiles()` treats `scenes/about/` — kept even
+ * though Task 7 (`PackInstallConfirm.vue`) means the directory always exists
+ * from this commit on, so a future removal of every file under it fails
+ * loudly here rather than in a `readdirSync` throw.
  */
 function packsFiles(): string[] {
   const files = ['scenes/PacksScene.ts', 'scenes/PacksScene.vue'];
@@ -68,6 +64,10 @@ describe('the packs screen boots without the game', () => {
     const files = packsFiles();
     expect(files, 'scenes/PacksScene.ts left the list').toContain('scenes/PacksScene.ts');
     expect(files, 'scenes/PacksScene.vue left the list').toContain('scenes/PacksScene.vue');
+    // Task 7's own assertion, added in the same commit that gives
+    // `scenes/packs/` its first file (`PackInstallConfirm.vue`) — see this
+    // function's own doc comment for why it did not exist before.
+    expect(files.length, 'scenes/packs/ contributed no file').toBeGreaterThan(2);
     for (const file of files) {
       expect(() => readFileSync(join(SRC, file), 'utf8'), `${file} is missing`).not.toThrow();
     }

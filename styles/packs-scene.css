@@ -70,12 +70,81 @@
    argument applies unchanged here. */
 .packs-body {
   box-sizing: border-box;
+  /* `PackInstallConfirm`'s backdrop is `position: absolute; inset: 0` against
+     this element on purpose (see `.pack-confirm-backdrop` below): it covers
+     the list and the add-URL row but never `.packs-header`, so the "back"
+     button stays clickable while a confirmation is only pending — leaving
+     the screen that way discards the pending manifest without installing
+     anything, the same as pressing "Huỷ". */
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 1rem 1.2rem 1.4rem;
+}
+
+/* ----------------------------------------------------------- Add by URL */
+
+.packs-add {
+  margin-bottom: 1rem;
+}
+
+.packs-add-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+}
+
+.packs-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.packs-add-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0.3rem 0.6rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+.packs-add-row input:focus {
+  outline: none;
+  border-color: var(--hextech-teal);
+}
+
+.packs-add-row input:disabled {
+  opacity: 0.6;
+}
+
+.packs-add-row button {
+  flex: none;
+  min-height: 42px;
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 2px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-add-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.packs-add-error {
+  margin: 0.4rem 0 0;
+  font-size: 0.8em;
+  color: #e08a8a;
+  word-break: break-word;
 }
 
 .packs-list {
@@ -169,6 +238,130 @@
 
 .packs-empty-hint {
   margin-top: 0.6rem;
+}
+
+/* --------------------------------------------------- Install confirmation
+   `PackInstallConfirm.vue`. Covers `.packs-body` (see that selector's own
+   comment) rather than the whole panel, so `.packs-header`'s close button
+   stays reachable while a confirmation is only pending. */
+.pack-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 20;
+}
+
+.pack-confirm {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--hextech-bg);
+  border: 2px solid var(--hextech-teal);
+  padding: 1.1rem 1.2rem;
+  box-shadow: 0 0 24px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* 1. The origin — largest type on the whole screen, on purpose, and never
+   elided: `break-all`, never `text-overflow: ellipsis`, never a truncating
+   substring anywhere in the script. This is the one line the whole
+   confirmation exists to show. */
+.pack-confirm-origin {
+  margin: 0 0 0.6rem;
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--hextech-gold);
+  word-break: break-all;
+}
+
+/* 2. Name and version. */
+.pack-confirm-name {
+  margin: 0 0 0.4rem;
+  font-size: 1em;
+  color: var(--hextech-text);
+}
+
+/* 3. coreRange result. */
+.pack-confirm-compat {
+  margin: 0 0 0.4rem;
+  font-size: 0.9em;
+  color: var(--hextech-teal);
+}
+
+.pack-confirm-compat.pack-confirm-refused {
+  color: #e08a8a;
+}
+
+/* 4. Champion count, when declared. */
+.pack-confirm-champions {
+  margin: 0 0 0.6rem;
+  font-size: 0.85em;
+  color: var(--hextech-muted);
+}
+
+/* 5. The authority sentence, verbatim — CLAUDE.md/the task brief's own
+   wording, not to be reworded here. */
+.pack-confirm-authority {
+  margin: 0 0 0.8rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+.pack-confirm-error {
+  margin: 0 0 0.6rem;
+  font-size: 0.82em;
+  color: #e08a8a;
+  word-break: break-word;
+}
+
+/* 6. Huỷ (default-looking) and Cài đặt (destructive-looking — the one that
+   runs a stranger's code). */
+.pack-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.pack-confirm-actions button {
+  flex: 1 1 0;
+  min-height: 44px;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.pack-confirm-cancel {
+  background: transparent;
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+}
+
+.pack-confirm-cancel:hover {
+  border-color: var(--hextech-muted);
+}
+
+.pack-confirm-install {
+  background: #a33;
+  border: 2px solid #c44;
+  color: #fff;
+}
+
+.pack-confirm-install:disabled,
+.pack-confirm-cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The full manifest URL, beneath, dimmed — the origin above is the
+   security-relevant part, this is context. */
+.pack-confirm-url {
+  margin: 0.7rem 0 0;
+  font-size: 0.75em;
+  color: var(--hextech-muted);
+  word-break: break-all;
 }
 
 /* Same breakpoint `.about-panel`, `.pregame-panel` and `.practice-panel` use

@@ -96,13 +96,19 @@ export interface PregameCatalog {
 let cached: PregameCatalog | null = null;
 
 /**
- * The catalogue doesn't change at runtime, so this builds it once,
+ * The catalogue used not to change at runtime, so this builds it once,
  * lazily, and every caller gets back the same object — the same "build once,
  * not on every render" rule `SetupScene.ts` used to enforce by hand in its
  * `setup()`. Every component that needs champion/summoner/spell data calls
  * this directly instead of receiving it through props, since it is read-only
  * and shared by several unrelated branches of the component tree (the
  * participant list's kit icons, the loadout picker's slot row and roster).
+ *
+ * **It does change now.** `installPackNow` (`content/runtimePacks.ts`, spec
+ * §5.2) installs a runtime pack into the live registry without a reload, so
+ * `resetPregameCatalog` below is what keeps this cache from answering a
+ * grown roster with whatever was true the first time any screen opened the
+ * picker.
  */
 export const getPregameCatalog = (): PregameCatalog => {
   if (!cached) {
@@ -217,3 +223,17 @@ export const getPregameCatalog = (): PregameCatalog => {
   }
   return cached;
 };
+
+/**
+ * Forgets the cached catalogue, so the next `getPregameCatalog()` call
+ * rebuilds it from whatever the live registry holds now.
+ *
+ * Called from `PacksScene.vue`'s `confirmInstall` after `installPackNow`
+ * reports `ok: true` — see `getPregameCatalog`'s own doc comment for why this
+ * has to exist at all. Not exported for general invalidation: nothing else
+ * in the running game installs a pack after boot, so this one call site is
+ * the whole of what needs it.
+ */
+export function resetPregameCatalog(): void {
+  cached = null;
+}

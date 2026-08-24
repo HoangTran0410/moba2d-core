@@ -32,10 +32,10 @@ vi.mock('@/content/packCache', () => ({
   prefetchPackFiles: vi.fn(),
 }));
 
-import { installRuntimePacks, DEFAULT_PACK_URL } from '@/content/runtimePacks';
+import { installRuntimePacks, installPackNow, DEFAULT_PACK_URL } from '@/content/runtimePacks';
 import { fetchPackManifest, loadPackFromManifest } from '@/content/packSource';
 import { installRuntimePack } from '@/content/install';
-import { rebuildContentRegistry } from '@/content/registry';
+import { contentRegistry, rebuildContentRegistry } from '@/content/registry';
 import { announcePackBases, prefetchPackFiles, type PrefetchReport } from '@/content/packCache';
 import {
   readInstalledPacks,
@@ -398,5 +398,87 @@ describe('the offline prefetch', () => {
 
     expect(announcePackBases).not.toHaveBeenCalled();
     expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
+});
+
+describe('installPackNow', () => {
+  // A sibling of the two `describe` blocks above, not nested — same reason
+  // `describe('the offline prefetch', ...)` isn't nested either: its own
+  // `beforeEach`/`afterEach` scope the storage and mock resets to this block
+  // alone.
+  const packUrl = 'https://packs.example/riot/manifest.json';
+  const packBase = 'https://packs.example/riot/';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(contentRegistry).mockReturnValue({ hasPack: () => false } as never);
+    withStorage();
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it('installs into the existing (live) registry, not a rebuilt one', async () => {
+    const registry = { hasPack: () => false };
+    vi.mocked(contentRegistry).mockReturnValue(registry as never);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    const outcome = await installPackNow(packUrl, manifest);
+
+    expect(outcome).toEqual({ manifestUrl: packUrl, ok: true, id: 'riot' });
+    expect(installRuntimePack).toHaveBeenCalledWith(registry, expect.anything(), { manifest });
+    // The whole reason `installPackNow` exists rather than reusing
+    // `installRuntimePacks`'s own path: a rebuild would discard and
+    // reinstall core, the reference pack and every already-installed
+    // runtime pack for no gain — see `runtimePacks.ts`'s own doc comment.
+    expect(rebuildContentRegistry).not.toHaveBeenCalled();
+  });
+
+  it('skips a pack whose id is already installed, without fetching its entry', async () => {
+    vi.mocked(contentRegistry).mockReturnValue({ hasPack: (id: string) => id === 'riot' } as never);
+
+    const outcome = await installPackNow(packUrl, manifest);
+
+    expect(outcome).toEqual({ manifestUrl: packUrl, ok: true, id: 'riot', skipped: true });
+    expect(loadPackFromManifest).not.toHaveBeenCalled();
+    expect(installRuntimePack).not.toHaveBeenCalled();
+  });
+
+  it('appends to the store without duplicating an existing URL', async () => {
+    writeInstalledPacks([
+      { manifestUrl: 'https://other/manifest.json', id: 'other', version: '1.0.0' },
+      { manifestUrl: packUrl, id: 'riot', version: '0.9.0' },
+    ]);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    await installPackNow(packUrl, { ...manifest, version: '2.0.0' });
+
+    expect(readInstalledPacks()).toEqual([
+      { manifestUrl: 'https://other/manifest.json', id: 'other', version: '1.0.0' },
+      { manifestUrl: packUrl, id: 'riot', version: '2.0.0' },
+    ]);
+  });
+
+  it('announces every installed base, not only the one just installed', async () => {
+    writeInstalledPacks([{ manifestUrl: 'https://a/manifest.json', id: 'a', version: '1.0.0' }]);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    await installPackNow(packUrl, manifest);
+
+    expect(announcePackBases).toHaveBeenCalledWith(['https://a/', packBase]);
+  });
+
+  it('comes back ok: false with the stage, instead of throwing, when loadPackFromManifest rejects', async () => {
+    const { PackLoadError } = await import('@/content/packSource');
+    vi.mocked(loadPackFromManifest).mockRejectedValue(new PackLoadError('import', 'boom'));
+
+    await expect(installPackNow(packUrl, manifest)).resolves.toEqual({
+      manifestUrl: packUrl,
+      ok: false,
+      stage: 'import',
+      message: 'boom',
+    });
+    expect(installRuntimePack).not.toHaveBeenCalled();
+    expect(readInstalledPacks()).toEqual([]);
   });
 });
