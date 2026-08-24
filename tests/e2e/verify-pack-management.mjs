@@ -163,10 +163,20 @@ await guard(
     const confirmText = confirmVisible
       ? ((await page.locator('#pack-install-confirm').textContent()) ?? '')
       : '';
+    // Read the name off the wire rather than pinning the string: what is
+    // served here is the pack repository's real build, and its manifest is
+    // free to rename itself (it has — "Riot champions" became "Liên Minh
+    // Huyền Thoại"). The claim is that the dialog shows *what the manifest
+    // says*, and the two sources are independent: this one is the JSON, the
+    // other is the DOM the component built from it.
+    const served = await page.evaluate(
+      url => fetch(url).then(response => response.json()),
+      PACK_URL
+    );
     check(
       'and the pack name and version',
-      confirmText.includes('Riot champions') && confirmText.includes('1.0.0'),
-      confirmText.slice(0, 200)
+      confirmText.includes(served.name) && confirmText.includes(served.version),
+      `manifest says "${served.name}" v${served.version} | ${confirmText.slice(0, 160)}`
     );
     check(
       'and the core compatibility result',
