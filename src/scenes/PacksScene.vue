@@ -45,6 +45,7 @@ import {
 } from '@/content/installedPackStore';
 import { packBaseFor, packCacheUsage, forgetPack } from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
+import { packStageLabel } from './packStageLabel';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -200,7 +201,7 @@ const PackInstallConfirm = defineAsyncComponent({
   loader: () => import('./packs/PackInstallConfirm.vue'),
   onError(error, _retry, fail) {
     fail();
-    checkError.value = `import: không tải được màn xác nhận (${(error as Error)?.message ?? String(error)})`;
+    checkError.value = `${packStageLabel('import')}: không tải được màn xác nhận (${(error as Error)?.message ?? String(error)})`;
     pendingManifest.value = null;
     pendingManifestUrl.value = '';
   },
@@ -229,7 +230,7 @@ const checkUrl = async (): Promise<void> => {
   try {
     new URL(trimmed);
   } catch {
-    checkError.value = 'manifest: URL không hợp lệ (thiếu scheme, ví dụ https://)';
+    checkError.value = `${packStageLabel('manifest')}: URL không hợp lệ (thiếu scheme, ví dụ https://)`;
     return;
   }
   checking.value = true;
@@ -245,7 +246,7 @@ const checkUrl = async (): Promise<void> => {
     coreVersion.value = CORE_VERSION;
   } catch (thrown) {
     const error = thrown as PackLoadError;
-    checkError.value = `${error.stage ?? 'import'}: ${error.message ?? String(thrown)}`;
+    checkError.value = `${packStageLabel(error.stage ?? 'import')}: ${error.message ?? String(thrown)}`;
   } finally {
     checking.value = false;
   }
@@ -282,7 +283,7 @@ const confirmInstall = async (): Promise<void> => {
     ]);
     const outcome = await installPackNow(manifestUrl, manifest);
     if (outcome.ok === false) {
-      installError.value = `${outcome.stage}: ${outcome.message}`;
+      installError.value = `${packStageLabel(outcome.stage)}: ${outcome.message}`;
       return;
     }
     if (outcome.skipped) {
