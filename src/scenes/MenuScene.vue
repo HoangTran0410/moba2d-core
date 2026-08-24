@@ -28,6 +28,7 @@ import AssetManager from '@/managers/AssetManager';
 import DomUtils from '@/utils/dom.utils';
 import { applyUpdate, offlineReady, updateDownloading, updateReady } from '@/pwa/updates';
 import { watchPreload, type PreloadState } from './gamePreload';
+import { packStageLabel } from './packStageLabel';
 import {
   dismissPackBanner,
   packBannerDismissed,
@@ -161,7 +162,8 @@ const installUpdate = async (): Promise<void> => {
        click-only handler is dead under a thumb. -->
   <div v-if="packInstallFailures.length && !packBannerDismissed" class="pack-banner" role="alert">
     <span>
-      Chưa tải được nội dung ({{ packInstallFailures[0].stage }}). Đang chơi với tướng mặc định.
+      Chưa tải được nội dung — {{ packStageLabel(packInstallFailures[0].stage) }}. Đang chơi với
+      tướng mặc định.
     </span>
     <div class="pack-banner-actions">
       <button
@@ -184,18 +186,37 @@ const installUpdate = async (): Promise<void> => {
     </div>
   </div>
 
-  <button id="about-btn" title="Giới thiệu" @click="emit('openAbout')">
-    <i class="fas fa-circle-info" aria-hidden="true"></i>
-  </button>
+  <!-- In the column, under the two buttons above — not pinned to the top-right
+       corner beside the fullscreen toggle, which is where both spent their
+       whole life as unlabelled 1em glyphs. Neither was findable there, and
+       "Nội dung / Pack" is now the screen a player gets a roster from at all,
+       so it cannot also be the least visible control on the menu.
 
-  <button
-    id="packs-btn"
-    title="Nội dung / Pack"
-    @click="emit('openPacks')"
-    @touchend.prevent="emit('openPacks')"
-  >
-    <i class="fas fa-cubes" aria-hidden="true"></i>
-  </button>
+       Still outside the `ready` gate above, for the reason in this file's
+       header: neither opens game code, so neither waits on the warm-up. -->
+  <div class="menu-links">
+    <button
+      id="packs-btn"
+      class="menu-link"
+      title="Nội dung / Pack"
+      @click="emit('openPacks')"
+      @touchend.prevent="emit('openPacks')"
+    >
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <span>Nội dung / Pack</span>
+    </button>
+
+    <button
+      id="about-btn"
+      class="menu-link"
+      title="Giới thiệu"
+      @click="emit('openAbout')"
+      @touchend.prevent="emit('openAbout')"
+    >
+      <i class="fas fa-circle-info" aria-hidden="true"></i>
+      <span>Giới thiệu</span>
+    </button>
+  </div>
 
   <button id="fullscreen-btn" @click="toggleFullscreen">
     <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
