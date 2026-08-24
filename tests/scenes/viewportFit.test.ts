@@ -85,19 +85,46 @@ describe('a scene root fits the screen it is on', () => {
    * edge, all three off screen. Each has to add the inset for the edge it is
    * pinned to — a control pinned top-right that only offsets `top` still ends
    * up under a landscape notch.
+   *
+   * `#about-btn` was one of the three and is no longer listed: it and
+   * `#packs-btn` moved out of the pinned top-right row into the menu's own
+   * column (`.menu-links`), so neither pins an edge any more and this check
+   * has nothing to say about them. Left in the list they would still *pass* —
+   * the loop skips a side the rule does not pin — which is a check that cannot
+   * fail, so they come out rather than stay as decoration. The rule they now
+   * have to obey instead is the one below.
    */
   it('offsets every pinned menu control by the inset for its own edge', () => {
     const css = stripCss(read('styles/menu-scene.css'));
-    for (const selector of ['#fullscreen-btn', '#about-btn', '.menu-version', '.menu-update']) {
+    for (const selector of ['#fullscreen-btn', '.menu-version', '.menu-update']) {
       const rule = ruleFor(css, selector);
       for (const side of ['top', 'right', 'bottom', 'left']) {
         const pinned = new RegExp(`(^|;|\\s)${side}:`, 'm').test(rule);
         if (!pinned) continue;
-        expect(
-          rule,
-          `${selector} pins ${side} without adding var(--safe-${side})`
-        ).toMatch(new RegExp(`${side}:\\s*calc\\([^)]*var\\(--safe-${side}\\)`));
+        expect(rule, `${selector} pins ${side} without adding var(--safe-${side})`).toMatch(
+          new RegExp(`${side}:\\s*calc\\([^)]*var\\(--safe-${side}\\)`)
+        );
       }
+    }
+  });
+
+  /**
+   * And the two that moved have to stay unpinned.
+   *
+   * `#about-btn` and `#packs-btn` sat in `position: fixed` for their whole
+   * life; the failure this replaces was them being off screen on a phone, and
+   * the fix was to stop pinning them at all. A one-line `position: fixed`
+   * added back to either — reaching for a corner again, or copied from
+   * `#fullscreen-btn` right above it in the same file — silently reinstates
+   * the entire class of bug, and nothing about the source would look wrong.
+   */
+  it('keeps the two menu links in the column rather than pinned to a corner', () => {
+    const css = stripCss(read('styles/menu-scene.css'));
+    for (const selector of ['#about-btn', '#packs-btn']) {
+      expect(
+        ruleFor(css, selector),
+        `${selector} is pinned again — it belongs in .menu-links, in the column flow`
+      ).not.toMatch(/position:\s*fixed/);
     }
   });
 });

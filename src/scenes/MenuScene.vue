@@ -1,31 +1,35 @@
 <script setup lang="ts">
 /**
  * The main menu: background, logo, and the buttons. Scene transitions
- * ("Chơi", "Cấu Hình Trận Đấu", "Giới thiệu") are lifecycle, not presentation,
- * so this only emits — `MenuScene.ts` maps `play`/`openConfig`/`openAbout`
- * onto `sceneManager.showScene`, the same split `LoadingScene.vue` uses for
- * its own scene handover.
+ * ("Chơi", "Cấu Hình Trận Đấu", "Giới thiệu", "Nội dung / Pack") are
+ * lifecycle, not presentation, so this only emits — `MenuScene.ts` maps
+ * `play`/`openConfig`/`openAbout`/`openPacks` onto `sceneManager.showScene`,
+ * the same split `LoadingScene.vue` uses for its own scene handover.
  *
  * The fullscreen toggle is pure view state with no scene-transition involved,
  * so — unlike the buttons above — it stays entirely local to this component
  * instead of being driven from `MenuScene.ts`.
  *
- * **Giới thiệu is not gated behind `ready`.** It opens no game code — see
- * `AboutScene.ts` — so there is no reason to make a player wait through the
- * warm-up bar to read what the game is.
+ * **Giới thiệu and Nội dung / Pack are not gated behind `ready`.** Neither
+ * opens game code — see `AboutScene.ts` and `PacksScene.ts` — so there is no
+ * reason to make a player wait through the warm-up bar to read what the game
+ * is, and a player whose pack failed to load (the banner below) is exactly
+ * the player who most needs the packs screen *before* the warm-up finishes.
  *
- * **One background, not a carousel.** Six full-bleed JPEGs used to rotate on a
- * 5s timer: 1.1MB of art for a screen the player looks at for a few seconds,
- * none of it precached (the workbox glob has never listed `jpg`), so the
- * offline menu came up bare. It is now a single WebP — 88KB against 151KB for
- * the JPEG it was encoded from — which is small enough to precache, so the
- * installed app looks the same with the network off as with it on.
+ * **The logo and the background are drawn, not fetched.** Both used to be
+ * images, and both were Riot's: the Vietnamese *Liên Minh Huyền Thoại*
+ * wordmark and a champion splash. Core ships no content of its own — every
+ * champion, map and monster arrives in a pack from another repository under
+ * its own licence — so a menu wearing one pack's artwork was the engine
+ * claiming something that is not its. The wordmark is now text in this
+ * project's own palette and the background is a gradient, which also happens
+ * to remove 170KB and two precache entries from the first load.
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import AssetManager from '@/managers/AssetManager';
 import DomUtils from '@/utils/dom.utils';
 import { applyUpdate, offlineReady, updateDownloading, updateReady } from '@/pwa/updates';
 import { watchPreload, type PreloadState } from './gamePreload';
+import { packStageLabel } from './packStageLabel';
 import {
   dismissPackBanner,
   packBannerDismissed,
@@ -33,10 +37,8 @@ import {
   retryPackInstall,
 } from './packBanner';
 
-const emit = defineEmits<{ play: []; openConfig: []; openAbout: [] }>();
+const emit = defineEmits<{ play: []; openConfig: []; openAbout: []; openPacks: [] }>();
 
-const logo = AssetManager.get('other_newlogo_vi').url;
-const backgroundUrl = AssetManager.get('other_menu_bg').url;
 // Reads real document state rather than always starting from "not
 // fullscreen": this component remounts on every menu entry (see
 // MenuScene.ts), but the browser's actual fullscreen state does not reset
@@ -125,13 +127,14 @@ const installUpdate = async (): Promise<void> => {
 </script>
 
 <template>
-  <div class="background" :style="{ backgroundImage: `url(${backgroundUrl})` }"></div>
+  <div class="background"></div>
 
-  <div class="logo">
+  <div class="menu-brand">
     <div class="shiny">
-      <img id="menu-logo" alt="logo" class="logo" :src="logo" />
+      <h1 id="menu-logo" class="menu-wordmark">
+        <span class="menu-wordmark-main">MOBA</span><span class="menu-wordmark-2d">2D</span>
+      </h1>
     </div>
-    <p class="p2d slide-bck-center">2D</p>
   </div>
 
   <!-- The bar stands exactly where the buttons will, so the menu does not jump
@@ -159,7 +162,8 @@ const installUpdate = async (): Promise<void> => {
        click-only handler is dead under a thumb. -->
   <div v-if="packInstallFailures.length && !packBannerDismissed" class="pack-banner" role="alert">
     <span>
-      Chưa tải được nội dung ({{ packInstallFailures[0].stage }}). Đang chơi với tướng mặc định.
+      Chưa tải được nội dung — {{ packStageLabel(packInstallFailures[0].stage) }}. Đang chơi với
+      tướng mặc định.
     </span>
     <div class="pack-banner-actions">
       <button
@@ -182,9 +186,37 @@ const installUpdate = async (): Promise<void> => {
     </div>
   </div>
 
-  <button id="about-btn" title="Giới thiệu" @click="emit('openAbout')">
-    <i class="fas fa-circle-info" aria-hidden="true"></i>
-  </button>
+  <!-- In the column, under the two buttons above — not pinned to the top-right
+       corner beside the fullscreen toggle, which is where both spent their
+       whole life as unlabelled 1em glyphs. Neither was findable there, and
+       "Nội dung / Pack" is now the screen a player gets a roster from at all,
+       so it cannot also be the least visible control on the menu.
+
+       Still outside the `ready` gate above, for the reason in this file's
+       header: neither opens game code, so neither waits on the warm-up. -->
+  <div class="menu-links">
+    <button
+      id="packs-btn"
+      class="menu-link"
+      title="Nội dung / Pack"
+      @click="emit('openPacks')"
+      @touchend.prevent="emit('openPacks')"
+    >
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <span>Nội dung / Pack</span>
+    </button>
+
+    <button
+      id="about-btn"
+      class="menu-link"
+      title="Giới thiệu"
+      @click="emit('openAbout')"
+      @touchend.prevent="emit('openAbout')"
+    >
+      <i class="fas fa-circle-info" aria-hidden="true"></i>
+      <span>Giới thiệu</span>
+    </button>
+  </div>
 
   <button id="fullscreen-btn" @click="toggleFullscreen">
     <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>

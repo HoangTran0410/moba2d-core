@@ -54,10 +54,7 @@ const onCdrInput = (event: Event): void => setCdr(cdrValue(event), false);
 const onCdrChange = (event: Event): void => setCdr(cdrValue(event), true);
 
 const onUrfChange = (event: Event): void => {
-  source.setRules(
-    { ...rules.value, manaFree: (event.target as HTMLInputElement).checked },
-    true
-  );
+  source.setRules({ ...rules.value, manaFree: (event.target as HTMLInputElement).checked }, true);
   rules.value = source.getRules();
 };
 
@@ -82,11 +79,18 @@ const onMinionsChange = (event: Event): void =>
  * match: `MatchConfigSource.getMap`'s own doc comment is explicit that a
  * running match reports its own map, unmoved, no matter what is picked,
  * because nothing in this seam rebuilds a live terrain map or nav grid.
- * Re-reading `getMap()` there would make the `<select>` visibly snap back to
- * the running map the instant a different one was chosen — indistinguishable
- * from the control being broken. `selectedMapId` tracks the *pick* instead,
- * which is honest in both places: outside a match the pick and the setting
- * are the same fact, and in one, the note below says what the select cannot.
+ * Re-reading `getMap()` there would make the picker visibly snap back to the
+ * running map the instant a different one was chosen — indistinguishable from
+ * the control being broken. `selectedMapId` tracks the *pick* instead, which
+ * is honest in both places: outside a match the pick and the setting are the
+ * same fact, and in one, the note below says what the picker cannot.
+ *
+ * It is a row of cards rather than a `<select>`, and that is about what a
+ * player can see. A native select shows one map at a time and nothing about
+ * it — choosing between two worlds meant choosing between two names, with no
+ * way to tell how big either was, how many sides it fields, or which pack it
+ * came from except by starting a match on it. Every one of those facts is
+ * already on `QualifiedMapSummary`; none of it fitted in an `<option>`.
  */
 const maps = source.availableMaps();
 // Not `ref(source.getMap())` directly: on a core-alone install `getMap()` can
@@ -100,8 +104,8 @@ const selectedMapId = ref(
   maps.find(map => map.id === source.getMap())?.id ?? maps[0]?.id ?? source.getMap()
 );
 
-const onMapChange = (event: Event): void => {
-  const id = (event.target as HTMLSelectElement).value;
+const pickMap = (id: string): void => {
+  if (id === selectedMapId.value) return;
   source.setMap(id);
   selectedMapId.value = id;
 };
@@ -201,16 +205,45 @@ const resetLabel = computed(() =>
       <span>URF (không tốn mana)</span>
     </label>
 
-    <!-- `GameScene` cancels only canvas touches (see `SettingsTab.vue`'s file
-         comment), so a native `<select>` needs no touch handler of its own —
-         `@change` already fires under a thumb the same way it does under a
-         mouse. -->
-    <label class="pregame-field">
-      <span>Bản đồ</span>
-      <select id="practice-map" :value="selectedMapId" @change="onMapChange">
-        <option v-for="map of maps" :key="map.id" :value="map.id">{{ map.name }}</option>
-      </select>
-    </label>
+    <!-- Cards, not a `<select>` — see the script's own comment on what a
+         player could not see before. A `<select>` was also the one control on
+         this tab that needed no touch handler, because `@change` fires under
+         a thumb; a button does not, so each card carries `@touchend.prevent`
+         beside its `@click` like every other control in this panel.
+
+         Not wrapped in `.pregame-field`: that rule sets `display: block` on
+         every descendant `span`, which is right for a one-line label and
+         wrong for the three stacked lines inside a card. -->
+    <div class="map-field">
+      <span class="map-field-label">Bản đồ</span>
+      <div id="practice-map" class="map-picker" role="radiogroup" aria-label="Bản đồ">
+        <button
+          v-for="map of maps"
+          :key="map.id"
+          type="button"
+          class="map-option"
+          :class="{ selected: map.id === selectedMapId }"
+          role="radio"
+          :aria-checked="map.id === selectedMapId"
+          :data-map="map.id"
+          @click="pickMap(map.id)"
+          @touchend.prevent="pickMap(map.id)"
+        >
+          <span class="map-option-name">
+            {{ map.name }}
+            <i
+              v-if="map.id === selectedMapId"
+              class="fas fa-check map-option-tick"
+              aria-hidden="true"
+            ></i>
+          </span>
+          <span class="map-option-meta">
+            {{ map.size }}×{{ map.size }} · {{ map.factions.length }} phe
+          </span>
+          <span class="map-option-pack">{{ map.packId }}</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Only in a match, and only for the map: a live match cannot swap its
          own world out from under itself — see `MatchConfigSource.getMap`. -->
@@ -276,7 +309,13 @@ const resetLabel = computed(() =>
 
       <!-- Outside a match the equivalent is simply going back to the menu; it
            discards nothing, so it does not confirm. -->
-      <button v-else type="button" class="practice-exit" id="pregame-back-btn" @click="emit('close')">
+      <button
+        v-else
+        type="button"
+        class="practice-exit"
+        id="pregame-back-btn"
+        @click="emit('close')"
+      >
         <i class="fas fa-arrow-left" aria-hidden="true"></i>
         <span>Về menu</span>
       </button>

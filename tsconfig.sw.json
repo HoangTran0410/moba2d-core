@@ -1,0 +1,17 @@
+{
+  // The service worker cannot share `tsconfig.json`'s program: that one
+  // resolves the DOM lib (ESNext's default), where `self` is a `Window`, and
+  // this file needs `self` to be a `ServiceWorkerGlobalScope`. The two lib
+  // sets are mutually exclusive by design, which is why every service-worker
+  // setup ends up with a second config rather than a clever cast.
+  //
+  // `strict` on, unlike root `tsconfig.json`: this is 60 lines of new code
+  // with no legacy to accommodate, and it runs where nobody can see it fail.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["ESNext", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/sw.ts"]
+}

@@ -22,6 +22,20 @@ export interface InstalledPackRecord {
   id: string;
   /** The version last installed, so an update can be noticed later. */
   version: string;
+  /**
+   * The name the manifest declared, so the packs screen can show a pack the
+   * way its author named it rather than by the machine id. Optional: a record
+   * written before this field existed has none, and the id is the fallback.
+   */
+  name?: string;
+  /**
+   * The pack's own mark, absolute, already checked to be on the manifest's
+   * origin (`resolvePackIcon`). Optional — most packs declare none, and the
+   * packs screen draws a monogram instead. Stored rather than re-derived
+   * because that screen never re-fetches a manifest just to list what is
+   * installed.
+   */
+  icon?: string;
 }
 
 const isRecord = (value: unknown): value is InstalledPackRecord =>
@@ -53,8 +67,18 @@ export function readInstalledPacks(): InstalledPackRecord[] {
   // this project and cannot narrow a type.
   const out: InstalledPackRecord[] = [];
   for (const entry of parsed) {
-    if (isRecord(entry))
-      out.push({ manifestUrl: entry.manifestUrl, id: entry.id, version: entry.version });
+    if (isRecord(entry)) {
+      const record: InstalledPackRecord = {
+        manifestUrl: entry.manifestUrl,
+        id: entry.id,
+        version: entry.version,
+      };
+      // Copied only when they are strings: this value is hand-editable and
+      // survives across versions, same as every other read here.
+      if (typeof entry.name === 'string' && entry.name.length > 0) record.name = entry.name;
+      if (typeof entry.icon === 'string' && entry.icon.length > 0) record.icon = entry.icon;
+      out.push(record);
+    }
   }
   return out;
 }

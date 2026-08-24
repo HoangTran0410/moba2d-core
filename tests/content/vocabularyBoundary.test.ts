@@ -156,6 +156,30 @@ describe("core carries none of Riot's vocabulary", () => {
     expect(offendersByRule()['champion-or-monster-name']).toEqual([]);
   });
 
+  /**
+   * The boundary that decides what counts as "the name, on its own".
+   *
+   * It was `[A-Za-z0-9]` on both sides, which is right for English and wrong
+   * for the language this game's entire player-facing copy is written in:
+   * `ệ` is not an ASCII letter, so the boundary held between `Vi` and `ệt`
+   * and every "tiếng Việt" in `about/changelog.ts` was reported as the
+   * champion Vi. Both halves are pinned here — the false positive it must
+   * not have, and the two real catches the fix must not lose.
+   */
+  it('reads a name only where it stands alone, in Vietnamese as well as English', () => {
+    const tokens = (source: string) =>
+      riotVocabularyOffences('src/x.ts', source)
+        .filter(offence => offence.rule === 'champion-or-monster-name')
+        .map(offence => offence.token);
+
+    expect(tokens('báo lỗi bằng tiếng Việt thay vì mã lỗi')).toEqual([]);
+    expect(tokens('const visible = canPerceive(target); // Vision, Visible, Vite')).toEqual([]);
+    // And it still catches the name itself, and still treats `_` as a
+    // separator so a name inside a snake_case literal cannot hide.
+    expect(tokens('Vi ults straight through the wall')).toContain('Vi');
+    expect(tokens("AssetManager.get('champion_Vi_splash')")).toContain('Vi');
+  });
+
   it('carries no spell-id-shaped identifier (ChampionName_Slot) anywhere', () => {
     expect(offendersByRule()['spell-id']).toEqual([]);
   });

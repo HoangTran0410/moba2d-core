@@ -284,6 +284,99 @@
   cursor: pointer;
 }
 
+/* =============== Map picker (MatchTab.vue) =============== */
+/* A row of cards where a `<select>` used to be. The three facts on each one —
+   world size, faction count, source pack — are all already on
+   `QualifiedMapSummary`, and none of them fitted in an `<option>`; picking
+   between two worlds used to mean picking between two names.
+
+   Deliberately outside `.pregame-field`: that rule sets `display: block` on
+   every descendant `span`, which is right for a one-line label and wrong for
+   three stacked lines inside a card. */
+
+.map-field {
+  margin-bottom: 0.8rem;
+  font-size: 0.85em;
+}
+
+.map-field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+/* `auto-fill` with a floor rather than a fixed column count: this panel is
+   390px wide on a phone and 720px on a desktop, and the list is however many
+   maps the installed packs happen to bring. */
+.map-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+
+/* Same visual language as `.input-mode-btn` above — an unselected card is a
+   panel with a line round it, the selected one goes teal. Left-aligned and
+   three lines tall, because it carries facts rather than a single word. */
+.map-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+  color: #bbb;
+  font: inherit;
+  font-size: 0.95em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-option:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.map-option.selected {
+  border-color: var(--hextech-teal);
+  background: #102426;
+  color: var(--hextech-text);
+}
+
+.map-option:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+.map-option-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.map-option.selected .map-option-name {
+  color: var(--hextech-gold);
+}
+
+/* The tick is redundant with the border on a colour screen and is not on a
+   monochrome one, which is the whole reason it is here. */
+.map-option-tick {
+  font-size: 0.8em;
+  color: var(--hextech-teal);
+}
+
+.map-option-meta {
+  font-size: 0.78em;
+  color: var(--hextech-muted);
+}
+
+/* Which pack the map came from. Quiet, but present: with two packs installed
+   the same map name can arrive twice. */
+.map-option-pack {
+  font-size: 0.72em;
+  color: var(--hextech-muted);
+  opacity: 0.75;
+}
+
 /* =============== Input mode (InputModePanel.vue) =============== */
 /* A three-way row rather than a two-state switch on purpose — "Tự động" is
    shaped in from day one, disabled until the tri-state preference lands in

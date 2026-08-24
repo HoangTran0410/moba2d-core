@@ -3,8 +3,10 @@ import { Scene } from '@/managers/SceneManager';
 import AboutSceneView from './AboutScene.vue';
 
 /**
- * The About screen: what the game is, a link to the source, any write-ups,
- * and a player-facing changelog. Opened from the menu, and only from there.
+ * The About screen: what the game is, how to give it content, a link to the
+ * source, any write-ups, and a player-facing changelog. Opened from the menu,
+ * and only from there — and it leads on to the packs screen, which is the one
+ * place its "cài thêm nội dung" section can be acted on.
  *
  * Mounted in `enter()` and unmounted in `exit()`, the same lifecycle
  * `SetupScene.ts` uses for the same reason: this scene is entered repeatedly
@@ -38,6 +40,13 @@ export default class AboutScene extends Scene {
         // a static edge back to the scene that reaches this one is a cycle,
         // and a cycle between chunks is a single chunk.
         void import('./MenuScene').then(module => this.sceneManager.showScene(module.default));
+      },
+      // The About screen explains what a content pack is and how to install
+      // one; sending the player back to the menu to find the button is one
+      // step of nothing. Dynamic for the same reason `MenuScene.ts`'s own
+      // `onOpenPacks` is — see that file, and `PacksScene.ts`'s header.
+      onOpenPacks: () => {
+        void import('./PacksScene').then(module => this.sceneManager.showScene(module.default));
       },
     });
     this.app.mount(this.host);

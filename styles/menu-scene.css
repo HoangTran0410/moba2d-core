@@ -12,6 +12,11 @@
   overflow: hidden;
 }
 
+/* Drawn, not fetched. This used to be a champion splash — Riot's artwork, in
+   the engine's own repository, for a game that ships no champions of its own.
+   Two gradients and a faint lattice in this project's palette instead: no
+   request, no precache entry, nothing to come up bare on a first offline
+   launch, and nothing borrowed. */
 #menu-scene .background {
   position: fixed;
   top: 0;
@@ -19,12 +24,24 @@
   width: 100vw;
   height: 100vh;
   height: 100dvh;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(5px) brightness(0.5);
+  background:
+    radial-gradient(120% 85% at 50% -10%, rgba(8, 171, 172, 0.22), transparent 62%),
+    radial-gradient(100% 70% at 50% 110%, rgba(200, 170, 110, 0.16), transparent 60%),
+    linear-gradient(180deg, #10161d 0%, #0b0f14 55%, #070a0d 100%);
+}
 
-  transition: background-image 0.5s ease-in-out;
+/* The lattice: two crossed line sets at 60°, so the cells read as hexagonal
+   without a single image. Masked to a soft oval so it fades out at the edges
+   rather than stopping at them. */
+#menu-scene .background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(60deg, rgba(200, 170, 110, 0.05) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(-60deg, rgba(8, 171, 172, 0.05) 0 1px, transparent 1px 38px);
+  -webkit-mask-image: radial-gradient(75% 62% at 50% 42%, #000 25%, transparent 100%);
+  mask-image: radial-gradient(75% 62% at 50% 42%, #000 25%, transparent 100%);
 }
 
 #menu-scene button {
@@ -61,18 +78,68 @@
   cursor: pointer;
 }
 
-/* Left of the fullscreen toggle, same row, same quiet treatment — it opens a
-   read-only screen, not a scene-critical action, so it must not compete with
-   Chơi/Cấu Hình Trận Đấu for attention. */
-#about-btn {
-  position: fixed;
-  top: calc(20px + var(--safe-top));
-  right: calc(64px + var(--safe-right));
-  background-color: transparent;
-  border: none;
+/* ------------------------------------------------ Nội dung / Pack, Giới thiệu
+
+   Both used to be pinned here, in the top-right row beside the fullscreen
+   toggle, as unlabelled 1em glyphs. They are in the column flow under the two
+   buttons now, and the move is not decoration: a `fa-cubes` icon in a corner
+   does not say "this is where champions come from", and since the content pack
+   left the build that screen is how a player gets a roster at all. Two 1em
+   icon-only targets 44px apart from a third were also a mis-hit on a phone.
+
+   Quieter than `.hextech-btn.secondary` all the same — they still must not
+   compete with Chơi and Cấu Hình Trận Đấu for the first look.
+   `tests/scenes/viewportFit.test.ts` holds them unpinned; see its own comment
+   for why reaching for a corner again reinstates a whole class of bug. */
+.menu-links {
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* 44px minimum so a thumb can hit either one — the same floor `.pack-banner
+   button` uses, and the reason these are not simply small text links. */
+.menu-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.5rem 1.1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   color: #bbb;
-  font-size: 1em;
+  font: inherit;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   cursor: pointer;
+}
+
+.menu-link:hover {
+  color: #f0e6d2;
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* The gold one of the pair. It is the screen that decides what the game
+   contains — with no pack installed the roster is one champion — so it gets
+   the weight, and Giới thiệu stays plain. */
+#packs-btn {
+  border-color: rgba(200, 170, 110, 0.55);
+  color: #c8aa6e;
+}
+
+#packs-btn:hover {
+  border-color: rgba(200, 170, 110, 0.95);
+  background: rgba(44, 36, 24, 0.6);
+}
+
+/* A read-only screen: plain, and deliberately the quieter of the two. */
+#about-btn {
+  opacity: 0.85;
 }
 
 .hextech-btn {
@@ -98,16 +165,70 @@
   cursor: pointer;
 }
 
+/* ------------------------------------------------------------------ Wordmark
+
+   Text, not an image. It was Riot's Vietnamese *Liên Minh Huyền Thoại*
+   wordmark with a white "2D" pasted over one corner — see `MenuScene.vue`'s
+   own header for why an engine that ships no champions should not wear one
+   pack's branding. Setting it as type also means it scales with the viewport
+   instead of being a fixed 500px bitmap, and the `.shiny` sweep below runs
+   over it unchanged. */
 .shiny {
   display: block;
-  width: 500px;
-  max-width: 80vw;
+  width: min(500px, 86vw);
   position: relative;
   overflow: hidden;
 }
 
-.shiny img {
-  width: 100%;
+.menu-brand {
+  position: relative;
+  z-index: 10;
+}
+
+.menu-wordmark {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.02em;
+  margin: 0;
+  padding: 0.22em 0 0.16em;
+  font-size: clamp(2.6rem, 15vw, 5.2rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Gold, in the same ramp `--hextech-gold` sits in the middle of. `-webkit-`
+   first and unprefixed second: Safari still needs the prefixed property, and
+   a browser that has neither simply keeps the gold `color` below. */
+.menu-wordmark-main {
+  color: #c8aa6e;
+  background: linear-gradient(180deg, #f5ecd8 0%, #c8aa6e 55%, #8a6a2f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The "2D" kept its character from the old logo: off-white, tilted, sitting on
+   a stack of shadows, and riding *above* the word rather than on its baseline
+   — which is where it sat when it was a separate absolutely-positioned
+   element. It is a flex sibling now, so the lift is a transform and a smaller
+   size instead of a fixed offset that only worked at one word length. */
+.menu-wordmark-2d {
+  color: #edf2f4;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  font-size: 0.74em;
+  transform: rotate(-9deg) translate(-0.06em, -0.28em);
+  text-shadow:
+    1px 1px 0 #8d99ae,
+    1px 2px 0 #8d99ae,
+    1px 3px 0 #8d99ae,
+    1px 4px 0 #8d99ae,
+    1px 5px 0 #8d99ae,
+    1px 8px 6px rgba(16, 16, 16, 0.45),
+    1px 14px 22px rgba(16, 16, 16, 0.35);
 }
 
 .shiny:before {
@@ -144,39 +265,6 @@
     left: 100%;
     top: 100%;
   }
-}
-
-.logo {
-  position: relative;
-}
-
-.p2d {
-  position: absolute;
-  top: 35px;
-  right: 15px;
-  margin: 0;
-  text-transform: uppercase;
-  font-family: verdana;
-  font-size: 4em;
-  font-weight: 700;
-  color: #edf2f4;
-  transform: rotate(25deg) translateX(20px) translateY(-50px);
-
-  text-shadow:
-    1px 1px 1px #8d99ae,
-    1px 2px 1px #8d99ae,
-    1px 3px 1px #8d99ae,
-    1px 4px 1px #8d99ae,
-    1px 5px 1px #8d99ae,
-    1px 6px 1px #8d99ae,
-    1px 7px 1px #8d99ae,
-    1px 8px 1px #8d99ae,
-    1px 9px 1px #8d99ae,
-    1px 10px 1px #8d99ae,
-    1px 18px 6px rgba(16, 16, 16, 0.4),
-    1px 22px 10px rgba(16, 16, 16, 0.2),
-    1px 25px 35px rgba(16, 16, 16, 0.2),
-    1px 30px 60px rgba(16, 16, 16, 0.4);
 }
 
 /* ------------------------------------------------------------ Version stamp

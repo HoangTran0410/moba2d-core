@@ -42,6 +42,18 @@ export interface RuntimePackManifest {
   entry: string;
   assets: string;
   champions?: number;
+  /**
+   * The pack's own mark, relative to this manifest. Optional; core draws a
+   * monogram when it is absent, and never shows this on the install
+   * confirmation — see `resolvePackIcon`.
+   */
+  icon?: string;
+  /**
+   * Every file the pack published, relative to this manifest — spec §3.1.
+   * Optional: a pack without it installs and plays, and simply has nothing
+   * prefetched for offline.
+   */
+  files?: string[];
 }
 
 /** Everything one install produced, ready for the registry. */
@@ -168,6 +180,34 @@ function resolveWithin(path: string, base: string, field: string): string {
 }
 
 /**
+ * The pack's mark as an absolute URL, or `undefined` if it declared none.
+ *
+ * **Only ever shown for a pack that is already installed.** A pack that has
+ * been installed already runs with the page's full authority, so an image
+ * from it is no additional risk; a pack that has *not* is a stranger, and
+ * artwork it chose sitting beside the origin in `PackInstallConfirm.vue`
+ * would be attacker-controlled decoration inside a permission prompt — a
+ * padlock, a shield, or another pack's logo, drawn to buy trust the origin
+ * line exists to withhold. The shelf and the confirmation both draw a
+ * monogram core derives itself instead.
+ *
+ * Never throws: `fetchPackManifest` already ran `resolveWithin` over this
+ * field, so a manifest that reaches here has an icon that resolves or none
+ * at all. The `try` is for the caller that hands over a hand-built manifest.
+ */
+export function resolvePackIcon(
+  manifest: RuntimePackManifest,
+  manifestUrl: string
+): string | undefined {
+  if (!manifest.icon) return undefined;
+  try {
+    return resolveWithin(manifest.icon, manifestUrl, 'icon');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Fetches and checks a manifest. Nothing the pack wrote as *code* has run
  * when this resolves — that is the whole point of it being its own step.
  *
@@ -221,6 +261,12 @@ export async function fetchPackManifest(
     if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
       throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
     }
+    if (candidate.files !== undefined && !Array.isArray(candidate.files)) {
+      throw new PackLoadError('manifest', 'manifest.files must be an array when present');
+    }
+    if (candidate.icon !== undefined && typeof candidate.icon !== 'string') {
+      throw new PackLoadError('manifest', 'manifest.icon must be a string when present');
+    }
 
     const manifest = candidate as unknown as RuntimePackManifest;
     if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
@@ -233,6 +279,19 @@ export async function fetchPackManifest(
     // for `loadPackFromManifest` to discover — see `resolveWithin`'s own
     // comment for why this is the design's whole point.
     resolveWithin(manifest.assets, manifestUrl, 'assets');
+    // Same rule as `assets` and `entry`: a pack may not point core's `<img>`
+    // at some other host. Refused here rather than at render time, so a
+    // manifest that tries it never reaches the confirmation at all.
+    if (manifest.icon) resolveWithin(manifest.icon, manifestUrl, 'icon');
+    if (Array.isArray(manifest.files)) {
+      // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
+      // this project and cannot narrow a type (CLAUDE.md).
+      const paths: string[] = [];
+      for (const entry of manifest.files) {
+        if (typeof entry === 'string' && entry.length > 0) paths.push(entry);
+      }
+      manifest.files = paths;
+    }
     return manifest;
   } finally {
     clearTimeout(alarm);

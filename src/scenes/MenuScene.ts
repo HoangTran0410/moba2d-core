@@ -52,6 +52,12 @@ export default class MenuScene extends Scene {
       onOpenAbout: () => {
         void import('./AboutScene').then(module => this.sceneManager.showScene(module.default));
       },
+      // Same reasoning as `onOpenAbout`, and see `PacksScene.ts`'s own
+      // header: listing what is installed opens no game code either, and a
+      // static import here would drag the whole match into the menu's chunk.
+      onOpenPacks: () => {
+        void import('./PacksScene').then(module => this.sceneManager.showScene(module.default));
+      },
     });
     this.app.mount(this.host);
   }

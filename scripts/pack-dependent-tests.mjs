@@ -282,11 +282,27 @@ const PACK_CONTENT_FIXTURE_TESTS = {
   ],
 };
 
+/**
+ * Core's own source, by either spelling — `@/` is the alias for `src/`.
+ *
+ * It has to be ruled out before the patterns below run, because core has a
+ * directory of its own called `packs`: `src/scenes/packs/` is the packs
+ * *screen*, and a test importing `@/scenes/packs/suggestedPacks` was read by
+ * the first pattern as naming a content pack called `suggestedPacks`. No
+ * checkout has a pack by that name, so every importer of that directory was
+ * quietly dropped from every run — including `packDependentTests.test.ts`'s
+ * own "excludes nothing when every pack is installed", which is the case that
+ * exists to catch exactly this over-match.
+ */
+const IS_CORE_SOURCE = /^@\/|(?:^|\/)src\//;
+
 /** The pack a specifier names, by either spelling, or `null`. */
 const packNamed = specifier =>
-  /(?:^|\/)packs\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(specifier)?.[1] ??
-  /^@moba2d\/content-([A-Za-z0-9_-]+)(?:\/|$)/.exec(specifier)?.[1] ??
-  null;
+  IS_CORE_SOURCE.test(specifier)
+    ? null
+    : /(?:^|\/)packs\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(specifier)?.[1] ??
+      /^@moba2d\/content-([A-Za-z0-9_-]+)(?:\/|$)/.exec(specifier)?.[1] ??
+      null;
 
 /**
  * Whether `source` declares that it has already handled `pack` being absent, by

@@ -239,7 +239,14 @@ export function riotVocabularyOffences(path: string, source: string): Vocabulary
     // quote. The boundary itself cannot simply be dropped, though: without
     // it, this same pattern hits 117 false positives across `src/` alone
     // (`Vi` inside `Vision`/`Visible`/`Vite`, `Sett` inside `Setting`, ...).
-    re: new RegExp(`(?<![A-Za-z0-9])${name.replace(/'/g, "'?")}(?![A-Za-z0-9])`),
+    //
+    // `\p{L}`/`\p{N}` rather than `[A-Za-z0-9]`, because the prose half of
+    // that subject is Vietnamese: `ệ` is not an ASCII letter, so the old
+    // boundary held between `Vi` and `ệt` and every "tiếng Việt" in the
+    // player-facing changelog was reported as the champion Vi. `_` is
+    // `\p{Pc}`, not a letter or a number, so the snake_case case above still
+    // works exactly as before.
+    re: new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/'/g, "'?")}(?![\\p{L}\\p{N}])`, 'u'),
   }));
   for (const line of source.split('\n')) {
     for (const { name, re } of namePatterns) {

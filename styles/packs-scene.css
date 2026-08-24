@@ -1,0 +1,793 @@
+#packs-scene {
+  width: 100vw;
+  height: 100vh;
+  /* Both, in this order — see `.center-page-container > div` in main.css. */
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Centred by `#packs-scene`'s own flex, like `.about-panel` — no
+   `position: fixed` + `translate(-50%, -50%)` needed, because this box is
+   never mounted over something else that already owns the viewport.
+   `height`, not `max-height`, for the same reason `.about-panel` picked it
+   over `max-height` — see that file's own comment. */
+.packs-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  height: min(600px, 88vh);
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+}
+
+.packs-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.2rem 0.8rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.packs-header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.3em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-gold);
+}
+
+/* 44px square: the same thumb-sized close button every other panel uses
+   (`.about-close`, `.practice-close`, `.pregame-icon-btn`). */
+.packs-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--hextech-muted);
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+.packs-close:hover {
+  color: var(--hextech-text);
+}
+
+/* The non-scrolling ancestor `.packs-body` and `PackInstallConfirm` share.
+   `PackInstallConfirm`'s backdrop is `position: absolute; inset: 0` against
+   *this* element, not `.packs-body`: an absolutely positioned child of a
+   scroll container scrolls with its content, which is the one thing a modal
+   must never do — with a long installed list scrolled down, a backdrop
+   pinned to `.packs-body` itself could sit above the viewport entirely.
+   `.packs-body-shell` is also what keeps `.packs-header`'s close button
+   outside the backdrop's coverage: it wraps `.packs-body` but not the
+   header, so a confirmation only pending discards itself, without
+   installing anything, the same as pressing "Huỷ" — see this file's own
+   comment on `.pack-confirm-backdrop` and `PacksScene.vue`'s template. */
+.packs-body-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The panel's one scroll region. Plain `overflow-y: auto` is enough here —
+   unlike `.practice-tab-body`, nothing above this element sets
+   `touch-action: none`. This scene mounts over `#packs-scene`, a sibling of
+   `#game-scene` reached only from the menu — no p5 canvas exists yet,
+   `GameScene.syncTouches` only ever claims touches whose target *is* that
+   canvas, and `body { overflow: hidden }` is the only ancestor rule in play.
+   See `AboutScene.vue`'s own header for the full reasoning; the same
+   argument applies unchanged here. */
+.packs-body {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1.2rem 1.4rem;
+}
+
+/* -------------------------------------------------------------------- Tabs
+
+   Two jobs, two tabs — see `PacksScene.vue`'s own header. Inside
+   `.packs-body-shell` and not beside the header, so `PackInstallConfirm`'s
+   backdrop covers them: a pending confirmation must not have the tab switched
+   out from under it. */
+
+.packs-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+/* 44px, because these are the screen's primary navigation and the first thing
+   a thumb reaches for. */
+.packs-tab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.packs-tab:hover {
+  color: var(--hextech-text);
+}
+
+.packs-tab.selected {
+  color: var(--hextech-gold);
+  border-bottom-color: var(--hextech-gold);
+}
+
+.packs-tab:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: -2px;
+}
+
+/* How many are installed, on the tab that manages them — the one number worth
+   knowing before you switch. */
+.packs-tab-count {
+  min-width: 1.35em;
+  padding: 0 0.3em;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  border-radius: 999px;
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: var(--hextech-text);
+}
+
+/* ------------------------------------------------------------------ Avatar
+
+   One tile, two sources. An installed pack draws its own icon (`<img>`); a
+   pack that is not installed draws a monogram core derived itself — see
+   `scenes/packs/packMonogram.ts` for why the line falls exactly there. Same
+   box either way, so the list does not reflow when one arrives. */
+
+.packs-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--hextech-line);
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.packs-avatar-img {
+  object-fit: cover;
+  background: var(--hextech-sunken);
+}
+
+.packs-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.packs-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* --------------------------------------------------------------- Explainer
+
+   "Pack là gì?" — what moved here from the About screen, which is where the
+   question is asked and not where it can be acted on. A `<details>`, open only
+   while nothing is installed: native disclosure is keyboard- and
+   screen-reader-correct for free, and this screen never mounts over the p5
+   canvas, so the `preventDefault()` that kills native controls inside the HUD
+   does not reach it. */
+
+.packs-intro {
+  margin-bottom: 1.2rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+}
+
+/* `display: flex` on a summary removes the default marker in every engine, so
+   the chevron below is hand-drawn rather than inherited. */
+.packs-intro-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 32px;
+  font-size: 0.86em;
+  color: var(--hextech-gold);
+  cursor: pointer;
+  list-style: none;
+}
+
+.packs-intro-summary::-webkit-details-marker {
+  display: none;
+}
+
+.packs-intro-summary::after {
+  content: '\f078';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  margin-left: auto;
+  font-size: 0.75em;
+  color: var(--hextech-muted);
+  transition: transform 0.15s ease;
+}
+
+.packs-intro[open] .packs-intro-summary::after {
+  transform: rotate(180deg);
+}
+
+.packs-intro-text {
+  margin: 0.6rem 0 0.7rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+.packs-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.packs-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.84em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+/* Fixed-width, so the three lines' text starts on one column — which is what
+   makes them read as steps rather than as three sentences. */
+.packs-step > i {
+  flex: none;
+  width: 1.3rem;
+  padding-top: 0.15rem;
+  text-align: center;
+  color: var(--hextech-teal);
+}
+
+.packs-step code {
+  padding: 0 0.25em;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  font-size: 0.92em;
+  /* `main.css` sets `user-select: none` on `*`; a file name a player might
+     want to copy out of a sentence is the wrong place for that. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ------------------------------------------------------------- Sections
+
+   Three of them, in the order a player meets them: what is installed, the
+   shelf, and the URL field last. The rule of the whole screen is that the
+   installed list's classes (`.packs-row`, `.packs-origin`) are its own — the
+   shelf below wears `.packs-card*` instead, so a Playwright read of
+   `.packs-origin` cannot silently pick up a suggestion instead of an
+   install. */
+
+.packs-section {
+  margin-bottom: 1.4rem;
+}
+
+.packs-section:last-child {
+  margin-bottom: 0;
+}
+
+.packs-section-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-muted);
+  border-bottom: 1px solid var(--hextech-line);
+  padding-bottom: 0.35rem;
+}
+
+/* `main.css` sets `user-select: none` on `*`, which is right for a game
+   canvas and wrong for a URL a player is being told to use. Every string on
+   this screen that someone might want to send to themselves opts back in. */
+.packs-selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.packs-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: var(--hextech-muted);
+}
+
+/* --------------------------------------------------------------- The shelf
+
+   `packs/suggestedPacks.ts` rendered as cards. What this replaced was a
+   single `<span>` holding the default pack's URL: not clickable, not
+   installable, and — because of the `user-select: none` above — not even
+   copyable, so the one thing the screen told a player to do with that string
+   was the one thing the screen prevented.
+
+   A grid rather than a column: it is one card today and the whole point of
+   the file behind it is that it is a list. `minmax(260px, 1fr)` gives one
+   column on a phone and two on the 720px panel without a breakpoint. */
+.packs-catalog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.8rem;
+}
+
+.packs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+}
+
+.packs-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.packs-card-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--hextech-gold);
+}
+
+.packs-card-installed {
+  flex: none;
+  font-size: 0.78em;
+  color: #7fd4a0;
+}
+
+.packs-card-desc {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+/* Deliberately not `.packs-origin`: that class belongs to the installed list
+   (see `.packs-section`'s comment). Same never-elided treatment, though — a
+   URL a player is about to install must be readable in full. */
+.packs-card-url {
+  margin: 0;
+  font-size: 0.76em;
+  color: var(--hextech-muted);
+  word-break: break-all;
+}
+
+.packs-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+/* 40px floor on all three: they sit side by side, and the middle one of three
+   adjacent thumb targets is the one that gets mis-hit. */
+.packs-card-install,
+.packs-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--hextech-line);
+  background: transparent;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.8em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.packs-card-action:hover {
+  color: var(--hextech-text);
+  border-color: var(--hextech-muted);
+}
+
+/* The one that starts something. Teal, like every other "this is the action"
+   control on this screen (`.packs-add-row button`, `.pack-confirm` border) —
+   and not red: pressing it opens the confirmation, it does not install. */
+.packs-card-install {
+  border-color: var(--hextech-teal);
+  color: var(--hextech-teal);
+}
+
+.packs-card-install:hover:not(:disabled) {
+  background: #102426;
+  color: var(--hextech-text);
+}
+
+.packs-card-install:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Already installed: still on the screen, still saying so, but plainly not
+   an offer. A hidden button would leave a player wondering where it went. */
+.packs-card-install.done {
+  border-color: var(--hextech-line);
+  color: var(--hextech-muted);
+}
+
+/* ----------------------------------------------------------- Add by URL */
+
+.packs-add {
+  margin-bottom: 1rem;
+}
+
+.packs-add-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+}
+
+.packs-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.packs-add-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0.3rem 0.6rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+.packs-add-row input:focus {
+  outline: none;
+  border-color: var(--hextech-teal);
+}
+
+/* `readonly`, not `disabled`, while a check is in flight — see the template's
+   own comment on the focus this used to throw away. It has to *look* the same
+   as it did, though, or the panel reads as idle while it is working. */
+.packs-add-row input[readonly] {
+  opacity: 0.6;
+}
+
+.packs-add-row button {
+  flex: none;
+  min-height: 42px;
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 2px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-add-row button:disabled,
+.packs-add-row button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.packs-add-error {
+  margin: 0.4rem 0 0;
+  font-size: 0.8em;
+  color: #e08a8a;
+  word-break: break-word;
+}
+
+.packs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.packs-row {
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.packs-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.packs-id {
+  font-weight: 600;
+  color: var(--hextech-text);
+}
+
+.packs-version {
+  font-size: 0.85em;
+  color: var(--hextech-muted);
+}
+
+/* The one line this screen exists for. `break-all`, never `text-overflow:
+   ellipsis` and never a truncating substring in the script — an elided
+   origin is the one thing this screen may not present. */
+.packs-origin {
+  margin: 0;
+  font-size: 0.88em;
+  color: var(--hextech-teal);
+  word-break: break-all;
+}
+
+.packs-usage {
+  margin: 0;
+  font-size: 0.82em;
+  color: var(--hextech-muted);
+}
+
+/* Same "arm, then confirm" visual language as `.practice-exit.confirming`
+   (`MatchTab.vue`) — a filled, warning-coloured state only once the second
+   press is the one that will actually delete something. */
+.packs-remove {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--hextech-line);
+  color: var(--hextech-muted);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-remove:hover {
+  color: var(--hextech-text);
+  border-color: var(--hextech-muted);
+}
+
+.packs-remove.confirming {
+  background: #a33;
+  border-color: #c44;
+  color: #fff;
+}
+
+.packs-remove:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.packs-empty {
+  color: var(--hextech-muted);
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+
+/* An empty tab that only says "nothing here" is a dead end. This is the way
+   out of it, and it is the same press the other tab is. */
+.packs-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin-top: 0.8rem;
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 2px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-empty-cta:hover {
+  background: #102426;
+  color: var(--hextech-text);
+}
+
+.packs-empty-hint {
+  margin-top: 0.6rem;
+}
+
+/* --------------------------------------------------- Install confirmation
+   `PackInstallConfirm.vue`. Covers `.packs-body-shell` (see that selector's
+   own comment) — not `.packs-body`, which scrolls, and not the whole panel,
+   so `.packs-header`'s close button stays reachable while a confirmation is
+   only pending. */
+.pack-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 20;
+}
+
+/* `tabindex="-1"`, so it can hold focus itself while both buttons are
+   disabled mid-install — see `PackInstallConfirm.vue`'s focus trap. It never
+   shows a ring of its own for that: the dialog is already the only thing on
+   screen, and a border round the whole box reads as an error state. */
+.pack-confirm:focus {
+  outline: none;
+}
+
+/* The buttons do, though. The trap moves focus with the keyboard, and a
+   dialog that steals focus without showing where it went is worse than one
+   that never took it. `:focus-visible`, so a mouse press does not leave a
+   ring behind. */
+.pack-confirm-actions button:focus-visible,
+.packs-card-install:focus-visible,
+.packs-card-action:focus-visible,
+.packs-add-row button:focus-visible,
+.packs-remove:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+.pack-confirm {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--hextech-bg);
+  border: 2px solid var(--hextech-teal);
+  padding: 1.1rem 1.2rem;
+  box-shadow: 0 0 24px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* 1. The origin — largest type on the whole screen, on purpose, and never
+   elided: `break-all`, never `text-overflow: ellipsis`, never a truncating
+   substring anywhere in the script. This is the one line the whole
+   confirmation exists to show. */
+.pack-confirm-origin {
+  margin: 0 0 0.6rem;
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--hextech-gold);
+  word-break: break-all;
+}
+
+/* 2. Name and version. */
+.pack-confirm-name {
+  margin: 0 0 0.4rem;
+  font-size: 1em;
+  color: var(--hextech-text);
+}
+
+/* 3. coreRange result. */
+.pack-confirm-compat {
+  margin: 0 0 0.4rem;
+  font-size: 0.9em;
+  color: var(--hextech-teal);
+}
+
+.pack-confirm-compat.pack-confirm-refused {
+  color: #e08a8a;
+}
+
+/* 4. Champion count, when declared. */
+.pack-confirm-champions {
+  margin: 0 0 0.6rem;
+  font-size: 0.85em;
+  color: var(--hextech-muted);
+}
+
+/* 5. The authority sentence, verbatim — CLAUDE.md/the task brief's own
+   wording, not to be reworded here. */
+.pack-confirm-authority {
+  margin: 0 0 0.8rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+.pack-confirm-error {
+  margin: 0 0 0.6rem;
+  font-size: 0.82em;
+  color: #e08a8a;
+  word-break: break-word;
+}
+
+/* 6. Huỷ (default-looking) and Cài đặt (destructive-looking — the one that
+   runs a stranger's code). */
+.pack-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.pack-confirm-actions button {
+  flex: 1 1 0;
+  min-height: 44px;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.pack-confirm-cancel {
+  background: transparent;
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+}
+
+.pack-confirm-cancel:hover {
+  border-color: var(--hextech-muted);
+}
+
+.pack-confirm-install {
+  background: #a33;
+  border: 2px solid #c44;
+  color: #fff;
+}
+
+.pack-confirm-install:disabled,
+.pack-confirm-cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The full manifest URL, beneath, dimmed — the origin above is the
+   security-relevant part, this is context. */
+.pack-confirm-url {
+  margin: 0.7rem 0 0;
+  font-size: 0.75em;
+  color: var(--hextech-muted);
+  word-break: break-all;
+}
+
+/* Same breakpoint `.about-panel`, `.pregame-panel` and `.practice-panel` use
+   for a landscape phone: full-bleed rather than a bounded, floating box once
+   there is not enough room for one to read as a dialog. */
+@media (max-width: 640px), (max-height: 480px) {
+  .packs-panel {
+    width: 100vw;
+    height: 100dvh;
+    border-width: 0;
+  }
+}
