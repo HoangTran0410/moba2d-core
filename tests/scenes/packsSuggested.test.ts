@@ -45,6 +45,42 @@ describe('SUGGESTED_PACKS (scenes/packs/suggestedPacks.ts)', () => {
     const seen = new Set(SUGGESTED_PACKS.map(pack => pack.manifestUrl));
     expect(seen.size).toBe(SUGGESTED_PACKS.length);
   });
+
+  it('an entry that declares a logo declares an https one', () => {
+    for (const pack of SUGGESTED_PACKS) {
+      if (pack.icon === undefined) continue;
+      expect(pack.icon.startsWith('https://'), `"${pack.id}" icon is not https`).toBe(true);
+    }
+  });
+});
+
+/**
+ * The line between the two screens that show a pack.
+ *
+ * A shelf card may paint the pack's own logo: that entry was written into
+ * core's own source next to the origin core is about to send the player to,
+ * so the artwork adds no trust the listing did not already extend. The
+ * install confirmation may not, and the difference is not cosmetic — the
+ * manifest behind that dialog came from wherever the player pasted, and a
+ * hostile pack able to paint its own logo on the screen where trust is
+ * decided can dress itself up as one the player already knows. `spec §3.2`
+ * says an icon is for an *installed* pack only, `resolvePackIcon` is the
+ * function that honours it, and this is the scan that stops the shelf's new
+ * field being plumbed one component further along by someone who reads the
+ * two screens as the same screen.
+ */
+describe('the install confirmation wears no pack-supplied art', () => {
+  const CONFIRM = join(SRC, 'scenes/packs/PackInstallConfirm.vue');
+
+  it('names no icon at all', () => {
+    const source = stripComments(readFileSync(CONFIRM, 'utf8'));
+    expect(source).not.toMatch(/\bicon\b/);
+  });
+
+  it('the scan can see the plumbing it is meant to catch', () => {
+    const planted = stripComments("<img :src=\"manifest.icon\" />");
+    expect(planted).toMatch(/\bicon\b/);
+  });
 });
 
 describe('the shelf does not shortcut the origin disclosure', () => {

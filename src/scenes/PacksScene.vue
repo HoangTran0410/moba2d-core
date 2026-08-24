@@ -126,6 +126,26 @@ const onIconError = (row: PackRow): void => {
 };
 
 /**
+ * Shelf entries whose logo would not load, by manifest URL.
+ *
+ * `SUGGESTED_PACKS` is a frozen module constant shared by every mount, so the
+ * failure cannot be recorded on the entry the way `PackRow.icon` records it on
+ * a row — a `row` is this component's own object and an entry is not. A set
+ * keyed by the URL is the same fallback with the state kept where it belongs.
+ */
+const shelfIconFailed = ref(new Set<string>());
+
+/** Whether this shelf entry still has a logo worth trying to paint. */
+const shelfIcon = (pack: SuggestedPack): string | undefined =>
+  pack.icon && !shelfIconFailed.value.has(pack.manifestUrl) ? pack.icon : undefined;
+
+const onShelfIconError = (pack: SuggestedPack): void => {
+  const next = new Set(shelfIconFailed.value);
+  next.add(pack.manifestUrl);
+  shelfIconFailed.value = next;
+};
+
+/**
  * What this browser has cached of a pack, in a sentence rather than in two
  * numbers that can both legitimately be zero.
  *
@@ -691,10 +711,23 @@ onBeforeUnmount(() => {
             <ul class="packs-catalog">
               <li v-for="pack in SUGGESTED_PACKS" :key="pack.manifestUrl" class="packs-card">
                 <div class="packs-card-head">
-                  <!-- A monogram, never the pack's own art: nothing here has
-                       been agreed to yet, so core draws the tile itself and
-                       sends no request to the pack's host. -->
+                  <!-- The pack's own logo, hot-linked from the pack's own host
+                       — see `SuggestedPack.icon` for why a shelf entry may wear
+                       one and the install confirmation may not. A monogram when
+                       the entry declares none, or when the image will not
+                       load. -->
+                  <img
+                    v-if="shelfIcon(pack)"
+                    class="packs-avatar packs-avatar-img"
+                    :src="shelfIcon(pack)"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    referrerpolicy="no-referrer"
+                    @error="onShelfIconError(pack)"
+                  />
                   <span
+                    v-else
                     class="packs-avatar"
                     :style="{
                       background: monogramFor(pack.name, pack.id).background,

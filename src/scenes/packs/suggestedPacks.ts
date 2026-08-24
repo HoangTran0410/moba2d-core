@@ -46,6 +46,30 @@ export interface SuggestedPack {
   manifestUrl: string;
   /** Where the pack's source can be read. Shown as a plain link, never fetched. */
   repoUrl: string;
+  /**
+   * The pack's own logo, absolute, on the pack's own host — or absent for a
+   * shelf entry that would rather wear a monogram.
+   *
+   * **A shelf entry is core's own claim; an install prompt carries a
+   * stranger's.** That is the whole of why this field can exist here and
+   * deliberately does not exist on the install confirmation. An entry in this
+   * array was chosen here, in core's source, alongside the origin core is
+   * about to send the player to — showing its artwork adds no trust core has
+   * not already extended by listing the URL at all. The confirmation dialog is
+   * the opposite case: the manifest there was fetched from wherever the player
+   * pasted, and a hostile pack that can paint its own logo onto the screen
+   * where the player decides whether to trust it can dress up as one they
+   * already know. That screen stays monogram-only (`packSource.resolvePackIcon`
+   * and spec §3.2), and this field must never be plumbed into it.
+   *
+   * Core cannot ship the image instead: this pack's logo is the other game's
+   * property, and core carries no content's branding — which is the same rule
+   * that took the old wordmark off the menu. Hot-linking leaves the bytes on
+   * the pack's host where they belong. It also means the request only happens
+   * when a player opens "Tìm pack", and a failure — offline, moved file —
+   * falls back to the monogram with nothing to report.
+   */
+  icon?: string;
 }
 
 export const SUGGESTED_PACKS: SuggestedPack[] = [
@@ -56,6 +80,7 @@ export const SUGGESTED_PACKS: SuggestedPack[] = [
       'Hơn 50 tướng LMHT đủ 4 chiêu, phép bổ trợ, quái rừng, bản đồ Summoner’s Rift. Bản fan-made, không liên kết với Riot Games.',
     manifestUrl: 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json',
     repoUrl: 'https://github.com/HoangTran0410/moba2d-content-riot',
+    icon: 'https://hoangtran99.is-a.dev/moba2d-content-riot/icon.png',
   },
 ];
 
