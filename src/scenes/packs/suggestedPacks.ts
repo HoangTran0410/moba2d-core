@@ -9,6 +9,13 @@
  * on `*`, so the one thing the screen told a player to do with that string was
  * the one thing the screen prevented.
  *
+ * **The copy here names no content.** `tests/content/vocabularyBoundary.test.ts`
+ * holds core clear of the bundled pack's vocabulary — champion names, map
+ * names, spell ids — and a shelf entry is core describing a pack it does not
+ * contain, so it says what a player *gets* (how many champions, what kind of
+ * map) rather than which ones. The pack's own `name` arrives with its
+ * manifest and is what `PackInstallConfirm.vue` shows.
+ *
  * **Adding an entry is meant to be the whole change.** Append an object below
  * with an `id`, a `name`, a one-line `description`, its `manifestUrl` and the
  * `repoUrl` a player can read the pack's source at; `PacksScene.vue` renders
@@ -41,9 +48,9 @@ export interface SuggestedPack {
 export const SUGGESTED_PACKS: SuggestedPack[] = [
   {
     id: 'riot',
-    name: 'Riot champions',
+    name: 'Bộ tướng đầy đủ',
     description:
-      'Bộ nội dung mặc định: hơn 50 tướng có đủ 4 chiêu, phép bổ trợ, quái rừng và bản đồ Summoner’s Rift. Fan-made, không liên kết với Riot Games.',
+      'Pack nội dung mặc định: hơn 50 tướng có đủ 4 chiêu, phép bổ trợ, quái rừng và một bản đồ 3 đường. Do cộng đồng làm, không liên kết với hãng game nào.',
     manifestUrl: 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json',
     repoUrl: 'https://github.com/HoangTran0410/moba2d-content-riot',
   },

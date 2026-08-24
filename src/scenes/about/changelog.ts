@@ -28,6 +28,21 @@ export interface ChangelogRelease {
 
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    date: '24/08/2026',
+    title: 'Tướng tách ra thành pack tải riêng',
+    highlights: [
+      'Tướng, chiêu, quái rừng và bản đồ giờ nằm trong "pack" tải lúc chơi, không gói sẵn trong game.',
+      'Pack mặc định tự cài ở lần vào game đầu tiên, không phải làm gì thêm.',
+      'Thêm màn Nội dung / Pack: xem pack đang cài, gỡ bớt, hoặc thêm pack mới bằng URL.',
+      'Cài xong là chọn được tướng mới ngay, không phải tải lại trang.',
+      'Trước khi cài, game hiện rõ tên miền của pack — pack chạy với toàn quyền trên trang, nên chỉ cài từ nguồn bạn tin.',
+      'Pack đã cài được lưu lại, nên vẫn chơi được khi mất mạng.',
+      'Nút Nội dung / Pack và Giới thiệu chuyển xuống ngay dưới nút Chơi cho dễ thấy.',
+      'Chọn bản đồ giờ là các thẻ có kèm kích thước và số phe, thay cho danh sách xổ xuống.',
+      'Báo lỗi tải nội dung bằng tiếng Việt thay vì mã lỗi tiếng Anh.',
+    ],
+  },
+  {
     date: '19/08/2026',
     title: 'Đấu theo đội, bot biết chơi lane',
     highlights: [
