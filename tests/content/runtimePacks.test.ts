@@ -17,11 +17,26 @@ vi.mock('@/content/registry', () => ({
   rebuildContentRegistry: vi.fn(() => ({ hasPack: () => false })),
 }));
 vi.mock('@/content/ContentApi', () => ({ buildContentApi: vi.fn(() => ({})) }));
+vi.mock('@/content/packCache', () => ({
+  // A real implementation, not a bare `vi.fn()`: the base is what the
+  // prefetch tests assert on, and hard-coding it a second time in every test
+  // would just be `packBaseFor` copied badly.
+  packBaseFor: vi.fn((url: string) => {
+    try {
+      return new URL('./', url).href;
+    } catch {
+      return '';
+    }
+  }),
+  announcePackBases: vi.fn(),
+  prefetchPackFiles: vi.fn(),
+}));
 
 import { installRuntimePacks, DEFAULT_PACK_URL } from '@/content/runtimePacks';
 import { fetchPackManifest, loadPackFromManifest } from '@/content/packSource';
 import { installRuntimePack } from '@/content/install';
 import { rebuildContentRegistry } from '@/content/registry';
+import { announcePackBases, prefetchPackFiles, type PrefetchReport } from '@/content/packCache';
 import {
   readInstalledPacks,
   writeInstalledPacks,
@@ -48,6 +63,14 @@ const manifest = {
   entry: 'pack.js',
   assets: 'assets/',
 };
+
+/**
+ * What a prefetch that never touched the cache looks like. The brief names
+ * this constant without defining it — it has to match `PrefetchReport`
+ * (`packCache.ts`) field for field, since it stands in for a resolved value
+ * `prefetchPackFiles` never actually computed in these tests.
+ */
+const EMPTY_REPORT: PrefetchReport = { base: '', requested: 0, added: 0, skipped: 0, failed: 0 };
 
 describe('installRuntimePacks', () => {
   beforeEach(() => {
@@ -236,5 +259,104 @@ describe('installRuntimePacks', () => {
     await installRuntimePacks();
 
     expect(rebuildContentRegistry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the offline prefetch', () => {
+  // A sibling of `describe('installRuntimePacks', ...)` above, not nested in
+  // it — its `beforeEach`/`afterEach` are scoped to that block alone, so the
+  // storage and mock setup has to be re-stated here rather than inherited.
+  const PACK_URL = 'https://packs.example/riot/manifest.json';
+  const PACK_BASE = 'https://packs.example/riot/';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(rebuildContentRegistry).mockReturnValue({ hasPack: () => false } as never);
+    vi.mocked(prefetchPackFiles).mockResolvedValue(EMPTY_REPORT);
+    withStorage();
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  /** One stored pack whose manifest is reachable at `PACK_URL`/`PACK_BASE`. */
+  const seedInstalledPack = (files?: string[]) => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    const seeded = { ...manifest, files };
+    vi.mocked(fetchPackManifest).mockResolvedValue(seeded);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: seeded } as never);
+  };
+
+  it("announces every installed pack's base to the worker", async () => {
+    seedInstalledPack(['pack.js']);
+
+    await installRuntimePacks();
+
+    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE]);
+  });
+
+  it('prefetches the files the manifest listed', async () => {
+    seedInstalledPack(['pack.js']);
+
+    await installRuntimePacks();
+
+    expect(prefetchPackFiles).toHaveBeenCalledWith(PACK_BASE, ['pack.js']);
+  });
+
+  it('does not prefetch a pack that listed nothing', async () => {
+    seedInstalledPack(undefined);
+
+    await installRuntimePacks();
+
+    expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
+
+  it('does not prefetch a pack that failed to install', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    const { PackLoadError } = await import('@/content/packSource');
+    vi.mocked(fetchPackManifest).mockRejectedValue(new PackLoadError('fetch', 'offline'));
+
+    await installRuntimePacks();
+
+    expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
+
+  it("announces a skipped pack's base too — its bytes are still worth caching", async () => {
+    // The duplicate-id skip branch is not the install branch, and both
+    // report to `installed.push(...)` — this is the other one.
+    vi.mocked(rebuildContentRegistry).mockReturnValue({
+      hasPack: (id: string) => id === 'riot',
+    } as never);
+    seedInstalledPack(['pack.js']);
+
+    await installRuntimePacks();
+
+    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE]);
+    expect(prefetchPackFiles).toHaveBeenCalledWith(PACK_BASE, ['pack.js']);
+  });
+
+  it('resolves before the prefetch does — the menu does not wait for 4.7MB', async () => {
+    // The one that matters. `prefetchPackFiles` is made to hang; the whole
+    // point is that `installRuntimePacks()` still resolves.
+    seedInstalledPack(['pack.js']);
+    let release: () => void = () => {};
+    vi.mocked(prefetchPackFiles).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = () => resolve(EMPTY_REPORT);
+        })
+    );
+
+    await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
+
+    release();
+  });
+
+  it('a prefetch that rejects does not become an unhandled rejection', async () => {
+    seedInstalledPack(['pack.js']);
+    vi.mocked(prefetchPackFiles).mockRejectedValue(new Error('disk full'));
+
+    await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
+    // and nothing thrown out of band — the suite fails on one if it happens
   });
 });

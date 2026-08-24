@@ -1,5 +1,11 @@
 import { buildContentApi, type ContentApi } from './ContentApi';
 import { installRuntimePack } from './install';
+import {
+  announcePackBases,
+  packBaseFor,
+  prefetchPackFiles,
+  type PrefetchReport,
+} from './packCache';
 import { fetchPackManifest, loadPackFromManifest, PackLoadError } from './packSource';
 import type { PackRegistry } from './PackRegistry';
 import { rebuildContentRegistry } from './registry';
@@ -65,6 +71,18 @@ import {
  * `AssetManager.registerPackAssets` is a bare `Map.set`, so an install that
  * runs it on the way to a duplicate-id throw silently repoints every one of
  * that pack's art keys at the remote host for the rest of the session.
+ *
+ * **The offline prefetch is fire-and-forget, on purpose.** The real pack is
+ * 4.7MB, and this function's `await` is the statement standing between the
+ * player and the menu — `LoadingScene.enter()` fires `void this.boot()`, so
+ * anything that rejects above the handover is an unhandled rejection and the
+ * menu never opens, and anything merely slow is the same dead screen with
+ * extra steps. `installRuntimePacks()` announces the installed bases (a
+ * chunk fetched mid-match is cached by the worker's own route too, so the
+ * announce always happens) and then starts the prefetch without awaiting it,
+ * catching whatever it throws so a slow or failing cache never becomes the
+ * player's problem. `window.__lol2dPackPrefetch` is where that background
+ * work reports in, once it is actually done — see this file's own export.
  */
 
 /**
@@ -124,6 +142,12 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // is worth remembering and — if this was the seeding run — the offer is
   // settled. Only a real failure leaves both undone.
   let anyInstalled = false;
+  // Every base worth announcing to the worker, and every file list worth
+  // prefetching — filled in beside `installed.push(...)` in both loop
+  // branches below, because a pack core already has under its id is still a
+  // pack whose bytes are worth caching, same as one this call just fetched.
+  const bases: string[] = [];
+  const toPrefetch: { base: string; files: string[] }[] = [];
 
   let api: ContentApi;
   let registry: PackRegistry;
@@ -155,6 +179,12 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
         anyInstalled = true;
         installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
         outcomes.push({ manifestUrl, ok: true, id: manifest.id, skipped: true });
+        const base = packBaseFor(manifestUrl);
+        if (base) {
+          bases.push(base);
+          if (manifest.files && manifest.files.length > 0)
+            toPrefetch.push({ base, files: manifest.files });
+        }
         continue;
       }
       const pack = await loadPackFromManifest(manifest, manifestUrl);
@@ -162,6 +192,12 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
       anyInstalled = true;
       installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
       outcomes.push({ manifestUrl, ok: true, id: manifest.id });
+      const base = packBaseFor(manifestUrl);
+      if (base) {
+        bases.push(base);
+        if (manifest.files && manifest.files.length > 0)
+          toPrefetch.push({ base, files: manifest.files });
+      }
     } catch (thrown) {
       const error = thrown as PackLoadError;
       outcomes.push({
@@ -183,5 +219,40 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // written, so a first run that could not reach the network retries the
   // default next time instead of remembering a pack it never had.
   if (anyInstalled) writeInstalledPacks(installed);
+
+  // The worker needs the bases whether or not anything is prefetched: a chunk
+  // fetched mid-match is cached by that route too, which is what makes the
+  // prefetch a completeness measure rather than the only path.
+  if (bases.length > 0) announcePackBases(bases);
+
+  // **Not awaited, deliberately.** This is 4.7MB on the real pack, and the
+  // menu handover is the statement after the caller's `await` on this
+  // function. Spec §6: "trả sau lưng người chơi thay vì trước mặt". The
+  // `catch` is what keeps a rejected prefetch from becoming an unhandled
+  // rejection on the boot path — `prefetchPackFiles` counts its own failures
+  // and should never reject, and this is the belt that makes that a fact
+  // rather than a comment.
+  if (toPrefetch.length > 0) {
+    void Promise.all(toPrefetch.map(pack => prefetchPackFiles(pack.base, pack.files)))
+      .then(reports => publishPrefetchReports(reports))
+      .catch(thrown => console.error('[packs] prefetch threw', thrown));
+  }
+
   return outcomes;
+}
+
+/**
+ * What the background prefetch did, on a global.
+ *
+ * Same reasoning as `packBanner.ts`'s `__lol2dPackInstall`, and the same bill
+ * already paid once: an install whose only voice was `console.warn` reported
+ * itself green through a Playwright run that had no way to hear it. An
+ * offline check in particular cannot be written at all without a signal for
+ * "the prefetch has finished" — the alternative is a sleep, which is a check
+ * that passes on a slow machine by accident.
+ */
+const PACK_PREFETCH_GLOBAL = '__lol2dPackPrefetch';
+
+function publishPrefetchReports(reports: PrefetchReport[]): void {
+  (globalThis as Record<string, unknown>)[PACK_PREFETCH_GLOBAL] = reports;
 }
