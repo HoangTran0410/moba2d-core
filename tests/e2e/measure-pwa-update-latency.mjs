@@ -37,10 +37,19 @@
  *    rejected: it only throttles the page's own fetches, not the service
  *    worker's, so it could not reproduce the reported delay at all.
  *
- * Two numbers matter: time to `#menu-update-checking` (the fast signal —
- * new in this change) and time to `#menu-update-btn` (the actionable one,
- * unchanged — and unchanged on purpose, since applying an update before its
- * download has finished has nothing to skip-wait to).
+ * Two numbers matter, and the distance between them is the whole point:
+ *
+ *   - time to `#menu-update-btn` — the **fast** signal, `updatefound`, about a
+ *     second. The button is offered here, and a press is honoured even though
+ *     there is no waiting worker yet: `requestUpdate` remembers it and applies
+ *     the moment one exists.
+ *   - time to `#menu-update-btn[data-state="ready"]` — the **slow** one, the
+ *     serial precache download finishing. Unchanged, and unchangeable from
+ *     here: workbox downloads every changed entry one at a time before it will
+ *     declare the worker installed.
+ *
+ * The second number is what a player used to have to wait through before the
+ * menu offered them anything at all.
  */
 import { build, preview } from 'vite';
 import { chromium } from 'playwright';
@@ -50,7 +59,13 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const serveDir = resolve(root, 'dist-measure-update');
 const bumpFile = resolve(root, 'src/game/Game.ts');
-const bumpAnchor = '  constructor(plan?: MatchPlan) {';
+// A *pattern*, not the exact signature it used to pin. The literal
+// `'  constructor(plan?: MatchPlan) {'` stopped existing the day `Game` took a
+// map argument, and the run kept going: v2 built identical to v1, every
+// measurement below came back meaningless, and the only sign was one FAIL line
+// in a script nobody runs on a schedule. Match the constructor, whatever it
+// takes.
+const bumpAnchor = /^ {2}constructor\([^)]*\) \{$/m;
 
 /** ~200KB/s: Chrome DevTools' "Fast 3G" download throughput. */
 const THROTTLE_BYTES_PER_MS = (200 * 1024) / 1000;
@@ -120,10 +135,16 @@ try {
 
   console.log('building v2 (real content bump under src/game/)...');
   const original = readFileSync(bumpFile, 'utf8');
-  check('bump anchor found in Game.ts', original.includes(bumpAnchor));
+  const anchored = bumpAnchor.exec(original);
+  check('bump anchor found in Game.ts', anchored !== null, anchored?.[0]?.trim());
+  // Nothing below measures anything if v2 is byte-identical to v1.
+  if (!anchored) throw new Error('no constructor to bump in Game.ts — cannot build a v2');
   writeFileSync(
     bumpFile,
-    original.replace(bumpAnchor, `${bumpAnchor}\n    console.debug('e2e-update-bump', Date.now());`)
+    original.replace(
+      bumpAnchor,
+      `${anchored[0]}\n    console.debug('e2e-update-bump', Date.now());`
+    )
   );
   try {
     await buildInto(serveDir);
@@ -147,17 +168,25 @@ try {
   const t0 = Date.now();
   await page.goto(url, { waitUntil: 'load' });
 
+  // The button itself is the fast signal now. It used to be a dead
+  // "đang tải…" line (`#menu-update-checking`) that only became a button once
+  // the whole precache had landed — the ~19s below — which is long after the
+  // player has pressed Play. Pressing it early is honoured; see
+  // `requestUpdate` in `src/pwa/updates.ts`.
   const downloadingAt = await page
-    .waitForSelector('#menu-update-checking', { state: 'visible', timeout: 60_000 })
+    .waitForSelector('#menu-update-btn', { state: 'visible', timeout: 60_000 })
     .then(() => Date.now() - t0)
     .catch(() => null);
   const readyAt = await page
-    .waitForSelector('#menu-update-btn', { state: 'visible', timeout: 120_000 })
+    .waitForSelector('#menu-update-btn[data-state="ready"]', {
+      state: 'visible',
+      timeout: 120_000,
+    })
     .then(() => Date.now() - t0)
     .catch(() => null);
 
-  check('menu-update-checking (fast signal) appears', downloadingAt !== null, `${downloadingAt}ms`);
-  check('menu-update-btn (actionable) appears', readyAt !== null, `${readyAt}ms`);
+  check('the update button appears (fast signal)', downloadingAt !== null, `${downloadingAt}ms`);
+  check('the build finishes downloading', readyAt !== null, `${readyAt}ms`);
   check(
     'the fast signal genuinely leads the actionable one',
     downloadingAt !== null && readyAt !== null && downloadingAt < readyAt,
