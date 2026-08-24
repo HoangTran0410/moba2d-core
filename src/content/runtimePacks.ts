@@ -232,9 +232,43 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // rejection on the boot path — `prefetchPackFiles` counts its own failures
   // and should never reject, and this is the belt that makes that a fact
   // rather than a comment.
+  //
+  // **`allSettled`, not `all`.** `prefetchPackFiles` made this exact switch
+  // one task ago, for its own internal fan-out, on the same reasoning that
+  // applies here one level up: `all` rejecting the instant any one pack's
+  // promise does would drop every OTHER pack's already-settled report along
+  // with it, not just the failing one's — silently, since the whole point of
+  // this being fire-and-forget is that nothing is watching. A rejection
+  // should never happen (that is what the `prefetchPackFiles` contract
+  // promises), so a settled report is synthesized for it rather than
+  // omitted: "one report per requested pack" stays true for whatever reads
+  // `window.__lol2dPackPrefetch`, and the synthesized report's own numbers
+  // say plainly that nothing made it in.
   if (toPrefetch.length > 0) {
-    void Promise.all(toPrefetch.map(pack => prefetchPackFiles(pack.base, pack.files)))
-      .then(reports => publishPrefetchReports(reports))
+    void Promise.allSettled(toPrefetch.map(pack => prefetchPackFiles(pack.base, pack.files)))
+      .then(settled => {
+        // A plain loop, not `.filter`/`.map`+cast: `Array.prototype.filter`
+        // is polyfilled in this project and cannot narrow a type, and this
+        // walk needs the matching `toPrefetch[i]` for a rejected entry
+        // anyway.
+        const reports: PrefetchReport[] = [];
+        for (let i = 0; i < settled.length; i++) {
+          const outcome = settled[i];
+          if (outcome.status === 'fulfilled') {
+            reports.push(outcome.value);
+            continue;
+          }
+          const pack = toPrefetch[i];
+          reports.push({
+            base: pack.base,
+            requested: pack.files.length,
+            added: 0,
+            skipped: 0,
+            failed: pack.files.length,
+          });
+        }
+        publishPrefetchReports(reports);
+      })
       .catch(thrown => console.error('[packs] prefetch threw', thrown));
   }
 

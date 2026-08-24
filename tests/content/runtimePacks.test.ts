@@ -359,4 +359,44 @@ describe('the offline prefetch', () => {
     await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
     // and nothing thrown out of band — the suite fails on one if it happens
   });
+
+  it('publishes what the prefetch actually did, once every pack has settled', async () => {
+    // The deliverable itself: everything above this test only checks that
+    // `prefetchPackFiles`/`announcePackBases` were *called* right, never
+    // that the background chain's own write lands with the right shape.
+    // `installRuntimePacks()` resolving does not mean the fire-and-forget
+    // `.then` has run yet — `vi.waitFor` is what waits for that without a
+    // sleep.
+    seedInstalledPack(['pack.js']);
+    const report: PrefetchReport = {
+      base: PACK_BASE,
+      requested: 1,
+      added: 1,
+      skipped: 0,
+      failed: 0,
+    };
+    vi.mocked(prefetchPackFiles).mockResolvedValue(report);
+
+    await installRuntimePacks();
+
+    await vi.waitFor(() => {
+      expect((globalThis as Record<string, unknown>).__lol2dPackPrefetch).toEqual([report]);
+    });
+  });
+
+  it('does not announce or prefetch a pack whose manifestUrl cannot resolve to a base', async () => {
+    // `packBaseFor` answers `''` for a stored `manifestUrl` that is relative
+    // or malformed rather than throwing (see `packCache.ts`); both branches
+    // guard on that before pushing anything, and this is what exercises the
+    // guard instead of leaving it implied by the mock never returning ''.
+    writeInstalledPacks([{ manifestUrl: 'not-a-real-url', id: 'riot', version: '1.0.0' }]);
+    const seeded = { ...manifest, files: ['pack.js'] };
+    vi.mocked(fetchPackManifest).mockResolvedValue(seeded);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: seeded } as never);
+
+    await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
+
+    expect(announcePackBases).not.toHaveBeenCalled();
+    expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
 });
