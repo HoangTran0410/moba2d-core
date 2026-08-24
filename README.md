@@ -223,20 +223,17 @@ Contributions are welcome. What you need to know:
 
 This is a non-commercial, unofficial hobby project. It is **not affiliated with, authorised by, or endorsed by [Riot Games](https://www.riotgames.com/)**, and it generates no revenue.
 
-The engine's own code is original. Some of the **artwork currently in this repository is not**, and is listed here rather than left for someone to discover:
+The engine's own code is original, and so is everything on the screens core draws for itself. The menu wordmark is type in this project's own palette, the menu background is two CSS gradients, and the mark on the loading screen, the favicons and the PWA icons are all generated from `assets/images/others/logo.svg`, which is a hexagon this repository drew. Nothing there is borrowed any more.
 
-| File                                                    | What it is                                          |
-| ------------------------------------------------------- | --------------------------------------------------- |
-| `assets/images/others/logo.svg`                         | Riot's League of Legends "L" mark                   |
-| `assets/images/others/newlogo-vi.png`                   | Riot's _Liên Minh Huyền Thoại_ wordmark, ® included |
-| `assets/images/others/newlogo-en.png`                   | Riot's _League of Legends_ wordmark                 |
-| `assets/images/others/menu-bg.webp`                     | Riot champion splash art                            |
-| `public/favicon/*`                                      | the same "L" mark, as the app and PWA icon          |
-| `assets/images/buffs/stasis.png`, `buffs/invisible.png` | Riot ability icons                                  |
-| `assets/images/spells/basic_attack.png`                 | a Riot-framed ability icon                          |
-| `assets/images/screenshots/*.jpg`                       | screenshots showing Riot champions                  |
-| `assets/cursors/normal.cur`                             | the League of Legends cursor                        |
+What is left is **gameplay art inherited from the project this engine grew out of**, listed here rather than left for someone to discover:
 
-These are placeholders inherited from the project this engine grew out of, and replacing them is open work — a MOBA engine has no business shipping another company's trademarks as its own identity. Champion art, ability icons and champion names for the 58-champion roster are **not** here at all: they live in the separate content pack, which is where Riot-derived material belongs.
+| File                                                    | What it is                         |
+| ------------------------------------------------------- | ---------------------------------- |
+| `assets/images/buffs/stasis.png`, `buffs/invisible.png` | Riot ability icons                 |
+| `assets/images/spells/basic_attack.png`                 | a Riot-framed ability icon         |
+| `assets/images/screenshots/*.jpg`                       | screenshots showing Riot champions |
+| `assets/cursors/normal.cur`                             | the League of Legends cursor       |
+
+Replacing these is open work. Champion art, ability icons and champion names for the 58-champion roster are **not** here at all: they live in the separate content pack, which is where Riot-derived material belongs — and the packs screen names that pack for what it is, because a player deciding whether to install something has to know what it contains.
 
 League of Legends and all related trademarks, characters, artwork and other assets are the property of Riot Games. This project claims no ownership over that intellectual property, and asks that no one treat the files above as licensed for reuse.

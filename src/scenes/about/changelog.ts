@@ -40,6 +40,7 @@ export const CHANGELOG: ChangelogRelease[] = [
       'Nút Nội dung / Pack và Giới thiệu chuyển xuống ngay dưới nút Chơi cho dễ thấy.',
       'Chọn bản đồ giờ là các thẻ có kèm kích thước và số phe, thay cho danh sách xổ xuống.',
       'Báo lỗi tải nội dung bằng tiếng Việt thay vì mã lỗi tiếng Anh.',
+      'Game đổi tên thành MOBA2D, có logo và giao diện menu riêng.',
     ],
   },
   {

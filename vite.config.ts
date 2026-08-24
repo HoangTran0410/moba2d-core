@@ -68,9 +68,10 @@ export default defineConfig({
         'favicon/safari-pinned-tab.svg',
       ],
       manifest: {
-        name: 'LOL2D',
-        short_name: 'LOL2D',
-        description: 'Game 2D lấy cảm hứng từ League of Legends, chạy thẳng trong trình duyệt.',
+        name: 'MOBA2D',
+        short_name: 'MOBA2D',
+        description:
+          'Game MOBA 2D chơi thẳng trong trình duyệt. Tướng và bản đồ nạp bằng content pack.',
         lang: 'vi',
         theme_color: '#0a1428',
         background_color: '#0a1428',

@@ -29,7 +29,11 @@
  * `@/game/`, so keeping it dynamic here is what actually keeps it true
  * rather than merely untested.
  *
- * The screen is three sections in the order a player meets them: **Đã cài**
+ * It opens with what a pack *is* — three steps and the warning that matters,
+ * folded away once anything is installed. That explanation used to live on
+ * the About screen, one scene away from every button that acts on it.
+ *
+ * Then three sections in the order a player meets them: **Đã cài**
  * (what this browser has), **Pack có sẵn** (the shelf, from
  * `./packs/suggestedPacks.ts`), and **Thêm bằng URL** last. Add-by-URL was
  * first when it was the only way to add anything; the shelf's Cài button runs
@@ -120,28 +124,36 @@ const originOf = (manifestUrl: string, base: string): string => {
   }
 };
 
-onMounted(() => {
-  const installed = readInstalledPacks();
-  const initial: PackRow[] = [];
-  for (const record of installed) {
-    const base = packBaseFor(record.manifestUrl);
-    initial.push({
-      manifestUrl: record.manifestUrl,
-      id: record.id,
-      version: record.version,
-      origin: originOf(record.manifestUrl, base),
-      base,
-      entries: -1,
-      bytes: 0,
-    });
-  }
-  rows.value = initial;
+/**
+ * Built here rather than in `onMounted`, which is where it used to be.
+ * `readInstalledPacks` is a `localStorage` read and needs no DOM, and
+ * `onMounted` runs *after* the first render — so for one frame the list was
+ * empty on every visit, and `nothingInstalled` below was briefly true. The
+ * explainer at the top of the template binds its `open` state to that, so a
+ * player with a pack installed watched it spring open and shut again each
+ * time they opened this screen.
+ */
+const initialRows: PackRow[] = [];
+for (const record of readInstalledPacks()) {
+  const base = packBaseFor(record.manifestUrl);
+  initialRows.push({
+    manifestUrl: record.manifestUrl,
+    id: record.id,
+    version: record.version,
+    origin: originOf(record.manifestUrl, base),
+    base,
+    entries: -1,
+    bytes: 0,
+  });
+}
+rows.value = initialRows;
 
+onMounted(() => {
   // Fetched per row, not awaited as a batch before the list ever renders:
   // `packCacheUsage` walks the whole shared pack cache once per call, and
   // one slow or huge pack must not hold every other row's numbers off the
   // screen.
-  for (const row of initial) {
+  for (const row of initialRows) {
     void packCacheUsage(row.base).then(usage => {
       const current = rows.value.find(candidate => candidate.manifestUrl === row.manifestUrl);
       if (current) {
@@ -476,6 +488,43 @@ onBeforeUnmount(() => {
 
     <div class="packs-body-shell">
       <div class="packs-body">
+        <!-- 0. What a pack even is. It was a section of the About screen —
+             one scene away from every button that acts on it, and the reason
+             that screen had grown to twice its length. Open by default only
+             while nothing is installed: a returning player has answered this
+             question already, and three steps at the top of every visit is
+             the same noise the About screen was. -->
+        <details class="packs-intro" :open="nothingInstalled">
+          <summary class="packs-intro-summary">
+            <i class="fas fa-circle-question" aria-hidden="true"></i>
+            <span>Pack là gì?</span>
+          </summary>
+          <p class="packs-intro-text">
+            Pack là gói nội dung: tướng, chiêu, quái rừng, bản đồ. Game không kèm sẵn tướng nào —
+            pack mới là thứ mang chúng vào.
+          </p>
+          <ol class="packs-steps">
+            <li class="packs-step">
+              <i class="fas fa-download" aria-hidden="true"></i>
+              <span>
+                Bấm <strong>Cài</strong> ở pack có sẵn, hoặc dán link <code>manifest.json</code> của
+                pack khác.
+              </span>
+            </li>
+            <li class="packs-step">
+              <i class="fas fa-shield-halved" aria-hidden="true"></i>
+              <span>
+                Xem kỹ <strong>tên miền</strong> ở màn xác nhận — pack chạy với toàn quyền trên
+                trang này. Chỉ cài từ nguồn bạn tin.
+              </span>
+            </li>
+            <li class="packs-step">
+              <i class="fas fa-play" aria-hidden="true"></i>
+              <span>Cài xong chọn tướng mới ngay, không phải tải lại trang.</span>
+            </li>
+          </ol>
+        </details>
+
         <!-- 1. What this browser already has. First, because on a return
              visit it is the answer to the question the screen was opened
              with. `.packs-row` and `.packs-origin` are the installed list's

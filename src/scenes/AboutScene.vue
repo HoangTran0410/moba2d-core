@@ -1,8 +1,13 @@
 <script setup lang="ts">
 /**
- * The About screen's content: what the game is, how to give it content, a
- * link to the source, any write-ups about the project, and a player-facing
- * changelog.
+ * The About screen's content: what the game is, a link to the source, any
+ * write-ups about the project, and a player-facing changelog.
+ *
+ * **What a content pack is, and how to install one, is not here.** It was,
+ * and it made this screen twice as long while putting the explanation one
+ * scene away from the buttons that act on it. It lives on the packs screen
+ * now, which is where a player who wants to know is already standing; this
+ * screen keeps one sentence and a button through to it.
  *
  * One scrollable panel rather than a tabbed one (contrast
  * `MatchConfigPanel.vue`): three short, read-only sections fit a single
@@ -57,43 +62,37 @@ const REPO_URL = 'https://github.com/HoangTran0410/moba2d-core';
     <div class="about-body">
       <section class="about-section about-intro">
         <p class="about-intro-text">
-          <strong>MOBA2D</strong> là một game MOBA 2D chạy thẳng trên trình duyệt. Chọn tướng, ghép
-          chiêu thức, chia phe Xanh/Đỏ, cày lính, đẩy đường và hạ trụ — trên điện thoại hay máy
-          tính, không cần cài thêm gì ngoài trình duyệt.
+          <strong>MOBA2D</strong> — game MOBA 2D chơi thẳng trên trình duyệt. Không cần cài, không
+          cần tài khoản.
         </p>
-        <p class="about-intro-text">
-          Game không đi kèm sẵn tướng nào. Tướng, chiêu, quái rừng và bản đồ đều nằm trong
-          <strong>pack nội dung</strong> mà game tải lúc chạy — xem mục dưới.
-        </p>
-        <div class="about-link-row">
-          <a
-            class="hextech-btn secondary about-link"
-            :href="REPO_URL"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <i class="fab fa-github" aria-hidden="true"></i> Xem mã nguồn trên GitHub
-          </a>
-        </div>
-      </section>
 
-      <section class="about-section about-packs">
-        <h2>Cài thêm nội dung</h2>
-        <p class="about-packs-text">
-          Mở màn <strong>Nội dung / Pack</strong> (ngay dưới nút Chơi ở menu) để xem pack đang cài,
-          gỡ bớt, hoặc thêm pack mới. Pack có sẵn thì bấm <strong>Cài</strong> là xong; pack ở nơi
-          khác thì dán link <code>manifest.json</code> của nó vào ô Thêm bằng URL rồi bấm
-          <strong>Kiểm tra</strong>. Cài xong dùng được ngay, không phải tải lại trang.
+        <!-- Chips, not a paragraph. What the game is reads as a list of things
+             you can do, and a player skims a row of icons where they skip a
+             block of prose. -->
+        <ul class="about-chips">
+          <li class="about-chip">
+            <i class="fas fa-wand-sparkles" aria-hidden="true"></i> Tự ghép bộ chiêu
+          </li>
+          <li class="about-chip">
+            <i class="fas fa-users" aria-hidden="true"></i> Chia phe Xanh / Đỏ
+          </li>
+          <li class="about-chip">
+            <i class="fas fa-chess-rook" aria-hidden="true"></i> 3 đường, lính, trụ
+          </li>
+          <li class="about-chip"><i class="fas fa-robot" aria-hidden="true"></i> Đấu với bot</li>
+          <li class="about-chip">
+            <i class="fas fa-mobile-screen" aria-hidden="true"></i> Điện thoại &amp; PC
+          </li>
+          <li class="about-chip">
+            <i class="fas fa-plane-up" aria-hidden="true"></i> Chơi được khi mất mạng
+          </li>
+        </ul>
+
+        <p class="about-intro-text">
+          Game không kèm sẵn tướng — tướng, chiêu và bản đồ nạp bằng
+          <strong>pack</strong>. Màn Nội dung / Pack nói rõ pack là gì và cài thế nào.
         </p>
-        <p class="about-packs-text">
-          Pack mặc định do cộng đồng làm, không liên kết với hãng game nào. Bản thân game không
-          thuộc về pack nào — gỡ nó ra thì game vẫn chạy, chỉ là còn đúng một tướng.
-        </p>
-        <p class="about-packs-warning">
-          Trước khi cài, game hiện <strong>tên miền</strong> của pack. Đó là dòng đáng đọc kỹ nhất
-          trên màn hình đó: một pack chạy với toàn quyền trên trang này — đọc và sửa được cấu hình,
-          giao diện và dữ liệu của bạn. Chỉ cài từ nguồn bạn tin.
-        </p>
+
         <div class="about-link-row">
           <button
             type="button"
@@ -102,13 +101,21 @@ const REPO_URL = 'https://github.com/HoangTran0410/moba2d-core';
             @click="emit('openPacks')"
             @touchend.prevent="emit('openPacks')"
           >
-            <i class="fas fa-cubes" aria-hidden="true"></i> Mở màn Nội dung / Pack
+            <i class="fas fa-cubes" aria-hidden="true"></i> Nội dung / Pack
           </button>
+          <a
+            class="hextech-btn secondary about-link"
+            :href="REPO_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <i class="fab fa-github" aria-hidden="true"></i> Mã nguồn
+          </a>
         </div>
       </section>
 
       <section class="about-section about-articles">
-        <h2>Bài viết</h2>
+        <h2><i class="fas fa-newspaper" aria-hidden="true"></i> Bài viết</h2>
         <ul v-if="ARTICLES.length" class="about-article-list">
           <li v-for="article in ARTICLES" :key="article.url" class="about-article">
             <a
@@ -126,20 +133,28 @@ const REPO_URL = 'https://github.com/HoangTran0410/moba2d-core';
       </section>
 
       <section class="about-section about-changelog">
-        <h2>Có gì mới</h2>
-        <article
-          v-for="release in CHANGELOG"
+        <h2><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Có gì mới</h2>
+        <!-- Newest open, the rest folded. A changelog only grows, and every
+             older release is a screen of text between a returning player and
+             the one entry they came to read. `<details>` rather than a
+             hand-rolled toggle: it is keyboard- and screen-reader-correct for
+             free, and this screen never mounts over the p5 canvas, so the
+             `preventDefault()` that kills native controls in the HUD does not
+             apply here — see this component's own header. -->
+        <details
+          v-for="(release, index) in CHANGELOG"
           :key="release.date + release.title"
           class="about-release"
+          :open="index === 0"
         >
-          <h3 class="about-release-title">
+          <summary class="about-release-title">
             {{ release.title }}
             <span class="about-release-date">{{ release.date }}</span>
-          </h3>
+          </summary>
           <ul class="about-release-list">
             <li v-for="item in release.highlights" :key="item">{{ item }}</li>
           </ul>
-        </article>
+        </details>
       </section>
     </div>
   </div>

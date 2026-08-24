@@ -97,6 +97,99 @@
   padding: 1rem 1.2rem 1.4rem;
 }
 
+/* --------------------------------------------------------------- Explainer
+
+   "Pack là gì?" — what moved here from the About screen, which is where the
+   question is asked and not where it can be acted on. A `<details>`, open only
+   while nothing is installed: native disclosure is keyboard- and
+   screen-reader-correct for free, and this screen never mounts over the p5
+   canvas, so the `preventDefault()` that kills native controls inside the HUD
+   does not reach it. */
+
+.packs-intro {
+  margin-bottom: 1.2rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+}
+
+/* `display: flex` on a summary removes the default marker in every engine, so
+   the chevron below is hand-drawn rather than inherited. */
+.packs-intro-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 32px;
+  font-size: 0.86em;
+  color: var(--hextech-gold);
+  cursor: pointer;
+  list-style: none;
+}
+
+.packs-intro-summary::-webkit-details-marker {
+  display: none;
+}
+
+.packs-intro-summary::after {
+  content: '\f078';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  margin-left: auto;
+  font-size: 0.75em;
+  color: var(--hextech-muted);
+  transition: transform 0.15s ease;
+}
+
+.packs-intro[open] .packs-intro-summary::after {
+  transform: rotate(180deg);
+}
+
+.packs-intro-text {
+  margin: 0.6rem 0 0.7rem;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+.packs-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.packs-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.84em;
+  line-height: 1.5;
+  color: var(--hextech-text);
+}
+
+/* Fixed-width, so the three lines' text starts on one column — which is what
+   makes them read as steps rather than as three sentences. */
+.packs-step > i {
+  flex: none;
+  width: 1.3rem;
+  padding-top: 0.15rem;
+  text-align: center;
+  color: var(--hextech-teal);
+}
+
+.packs-step code {
+  padding: 0 0.25em;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  font-size: 0.92em;
+  /* `main.css` sets `user-select: none` on `*`; a file name a player might
+     want to copy out of a sentence is the wrong place for that. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* ------------------------------------------------------------- Sections
 
    Three of them, in the order a player meets them: what is installed, the

@@ -1,5 +1,5 @@
 /**
- * main.ts — LOL2D application entry point
+ * main.ts — MOBA2D application entry point
  *
  * p5 is loaded via CDN <script> tag in global mode. p5 waits for the window
  * `load` event, and only boots (binding loadImage, createVector, background,

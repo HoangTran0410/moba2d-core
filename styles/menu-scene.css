@@ -12,6 +12,11 @@
   overflow: hidden;
 }
 
+/* Drawn, not fetched. This used to be a champion splash — Riot's artwork, in
+   the engine's own repository, for a game that ships no champions of its own.
+   Two gradients and a faint lattice in this project's palette instead: no
+   request, no precache entry, nothing to come up bare on a first offline
+   launch, and nothing borrowed. */
 #menu-scene .background {
   position: fixed;
   top: 0;
@@ -19,12 +24,24 @@
   width: 100vw;
   height: 100vh;
   height: 100dvh;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(5px) brightness(0.5);
+  background:
+    radial-gradient(120% 85% at 50% -10%, rgba(8, 171, 172, 0.22), transparent 62%),
+    radial-gradient(100% 70% at 50% 110%, rgba(200, 170, 110, 0.16), transparent 60%),
+    linear-gradient(180deg, #10161d 0%, #0b0f14 55%, #070a0d 100%);
+}
 
-  transition: background-image 0.5s ease-in-out;
+/* The lattice: two crossed line sets at 60°, so the cells read as hexagonal
+   without a single image. Masked to a soft oval so it fades out at the edges
+   rather than stopping at them. */
+#menu-scene .background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(60deg, rgba(200, 170, 110, 0.05) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(-60deg, rgba(8, 171, 172, 0.05) 0 1px, transparent 1px 38px);
+  -webkit-mask-image: radial-gradient(75% 62% at 50% 42%, #000 25%, transparent 100%);
+  mask-image: radial-gradient(75% 62% at 50% 42%, #000 25%, transparent 100%);
 }
 
 #menu-scene button {
@@ -148,16 +165,70 @@
   cursor: pointer;
 }
 
+/* ------------------------------------------------------------------ Wordmark
+
+   Text, not an image. It was Riot's Vietnamese *Liên Minh Huyền Thoại*
+   wordmark with a white "2D" pasted over one corner — see `MenuScene.vue`'s
+   own header for why an engine that ships no champions should not wear one
+   pack's branding. Setting it as type also means it scales with the viewport
+   instead of being a fixed 500px bitmap, and the `.shiny` sweep below runs
+   over it unchanged. */
 .shiny {
   display: block;
-  width: 500px;
-  max-width: 80vw;
+  width: min(500px, 86vw);
   position: relative;
   overflow: hidden;
 }
 
-.shiny img {
-  width: 100%;
+.menu-brand {
+  position: relative;
+  z-index: 10;
+}
+
+.menu-wordmark {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.02em;
+  margin: 0;
+  padding: 0.22em 0 0.16em;
+  font-size: clamp(2.6rem, 15vw, 5.2rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Gold, in the same ramp `--hextech-gold` sits in the middle of. `-webkit-`
+   first and unprefixed second: Safari still needs the prefixed property, and
+   a browser that has neither simply keeps the gold `color` below. */
+.menu-wordmark-main {
+  color: #c8aa6e;
+  background: linear-gradient(180deg, #f5ecd8 0%, #c8aa6e 55%, #8a6a2f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The "2D" kept its character from the old logo: off-white, tilted, sitting on
+   a stack of shadows, and riding *above* the word rather than on its baseline
+   — which is where it sat when it was a separate absolutely-positioned
+   element. It is a flex sibling now, so the lift is a transform and a smaller
+   size instead of a fixed offset that only worked at one word length. */
+.menu-wordmark-2d {
+  color: #edf2f4;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  font-size: 0.74em;
+  transform: rotate(-9deg) translate(-0.06em, -0.28em);
+  text-shadow:
+    1px 1px 0 #8d99ae,
+    1px 2px 0 #8d99ae,
+    1px 3px 0 #8d99ae,
+    1px 4px 0 #8d99ae,
+    1px 5px 0 #8d99ae,
+    1px 8px 6px rgba(16, 16, 16, 0.45),
+    1px 14px 22px rgba(16, 16, 16, 0.35);
 }
 
 .shiny:before {
@@ -194,39 +265,6 @@
     left: 100%;
     top: 100%;
   }
-}
-
-.logo {
-  position: relative;
-}
-
-.p2d {
-  position: absolute;
-  top: 35px;
-  right: 15px;
-  margin: 0;
-  text-transform: uppercase;
-  font-family: verdana;
-  font-size: 4em;
-  font-weight: 700;
-  color: #edf2f4;
-  transform: rotate(25deg) translateX(20px) translateY(-50px);
-
-  text-shadow:
-    1px 1px 1px #8d99ae,
-    1px 2px 1px #8d99ae,
-    1px 3px 1px #8d99ae,
-    1px 4px 1px #8d99ae,
-    1px 5px 1px #8d99ae,
-    1px 6px 1px #8d99ae,
-    1px 7px 1px #8d99ae,
-    1px 8px 1px #8d99ae,
-    1px 9px 1px #8d99ae,
-    1px 10px 1px #8d99ae,
-    1px 18px 6px rgba(16, 16, 16, 0.4),
-    1px 22px 10px rgba(16, 16, 16, 0.2),
-    1px 25px 35px rgba(16, 16, 16, 0.2),
-    1px 30px 60px rgba(16, 16, 16, 0.4);
 }
 
 /* ------------------------------------------------------------ Version stamp

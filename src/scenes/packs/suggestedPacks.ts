@@ -9,12 +9,15 @@
  * on `*`, so the one thing the screen told a player to do with that string was
  * the one thing the screen prevented.
  *
- * **The copy here names no content.** `tests/content/vocabularyBoundary.test.ts`
- * holds core clear of the bundled pack's vocabulary — champion names, map
- * names, spell ids — and a shelf entry is core describing a pack it does not
- * contain, so it says what a player *gets* (how many champions, what kind of
- * map) rather than which ones. The pack's own `name` arrives with its
- * manifest and is what `PackInstallConfirm.vue` shows.
+ * **A shelf entry names the pack, and that is the point.** A player choosing
+ * whether to install something has to know what it is, and "hơn 50 tướng" is
+ * not that. This is the one place core is allowed to say what a pack's
+ * content is, because the content is not core's: the pack lives in its own
+ * repository, under its own licence, and this is a pointer to it. Core's own
+ * screens — menu, loading, About — carry no such artwork or wording, and
+ * `tests/content/vocabularyBoundary.test.ts` keeps the *engine* clear of the
+ * bundled pack's champion, monster and spell vocabulary, which is a different
+ * rule from this one.
  *
  * **Adding an entry is meant to be the whole change.** Append an object below
  * with an `id`, a `name`, a one-line `description`, its `manifestUrl` and the
@@ -48,9 +51,9 @@ export interface SuggestedPack {
 export const SUGGESTED_PACKS: SuggestedPack[] = [
   {
     id: 'riot',
-    name: 'Bộ tướng đầy đủ',
+    name: 'Tướng Liên Minh Huyền Thoại',
     description:
-      'Pack nội dung mặc định: hơn 50 tướng có đủ 4 chiêu, phép bổ trợ, quái rừng và một bản đồ 3 đường. Do cộng đồng làm, không liên kết với hãng game nào.',
+      'Hơn 50 tướng LMHT đủ 4 chiêu, phép bổ trợ, quái rừng, bản đồ Summoner’s Rift. Bản fan-made, không liên kết với Riot Games.',
     manifestUrl: 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json',
     repoUrl: 'https://github.com/HoangTran0410/moba2d-content-riot',
   },
