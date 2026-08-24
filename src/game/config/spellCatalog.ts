@@ -419,9 +419,16 @@ export interface SummonerSpellOption {
  * directly in this file — this pack's own content, unguarded, in the one
  * module whose whole point is to read a pack's data rather than hold a copy
  * of it (see this file's own header comment on `CHAMPION_KITS` moving out
- * for the identical reason). `bareCatalogId` narrows the result to the
- * bundled pack's own ids on purpose: the D/F picker only ever offers this
- * pack's summoner spells today, same as before.
+ * for the identical reason).
+ *
+ * Ids come back **bare for the bundled pack and qualified for any other**.
+ * This used to narrow through `bareCatalogId` and drop everything else, on the
+ * grounds that the D/F picker only ever offered the bundled pack's summoner
+ * spells — true when the bundled pack was the one that had them. Core's
+ * bundled pack declares no `summonerShelf` at all now, so the shelf only ever
+ * comes from a pack installed at runtime and that narrowing returned an empty
+ * list every time. See the loop, and `summonerIdOr` in `preset.ts` for how a
+ * stored bare name still finds its spell.
  */
 export const summonerSpellIds = (): SpellCatalogId[] => {
   const shelf = contentCatalog()
@@ -430,8 +437,15 @@ export const summonerSpellIds = (): SpellCatalogId[] => {
   if (!shelf) return [];
   const ids: SpellCatalogId[] = [];
   for (const qualifiedId of shelf.spells) {
-    const id = bareCatalogId(qualifiedId);
-    if (id) ids.push(id);
+    // The bundled pack's own ids stay bare — that is the form every persisted
+    // `summonerD`/`summonerF` already holds, and `spellDisplayOf` re-qualifies
+    // it. Any other pack's id is kept **qualified**, because dropping it is
+    // what emptied this list: `bareCatalogId` answers `null` for a foreign
+    // pack, and the summoner shelf now only ever comes *from* a foreign pack.
+    // Core's bundled pack declares no `summonerShelf` at all, so narrowing to
+    // it left every runtime install with no summoner spells, a D/F picker with
+    // nothing in it, and both slots degraded to a basic attack.
+    ids.push(bareCatalogId(qualifiedId) ?? qualifiedId);
   }
   return ids;
 };
