@@ -68,6 +68,17 @@ import {
  * flag exists for is untouched: a successful seed sets it, so a player who
  * removes every pack afterwards is not re-seeded.
  *
+ * **There are two writers of the installed list, and both have to mark this
+ * flag.** This function is one; `installPackNow()` below — the packs
+ * screen's "install by URL" path — is the other, and it marks the flag on
+ * its own successful, non-skipped install for the same reason: a player who
+ * installs a pack by hand has made their own choice, spending the automatic
+ * offer just as surely as a seed landing would have. Leaving `installPackNow`
+ * out reopens exactly the hole this section describes — a browser whose
+ * first boot could not reach `DEFAULT_PACK_URL` installs one by URL instead,
+ * later removes it, and the next boot re-seeds a default the player never
+ * asked for, because nothing ever told the flag the offer was spent.
+ *
  * **A pack whose id is already installed is skipped, not failed.** Both
  * content paths can be live at once until Plan 2 retires core's compile-in
  * step, and the default pack's id (`riot`) is the same id on both. The skip
@@ -174,6 +185,21 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
     ];
   }
 
+  // Both loop branches below need to register a pack's base and its files
+  // for prefetch — a pack core already has under its id (the skip branch)
+  // is still a pack whose bytes are worth caching, same as one this call
+  // just fetched (the install branch), so this is the one copy of that
+  // logic. A closure over `bases`/`toPrefetch` rather than a function
+  // returning them: both accumulate across every pack in `wanted`, not
+  // just the one call.
+  const registerForCaching = (manifestUrl: string, manifest: RuntimePackManifest): void => {
+    const base = packBaseFor(manifestUrl);
+    if (!base) return;
+    bases.push(base);
+    if (manifest.files && manifest.files.length > 0)
+      toPrefetch.push({ base, files: manifest.files });
+  };
+
   for (const manifestUrl of wanted) {
     try {
       const manifest = await fetchPackManifest(manifestUrl);
@@ -184,12 +210,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
         anyInstalled = true;
         installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
         outcomes.push({ manifestUrl, ok: true, id: manifest.id, skipped: true });
-        const base = packBaseFor(manifestUrl);
-        if (base) {
-          bases.push(base);
-          if (manifest.files && manifest.files.length > 0)
-            toPrefetch.push({ base, files: manifest.files });
-        }
+        registerForCaching(manifestUrl, manifest);
         continue;
       }
       const pack = await loadPackFromManifest(manifest, manifestUrl);
@@ -197,12 +218,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
       anyInstalled = true;
       installed.push({ manifestUrl, id: manifest.id, version: manifest.version });
       outcomes.push({ manifestUrl, ok: true, id: manifest.id });
-      const base = packBaseFor(manifestUrl);
-      if (base) {
-        bases.push(base);
-        if (manifest.files && manifest.files.length > 0)
-          toPrefetch.push({ base, files: manifest.files });
-      }
+      registerForCaching(manifestUrl, manifest);
     } catch (thrown) {
       const error = thrown as PackLoadError;
       outcomes.push({
@@ -228,7 +244,15 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // The worker needs the bases whether or not anything is prefetched: a chunk
   // fetched mid-match is cached by that route too, which is what makes the
   // prefetch a completeness measure rather than the only path.
-  if (bases.length > 0) announcePackBases(bases);
+  //
+  // Always announced, including an empty list: a player who removes their
+  // only pack must clear the worker's memory of it too, or `packBases` in
+  // `src/sw.ts` holds a base forever — harmless today (`forgetPack` already
+  // emptied the cache entries, so the route falls through to the network),
+  // but it widens Important 1's stale-persisted-list window from "bounded by
+  // this boot" to "unbounded", since nothing ever tells the worker the list
+  // shrank.
+  announcePackBases(bases);
 
   // **Not awaited, deliberately.** This is 4.7MB on the real pack, and the
   // menu handover is the statement after the caller's `await` on this
@@ -290,7 +314,9 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
  *
  * Everything after this point is what `installRuntimePacks` does per pack,
  * minus the loop: the same duplicate-id skip, the same registry, the same
- * store write, the same base announcement and prefetch.
+ * store write, the same base announcement and prefetch — and, on a real
+ * (non-skipped) install, the same `markDefaultPackSeeded()` this file's own
+ * header explains under "two writers of the installed list".
  */
 export async function installPackNow(
   manifestUrl: string,
@@ -312,6 +338,18 @@ export async function installPackNow(
     }
     next.push({ manifestUrl, id: manifest.id, version: manifest.version });
     writeInstalledPacks(next);
+    // The player has just made their own choice of pack, by URL — the
+    // automatic offer this flag guards is spent either way. Without this,
+    // a browser whose first boot could not reach `DEFAULT_PACK_URL` (the
+    // flag stays `false` — see this file's own header) installs a pack by
+    // hand, later removes it, and the next boot re-seeds a default the
+    // player never asked for: `installRuntimePacks()` sees an empty stored
+    // list and an unset flag and reads that exactly like a browser that has
+    // never run this game. See `installedPackStore.ts`'s own header —
+    // "Seeding the default on both makes an uninstall impossible to keep."
+    // `installRuntimePacks()` is the other writer of the installed list and
+    // marks this same flag on its own successful seed; this is the second.
+    markDefaultPackSeeded();
 
     const base = packBaseFor(manifestUrl);
     if (base) {

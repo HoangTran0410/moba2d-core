@@ -277,6 +277,13 @@ describe('the offline prefetch', () => {
   });
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).localStorage;
+    // Minor 6: two tests in this block now write `__lol2dPackPrefetch`
+    // (this one and 'publishes what the prefetch actually did...') and one
+    // waits on its value with `vi.waitFor` — leaving a previous test's
+    // publish in place is an ordering hazard, not hygiene, since a later
+    // test's own `vi.waitFor` could observe a stale value and pass for the
+    // wrong reason.
+    delete (globalThis as Record<string, unknown>).__lol2dPackPrefetch;
   });
 
   /** One stored pack whose manifest is reachable at `PACK_URL`/`PACK_BASE`. */
@@ -352,12 +359,23 @@ describe('the offline prefetch', () => {
     release();
   });
 
-  it('a prefetch that rejects does not become an unhandled rejection', async () => {
+  it('a prefetch that rejects does not become an unhandled rejection, and its report is synthesized', async () => {
     seedInstalledPack(['pack.js']);
     vi.mocked(prefetchPackFiles).mockRejectedValue(new Error('disk full'));
 
     await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
     // and nothing thrown out of band — the suite fails on one if it happens
+
+    // Beyond "it resolves" (true under the old `Promise.all` too, since
+    // nothing here awaits the fire-and-forget chain), this exercises the
+    // synthesized-report branch in `runtimePacks.ts` — nothing else in this
+    // suite does. `vi.waitFor` because `installRuntimePacks()` resolving
+    // does not mean the background `.then` has run yet.
+    await vi.waitFor(() => {
+      expect((globalThis as Record<string, unknown>).__lol2dPackPrefetch).toEqual([
+        { base: PACK_BASE, requested: 1, added: 0, skipped: 0, failed: 1 },
+      ]);
+    });
   });
 
   it('publishes what the prefetch actually did, once every pack has settled', async () => {
@@ -384,11 +402,16 @@ describe('the offline prefetch', () => {
     });
   });
 
-  it('does not announce or prefetch a pack whose manifestUrl cannot resolve to a base', async () => {
+  it('still announces (an empty list) when the only pack cannot resolve to a base, but never prefetches it', async () => {
     // `packBaseFor` answers `''` for a stored `manifestUrl` that is relative
     // or malformed rather than throwing (see `packCache.ts`); both branches
     // guard on that before pushing anything, and this is what exercises the
     // guard instead of leaving it implied by the mock never returning ''.
+    //
+    // The announce itself is unconditional (Minor 7: dropping every pack
+    // must clear the worker's memory too, and an unreachable base is the
+    // same "nothing to serve" fact from the worker's point of view), so this
+    // is `toHaveBeenCalledWith([])`, not `not.toHaveBeenCalled()`.
     writeInstalledPacks([{ manifestUrl: 'not-a-real-url', id: 'riot', version: '1.0.0' }]);
     const seeded = { ...manifest, files: ['pack.js'] };
     vi.mocked(fetchPackManifest).mockResolvedValue(seeded);
@@ -396,8 +419,22 @@ describe('the offline prefetch', () => {
 
     await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
 
-    expect(announcePackBases).not.toHaveBeenCalled();
+    expect(announcePackBases).toHaveBeenCalledWith([]);
     expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
+
+  it('announces an empty list when nothing is installed at all, so a fresh removal reload clears the worker', async () => {
+    // The exact case Minor 7 names: a player removes their only pack, which
+    // writes an empty stored list and reloads. `installRuntimePacks()` on
+    // that reload has nothing to seed (the flag is already set) and nothing
+    // to install — `bases` never leaves its initial `[]` — and the worker
+    // must still hear about it, or `packBases` in `src/sw.ts` holds the
+    // removed pack's base forever.
+    markDefaultPackSeeded();
+
+    await installRuntimePacks();
+
+    expect(announcePackBases).toHaveBeenCalledWith([]);
   });
 });
 
@@ -480,5 +517,34 @@ describe('installPackNow', () => {
     });
     expect(installRuntimePack).not.toHaveBeenCalled();
     expect(readInstalledPacks()).toEqual([]);
+    // Important 2's failure-path guard: a fetch that never landed must not
+    // spend the automatic offer either — same reasoning `installRuntimePacks`
+    // already applies to its own seeding attempt.
+    expect(hasSeededDefaultPack()).toBe(false);
+  });
+
+  it('spends the default-seed offer on a successful, non-skipped install', async () => {
+    // Important 2: `markDefaultPackSeeded()` used to be written from exactly
+    // one place, `installRuntimePacks`'s own seeding run. A browser whose
+    // first boot could not reach `DEFAULT_PACK_URL` (flag stays `false` —
+    // see this file's own header) could install a pack by hand through this
+    // function, remove it later, and have the very next boot re-seed a
+    // default it never asked for — `installRuntimePacks()` cannot tell that
+    // apart from a browser that has never run the game at all.
+    expect(hasSeededDefaultPack()).toBe(false);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    await installPackNow(packUrl, manifest);
+
+    expect(hasSeededDefaultPack()).toBe(true);
+  });
+
+  it('does not spend the offer on a skipped install — nothing changed for it to settle', async () => {
+    vi.mocked(contentRegistry).mockReturnValue({ hasPack: (id: string) => id === 'riot' } as never);
+
+    const outcome = await installPackNow(packUrl, manifest);
+
+    expect(outcome).toMatchObject({ ok: true, skipped: true });
+    expect(hasSeededDefaultPack()).toBe(false);
   });
 });
