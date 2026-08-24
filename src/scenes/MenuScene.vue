@@ -10,9 +10,11 @@
  * so — unlike the buttons above — it stays entirely local to this component
  * instead of being driven from `MenuScene.ts`.
  *
- * **Giới thiệu is not gated behind `ready`.** It opens no game code — see
- * `AboutScene.ts` — so there is no reason to make a player wait through the
- * warm-up bar to read what the game is.
+ * **Giới thiệu and Nội dung / Pack are not gated behind `ready`.** Neither
+ * opens game code — see `AboutScene.ts` and `PacksScene.ts` — so there is no
+ * reason to make a player wait through the warm-up bar to read what the game
+ * is, and a player whose pack failed to load (the banner below) is exactly
+ * the player who most needs the packs screen *before* the warm-up finishes.
  *
  * **One background, not a carousel.** Six full-bleed JPEGs used to rotate on a
  * 5s timer: 1.1MB of art for a screen the player looks at for a few seconds,
@@ -33,7 +35,7 @@ import {
   retryPackInstall,
 } from './packBanner';
 
-const emit = defineEmits<{ play: []; openConfig: []; openAbout: [] }>();
+const emit = defineEmits<{ play: []; openConfig: []; openAbout: []; openPacks: [] }>();
 
 const logo = AssetManager.get('other_newlogo_vi').url;
 const backgroundUrl = AssetManager.get('other_menu_bg').url;
@@ -184,6 +186,15 @@ const installUpdate = async (): Promise<void> => {
 
   <button id="about-btn" title="Giới thiệu" @click="emit('openAbout')">
     <i class="fas fa-circle-info" aria-hidden="true"></i>
+  </button>
+
+  <button
+    id="packs-btn"
+    title="Nội dung / Pack"
+    @click="emit('openPacks')"
+    @touchend.prevent="emit('openPacks')"
+  >
+    <i class="fas fa-cubes" aria-hidden="true"></i>
   </button>
 
   <button id="fullscreen-btn" @click="toggleFullscreen">

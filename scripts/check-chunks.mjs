@@ -83,6 +83,14 @@ const RULES = [
       'every spell chunk the moment `game-*.js` re-hashes, even when the spell itself did not change',
   },
   {
+    chunk: 'PacksScene',
+    forbidden: /^game-/,
+    why:
+      'the packs screen lists what is installed and needs no spell classes — and the one thing ' +
+      'on it that does need `buildContentApi()` (installing a pack) reaches `runtimePacks.ts` ' +
+      'through a dynamic import for exactly this reason',
+  },
+  {
     // Fix round 1 on content-pack-extraction batch 5 task 1 found this rule
     // missing: `src/content/install.ts` folds core's `Recall` onto the
     // installed pack with a *dynamic* `import('@/game/gameObject/coreSpells/Recall')`,

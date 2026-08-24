@@ -75,6 +75,19 @@
   cursor: pointer;
 }
 
+/* One more slot left along the same row — see `#about-btn`'s own comment,
+   which applies unchanged here. */
+#packs-btn {
+  position: fixed;
+  top: calc(20px + var(--safe-top));
+  right: calc(108px + var(--safe-right));
+  background-color: transparent;
+  border: none;
+  color: #bbb;
+  font-size: 1em;
+  cursor: pointer;
+}
+
 .hextech-btn {
   text-transform: uppercase;
   font-size: 18px;

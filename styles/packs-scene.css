@@ -1,0 +1,183 @@
+#packs-scene {
+  width: 100vw;
+  height: 100vh;
+  /* Both, in this order — see `.center-page-container > div` in main.css. */
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Centred by `#packs-scene`'s own flex, like `.about-panel` — no
+   `position: fixed` + `translate(-50%, -50%)` needed, because this box is
+   never mounted over something else that already owns the viewport.
+   `height`, not `max-height`, for the same reason `.about-panel` picked it
+   over `max-height` — see that file's own comment. */
+.packs-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  height: min(600px, 88vh);
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+}
+
+.packs-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.2rem 0.8rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.packs-header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.3em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-gold);
+}
+
+/* 44px square: the same thumb-sized close button every other panel uses
+   (`.about-close`, `.practice-close`, `.pregame-icon-btn`). */
+.packs-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--hextech-muted);
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+.packs-close:hover {
+  color: var(--hextech-text);
+}
+
+/* The panel's one scroll region. Plain `overflow-y: auto` is enough here —
+   unlike `.practice-tab-body`, nothing above this element sets
+   `touch-action: none`. This scene mounts over `#packs-scene`, a sibling of
+   `#game-scene` reached only from the menu — no p5 canvas exists yet,
+   `GameScene.syncTouches` only ever claims touches whose target *is* that
+   canvas, and `body { overflow: hidden }` is the only ancestor rule in play.
+   See `AboutScene.vue`'s own header for the full reasoning; the same
+   argument applies unchanged here. */
+.packs-body {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1.2rem 1.4rem;
+}
+
+.packs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.packs-row {
+  background: var(--hextech-panel);
+  border: 1px solid var(--hextech-line);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.packs-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.packs-id {
+  font-weight: 600;
+  color: var(--hextech-text);
+}
+
+.packs-version {
+  font-size: 0.85em;
+  color: var(--hextech-muted);
+}
+
+/* The one line this screen exists for. `break-all`, never `text-overflow:
+   ellipsis` and never a truncating substring in the script — an elided
+   origin is the one thing this screen may not present. */
+.packs-origin {
+  margin: 0;
+  font-size: 0.88em;
+  color: var(--hextech-teal);
+  word-break: break-all;
+}
+
+.packs-usage {
+  margin: 0;
+  font-size: 0.82em;
+  color: var(--hextech-muted);
+}
+
+/* Same "arm, then confirm" visual language as `.practice-exit.confirming`
+   (`MatchTab.vue`) — a filled, warning-coloured state only once the second
+   press is the one that will actually delete something. */
+.packs-remove {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--hextech-line);
+  color: var(--hextech-muted);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.packs-remove:hover {
+  color: var(--hextech-text);
+  border-color: var(--hextech-muted);
+}
+
+.packs-remove.confirming {
+  background: #a33;
+  border-color: #c44;
+  color: #fff;
+}
+
+.packs-remove:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.packs-empty {
+  color: var(--hextech-muted);
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+
+.packs-empty-hint {
+  margin-top: 0.6rem;
+}
+
+/* Same breakpoint `.about-panel`, `.pregame-panel` and `.practice-panel` use
+   for a landscape phone: full-bleed rather than a bounded, floating box once
+   there is not enough room for one to read as a dialog. */
+@media (max-width: 640px), (max-height: 480px) {
+  .packs-panel {
+    width: 100vw;
+    height: 100dvh;
+    border-width: 0;
+  }
+}
