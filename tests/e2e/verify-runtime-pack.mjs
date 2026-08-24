@@ -44,7 +44,15 @@ import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { CFG_KEY, startHarness } from './harness.mjs';
 
-const PACK_DIST = '/Users/hoangtran/Desktop/Github/moba2d-content-riot/dist';
+/**
+ * The pack repository's built output. An absolute path in one developer's
+ * home directory was fine while this was the only script that needed it and
+ * it ran on one machine; two scripts and a second machine is where it stops
+ * being fine. `LOL2D_PACK_DIST` overrides; the default is the sibling
+ * checkout, which is how both repositories are actually laid out.
+ */
+const PACK_DIST =
+  process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
 const PACK_PORT = 4399;
 const TYPES = {
   '.js': 'text/javascript',
