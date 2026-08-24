@@ -22,7 +22,12 @@
  * for the same reason — it statically imports `packSource.ts` itself (for
  * `satisfiesCoreRange`), and a static import of *that component* here would
  * undo the laziness of the dynamic import below by pulling the same module
- * in through a second, eager edge.
+ * in through a second, eager edge. `./setup/pregameCatalog` is reached
+ * dynamically too, from `confirmInstall` — it statically imports
+ * `@/game/config/spellCatalog`, and `packsBootPath.test.ts`'s per-file scan
+ * cannot see that chain behind a specifier that does not itself say
+ * `@/game/`, so keeping it dynamic here is what actually keeps it true
+ * rather than merely untested.
  *
  * `<script setup>` is this component's setup function — see CLAUDE.md — so
  * every ref below is rebuilt on each `enter()`. Nothing here needs to
@@ -40,13 +45,8 @@ import {
 } from '@/content/installedPackStore';
 import { packBaseFor, packCacheUsage, forgetPack } from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
-import { resetPregameCatalog } from './setup/pregameCatalog';
 
 const emit = defineEmits<{ close: [] }>();
-
-// Not a static `import PackInstallConfirm from './packs/PackInstallConfirm.vue'`
-// — see this file's own header just above.
-const PackInstallConfirm = defineAsyncComponent(() => import('./packs/PackInstallConfirm.vue'));
 
 interface PackRow {
   manifestUrl: string;
@@ -184,6 +184,29 @@ const installing = ref(false);
 const installError = ref<string | null>(null);
 
 /**
+ * Not a static `import PackInstallConfirm from './packs/PackInstallConfirm.vue'`
+ * — see this file's own header. Declared here rather than beside the other
+ * imports so `onError` below can close over `checkError`/`pendingManifest`/
+ * `pendingManifestUrl`, already in scope by this point.
+ *
+ * **`onError` covers the offline case this whole plan is about.** If the
+ * confirmation's own chunk cannot be fetched, `fail()` renders nothing
+ * instead of retrying forever — and clearing the pending state here is what
+ * stops `checkUrl`'s own `pendingManifest` guard from locking the player out
+ * of ever pressing "Kiểm tra" again; without it the screen would look dead
+ * with no dialog, no error, and no way forward but leaving it.
+ */
+const PackInstallConfirm = defineAsyncComponent({
+  loader: () => import('./packs/PackInstallConfirm.vue'),
+  onError(error, _retry, fail) {
+    fail();
+    checkError.value = `import: không tải được màn xác nhận (${(error as Error)?.message ?? String(error)})`;
+    pendingManifest.value = null;
+    pendingManifestUrl.value = '';
+  },
+});
+
+/**
  * Step 2 of spec §3: fetch and check the manifest — plain JSON, nothing the
  * pack wrote as code has run. Step 3 (`import()`) only happens from
  * `confirmInstall`, behind the player's own press of "Cài đặt".
@@ -197,6 +220,18 @@ const checkUrl = async (): Promise<void> => {
   if (checking.value || pendingManifest.value) return;
   const trimmed = url.value.trim();
   if (!trimmed) return;
+  // The origin is the one field `PackInstallConfirm` exists to show, in the
+  // largest type on the screen. A value `new URL()` cannot parse — a
+  // relative path, a protocol-relative `//host/manifest.json` — must never
+  // reach it: `resolveWithin` (`packSource.ts`) would refuse to *install*
+  // from one, but this screen's own contract is the origin is never wrong,
+  // not merely never dangerous.
+  try {
+    new URL(trimmed);
+  } catch {
+    checkError.value = 'manifest: URL không hợp lệ (thiếu scheme, ví dụ https://)';
+    return;
+  }
   checking.value = true;
   checkError.value = null;
   try {
@@ -236,21 +271,35 @@ const confirmInstall = async (): Promise<void> => {
   installing.value = true;
   installError.value = null;
   try {
-    const { installPackNow } = await import('@/content/runtimePacks');
+    // Both dynamic, and both for the same reason (see this file's own
+    // header): `runtimePacks.ts` is the one `src/content/` module pinned to
+    // the `game` chunk, and `pregameCatalog.ts` statically imports
+    // `@/game/config/spellCatalog` — a static import of either here would
+    // put that chain on the packs screen's own chunk.
+    const [{ installPackNow }, { resetPregameCatalog }] = await Promise.all([
+      import('@/content/runtimePacks'),
+      import('./setup/pregameCatalog'),
+    ]);
     const outcome = await installPackNow(manifestUrl, manifest);
     if (outcome.ok === false) {
       installError.value = `${outcome.stage}: ${outcome.message}`;
       return;
     }
-    // The pregame roster picker memoises its catalogue on the (now outdated)
-    // assumption that it never changes at runtime — see that module's own
-    // doc comment. Without this, the roster only grows after a reload, which
-    // is exactly what spec §5.2 and this screen exist to not require.
-    resetPregameCatalog();
-    // A pack already present under this id (`skipped: true`) is already a
-    // row in this list from the initial `onMounted` read — nothing to add.
-    const alreadyListed = rows.value.some(row => row.manifestUrl === manifestUrl);
-    if (!alreadyListed) {
+    if (outcome.skipped) {
+      // The id was already installed — under this exact URL (already a row
+      // from `onMounted`) or under a *different* one (never a row here at
+      // all). Either way `installPackNow` wrote nothing new, so adding a row
+      // keyed on `manifestUrl` would list a pack this browser does not
+      // actually remember: it vanishes on the next reload, and removing it
+      // here would `forgetPack` a base that was never cached under this URL.
+      checkError.value = `Pack "${outcome.id}" đã được cài rồi.`;
+    } else {
+      // The pregame roster picker memoises its catalogue on the (now
+      // outdated) assumption that it never changes at runtime — see that
+      // module's own doc comment. Without this, the roster only grows after
+      // a reload, which is exactly what spec §5.2 and this screen exist to
+      // not require. Not called on a skip: nothing changed for it to see.
+      resetPregameCatalog();
       const base = packBaseFor(manifestUrl);
       const newRow: PackRow = {
         manifestUrl,
@@ -295,62 +344,71 @@ const confirmInstall = async (): Promise<void> => {
       </button>
     </header>
 
-    <div class="packs-body">
-      <div class="packs-add">
-        <label class="packs-add-label" for="pack-url-input">Thêm bằng URL</label>
-        <div class="packs-add-row">
-          <input
-            id="pack-url-input"
-            v-model="url"
-            type="url"
-            inputmode="url"
-            autocomplete="off"
-            placeholder="https://vi-du.com/pack/manifest.json"
-            :disabled="checking"
-            @keyup.enter="checkUrl"
-          />
-          <button
-            type="button"
-            id="pack-url-check"
-            :disabled="checking || !url.trim()"
-            @click="checkUrl"
-            @touchend.prevent="checkUrl"
-          >
-            {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
-          </button>
-        </div>
-        <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
-      </div>
-
-      <ul v-if="rows.length" class="packs-list">
-        <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
-          <div class="packs-row-head">
-            <span class="packs-id">{{ row.id }}</span>
-            <span class="packs-version">v{{ row.version }}</span>
+    <div class="packs-body-shell">
+      <div class="packs-body">
+        <div class="packs-add">
+          <label class="packs-add-label" for="pack-url-input">Thêm bằng URL</label>
+          <div class="packs-add-row">
+            <input
+              id="pack-url-input"
+              v-model="url"
+              type="url"
+              inputmode="url"
+              autocomplete="off"
+              placeholder="https://vi-du.com/pack/manifest.json"
+              :disabled="checking"
+              @keyup.enter="checkUrl"
+            />
+            <button
+              type="button"
+              id="pack-url-check"
+              :disabled="checking || !url.trim()"
+              @click="checkUrl"
+              @touchend.prevent="checkUrl"
+            >
+              {{ checking ? 'Đang kiểm tra…' : 'Kiểm tra' }}
+            </button>
           </div>
-          <p class="packs-origin">{{ row.origin }}</p>
-          <p class="packs-usage">{{ row.entries }} tệp · ~{{ formatApproxMB(row.bytes) }} MB</p>
-          <button
-            type="button"
-            class="packs-remove"
-            :class="{ confirming: confirmingUrl === row.manifestUrl }"
-            :disabled="removingUrl === row.manifestUrl"
-            @click="requestRemove(row)"
-            @touchend.prevent="requestRemove(row)"
-          >
-            <i class="fas fa-trash" aria-hidden="true"></i>
-            <span>{{ removeLabel(row) }}</span>
-          </button>
-        </li>
-      </ul>
+          <p v-if="checkError" class="packs-add-error">{{ checkError }}</p>
+        </div>
 
-      <div v-else class="packs-empty">
-        <p>Chưa cài pack nào.</p>
-        <p class="packs-empty-hint">
-          Pack mặc định: <span class="packs-origin">{{ DEFAULT_PACK_URL }}</span>
-        </p>
+        <ul v-if="rows.length" class="packs-list">
+          <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
+            <div class="packs-row-head">
+              <span class="packs-id">{{ row.id }}</span>
+              <span class="packs-version">v{{ row.version }}</span>
+            </div>
+            <p class="packs-origin">{{ row.origin }}</p>
+            <p class="packs-usage">{{ row.entries }} tệp · ~{{ formatApproxMB(row.bytes) }} MB</p>
+            <button
+              type="button"
+              class="packs-remove"
+              :class="{ confirming: confirmingUrl === row.manifestUrl }"
+              :disabled="removingUrl === row.manifestUrl"
+              @click="requestRemove(row)"
+              @touchend.prevent="requestRemove(row)"
+            >
+              <i class="fas fa-trash" aria-hidden="true"></i>
+              <span>{{ removeLabel(row) }}</span>
+            </button>
+          </li>
+        </ul>
+
+        <div v-else class="packs-empty">
+          <p>Chưa cài pack nào.</p>
+          <p class="packs-empty-hint">
+            Pack mặc định: <span class="packs-origin">{{ DEFAULT_PACK_URL }}</span>
+          </p>
+        </div>
       </div>
 
+      <!-- A sibling of `.packs-body`, not a child of it: `.packs-body`
+           scrolls (`overflow-y: auto`), and an absolutely positioned child of
+           a scroll container scrolls with its content — the one thing a
+           modal must never do. `.packs-body-shell` is the non-scrolling
+           ancestor both share, which is also what keeps `.packs-header`'s
+           close button outside the backdrop's `inset: 0` coverage — see
+           `.packs-body-shell`'s own CSS comment. -->
       <PackInstallConfirm
         v-if="pendingManifest"
         :manifest-url="pendingManifestUrl"

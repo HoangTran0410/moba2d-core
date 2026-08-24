@@ -237,7 +237,16 @@ await guard(
     );
 
     // -------------------------------------------------------------- Part 5
-    // Cancel path, on a second attempt.
+    // Cancel path, on a second attempt — reusing the URL Part 4 already
+    // installed. That is deliberate: `installPackNow` answers a repeat of an
+    // installed id with `skipped: true` without writing anything, so a row
+    // count alone cannot tell "Huỷ did nothing" apart from "the wiring is
+    // broken and quietly hit the harmless skip branch instead" — both leave
+    // the count at 1. `PacksScene.vue`'s `cancelInstall` and `confirmInstall`
+    // differ on exactly one other observable: `confirmInstall` always clears
+    // `url` on the way out (success or skip), `cancelInstall` never touches
+    // it — so the input still holding the pasted URL is what a broken Huỷ
+    // cannot fake.
     await page.fill('#pack-url-input', PACK_URL);
     await page.click('#pack-url-check');
     await page.waitForSelector('#pack-install-confirm', { state: 'visible', timeout: 20_000 });
@@ -245,7 +254,12 @@ await guard(
     await page.waitForSelector('#pack-install-confirm', { state: 'detached', timeout: 20_000 });
 
     const rowsAfterCancel = await page.locator('.packs-row').count();
-    check('cancelling installs nothing', rowsAfterCancel === 1, `rows=${rowsAfterCancel}`);
+    const inputAfterCancel = await page.inputValue('#pack-url-input');
+    check(
+      'cancelling installs nothing',
+      rowsAfterCancel === 1 && inputAfterCancel === PACK_URL,
+      `rows=${rowsAfterCancel} input=${JSON.stringify(inputAfterCancel)}`
+    );
 
     // -------------------------------------------------------------- Part 6
     // Remove — two presses, "Gỡ" then "Chắc chưa?" (Task 6's own control).

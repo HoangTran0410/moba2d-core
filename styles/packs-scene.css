@@ -60,6 +60,25 @@
   color: var(--hextech-text);
 }
 
+/* The non-scrolling ancestor `.packs-body` and `PackInstallConfirm` share.
+   `PackInstallConfirm`'s backdrop is `position: absolute; inset: 0` against
+   *this* element, not `.packs-body`: an absolutely positioned child of a
+   scroll container scrolls with its content, which is the one thing a modal
+   must never do — with a long installed list scrolled down, a backdrop
+   pinned to `.packs-body` itself could sit above the viewport entirely.
+   `.packs-body-shell` is also what keeps `.packs-header`'s close button
+   outside the backdrop's coverage: it wraps `.packs-body` but not the
+   header, so a confirmation only pending discards itself, without
+   installing anything, the same as pressing "Huỷ" — see this file's own
+   comment on `.pack-confirm-backdrop` and `PacksScene.vue`'s template. */
+.packs-body-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* The panel's one scroll region. Plain `overflow-y: auto` is enough here —
    unlike `.practice-tab-body`, nothing above this element sets
    `touch-action: none`. This scene mounts over `#packs-scene`, a sibling of
@@ -70,13 +89,6 @@
    argument applies unchanged here. */
 .packs-body {
   box-sizing: border-box;
-  /* `PackInstallConfirm`'s backdrop is `position: absolute; inset: 0` against
-     this element on purpose (see `.pack-confirm-backdrop` below): it covers
-     the list and the add-URL row but never `.packs-header`, so the "back"
-     button stays clickable while a confirmation is only pending — leaving
-     the screen that way discards the pending manifest without installing
-     anything, the same as pressing "Huỷ". */
-  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -241,9 +253,10 @@
 }
 
 /* --------------------------------------------------- Install confirmation
-   `PackInstallConfirm.vue`. Covers `.packs-body` (see that selector's own
-   comment) rather than the whole panel, so `.packs-header`'s close button
-   stays reachable while a confirmation is only pending. */
+   `PackInstallConfirm.vue`. Covers `.packs-body-shell` (see that selector's
+   own comment) — not `.packs-body`, which scrolls, and not the whole panel,
+   so `.packs-header`'s close button stays reachable while a confirmation is
+   only pending. */
 .pack-confirm-backdrop {
   position: absolute;
   inset: 0;
