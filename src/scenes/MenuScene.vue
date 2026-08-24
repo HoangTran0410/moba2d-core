@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
  * The main menu: background, logo, and the buttons. Scene transitions
- * ("Chơi", "Cấu Hình Trận Đấu", "Giới thiệu") are lifecycle, not presentation,
- * so this only emits — `MenuScene.ts` maps `play`/`openConfig`/`openAbout`
- * onto `sceneManager.showScene`, the same split `LoadingScene.vue` uses for
- * its own scene handover.
+ * ("Chơi", "Cấu Hình Trận Đấu", "Giới thiệu", "Nội dung / Pack") are
+ * lifecycle, not presentation, so this only emits — `MenuScene.ts` maps
+ * `play`/`openConfig`/`openAbout`/`openPacks` onto `sceneManager.showScene`,
+ * the same split `LoadingScene.vue` uses for its own scene handover.
  *
  * The fullscreen toggle is pure view state with no scene-transition involved,
  * so — unlike the buttons above — it stays entirely local to this component

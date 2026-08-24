@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { scanImports, stripComments } from '@/seams/importScan';
+import { DEFAULT_PACK_URL } from '@/content/runtimePacks';
 
 /**
  * The packs screen is reached from the menu, before any match exists, so
@@ -96,6 +97,29 @@ describe('the packs screen boots without the game', () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * `PacksScene.vue` cannot statically import `DEFAULT_PACK_URL` from
+   * `@/content/runtimePacks` — that is exactly the crossing the case above
+   * bans, since reaching that module at all would pin the packs screen to
+   * the `game` chunk. So the URL is duplicated there as a literal (see that
+   * component's own doc comment), and nothing at runtime catches the two
+   * drifting apart.
+   *
+   * A *test* file is not bound by the same constraint: `vite.config.ts`'s
+   * `manualChunks` only runs at build time, and Vitest never goes through
+   * it, so this case can import the real constant directly. Without this
+   * cross-check, a future edit to `DEFAULT_PACK_URL` would silently leave
+   * the packs screen's empty-state hint pointing at a dead pack, with
+   * nothing anywhere to catch it.
+   */
+  it('the duplicated DEFAULT_PACK_URL literal matches the real constant', () => {
+    const source = stripComments(readFileSync(join(SRC, 'scenes/PacksScene.vue'), 'utf8'));
+    const match = source.match(/const DEFAULT_PACK_URL = '([^']*)'/);
+
+    expect(match, 'PacksScene.vue no longer declares a DEFAULT_PACK_URL literal').not.toBeNull();
+    expect(match![1]).toBe(DEFAULT_PACK_URL);
   });
 
   it('MenuScene reaches it only through a dynamic import', () => {
