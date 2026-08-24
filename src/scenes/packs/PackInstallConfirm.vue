@@ -26,13 +26,21 @@
  * drag `packSource.ts` into the packs screen's own chunk regardless of
  * whether a player ever types a URL; the async wrapper is what keeps it lazy.
  *
+ * **It traps focus and answers Escape.** This is an `alertdialog` covering a
+ * screen whose input field is still in the tab order behind it — a keyboard
+ * player could Tab straight past the disclosure onto that field, type, and
+ * press Enter, and the confirmation would still be sitting there unanswered.
+ * The trap is hand-rolled over exactly two buttons rather than pulled from a
+ * library, and Escape maps to Huỷ, never to Cài đặt: the safe answer is the
+ * one a key pressed by reflex has to give.
+ *
  * **Re-checks compatibility itself rather than trusting a prop.**
  * `fetchPackManifest` has already applied `satisfiesCoreRange` — a manifest
  * that failed it never reaches this component, `PacksScene.vue` shows the
  * error inline instead — but "should be impossible" is not "is enforced
  * here", so the refusal is rendered for real rather than assumed away.
  */
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { satisfiesCoreRange, type RuntimePackManifest } from '@/content/packSource';
 
 const props = defineProps<{
@@ -71,11 +79,101 @@ const onConfirm = (): void => {
   if (props.installing || !compatible.value) return;
   emit('confirm');
 };
+
+// ------------------------------------------------- Escape, and the focus trap
+
+const dialog = ref<HTMLElement | null>(null);
+/** Whatever had focus when this mounted — the URL field, or the Kiểm tra button. */
+let restoreFocusTo: HTMLElement | null = null;
+
+/**
+ * The dialog's own focusable controls in tab order, disabled ones excluded.
+ * Read on every keystroke rather than cached: `installing` and `compatible`
+ * both disable a button, so the list this trap has to cycle changes while the
+ * dialog is on screen.
+ */
+const focusables = (): HTMLElement[] => {
+  const root = dialog.value;
+  if (!root) return [];
+  const found: HTMLElement[] = [];
+  for (const node of root.querySelectorAll<HTMLElement>('button, a[href]')) {
+    if (!(node as HTMLButtonElement).disabled) found.push(node);
+  }
+  return found;
+};
+
+const onKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape') {
+    // `onCancel` is already a no-op while installing, which is what makes
+    // Escape safe mid-install rather than a second thing to guard here.
+    event.preventDefault();
+    onCancel();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+
+  const stops = focusables();
+  // Both buttons are disabled while `installing`, so there is nothing to
+  // cycle — but Tab must still not walk out into the screen behind. It goes
+  // to the dialog itself, which carries `tabindex="-1"` for exactly this.
+  if (!stops.length) {
+    event.preventDefault();
+    dialog.value?.focus();
+    return;
+  }
+
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+
+  // Focus is outside the dialog: the player clicked the backdrop, or the
+  // field behind it kept focus. Pull it back in rather than letting Tab
+  // continue from wherever it was.
+  if (!active || !dialog.value?.contains(active)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return;
+  }
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+};
+
+onMounted(() => {
+  restoreFocusTo = document.activeElement as HTMLElement | null;
+  // Huỷ, not Cài đặt — `focusables()` is in DOM order and Huỷ is first. The
+  // keyboard's default answer to a dialog that exists to ask "are you sure"
+  // has to be the one that runs nothing.
+  (focusables()[0] ?? dialog.value)?.focus();
+  // Capture, on `window` rather than on the dialog element: a keydown while
+  // focus sits on the backdrop never reaches the dialog by bubbling.
+  window.addEventListener('keydown', onKeydown, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown, true);
+  // Back where it came from, so cancelling with Escape leaves the caret in
+  // the URL field the player was already typing into.
+  restoreFocusTo?.focus?.();
+});
 </script>
 
 <template>
   <div class="pack-confirm-backdrop">
-    <div id="pack-install-confirm" class="pack-confirm" role="alertdialog" aria-modal="true">
+    <div
+      id="pack-install-confirm"
+      ref="dialog"
+      class="pack-confirm"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="pack-confirm-origin"
+      aria-describedby="pack-confirm-authority"
+      tabindex="-1"
+    >
       <!-- 1. Origin — largest type on the screen, never elided. -->
       <p id="pack-confirm-origin" class="pack-confirm-origin">{{ origin }}</p>
 
@@ -95,7 +193,7 @@ const onConfirm = (): void => {
       <p v-if="manifest.champions" class="pack-confirm-champions">{{ manifest.champions }} tướng</p>
 
       <!-- 5. The authority sentence, verbatim. -->
-      <p class="pack-confirm-authority">
+      <p id="pack-confirm-authority" class="pack-confirm-authority">
         Pack sẽ chạy với toàn quyền trên trang này — đọc và sửa được cấu hình, giao diện và dữ liệu
         của bạn. Chỉ cài từ nguồn bạn tin.
       </p>
