@@ -56,6 +56,23 @@ export const updateReady = ref(false);
  */
 export const updateDownloading = ref(false);
 
+/**
+ * The player pressed "cập nhật" while the new build was still downloading.
+ *
+ * This is what makes the *fast* signal actionable. `updateReady` cannot come
+ * early — pressing it skip-waits to a worker, and until the precache download
+ * finishes there is no waiting worker to skip to — so the old menu showed a
+ * dead "đang tải…" line for the ~19 seconds between the two and only then
+ * offered a button. The player has usually pressed Play by then, and a reload
+ * mid-match is exactly what `registerType: 'prompt'` exists to avoid.
+ *
+ * So the press is allowed to arrive first and wait for the build instead of
+ * the other way round: `requestUpdate` sets this, and `onNeedRefresh` applies
+ * the moment the worker is actually ready. The player presses once, at second
+ * one, and can walk away.
+ */
+export const updateQueued = ref(false);
+
 /** The app has been cached and will now open without a network. */
 export const offlineReady = ref(false);
 
@@ -66,11 +83,53 @@ let applyWaitingUpdate: ((reload?: boolean) => Promise<void>) | null = null;
  * How often to ask the server whether a newer build exists.
  *
  * The browser checks on its own when the page loads and roughly daily after
- * that, which for a game someone leaves open in a tab means "never". An hour
- * is frequent enough that a fix lands the same session and rare enough to be
- * invisible: it is one conditional request for a file of a few kilobytes.
+ * that, which for a game someone leaves open in a tab means "never". One
+ * conditional request for a file of a few kilobytes is cheap enough that the
+ * interval is set by how stale a build may be, not by cost.
+ *
+ * **The interval is the fallback, not the mechanism.** What actually catches a
+ * deploy is `checkOnReturn` below: a player who comes back to the tab, or whose
+ * phone reconnects, is checked within a second. A timer alone cannot do that —
+ * a backgrounded tab's timers are throttled to minutes or stopped outright.
  */
-export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+export const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * The shortest gap between two checks, whatever asks for them.
+ *
+ * `visibilitychange` fires on every tab switch and `online` can flap on a
+ * moving phone, so without this a player alt-tabbing repeatedly would send a
+ * request per switch. A minute is well under any interval a human would
+ * notice and well over any burst.
+ */
+export const UPDATE_CHECK_MIN_GAP_MS = 60 * 1000;
+
+/** Just enough of a `ServiceWorkerRegistration` to ask it for an update. */
+interface UpdatableRegistration {
+  update(): Promise<unknown>;
+}
+
+/**
+ * A throttled "check now", for the signals that mean *the player came back*.
+ *
+ * Offline, `update()` rejects; that is the expected case for an installed app
+ * and says nothing worth reporting, so the rejection is swallowed here rather
+ * than at each call site.
+ */
+export function createUpdateChecker(
+  registration: UpdatableRegistration,
+  now: () => number = () => Date.now()
+): () => void {
+  // Not `0`: with a fake clock starting at zero that would suppress the very
+  // first check, which is the one that matters most.
+  let last = Number.NEGATIVE_INFINITY;
+  return () => {
+    const at = now();
+    if (at - last < UPDATE_CHECK_MIN_GAP_MS) return;
+    last = at;
+    registration.update().catch(() => {});
+  };
+}
 
 /**
  * How long `updateDownloading` is allowed to stay lit without the install it
@@ -112,11 +171,17 @@ export function trackDownloadingUpdate(
   updateDownloading.value = true;
   const giveUp = setTimeoutFn(() => {
     updateDownloading.value = false;
+    updateQueued.value = false;
   }, UPDATE_DOWNLOAD_STALL_MS);
   installing.addEventListener('statechange', () => {
     if (installing.state === 'installed' || installing.state === 'redundant') {
       clearTimeoutFn(giveUp);
       updateDownloading.value = false;
+      // `installed` hands over to `onNeedRefresh`, which is what honours a
+      // queued press. `redundant` means this attempt died — drop the press
+      // with it rather than leave "sẽ tự cập nhật" on screen waiting for a
+      // build that is never coming.
+      if (installing.state === 'redundant') updateQueued.value = false;
     }
   });
 }
@@ -142,6 +207,8 @@ export async function registerServiceWorker(): Promise<void> {
     onNeedRefresh() {
       updateReady.value = true;
       updateDownloading.value = false;
+      // The player already pressed, seconds ago, while this was downloading.
+      if (updateQueued.value) void applyUpdate();
     },
     onOfflineReady() {
       offlineReady.value = true;
@@ -165,13 +232,36 @@ export async function registerServiceWorker(): Promise<void> {
       registration.addEventListener('updatefound', watchInstallingWorker);
       watchInstallingWorker();
 
-      setInterval(() => {
-        // Offline, `update()` rejects; that is the expected case for an
-        // installed app and says nothing worth reporting.
-        registration.update().catch(() => {});
-      }, UPDATE_CHECK_INTERVAL_MS);
+      // The three moments worth asking, cheapest first. A timer alone misses
+      // every one of them: a backgrounded tab's timers are throttled to
+      // minutes or stopped, so the player who closed the game on Friday and
+      // opened it on Monday is caught by `visibilitychange`, not by this
+      // interval — and the one whose train came out of a tunnel is caught by
+      // `online`. All three go through the same throttle.
+      const check = createUpdateChecker(registration);
+      setInterval(check, UPDATE_CHECK_INTERVAL_MS);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+      window.addEventListener('online', check);
     },
   });
+}
+
+/**
+ * What the menu's button calls: update now if there is something to update to,
+ * otherwise remember the press and update the moment there is.
+ *
+ * The whole point of the second branch is that the button can be offered on
+ * the *fast* signal (`updateDownloading`, about a second) instead of the slow
+ * one (`updateReady`, about twenty). See `updateQueued`.
+ */
+export async function requestUpdate(): Promise<void> {
+  if (updateReady.value) {
+    await applyUpdate();
+    return;
+  }
+  updateQueued.value = true;
 }
 
 /**
@@ -184,5 +274,6 @@ export async function registerServiceWorker(): Promise<void> {
  */
 export async function applyUpdate(): Promise<void> {
   updateReady.value = false;
+  updateQueued.value = false;
   await applyWaitingUpdate?.(true);
 }

@@ -6,7 +6,16 @@
  * is enough to drive every transition without a browser.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UPDATE_DOWNLOAD_STALL_MS, trackDownloadingUpdate, updateDownloading } from '@/pwa/updates';
+import {
+  UPDATE_CHECK_MIN_GAP_MS,
+  UPDATE_DOWNLOAD_STALL_MS,
+  createUpdateChecker,
+  requestUpdate,
+  trackDownloadingUpdate,
+  updateDownloading,
+  updateQueued,
+  updateReady,
+} from '@/pwa/updates';
 
 function fakeInstallingWorker() {
   let state = 'installing';
@@ -99,5 +108,147 @@ describe('trackDownloadingUpdate', () => {
 describe('UPDATE_DOWNLOAD_STALL_MS', () => {
   it('is a positive tuning value', () => {
     expect(UPDATE_DOWNLOAD_STALL_MS).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The press that arrives before the build does.
+ *
+ * `updateReady` cannot come early — it means "a worker is waiting to be
+ * skip-waited to", and until the serial precache download finishes there is no
+ * such worker. Measured at 825ms to `updatefound` against 4622ms to ready on a
+ * small synthetic diff, and ~1s against ~19s on a real one
+ * (`npm run e2e:pwa-update`). The menu used to offer nothing for that whole
+ * gap, which a player spends pressing Play — and then a reload mid-match is
+ * the one thing `registerType: 'prompt'` exists to prevent.
+ *
+ * So the button is offered on the fast signal and the press waits for the
+ * build instead.
+ */
+describe('requestUpdate', () => {
+  beforeEach(() => {
+    updateReady.value = false;
+    updateQueued.value = false;
+    updateDownloading.value = false;
+  });
+
+  it('remembers a press that arrives while the build is still downloading', async () => {
+    updateDownloading.value = true;
+    await requestUpdate();
+    expect(updateQueued.value).toBe(true);
+    // Nothing has been handed over: there is nothing to hand over to.
+    expect(updateReady.value).toBe(false);
+  });
+
+  it('applies straight away when a build is already waiting', async () => {
+    updateReady.value = true;
+    await requestUpdate();
+    expect(updateReady.value).toBe(false);
+    expect(updateQueued.value).toBe(false);
+  });
+
+  it('drops a queued press when the download it was waiting on dies', () => {
+    const worker = fakeInstallingWorker();
+    trackDownloadingUpdate(worker);
+    updateQueued.value = true;
+
+    worker.setState('redundant');
+
+    // Otherwise "sẽ cập nhật khi tải xong…" stays on screen for ever, waiting
+    // on a build that is never coming.
+    expect(updateQueued.value).toBe(false);
+  });
+
+  it('drops a queued press when the download stalls out', () => {
+    const worker = fakeInstallingWorker();
+    const timers = fakeTimers();
+    trackDownloadingUpdate(worker, timers.setTimeoutFn, timers.clearTimeoutFn);
+    updateQueued.value = true;
+
+    timers.fire(1);
+
+    expect(updateQueued.value).toBe(false);
+  });
+
+  it('keeps a queued press while the install is still going', () => {
+    const worker = fakeInstallingWorker();
+    trackDownloadingUpdate(worker);
+    updateQueued.value = true;
+
+    worker.setState('installing');
+
+    expect(updateQueued.value).toBe(true);
+  });
+});
+
+/**
+ * When to ask the server at all.
+ *
+ * A timer is the wrong primary mechanism: a backgrounded tab's timers are
+ * throttled to minutes or stopped outright, so the interval cannot catch the
+ * case that matters — the player coming back. `visibilitychange` and `online`
+ * can, and both go through this throttle so a burst of tab switches is one
+ * request rather than one each.
+ */
+describe('createUpdateChecker', () => {
+  const registrationSpy = () => {
+    let calls = 0;
+    return {
+      update: () => {
+        calls += 1;
+        return Promise.resolve();
+      },
+      get calls() {
+        return calls;
+      },
+    };
+  };
+
+  it('checks immediately the first time, however low the clock starts', () => {
+    const registration = registrationSpy();
+    createUpdateChecker(registration, () => 0)();
+    expect(registration.calls).toBe(1);
+  });
+
+  it('swallows a rejection, which offline is', async () => {
+    let settled = false;
+    const check = createUpdateChecker({
+      update: () => {
+        settled = true;
+        return Promise.reject(new Error('offline'));
+      },
+    });
+    expect(() => check()).not.toThrow();
+    await Promise.resolve();
+    expect(settled).toBe(true);
+  });
+
+  it('collapses a burst of checks inside the minimum gap into one', () => {
+    const registration = registrationSpy();
+    let clock = 1_000_000;
+    const check = createUpdateChecker(registration, () => clock);
+
+    check();
+    clock += 1_000;
+    check();
+    // Still one millisecond short of the gap — the boundary itself is a real
+    // check, and `checks again once the gap has passed` below is where that
+    // is asserted.
+    clock += UPDATE_CHECK_MIN_GAP_MS - 1_001;
+    check();
+
+    expect(registration.calls).toBe(1);
+  });
+
+  it('checks again once the gap has passed', () => {
+    const registration = registrationSpy();
+    let clock = 1_000_000;
+    const check = createUpdateChecker(registration, () => clock);
+
+    check();
+    clock += UPDATE_CHECK_MIN_GAP_MS;
+    check();
+
+    expect(registration.calls).toBe(2);
   });
 });

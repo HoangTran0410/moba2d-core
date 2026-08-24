@@ -27,7 +27,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import DomUtils from '@/utils/dom.utils';
-import { applyUpdate, offlineReady, updateDownloading, updateReady } from '@/pwa/updates';
+import { offlineReady, requestUpdate, updateDownloading, updateQueued, updateReady } from '@/pwa/updates';
 import { watchPreload, type PreloadState } from './gamePreload';
 import { packStageLabel } from './packStageLabel';
 import {
@@ -109,9 +109,32 @@ const appVersion = __APP_VERSION__;
 const updating = ref(false);
 
 const installUpdate = async (): Promise<void> => {
-  updating.value = true;
-  await applyUpdate();
+  // `requestUpdate`, not `applyUpdate`: the button is now offered on the fast
+  // signal, seconds before there is a build to hand over to, so a press that
+  // arrives early is remembered rather than refused. See `src/pwa/updates.ts`.
+  await requestUpdate();
+  if (updateReady.value) updating.value = true;
 };
+
+/**
+ * What the one update button says, which is three different things.
+ *
+ * One button and not three states of two elements: the player's decision is
+ * the same in all of them — *take the new build* — and the only thing that
+ * changes is how much of it has arrived. A dead "đang tải…" line that becomes
+ * a button twenty seconds later is two things to notice instead of one.
+ */
+const updateLabel = computed(() => {
+  if (updating.value) return 'Đang cập nhật…';
+  if (updateQueued.value && !updateReady.value) return 'Sẽ cập nhật khi tải xong…';
+  return 'Có bản mới — cập nhật';
+});
+
+/** `downloading` | `queued` | `ready` — the hook `e2e:pwa-update` measures against. */
+const updateState = computed(() => {
+  if (updateReady.value) return 'ready';
+  return updateQueued.value ? 'queued' : 'downloading';
+});
 
 /**
  * ## The failed-pack banner
@@ -231,28 +254,26 @@ const installUpdate = async (): Promise<void> => {
     </span>
   </p>
 
-  <!-- The fast half: a newer build has been detected and is downloading in
-       the background, well before it is ready to apply. Not a button — there
-       is nothing to press yet, see src/pwa/updates.ts. -->
-  <p
-    v-if="updateDownloading && !updateReady"
-    id="menu-update-checking"
-    class="menu-update-checking"
-  >
-    <i class="fas fa-arrow-rotate-right fa-spin" aria-hidden="true"></i>
-    Đang tải bản cập nhật mới…
-  </p>
+  <!-- Offered on the *fast* signal — `updatefound`, about a second — not on
+       the slow one. Pressing before the download finishes is a promise, not a
+       refusal: `requestUpdate` remembers it and applies the moment the build
+       is ready. See src/pwa/updates.ts for why the two are ~19s apart.
 
-  <!-- Only ever on the menu, and only when a build is already downloaded and
-       waiting — so pressing it is a reload, not a download that might fail. -->
+       Only ever on the menu, which is the one screen where losing the page
+       costs nothing. -->
   <button
-    v-if="updateReady"
+    v-if="updateDownloading || updateReady"
     id="menu-update-btn"
     class="menu-update"
-    :disabled="updating"
+    :data-state="updateState"
+    :disabled="updating || (updateQueued && !updateReady)"
     @click="installUpdate"
   >
-    <i class="fas fa-arrow-rotate-right" aria-hidden="true"></i>
-    <span>{{ updating ? 'Đang cập nhật…' : 'Có bản mới — cập nhật' }}</span>
+    <i
+      class="fas fa-arrow-rotate-right"
+      :class="{ 'fa-spin': updating || (updateQueued && !updateReady) }"
+      aria-hidden="true"
+    ></i>
+    <span>{{ updateLabel }}</span>
   </button>
 </template>
