@@ -76,6 +76,26 @@ https://host/pack/
 `champions` chỉ để màn xác nhận có gì hiển thị. `entry` và `assets` là đường dẫn
 **tương đối so với chính manifest**, nên đổi host không phải sửa manifest.
 
+### 3.1 `files` — cái GĐ2 thêm vào
+
+`manifest.json` có thêm một trường **tuỳ chọn**:
+
+```json
+"files": ["pack.js", "chunks/Ahri_Q-abc123.js", "assets/ahri-def456.png", "…"]
+```
+
+Mọi đường dẫn tương đối so với chính manifest, dấu `/`, đã sắp xếp, không kể
+`manifest.json`.
+
+Vì sao cần: §6 nói prefetch nền "kéo hết chunk vào cache", mà một host tĩnh
+không có listing thư mục — không có danh sách thì prefetch chỉ cache được đúng
+những gì trận đấu vừa hỏi, tức đúng tướng người chơi đã có. 237 tướng chưa chơi
+mới là chỗ offline hỏng.
+
+Tuỳ chọn, không bắt buộc: pack không khai `files` vẫn cài, vẫn chơi online bình
+thường, chỉ là không có gì được kéo trước. Đo trên pack thật: 238 chunk, 351
+asset, 1 entry — 590 mục, ~21KB JSON trước gzip.
+
 **Vì sao manifest tách khỏi bundle.** Ba bước, và ranh giới nằm giữa bước 2 và 3:
 
 1. `fetch(manifestUrl)` — JSON thuần, chưa chạy code nào
