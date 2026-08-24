@@ -94,6 +94,7 @@ npm run preview   # serve the built output
 | `npm run check-seams`                              | Run the source-scan seam rules (`pack-core-boundary`, `dash-onupdate`, and the rest) over core's own spell/buff/attackable-unit trees                                                  |
 | `npm run e2e:core-alone`                           | Drive a real browser to a real, playable match with no optional content pack installed                                                                                                 |
 | `npm run e2e:runtime-pack`                         | Serve a built pack from a second origin and prove it installs, grows the roster, and casts                                                                                             |
+| `npm run e2e:packs`                                | Drive the packs screen: paste a URL, see the origin disclosure, confirm or cancel, remove — the management-screen half of the runtime-pack claim                                       |
 | `npm run e2e:pwa`                                  | Build, then verify the PWA boots and plays offline in a real browser                                                                                                                   |
 | `npm run e2e:pack` / `e2e:map-picker` / `e2e:bots` | Narrower Playwright scripts — see `tests/e2e/` for the full list                                                                                                                       |
 | `npm run verify:pack-standalone <path>`            | The pack-repository acceptance drill: pack core, install it from that tarball into a fresh sandbox alongside a scaffolded pack, and prove both green                                   |
@@ -162,7 +163,7 @@ There are two ways a pack gets in.
 
 **At runtime, from a URL.** The game fetches `manifest.json`, checks it against core's version, imports the entry, and installs it during the loading screen — no rebuild of core involved. A first boot with nothing installed seeds one default URL; after that the list is the player's, stored in `localStorage` under `lol2d:packs:v1`.
 
-**At build time, as a dependency.** Still supported, and what the pack's own CI uses to prove a pack composes:
+**At build time, as a dependency.** Still supported, for a developer who wants a pack in the tree while working:
 
 ```bash
 npm install github:HoangTran0410/moba2d-content-riot
@@ -171,6 +172,8 @@ npm run dev
 ```
 
 `packs:generate` is what makes the pack visible to `src/content/install.ts`; `predev`/`prebuild` already run it. Uninstalling the package and re-running it puts core back to one champion; nothing else has to be undone.
+
+**No CI proves this composes any more.** The pack repository's own `verify.yml` and `publish.yml` run its `verify` and nothing else — neither installs the pack into core — and this repository's `build.yml` dropped the step that used to `npm install` a pack in before the published build (see that workflow's own comment on why). Nothing in either repository's automation puts the two halves in the same tree today; `npm run e2e:runtime-pack` and `npm run e2e:pwa`, run locally against a sibling pack checkout, are what actually check the join now.
 
 **A pack is code, not data.** It is JavaScript running on the game's own origin, with the game's `localStorage` and the game's DOM. `validate.ts` rejects a pack of the wrong _shape_ — missing fields, wrong types, a duplicate id — and rejects nothing that is deliberately hostile. Install packs from sources you trust.
 

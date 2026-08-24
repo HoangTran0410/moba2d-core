@@ -152,8 +152,11 @@ rejected" below.
   specifically because it's honest — "downloading", not "ready" — and adds no new path
   to an unprompted reload.
 - **Trying to parallelize `workbox-precaching`'s install loop.** No public option;
-  would mean forking/patching an upstream library for a `generateSW`-mode build, which
-  is a much bigger risk than this ticket's scope justifies.
+  would mean forking/patching an upstream library, which is a much bigger risk than
+  this ticket's scope justifies. True regardless of build strategy — `src/sw.ts` moved
+  from a generated worker to a hand-written one (`injectManifest`) afterward, but it
+  still calls `precacheAndRoute()` out of the same `workbox-precaching` package, so the
+  install loop is still upstream code, not this repository's.
 - **Reducing `UPDATE_CHECK_INTERVAL_MS`.** Measured and ruled out as the cause (the
   browser's own registration-time check already fires in ~1-2s, long before any
   interval matters for a freshly-opened tab), so shortening it would not have moved the

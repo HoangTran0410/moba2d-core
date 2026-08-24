@@ -90,11 +90,16 @@ this repository at `packs/riot/` and now lives in its own — see this
 project's own handover doc,
 `docs/superpowers/reports/2026-08-23-pack-sdk-and-repo-split.md`, for exactly
 what moved, what still points at it, and what is unfinished. **A checkout of
-this repository alone ships no such pack**: `npm run build`'s own
-`chunks:check` step prints `0 per-champion spell chunks` on a clean tree, and
-`git log` never had a token or a private remote to hide — the branch simply
-has not been merged with `@moba2d/content-riot` wired in as a real
-dependency yet. Do not assume any Riot-named champion, spell, map or asset
+this repository alone ships no such pack, and never will by design**:
+`npm run build`'s own `chunks:check` step prints `0 per-champion spell
+chunks` on a clean tree, and `git log` never had a token or a private remote
+to hide — this is not a temporary gap waiting on a merge. Spec decision 1
+(`docs/superpowers/specs/2026-08-24-runtime-pack-loading-design.md` §2) ships
+core empty and self-installing permanently, precisely so there is no
+build-time version to fall back to, and `.github/workflows/build.yml`'s own
+compile-in step (content-pack-and-repo-split batch 6, Plan 2 task 8) is
+gone, not paused — see "Content packs install at runtime, never at build
+time" above. Do not assume any Riot-named champion, spell, map or asset
 exists in `src/` or `packs/reference/` while reading or editing code here;
 `tests/content/vocabularyBoundary.test.ts` and `tests/content/corePackTarball.test.ts`
 enforce that nothing in `src/` or the published tarball ever names one again.
