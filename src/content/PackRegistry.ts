@@ -60,6 +60,7 @@ export class PackRegistry {
   private readonly resolved = new Map<string, SpellClass>();
   private readonly inFlight = new Map<string, Promise<SpellClass | null>>();
   private readonly installedIds = new Set<string>();
+  private revision = 0;
   private readonly monsterList: QualifiedMonster[] = [];
   /** A monster's code half, by qualified monster id — mirrors `sources` for spells. */
   private readonly monsterAbilities = new Map<string, MonsterAbility[]>();
@@ -225,6 +226,7 @@ export class PackRegistry {
   }
 
   private writeData(data: ContentPackData): void {
+    this.revision += 1;
     const packId = data.manifest.id;
     // Present only for a pack that ships its own art tree (`assets:generate`
     // run against its own `assets/` — `packs/riot/assets/` is the first);
@@ -299,6 +301,7 @@ export class PackRegistry {
   }
 
   private writeCode(packId: string, code: ContentPackCode): void {
+    this.revision += 1;
     for (const [localId, spellSource] of Object.entries(code.spells ?? {})) {
       const qualifiedId = qualify(packId, localId);
       this.sources.set(qualifiedId, spellSource);
@@ -332,6 +335,29 @@ export class PackRegistry {
    * `Map.set` and would otherwise silently repoint every one of that pack's
    * art keys at the remote host on its way to a duplicate-id throw.
    */
+  /**
+   * A counter that changes whenever installed content changes.
+   *
+   * **The identity of this object is not a cache key.** A pack installed at
+   * runtime (`installPackNow`, spec §5.2) is written *into* the registry that
+   * is already being read from — there is no reload and no new instance — so a
+   * memo written as `if (cachedFor === registry) return cached` never
+   * invalidates and answers with the roster core had before the player
+   * installed anything. That shipped: the picker listed all 58 champions of
+   * the pack and choosing one still spawned core's own reference champion,
+   * because `preset.playableKits()` was memoised exactly that way and
+   * `planLoadout` fell through to a random kit when the name it was handed
+   * was not in the stale list.
+   *
+   * Anything memoising over this registry must compare this number as well as
+   * the instance. Bumped in `writeData`, `writeCode` and `reset` — the three
+   * places that change what is installed — rather than in each public entry
+   * point, so a new install path cannot forget it.
+   */
+  get contentRevision(): number {
+    return this.revision;
+  }
+
   hasPack(id: string): boolean {
     return this.installedIds.has(id);
   }
@@ -529,6 +555,7 @@ export class PackRegistry {
   }
 
   reset(): void {
+    this.revision += 1;
     this.packs.length = 0;
     this.championList.length = 0;
     this.monsterList.length = 0;

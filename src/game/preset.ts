@@ -142,6 +142,14 @@ export interface PlayableChampionKit {
 
 let playableCache: PlayableChampionKit[] | null = null;
 let playableCacheFor: PackRegistry | null = null;
+/**
+ * The registry's own content counter at the time the cache was built.
+ *
+ * Identity alone is not enough: a runtime pack install mutates the shared
+ * registry in place, so `playableCacheFor === registry` stays true across the
+ * install that added 58 champions. See `PackRegistry.contentRevision`.
+ */
+let playableCacheRevision = -1;
 
 /**
  * Built on first use, not at module load.
@@ -172,7 +180,12 @@ let playableCacheFor: PackRegistry | null = null;
  */
 export const playableKits = (): PlayableChampionKit[] => {
   const registry = contentRegistry();
-  if (playableCache && playableCacheFor === registry) return playableCache;
+  if (
+    playableCache &&
+    playableCacheFor === registry &&
+    playableCacheRevision === registry.contentRevision
+  )
+    return playableCache;
   const out: PlayableChampionKit[] = [];
   for (const champion of registry.champions()) {
     // `playable` is the whole rule — `content/validate.ts` already refuses to
@@ -192,6 +205,7 @@ export const playableKits = (): PlayableChampionKit[] => {
   }
   playableCache = out;
   playableCacheFor = registry;
+  playableCacheRevision = registry.contentRevision;
   return playableCache;
 };
 
@@ -373,12 +387,30 @@ export interface MatchPlan {
 
 const randomSpellId = (): string => random(allSpellIds());
 
-/** A stored summoner choice, or the shelf's own first entry if it no longer names one. */
+/**
+ * A stored summoner choice, or the shelf's own first entry if it no longer
+ * names one.
+ *
+ * The middle case is the one that matters: a choice stored **bare** against a
+ * shelf that is now some pack's, so `'Flash'` has to find `riot:Flash`.
+ * `PregameConfig`'s own defaults are those bare names, and so is every save
+ * written before content became packs — without this both D and F fall to
+ * `ids[0]`, which is one spell in two slots, and before `summonerSpellIds`
+ * stopped narrowing to the bundled pack they fell all the way to a basic
+ * attack. Matched on the local half only, never across packs by accident: a
+ * qualified choice is compared whole, first.
+ */
 const summonerIdOr = (choice: string): string => {
   const ids = summonerSpellIds();
   // No cast needed against `ids: SpellCatalogId[]` — `SpellCatalogId` is
   // `string` since batch 5 task 2, so `choice` is already a member.
-  return ids.includes(choice) ? choice : (ids[0] ?? choice);
+  if (ids.includes(choice)) return choice;
+  if (!choice.includes(':')) {
+    for (const id of ids) {
+      if (id.slice(id.indexOf(':') + 1) === choice) return id;
+    }
+  }
+  return ids[0] ?? choice;
 };
 
 /** A slot's stored choice with 'random' — and any id this build dropped — rolled out. */
