@@ -186,6 +186,24 @@ try {
     .catch(() => null);
 
   check('the update button appears (fast signal)', downloadingAt !== null, `${downloadingAt}ms`);
+
+  // The count the installing worker posts per cached file, read off the
+  // button. This is the only place the worker-to-page message can be
+  // observed at all — a unit test can prove the plugin is wired and the ref
+  // is set, and neither of those proves a message crossed. Without it the
+  // menu shows a spinner that never moves for the whole download.
+  const progressed = await page
+    .waitForFunction(
+      () => Number(document.querySelector('#menu-update-btn')?.dataset.downloaded ?? 0) > 0,
+      null,
+      { timeout: 120_000 }
+    )
+    .then(() => true)
+    .catch(() => false);
+  const downloadedCount = await page.evaluate(
+    () => Number(document.querySelector('#menu-update-btn')?.dataset.downloaded ?? 0)
+  );
+  check('the worker reports files as it caches them', progressed, `${downloadedCount} files`);
   check('the build finishes downloading', readyAt !== null, `${readyAt}ms`);
   check(
     'the fast signal genuinely leads the actionable one',

@@ -12,6 +12,7 @@ import {
   createUpdateChecker,
   requestUpdate,
   trackDownloadingUpdate,
+  updateDownloadedCount,
   updateDownloading,
   updateQueued,
   updateReady,
@@ -168,6 +169,16 @@ describe('requestUpdate', () => {
     timers.fire(1);
 
     expect(updateQueued.value).toBe(false);
+  });
+
+  it('counts a fresh download from zero', () => {
+    updateDownloadedCount.value = 41;
+
+    trackDownloadingUpdate(fakeInstallingWorker());
+
+    // A retry after a `redundant` attempt otherwise resumes from a number
+    // that belonged to a download which no longer exists.
+    expect(updateDownloadedCount.value).toBe(0);
   });
 
   it('keeps a queued press while the install is still going', () => {

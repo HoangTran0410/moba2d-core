@@ -73,6 +73,16 @@ export const updateDownloading = ref(false);
  */
 export const updateQueued = ref(false);
 
+/**
+ * How many files the incoming build has cached so far.
+ *
+ * A count, not a percentage — see `PrecacheProgressMessage` in `src/sw.ts` for
+ * why there is no honest denominator to divide by. Its whole job is to prove a
+ * wait that can run to twenty seconds is not a hang: a spinner that never
+ * moves and a number that climbs read completely differently on a phone.
+ */
+export const updateDownloadedCount = ref(0);
+
 /** The app has been cached and will now open without a network. */
 export const offlineReady = ref(false);
 
@@ -169,6 +179,9 @@ export function trackDownloadingUpdate(
   clearTimeoutFn: typeof clearTimeout = clearTimeout
 ): void {
   updateDownloading.value = true;
+  // A fresh attempt counts from zero, or a retry after a `redundant` one
+  // resumes from a number that belonged to a download that no longer exists.
+  updateDownloadedCount.value = 0;
   const giveUp = setTimeoutFn(() => {
     updateDownloading.value = false;
     updateQueued.value = false;
@@ -202,6 +215,16 @@ export async function registerServiceWorker(): Promise<void> {
   // a plain Node/Vitest run. Importing it at module scope would take the whole
   // HUD's test suite down with it.
   const { registerSW } = await import('virtual:pwa-register');
+
+  // The installing worker reports each file it caches — see `addPlugins` in
+  // `src/sw.ts`. Registered before `registerSW` so an install already under
+  // way from a previous page load is not counted from halfway.
+  navigator.serviceWorker.addEventListener('message', event => {
+    const data = event.data as { type?: string; downloaded?: number } | null;
+    if (data?.type === 'PRECACHE_PROGRESS' && typeof data.downloaded === 'number') {
+      updateDownloadedCount.value = data.downloaded;
+    }
+  });
 
   applyWaitingUpdate = registerSW({
     onNeedRefresh() {

@@ -27,7 +27,14 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import DomUtils from '@/utils/dom.utils';
-import { offlineReady, requestUpdate, updateDownloading, updateQueued, updateReady } from '@/pwa/updates';
+import {
+  offlineReady,
+  requestUpdate,
+  updateDownloadedCount,
+  updateDownloading,
+  updateQueued,
+  updateReady,
+} from '@/pwa/updates';
 import { watchPreload, type PreloadState } from './gamePreload';
 import { packStageLabel } from './packStageLabel';
 import {
@@ -126,7 +133,14 @@ const installUpdate = async (): Promise<void> => {
  */
 const updateLabel = computed(() => {
   if (updating.value) return 'Đang cập nhật…';
-  if (updateQueued.value && !updateReady.value) return 'Sẽ cập nhật khi tải xong…';
+  if (updateQueued.value && !updateReady.value) {
+    // The count is what makes a wait of up to twenty seconds legible as
+    // progress rather than as a hang. Omitted until the first file lands, so
+    // the label never reads "0 tệp".
+    return updateDownloadedCount.value > 0
+      ? `Đang tải… ${updateDownloadedCount.value} tệp`
+      : 'Sẽ cập nhật khi tải xong…';
+  }
   return 'Có bản mới — cập nhật';
 });
 
@@ -266,6 +280,7 @@ const updateState = computed(() => {
     id="menu-update-btn"
     class="menu-update"
     :data-state="updateState"
+    :data-downloaded="updateDownloadedCount"
     :disabled="updating || (updateQueued && !updateReady)"
     @click="installUpdate"
   >

@@ -24,6 +24,7 @@
  * rule. Append new routes at the bottom.
  */
 import {
+  addPlugins,
   cleanupOutdatedCaches,
   createHandlerBoundToURL,
   precacheAndRoute,
@@ -54,6 +55,42 @@ declare let self: ServiceWorkerGlobalScope & {
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
+
+/**
+ * The message type `src/pwa/updates.ts` listens for. One file, one message.
+ *
+ * There is no denominator on purpose. Workbox downloads only the precache
+ * entries whose revision actually changed, and how many that is is not known
+ * to this worker without reading `workbox-precaching`'s private cache-key
+ * format or keeping a copy of the previous manifest — a percentage built on
+ * the *whole* manifest would read "6%" for a deploy that touches four files.
+ * A rising count of files is a number the player can trust, and its only job
+ * is to show that a wait which can run to twenty seconds is not a hang.
+ */
+export interface PrecacheProgressMessage {
+  type: 'PRECACHE_PROGRESS';
+  downloaded: number;
+}
+
+let downloaded = 0;
+
+/**
+ * Reports each precached file to every page, controlled or not.
+ *
+ * `includeUncontrolled` matters: this runs in the *installing* worker, which
+ * by definition controls nothing yet — the page that wants the number is the
+ * one still being served by the old worker.
+ */
+addPlugins([
+  {
+    async cacheDidUpdate() {
+      downloaded += 1;
+      const message: PrecacheProgressMessage = { type: 'PRECACHE_PROGRESS', downloaded };
+      const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+      for (const client of clients) client.postMessage(message);
+    },
+  },
+]);
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();

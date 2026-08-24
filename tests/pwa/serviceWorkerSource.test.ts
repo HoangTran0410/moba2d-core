@@ -35,6 +35,16 @@ describe('the hand-written service worker keeps what generateSW gave us', () => 
     expect(sw()).toMatch(/new NavigationRoute\(\s*createHandlerBoundToURL\('index\.html'\)/);
   });
 
+  it('reports precache progress to pages that are not yet controlled', () => {
+    // The installing worker controls nothing by definition — the page waiting
+    // on the number is still being served by the *old* worker. Without
+    // `includeUncontrolled` the plugin fires, posts to nobody, and the menu
+    // shows a spinner that never moves for the whole download.
+    expect(sw()).toMatch(/addPlugins\(\s*\[/);
+    expect(sw()).toContain('PRECACHE_PROGRESS');
+    expect(sw()).toMatch(/matchAll\(\{[^}]*includeUncontrolled:\s*true/);
+  });
+
   it('drops caches from an older precache format', () => {
     expect(sw()).toContain('cleanupOutdatedCaches()');
   });
