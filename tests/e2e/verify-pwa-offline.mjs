@@ -26,10 +26,9 @@
  */
 import { preview } from 'vite';
 import { chromium } from 'playwright';
-import { readFileSync, existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { createServer as createStaticServer } from 'node:http';
-import { join, extname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { requirePackDist, startPackServer } from './packServer.mjs';
 
 const distDir = join(process.cwd(), 'dist');
 
@@ -79,77 +78,29 @@ const declaredPrecacheCount = () => {
 /* -------------------------------------------------------- the pack, offline
  *
  * A second, genuinely cross-origin static server in front of the pack
- * repository's own built `dist/` — the same shape `verify-runtime-pack.mjs`
- * uses, including its query-strip-then-`extname` fix for the content-type
- * lookup (a chunk requested as `x-abc.js?v=1` must not resolve to
- * `application/octet-stream`, which a browser refuses to execute as a
- * module) and the `access-control-allow-origin: *` a cross-origin `fetch()`
- * needs. Serving it from a different port than `vite preview` picks is what
- * makes this cross-origin rather than same-origin, which is the property the
- * whole feature (and this section) exists to exercise.
+ * repository's own built `dist/` — `packServer.mjs`, shared with
+ * `verify-runtime-pack.mjs` and `verify-pack-management.mjs` (see its own
+ * header for the query-strip-then-`extname` content-type fix and the
+ * `access-control-allow-origin: *` a cross-origin `fetch()` needs). Serving
+ * it from a different port than `vite preview` picks is what makes this
+ * cross-origin rather than same-origin, which is the property the whole
+ * feature (and this section) exists to exercise.
+ *
+ * `requirePackDist()` fails here, before `preview()` or the browser even
+ * starts, not as a 180-second timeout inside one — and specifically here,
+ * that timeout would have been unusually misleading: left unchecked, every
+ * pack request 404s against the static server, the manifest fetch fails
+ * inside `installRuntimePacks()`, `window.__lol2dPackPrefetch` never
+ * publishes (the `if (toPrefetch.length > 0)` guard around its only writer
+ * never runs), and the five pack checks below fail — bit-for-bit the same
+ * shape this task's own Step 5 falsification produces by disabling the
+ * prefetch on purpose. It also lands before the `pageerror` listener below
+ * is even registered, so nothing else would have surfaced it either.
  */
-
-/**
- * The pack repository's built output. An absolute path in one developer's
- * home directory was fine while this was the only script that needed it and
- * it ran on one machine; two scripts and a second machine is where it stops
- * being fine. `LOL2D_PACK_DIST` overrides; the default is the sibling
- * checkout, which is how both repositories are actually laid out.
- */
-const PACK_DIST =
-  process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
-
-/**
- * A missing or stale checkout must fail here, before `preview()` or the
- * browser even starts, not as a 180-second timeout inside one. Left
- * unchecked, every pack request 404s against the static server below, the
- * manifest fetch fails inside `installRuntimePacks()`,
- * `window.__lol2dPackPrefetch` never publishes (the `if (toPrefetch.length >
- * 0)` guard around its only writer never runs), and the five pack checks
- * below fail — bit-for-bit the same shape this task's own Step 5 falsification
- * produces by disabling the prefetch on purpose. A developer without the
- * sibling checkout, or with a typo in `LOL2D_PACK_DIST`, would read that as a
- * regression in Task 4's code with nothing pointing at the real cause, and it
- * lands before the `pageerror` listener below is even registered, so nothing
- * else surfaces it either. `manifest.json`, not just the directory, because a
- * stale empty `dist/` left over from an interrupted build passes an
- * `existsSync` on the directory alone.
- */
-if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
-  console.error(
-    `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
-      `moba2d-content-riot repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
-  );
-  process.exit(1);
-}
+requirePackDist();
 
 const PACK_PORT = 4398;
-const TYPES = {
-  '.js': 'text/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.gif': 'image/gif',
-};
-
-const packServer = createStaticServer(async (req, res) => {
-  try {
-    // Resolved once, from the query-stripped path — both the file read and
-    // the content-type lookup derive from this same `path`. See
-    // `verify-runtime-pack.mjs`'s own header for the bug this is the fix for.
-    const path = decodeURIComponent(req.url.split('?')[0]);
-    const body = await readFile(join(PACK_DIST, path));
-    res.writeHead(200, {
-      'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
-      'access-control-allow-origin': '*',
-    });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end('not found');
-  }
-});
-await new Promise(resolve => packServer.listen(PACK_PORT, resolve));
+const packServer = await startPackServer(PACK_PORT);
 const PACK_URL = `http://localhost:${PACK_PORT}/manifest.json`;
 
 /**

@@ -5,10 +5,10 @@
  * between step 2 (fetch + confirm) and step 3 (`import()`).
  *
  * The pack is served from a second origin by the same plain static server
- * `verify-runtime-pack.mjs` uses, for the same reason: the property under
- * test is a cross-origin install, and same-origin would prove nothing.
- * `dist/` of the sibling pack repository is what is served — the real built
- * artifact, not a fixture.
+ * `verify-runtime-pack.mjs` uses (`packServer.mjs` — see its own header),
+ * for the same reason: the property under test is a cross-origin install,
+ * and same-origin would prove nothing. `dist/` of the sibling pack
+ * repository is what is served — the real built artifact, not a fixture.
  *
  * **The whole script lives inside one `guard()` call.** `startHarness()`'s
  * `guard` ends in `finish()`, which calls `process.exit()` — so a second,
@@ -26,58 +26,13 @@
  *
  *   node tests/e2e/verify-pack-management.mjs
  */
-import { createServer as createStaticServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { join, extname } from 'node:path';
 import { CFG_KEY, startHarness } from './harness.mjs';
+import { requirePackDist, startPackServer } from './packServer.mjs';
 
-/**
- * The pack repository's built output — same sibling-checkout convention as
- * `verify-runtime-pack.mjs`. `LOL2D_PACK_DIST` overrides.
- */
-const PACK_DIST =
-  process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
-
-/**
- * Fail fast, before any server or browser starts, rather than as a 404 the
- * static server shrugs off — see `verify-runtime-pack.mjs`'s own header for
- * the incident that made this a required pattern: a missing checkout makes
- * every request to the pack fail, and every check below fails exactly the
- * way a real regression would, with nothing pointing at the real cause.
- */
-if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
-  console.error(
-    `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
-      `moba2d-content-riot repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
-  );
-  process.exit(1);
-}
+requirePackDist();
 
 const PACK_PORT = 4399;
-const TYPES = {
-  '.js': 'text/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.gif': 'image/gif',
-};
-
-const packServer = createStaticServer(async (req, res) => {
-  try {
-    const path = decodeURIComponent(req.url.split('?')[0]);
-    const body = await readFile(join(PACK_DIST, path));
-    res.writeHead(200, {
-      'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
-      'access-control-allow-origin': '*',
-    });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end('not found');
-  }
-});
-await new Promise(resolve => packServer.listen(PACK_PORT, resolve));
+const packServer = await startPackServer(PACK_PORT);
 const PACK_ORIGIN = `http://localhost:${PACK_PORT}`;
 const PACK_URL = `${PACK_ORIGIN}/manifest.json`;
 
