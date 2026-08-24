@@ -228,7 +228,10 @@ await harness.guard(async () => {
   await page.click('#practice-tab-rules');
   await page.waitForSelector('#practice-map', { timeout: 30_000 });
 
-  const optionNames = await page.$$eval('#practice-map option', nodes =>
+  // Cards, not `<option>`s, since the picker became a `.map-picker` grid —
+  // each card carries the qualified id on `data-map` and its name in
+  // `.map-option-name`, which is what both reads below use.
+  const optionNames = await page.$$eval('#practice-map .map-option-name', nodes =>
     nodes.map(n => n.textContent.trim())
   );
   report.mapPickerOptions = optionNames;
@@ -238,8 +241,22 @@ await harness.guard(async () => {
     optionNames.join(' / ')
   );
 
+  // Each card states the world's size and how many sides it fields — three
+  // facts a `<select>` had nowhere to put, and the reason it stopped being
+  // one. Read off the card rather than off `game`: the point is that a player
+  // can see them *before* starting a match.
+  const provingGroundsCard = await page
+    .locator(`#practice-map .map-option[data-map="${PROVING_GROUNDS_ID}"]`)
+    .textContent();
+  report.provingGroundsCard = provingGroundsCard?.replace(/\s+/g, ' ').trim();
+  check(
+    'and states each map’s size and faction count on the card itself',
+    /2400×2400/.test(provingGroundsCard ?? '') && /2 phe/.test(provingGroundsCard ?? ''),
+    report.provingGroundsCard
+  );
+
   // --------------------------------------------- 4. pick, and the qualified id
-  await page.selectOption('#practice-map', PROVING_GROUNDS_ID);
+  await page.click(`#practice-map .map-option[data-map="${PROVING_GROUNDS_ID}"]`);
   const stored = await storedMapId();
   report.storedMapIdAfterPick = stored;
   check(
