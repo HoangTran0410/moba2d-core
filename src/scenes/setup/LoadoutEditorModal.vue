@@ -100,7 +100,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ change: [ChampionLoadout]; close: [] }>();
 
-const { champions, summoners, catalogById, kitShelves } = getPregameCatalog();
+const { champions, summoners, catalogById, kitShelves, packLabels } = getPregameCatalog();
 
 /** A, Q, W, E, R, D, F — same order and source as the real in-game hotkeys. */
 const SLOT_LABELS = SpellHotKeys.map(code => String.fromCharCode(code));
@@ -736,6 +736,7 @@ const hint = computed(() => {
       <div ref="rosterBody" class="pregame-modal-body">
         <KitRoster
           :shelves="visibleShelves"
+          :pack-labels="packLabels"
           :active-entry-id="activeEntryId"
           :selected-champion="selectedChampion"
           :match-rules="matchRules"

@@ -54,11 +54,11 @@
  * the library, so it is also the thing that knows when the list changed, and
  * this component stays what it already was: a view of what it is handed.
  */
-import { watch, nextTick } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { packAsset, spellDisplayOf, type SpellCatalogEntry } from '@/game/config/spellCatalog';
 import type { MatchRules } from '@/game/config/PregameConfig';
 import type { SavedKit } from '@/game/config/savedKits';
-import type { KitShelf } from './pregameCatalog';
+import { groupShelvesByPack, type KitShelf, type PackLabel } from './pregameCatalog';
 import SpellIcon from './SpellIcon.vue';
 import type { SpellPeek } from './useSpellPeek';
 
@@ -110,7 +110,63 @@ const props = defineProps<{
    * drives it. See `useSpellPeek.ts`.
    */
   peek: SpellPeek;
+  /**
+   * How to head each pack's section, by `KitShelf.packId` — see
+   * `getPregameCatalog().packLabels`.
+   *
+   * A prop rather than a call of its own for the same reason `savedKits` is
+   * one: the parent is what rebuilds the catalogue after a pack is installed,
+   * so it is what knows the labels changed.
+   */
+  packLabels: ReadonlyMap<string, PackLabel>;
 }>();
+/**
+ * The roster as one flat list of rows, each a shelf and the heading that goes
+ * *before* it — `null` for all but the first shelf of each pack.
+ *
+ * Flat, rather than a loop over groups holding a loop over shelves, because
+ * `.kit-roster` is the grid itself: a real element per group would make each
+ * pack a single-column cell, and a `<template>` per group would need the whole
+ * shelf `<section>` written twice to also render the unheaded pinned shelves
+ * ahead of it. One list, one copy of the markup, and the heading is a sibling
+ * that spans the row from CSS.
+ *
+ * `groupShelvesByPack` is where the grouping rule actually lives, so a test can
+ * reach it without mounting this.
+ *
+ * **Headings appear only once there is more than one pack to tell apart.** With
+ * a single pack installed every tile on screen is from it, so a heading states
+ * what the screen already says and spends a row of a phone's height saying it.
+ * That is the core-alone case and the nothing-installed-yet case, and it is the
+ * one the game boots into.
+ */
+const rosterRows = computed(() => {
+  const { pinned, groups } = groupShelvesByPack(props.shelves, props.packLabels);
+  const rows: { shelf: KitShelf; heading: { pack: PackLabel; count: number } | null }[] = [];
+  for (const shelf of pinned) rows.push({ shelf, heading: null });
+  const headed = groups.length > 1;
+  for (const group of groups) {
+    group.shelves.forEach((shelf, index) => {
+      rows.push({
+        shelf,
+        heading:
+          headed && index === 0 ? { pack: group.pack, count: group.shelves.length } : null,
+      });
+    });
+  }
+  return rows;
+});
+
+/** Pack logos come from a pack's own host, so they can fail; the heading drops to text. */
+const packIconFailed = ref(new Set<string>());
+const packIcon = (pack: PackLabel): string | undefined =>
+  pack.icon && !packIconFailed.value.has(pack.id) ? pack.icon : undefined;
+const onPackIconError = (pack: PackLabel): void => {
+  const next = new Set(packIconFailed.value);
+  next.add(pack.id);
+  packIconFailed.value = next;
+};
+
 const emit = defineEmits<{
   pick: [entry: SpellCatalogEntry];
   applyKit: [shelf: KitShelf];
@@ -204,7 +260,22 @@ watch(
       <i class="fas fa-random"></i> Ngẫu Nhiên Tất Cả
     </button>
 
-    <section v-for="shelf in shelves" :key="shelf.name" class="kit-shelf" :class="{
+    <!-- One heading per pack, so a tile says where it came from without
+         carrying a badge of its own — inserted before the first shelf of each
+         pack rather than wrapping the shelves in anything, because
+         `.kit-roster` is the grid itself and a real element per pack would
+         make each one a single-column cell. The heading spans the row from CSS
+         (`grid-column: 1 / -1`). -->
+    <template v-for="{ shelf, heading } in rosterRows" :key="shelf.name">
+    <h4 v-if="heading" class="kit-pack-heading">
+      <img v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
+        alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+        @error="onPackIconError(heading.pack)" />
+      <span class="kit-pack-heading-name">{{ heading.pack.name }}</span>
+      <span class="kit-pack-heading-count">{{ heading.count }} tướng</span>
+    </h4>
+
+    <section class="kit-shelf" :class="{
       selected: isSelectedShelf(shelf),
       'has-kit': shelf.kit.length > 0,
       open: shelf === openShelf,
@@ -303,5 +374,6 @@ watch(
         </button>
       </div>
     </section>
+    </template>
   </div>
 </template>

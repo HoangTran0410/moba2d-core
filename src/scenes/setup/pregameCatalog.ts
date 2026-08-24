@@ -11,6 +11,7 @@ import {
   type SpellCatalogEntry,
 } from '@/game/config/spellCatalog';
 import { contentCatalog } from '@/content/catalog';
+import { readInstalledPacks } from '@/content/installedPackStore';
 import { removeAccents } from '@/utils/index';
 
 /**
@@ -53,6 +54,17 @@ export interface KitShelfEntry {
  */
 export interface KitShelf {
   name: string;
+  /**
+   * Which installed pack this champion came from — `QualifiedChampion.packId`,
+   * carried through unchanged.
+   *
+   * The roster is one flat list of ~60 tiles drawn from every pack at once,
+   * and before this field nothing on it said where a champion came from. A
+   * player who has just installed a pack has no way to see what they got, and
+   * a player about to remove one has no way to see what they will lose. See
+   * `KitRoster.shelfGroups`, which is the only reader.
+   */
+  packId: string;
   /** A pack's own asset key — a plain string; resolve it through `packAsset` from `@/game/config/spellCatalog`. */
   avatar: string | null;
   entries: KitShelfEntry[];
@@ -83,6 +95,127 @@ export interface KitShelf {
   nonChampionKind: 'basicAttack' | 'summoner' | null;
 }
 
+/** How a pack is named and pictured over its own section of the roster. */
+export interface PackLabel {
+  id: string;
+  name: string;
+  /** The pack's own logo, absolute, from its own host. Absent for a pack that installed without one, and for every built-in. */
+  icon?: string;
+}
+
+/**
+ * A display name for a pack that is built into core rather than installed
+ * from a URL.
+ *
+ * `PackManifest` — the manifest a pack's *code* declares — carries no `name`
+ * at all; the name a player sees comes from the runtime manifest fetched over
+ * the network, which a built-in pack has never had. So the one bundled pack
+ * needs its label written here, and any future built-in will too. A pack id
+ * that reaches this map and misses is shown as its bare id, which is ugly and
+ * correct: it says exactly what core knows.
+ */
+const BUILT_IN_PACK_NAMES: Record<string, string> = {
+  reference: 'Có sẵn trong game',
+};
+
+/**
+ * Every pack that has a champion on the roster, named the way the player has
+ * already seen it named elsewhere.
+ *
+ * The store is the source, not the registry: `installedPackStore` is written
+ * from the runtime manifest on every boot (`runtimePacks.installRuntimePacks`),
+ * so the name here is the same string the packs screen shows on the installed
+ * row and the install confirmation showed before that. Reading the registry
+ * instead would have meant inventing a second name for the same pack, which is
+ * the exact bug this section headers were added to end.
+ */
+function buildPackLabels(): Map<string, PackLabel> {
+  const labels = new Map<string, PackLabel>();
+  for (const record of readInstalledPacks()) {
+    const name = record.name?.trim();
+    labels.set(record.id, { id: record.id, name: name || record.id, icon: record.icon });
+  }
+  for (const champion of contentCatalog().champions()) {
+    if (labels.has(champion.packId)) continue;
+    labels.set(champion.packId, {
+      id: champion.packId,
+      name: BUILT_IN_PACK_NAMES[champion.packId] ?? champion.packId,
+    });
+  }
+  return labels;
+}
+
+/** One pack's stretch of the roster: its heading, and the champion tiles under it. */
+export interface ShelfGroup {
+  pack: PackLabel;
+  shelves: KitShelf[];
+}
+
+/** The roster as the picker draws it: the unheaded shelves first, then a section per pack. */
+export interface RosterSections {
+  /**
+   * The shelves that are not champion tiles — the basic attack and the
+   * summoner spells.
+   *
+   * They lead the roster and wear no pack heading, because they are not a
+   * pack's roster: the grid hides them outright
+   * (`.kit-roster .kit-shelf:not(.has-kit)`) and they open only when the slot
+   * they serve is selected. Counting them under a pack was the first version
+   * of this and it read "60 tướng" over 58 visible tiles.
+   */
+  pinned: KitShelf[];
+  groups: ShelfGroup[];
+}
+
+/**
+ * Cuts a roster into one group per pack, in the order the packs first appear.
+ *
+ * Grouping and not merely labelling: ~60 tiles drawn from two packs into one
+ * alphabetical run tells a player nothing about what a pack gave them, which is
+ * the whole question right after installing one and right before removing one.
+ *
+ * Order is first appearance rather than a sort of its own, so the shelf order
+ * this is handed — champions by name, see `getPregameCatalog` — still decides
+ * which section leads and who leads it. Only champion shelves decide that:
+ * `kit.length === 0` is the same predicate the grid's own hide rule uses, and
+ * the two pinned shelves it selects would otherwise have handed the lead to
+ * whichever pack happens to own Đánh Thường.
+ *
+ * Callers pass the *filtered* roster, so a pack whose champions all fail the
+ * search box loses its heading with them instead of leaving an empty section
+ * behind.
+ *
+ * A `packId` with no label is given one made of its own id. That is the honest
+ * answer rather than a hidden group: it happens for a pack installed in this
+ * session whose store record has not been written yet, and showing `riot` is
+ * strictly better than showing those champions under someone else's heading.
+ */
+export function groupShelvesByPack(
+  shelves: readonly KitShelf[],
+  labels: ReadonlyMap<string, PackLabel>
+): RosterSections {
+  const pinned: KitShelf[] = [];
+  const groups: ShelfGroup[] = [];
+  const byPack = new Map<string, ShelfGroup>();
+  for (const shelf of shelves) {
+    if (shelf.kit.length === 0) {
+      pinned.push(shelf);
+      continue;
+    }
+    let group = byPack.get(shelf.packId);
+    if (!group) {
+      group = {
+        pack: labels.get(shelf.packId) ?? { id: shelf.packId, name: shelf.packId },
+        shelves: [],
+      };
+      byPack.set(shelf.packId, group);
+      groups.push(group);
+    }
+    group.shelves.push(shelf);
+  }
+  return { pinned, groups };
+}
+
 export interface PregameCatalog {
   champions: SelectableChampion[];
   summoners: SummonerSpellOption[];
@@ -91,6 +224,8 @@ export interface PregameCatalog {
   catalogById: Map<string, SpellCatalogEntry>;
   /** The picker roster: the two non-champion shelves first, then the champions by name — see the sort in `getPregameCatalog`. */
   kitShelves: KitShelf[];
+  /** How to head each pack's section of that roster, by `KitShelf.packId`. */
+  packLabels: Map<string, PackLabel>;
 }
 
 let cached: PregameCatalog | null = null;
@@ -170,6 +305,7 @@ export const getPregameCatalog = (): PregameCatalog => {
 
         return {
           name: champion.name,
+          packId: champion.packId,
           avatar: champion.image,
           entries,
           kit,
@@ -219,6 +355,7 @@ export const getPregameCatalog = (): PregameCatalog => {
       spellCatalog,
       catalogById,
       kitShelves,
+      packLabels: buildPackLabels(),
     };
   }
   return cached;

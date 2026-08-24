@@ -912,6 +912,56 @@
   gap: 0.4rem;
 }
 
+/* One heading per pack, spanning the whole grid row.
+
+   `grid-column: 1 / -1` and not a wrapping element: the roster is the grid
+   itself, and giving each pack a real container would make every pack a single
+   column of one tile. `KitRoster` renders a `<template>` per group for the same
+   reason. Rendered only when there is more than one pack to tell apart — see
+   `showPackHeadings`. */
+.kit-pack-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.25));
+  font-size: 0.8em;
+  font-weight: normal;
+  color: var(--hextech-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* The first heading sits under the Ngẫu Nhiên card and needs no gap of its own. */
+.kit-pack-heading:first-of-type {
+  margin-top: 0.15rem;
+}
+
+.kit-pack-heading-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: none;
+}
+
+/* The name can be long ("Liên Minh Huyền Thoại") and the count must not be
+   pushed off the row by it. */
+.kit-pack-heading-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-pack-heading-count {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.75;
+  text-transform: none;
+}
+
 /* ------------------------------------------------ closed tiles, one open shelf
    Everything a closed tile does not show hides rather than unmounts: the roster
    is ~50 shelves and ~200 icons, and `KitRoster.vue` keeps them all mounted so
