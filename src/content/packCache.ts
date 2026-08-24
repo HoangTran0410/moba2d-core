@@ -67,8 +67,13 @@ export function packBaseFor(manifestUrl: string): string {
  * one) simply has no offline story, which is the same as today.
  */
 export function announcePackBases(bases: readonly string[]): void {
-  const message = { type: 'PACK_BASES', bases: [...bases] };
   try {
+    // `[...bases]` is inside the `try` on purpose: `tsconfig.json`'s
+    // `strict: false` lets a caller pass `undefined` here and still compile
+    // (Task 4's caller does exactly this for a manifest with no `files`),
+    // and spreading a non-iterable throws synchronously, before the
+    // `navigator` guard below ever runs.
+    const message = { type: 'PACK_BASES', bases: [...bases] };
     const container = navigator?.serviceWorker;
     if (!container) return;
     if (container.controller) {
@@ -82,7 +87,8 @@ export function announcePackBases(bases: readonly string[]): void {
       .then(registration => registration.active?.postMessage(message))
       .catch(() => {});
   } catch {
-    // No `navigator`, no worker, a blocked API. Costs offline, nothing else.
+    // No `navigator`, no worker, a blocked API, or `bases` was not iterable.
+    // Costs offline, nothing else.
   }
 }
 
@@ -93,6 +99,32 @@ async function openPackCache(): Promise<Cache | null> {
     return await caches.open(PACK_CACHE_NAME);
   } catch {
     return null;
+  }
+}
+
+/**
+ * A base worth writing under: an absolute http(s) URL ending in `/`.
+ *
+ * `packBaseFor` never emits anything else, but that is a fact about one
+ * caller, not a fact the type checker enforces at this function's own
+ * boundary — and the slash is load-bearing beyond this module. `src/sw.ts`
+ * runs its own copy of this same check on the base a `PACK_BASES` message
+ * carries (the two cannot share code; see that file's own doc comment), and
+ * an unslashed base defeats both sides at once: `new URL('../riot-evil/x.js',
+ * 'https://h/riot')` resolves to `https://h/riot-evil/x.js`, which — because
+ * `'https://h/riot'` is a plain string *prefix* of it — passes the escape
+ * guard below, gets written into the shared cache, and would then be served
+ * by the worker's own prefix match to any request for that sibling path.
+ * Requiring the slash here is what makes the escape guard mean what its own
+ * comment says.
+ */
+function validBase(base: string): boolean {
+  if (!base.endsWith('/')) return false;
+  try {
+    const url = new URL(base);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
   }
 }
 
@@ -113,16 +145,23 @@ export async function prefetchPackFiles(
   base: string,
   files: readonly string[]
 ): Promise<PrefetchReport> {
+  // `tsconfig.json`'s `strict: false` lets `manifest.files` reach here as
+  // `undefined` even though its declared type is `readonly string[]` —
+  // `manifest.files` is mandated optional (`packSource.ts`), and a caller
+  // passing it straight through compiles clean. `files.length` on that would
+  // throw before the first `await`, i.e. reject a promise on the boot path
+  // this module's own header promises never throws.
+  const list = Array.isArray(files) ? files : [];
   const report: PrefetchReport = {
     base,
-    requested: files.length,
+    requested: list.length,
     added: 0,
     skipped: 0,
     failed: 0,
   };
   const cache = await openPackCache();
-  if (!cache || !base) {
-    report.failed = files.length;
+  if (!cache || !validBase(base)) {
+    report.failed = list.length;
     return report;
   }
 
@@ -130,8 +169,8 @@ export async function prefetchPackFiles(
   const worker = async (): Promise<void> => {
     for (;;) {
       const index = next++;
-      if (index >= files.length) return;
-      const relative = files[index];
+      if (index >= list.length) return;
+      const relative = list[index];
 
       let url: string;
       try {
@@ -155,9 +194,13 @@ export async function prefetchPackFiles(
           continue;
         }
         const response = await fetch(url, { credentials: 'omit' });
-        // An opaque response cannot be `put` (it throws), and would be
-        // useless anyway — the pack hosts send `access-control-allow-origin`,
-        // so anything opaque here is a misconfigured host worth counting.
+        // `response.type === 'opaque'` cannot actually happen on this path:
+        // the fetch above is default `mode: 'cors'`, so a host with no
+        // `access-control-allow-origin` fails the fetch itself rather than
+        // answering with an opaque response, and an opaque response's own
+        // `status` is 0, which already makes `ok` false — so `!response.ok`
+        // alone already covers it. Kept as a second, free guard in case this
+        // fetch ever gains `mode: 'no-cors'`, not because it fires today.
         if (!response.ok || response.type === 'opaque') {
           report.failed++;
           continue;
@@ -170,7 +213,13 @@ export async function prefetchPackFiles(
     }
   };
 
-  await Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
+  // `allSettled`, not `all`: nothing in `worker` currently throws outside its
+  // own two `try` blocks, but `all` rejecting the moment any one of the four
+  // workers does would make that an implicit, unenforced part of the "never
+  // throws" contract this module's header promises. `allSettled` makes the
+  // contract hold structurally instead of by the loop body happening not to
+  // have a gap today.
+  await Promise.allSettled(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
   return report;
 }
 

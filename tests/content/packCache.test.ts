@@ -100,9 +100,77 @@ describe('prefetchPackFiles', () => {
     expect(caches.store.size).toBe(0);
   });
 
+  it('rejects a base with no trailing slash, closing a sibling-directory gap the escape guard alone misses', async () => {
+    // Without the slash, `new URL('../riot-evil/x.js', 'https://h/riot')`
+    // resolves to `https://h/riot-evil/x.js` — a different directory that
+    // still passes `url.startsWith(base)`, because `'https://h/riot'` is a
+    // plain string prefix of it. Requiring the slash on `base` is what
+    // closes this; without that requirement this call adds one entry
+    // instead of failing one.
+    const report = await prefetchPackFiles('https://h/riot', ['../riot-evil/x.js']);
+    expect(report.failed).toBe(1);
+    expect(caches.store.size).toBe(0);
+  });
+
+  it('rejects a base whose protocol is not http(s)', async () => {
+    const report = await prefetchPackFiles('file:///riot/', ['pack.js']);
+    expect(report.failed).toBe(1);
+    expect(caches.store.size).toBe(0);
+  });
+
+  it('does not throw when files is not actually an array, despite its declared type', async () => {
+    // `manifest.files` is mandated optional (`packSource.ts`) and
+    // `tsconfig.json`'s `strict: false` lets `undefined` reach a parameter
+    // typed `readonly string[]` without a compile error — Task 4's own call
+    // site passes `manifest.files` straight through. `files.length` on that
+    // throws synchronously, before the first `await`, which on the boot
+    // path this runs behind (`void this.boot()`) is an unhandled rejection,
+    // not a caught error.
+    const report = await prefetchPackFiles(BASE, undefined as unknown as readonly string[]);
+    expect(report.requested).toBe(0);
+    expect(report.added).toBe(0);
+    expect(report.failed).toBe(0);
+  });
+
+  it('drains a longer list across every worker, not just the first PREFETCH_CONCURRENCY', async () => {
+    // Every case above uses two files against `PREFETCH_CONCURRENCY = 4`, so
+    // no worker's loop ever claims a second index. Ten files is the smallest
+    // case where the handoff — a worker finishing one file and going back
+    // for the next unclaimed index — actually runs.
+    const files = Array.from({ length: 10 }, (_, i) => `chunk-${i}.js`);
+    const report = await prefetchPackFiles(BASE, files);
+    expect(report.added).toBe(10);
+    const fetchMock = (globalThis as Record<string, unknown>).fetch as ReturnType<typeof vi.fn>;
+    const calledUrls = fetchMock.mock.calls.map(call => call[0] as string);
+    expect(new Set(calledUrls).size).toBe(10);
+    for (const file of files) {
+      expect(calledUrls).toContain(`${BASE}${file}`);
+    }
+  });
+
+  it('keeps requested equal to added + skipped + failed on a mixed outcome', async () => {
+    caches.store.set(`${BASE}already.js`, new Response('cached'));
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string) => {
+      if (url.endsWith('gone.js')) throw new TypeError('Failed to fetch');
+      return new Response('x', { status: 200, headers: { 'content-length': '100' } });
+    });
+    const report = await prefetchPackFiles(BASE, ['already.js', 'gone.js', 'new.js']);
+    expect(report.requested).toBe(3);
+    expect(report.skipped).toBe(1);
+    expect(report.failed).toBe(1);
+    expect(report.added).toBe(1);
+    // The invariant `packCacheUsage.test.ts:105` used to check nothing
+    // about: a caller that only reads `added` cannot tell "0 added because
+    // nothing was requested" from "0 added because 590 files silently went
+    // nowhere".
+    expect(report.added + report.skipped + report.failed).toBe(report.requested);
+  });
+
   it('does not throw when there is no CacheStorage at all', async () => {
     delete (globalThis as Record<string, unknown>).caches;
-    await expect(prefetchPackFiles(BASE, ['pack.js'])).resolves.toMatchObject({ added: 0 });
+    const report = await prefetchPackFiles(BASE, ['pack.js']);
+    expect(report.added).toBe(0);
+    expect(report.added + report.skipped + report.failed).toBe(report.requested);
   });
 });
 
@@ -139,6 +207,14 @@ describe('announcePackBases', () => {
 
   it('is a no-op with no service worker, rather than a throw on the boot path', () => {
     expect(() => announcePackBases([BASE])).not.toThrow();
+  });
+
+  it('does not throw when bases is not actually iterable, despite its declared type', () => {
+    // Mirrors `prefetchPackFiles`'s own guard: `[...bases]` throws
+    // synchronously on a non-iterable, and this function is fire-and-forget
+    // from the boot path, so that throw would surface as a page-breaking
+    // exception rather than a caught error.
+    expect(() => announcePackBases(undefined as unknown as readonly string[])).not.toThrow();
   });
 });
 

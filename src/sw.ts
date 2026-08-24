@@ -103,11 +103,34 @@ const PACK_CACHE_NAME = 'lol2d-packs-v1';
 const PACK_BASES_KEY = new URL('__lol2d_pack_bases__', self.registration.scope).href;
 const packBases: string[] = [];
 
+/**
+ * A base worth trusting: an absolute http(s) URL ending in `/`.
+ *
+ * The router below is a bare `url.href.startsWith(base)`, so an unslashed
+ * base — `https://h/riot` rather than `https://h/riot/` — would also claim
+ * `https://h/riot-evil/anything`: the exact "rule too broad" shape spec §6
+ * rules out by name, reached here through the narrow per-pack rule instead
+ * of a deliberately wide one. `packCache.ts`'s `packBaseFor` never emits
+ * anything else, but that is a fact about one sender, not one this worker's
+ * own type checker can see across a `postMessage` — `src/content/packCache.ts`
+ * runs its own copy of this same check on the way out, and neither file can
+ * import the other's to share it.
+ */
+function isValidPackBase(base: string): boolean {
+  if (!base.endsWith('/')) return false;
+  try {
+    const url = new URL(base);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function rememberBases(bases: unknown): void {
   packBases.length = 0;
   if (!Array.isArray(bases)) return;
   for (const base of bases) {
-    if (typeof base === 'string' && base.length > 0) packBases.push(base);
+    if (typeof base === 'string' && isValidPackBase(base)) packBases.push(base);
   }
 }
 
@@ -159,12 +182,22 @@ self.addEventListener('message', event => {
  * thing that can happen — and an entry cap would evict the very chunks the
  * prefetch just spent a megabyte fetching. Removal is the player's, through
  * the packs screen.
+ *
+ * `matchOptions: { ignoreVary: true }` because the two sides write and read
+ * with different `Request`s: `packCache.ts` calls `cache.put(urlString, …)`,
+ * whose implicit `Request` carries no headers, while this route matches
+ * against the browser's real request, headers included. Without this, a pack
+ * host that sends `Vary: Accept` (or anything else) makes every prefetched
+ * entry silently unmatchable — this route falls through to the network,
+ * which still works online and is exactly where the feature is meant to
+ * matter.
  */
 registerRoute(
   ({ url, request }) =>
     request.method === 'GET' && packBases.some(base => url.href.startsWith(base)),
   new CacheFirst({
     cacheName: PACK_CACHE_NAME,
+    matchOptions: { ignoreVary: true },
     plugins: [new CacheableResponsePlugin({ statuses: [0, 200] })],
   })
 );

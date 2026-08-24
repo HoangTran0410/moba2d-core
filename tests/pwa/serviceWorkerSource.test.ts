@@ -66,3 +66,34 @@ describe('the hand-written service worker keeps what generateSW gave us', () => 
     expect(source).not.toMatch(/^\s*workbox:\s*\{/m);
   });
 });
+
+/**
+ * `rememberBases` and `prefetchPackFiles` (`src/content/packCache.ts`) each
+ * run their own copy of the same check, because a worker cannot import from
+ * `src/content/` and neither side can typecheck across the `postMessage`
+ * between them (`tests/content/packCache.test.ts` covers the page's half).
+ * A behavioural test would need a real service worker; this is the cheap
+ * half, same as the rest of this file.
+ */
+describe('the pack route only trusts a base worth trusting', () => {
+  it('requires the trailing slash before remembering a base', () => {
+    const source = sw();
+    expect(source).toContain('function isValidPackBase(base: string): boolean {');
+    expect(source).toContain("if (!base.endsWith('/')) return false;");
+    // The check has to actually gate `rememberBases`, not merely exist.
+    expect(source).toMatch(/typeof base === 'string' && isValidPackBase\(base\)/);
+  });
+
+  it('requires an http(s) protocol before remembering a base', () => {
+    const source = sw();
+    expect(source).toMatch(/url\.protocol === 'http:'\s*\|\|\s*url\.protocol === 'https:'/);
+  });
+
+  it('routes a request whose Vary header the page-side write never carried', () => {
+    // `packCache.ts` writes with `cache.put(urlString, …)`, an implicit
+    // Request with no headers; this route matches the browser's real
+    // request. Without `ignoreVary`, a pack host sending so much as
+    // `Vary: Accept` makes every prefetched entry unmatchable offline.
+    expect(sw()).toMatch(/matchOptions:\s*\{\s*ignoreVary:\s*true\s*\}/);
+  });
+});
