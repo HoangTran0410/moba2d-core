@@ -138,17 +138,42 @@ function rememberBases(bases: unknown): void {
  * Reads the stored list at module scope, so a worker the browser restarted —
  * which does not re-run `activate` — still matches pack requests.
  *
- * There is a race and it is bounded: a fetch that arrives before this
- * resolves does not match, so it goes to the network, which is exactly the
+ * There are two races here and only one of them is benign.
+ *
+ * **Benign: a fetch that arrives before this resolves.** It simply does not
+ * match the pack route yet, so it goes to the network — exactly the
  * behaviour before this feature existed. In practice the first event a
  * restarted worker sees is a navigation, and a pack chunk is asked for
- * seconds later.
+ * seconds later, well after `caches.open`/`cache.match` have had time to
+ * settle.
+ *
+ * **Not benign: a `PACK_BASES` message arriving before this resolves.** This
+ * is what `controller.postMessage` does when a player installs a pack from
+ * the packs screen and the worker has gone idle — the message is what
+ * cold-starts it, so the `message` handler can run a full turn before this
+ * IIFE has even reached its first `await caches.open`. Without the `announced`
+ * guard below, the load would call `rememberBases(stored)` *after* the
+ * handler's `rememberBases(data.bases)`, overwriting the just-announced,
+ * correct list with the stale persisted one — both in the in-memory
+ * `packBases` the route below reads, and, because the handler's own
+ * `JSON.stringify(packBases)` used to be evaluated after its own `await
+ * caches.open` resolved, potentially in what gets persisted too. `announced`
+ * is set synchronously by the handler, before its own first `await`, so this
+ * load's `if (!announced)` check — reached only after two of its own `await`s
+ * — always sees it in time.
  */
+let announced = false;
+
 const basesLoaded = (async () => {
   try {
     const cache = await caches.open(PACK_CACHE_NAME);
     const stored = await cache.match(PACK_BASES_KEY);
-    if (stored) rememberBases(await stored.json());
+    if (!stored) return;
+    const parsed = await stored.json();
+    // See the comment above: a `PACK_BASES` message may have already landed
+    // while the two awaits above were in flight, and its data is strictly
+    // fresher than whatever was persisted last session.
+    if (!announced) rememberBases(parsed);
   } catch {
     // An unreadable list costs offline packs, never the app.
   }
@@ -160,14 +185,25 @@ self.addEventListener('activate', event => event.waitUntil(basesLoaded));
 self.addEventListener('message', event => {
   const data = event.data as { type?: string; bases?: unknown } | null;
   if (!data || data.type !== 'PACK_BASES') return;
+  // Set before anything else in this handler, synchronously — this is the
+  // half of the race `basesLoaded` above reads.
+  announced = true;
   rememberBases(data.bases);
+  // Snapshotted here, synchronously, rather than inside the `.then` below:
+  // `packBases` is module state, and reading it only after `caches.open`
+  // resolves would let anything that mutates it in between — a second
+  // `PACK_BASES` message, in principle — change what this call ends up
+  // persisting out from under it. There is nothing between this line and the
+  // `rememberBases` call above that yields, so this is exactly what was just
+  // announced.
+  const toPersist = JSON.stringify(packBases);
   event.waitUntil(
     caches
       .open(PACK_CACHE_NAME)
       .then(cache =>
         cache.put(
           PACK_BASES_KEY,
-          new Response(JSON.stringify(packBases), {
+          new Response(toPersist, {
             headers: { 'content-type': 'application/json' },
           })
         )
