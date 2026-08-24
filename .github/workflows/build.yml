@@ -67,76 +67,42 @@ jobs:
       - run: npm run verify:all
 
       # ------------------------------------------- the game that gets published
-      # Everything above this line proves CORE, alone: no optional pack in the
-      # tree, `installedPacks` generated empty, one champion. That is what this
-      # repository is and what it must keep being — `package.json` names no
-      # content pack on purpose, and adding one there would quietly make every
-      # gate above run against a roster instead of against the engine.
-      #
-      # So the published artifact is composed here instead. `--no-save` is the
-      # whole trick: the pack lands in `node_modules`, `prebuild`'s
-      # `packs:generate` finds it (scripts/installed-packs.mjs reads
-      # `node_modules`, never `package.json`), and the checkout records no
-      # dependency on it. `npm run build` then produces a dist with content in
-      # it, and that dist is what the Pages steps below upload.
-      #
-      # This is also the only place the two halves are ever built together.
-      # Core's `verify` sees core; the pack's own repository runs the pack's
-      # own gates; neither sees the composition — and the composition is
-      # exactly where the failure that cost a full debugging pass lived, a
-      # pack resolved out of `node_modules` being pre-bundled by esbuild,
-      # which does not honour Vite's `?raw`. The grep is the real assertion:
-      # the barrel is generated from what is installed, so if the pack did not
-      # arrive the string is simply absent and a silent zero-champion build
-      # would otherwise sail through `chunks:check` (which only checks that
-      # the packs it *finds* got their chunks — it is happy with none).
-      - name: Build the published game — core plus the content pack
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          npm install --no-save github:HoangTran0410/moba2d-content-riot
-          npm run build
-          grep -q "@moba2d/content-riot" src/generated/installedPacks.ts \
-            || { echo "::error::the content pack did not reach the build"; exit 1; }
-          npm run chunks:check
-
       # `npm run verify:all` runs core's own `verify` (which ends in `vite
       # build`) plus `packs/reference`'s own asset/catalogue/typecheck/seam
-      # gates — the one workspace still inside this repository. On a push to
-      # main the compose step above then *overwrites* that dist with the
-      # core-plus-content build, and that second one is what ships; the first
-      # is the one `verify` gated. Elsewhere — a pull request, a fork — the
-      # compose step does not run and the verified core-only dist is the only
-      # one there is. CI runs `verify:all` and
-      # never plain `verify`, and that is not a temporary arrangement:
-      # `verify` is scoped to core *by intent* (content-pack-extraction batch
-      # 5 task 6), and a pack's own gates are the pack's own to run —
-      # `@moba2d/content-riot` runs its own now, in its own repository and
-      # its own workflow, not here.
+      # gates — the one workspace still inside this repository. The dist that
+      # build gated is what the Pages steps below upload: there is no second
+      # build here any more, and nothing overwrites it. What `verify` proves
+      # and what ships are, for the first time, the same bytes.
       #
-      # This comment used to say that `verify` still compiled and tested the
-      # riot pack — that `src/content/install.ts` statically imported
-      # `packs/riot/pack`, that `vue-tsc` stopped there with `error TS2307`
-      # with `packs/` moved aside, and that closing it was "a later task's
-      # job". That task is content-pack-extraction batch 5 task 8 and it is
-      # done: the barrel that would have named the riot pack,
-      # `src/generated/installedPacks.ts`, is generated empty now that no
-      # optional pack is installed in this tree at all (content-pack-and-
-      # repo-split batch 6 task 10 is what made that permanent rather than a
-      # drill's temporary state), so `verify` passes the same way it always
-      # did with the pack moved aside. `install.ts` is still static and
-      # synchronous, which spec §9.1 requires of it; what became conditional
-      # is the generated list of imports, not the imports themselves — the
-      # departure drill step above is what holds that true rather than a
-      # comment claiming it, on whichever optional pack is installed next.
+      # Core ships **no** content, by design (spec §2, decision 1): no
+      # optional pack in the tree, `installedPacks` generated empty, one
+      # champion. `package.json` names no content pack on purpose, and this
+      # job used to `npm install --no-save` one in on every push to `main` so
+      # the deployed game would have a real roster — that step is gone. A
+      # browser now gets its roster the way the design always said it would:
+      # `installRuntimePacks()` seeds `DEFAULT_PACK_URL` on a player's first
+      # boot and fetches it over the network, the same as any other browser
+      # visiting the deployed site. CI runs `verify:all` and never plain
+      # `verify`, and that is not a temporary arrangement: `verify` is scoped
+      # to core *by intent* (content-pack-extraction batch 5 task 6), and a
+      # pack's own gates are the pack's own to run — `@moba2d/content-riot`
+      # runs its own now, in its own repository and its own workflow, not
+      # here.
       #
-      # Nothing ships that did not pass typecheck and the whole suite first —
-      # that is the point of deploying from here rather than connecting the
-      # repo to Cloudflare's own git builds, which would publish a red main.
-      # With the split that sentence needs its second half: the suite that
-      # gated the shipped bytes is *two* suites in two repositories, core's
-      # here and the pack's in its own, and what this job adds on top is the
-      # only check either of them structurally cannot do — that the two
-      # actually compose into a build.
+      # **The join is no longer checked here, and nothing else in CI checks
+      # it either.** The old compose step never booted a browser — it only
+      # proved core-plus-pack would *build* — but deleting it still removes
+      # real coverage: it was the one place either repository's automation
+      # ever put the two halves in the same tree. `npm run e2e:runtime-pack`
+      # and `npm run e2e:pwa` are what check the actual join now — a real
+      # browser fetching the pack's real `dist/` from a second local origin,
+      # the offline run included — and neither runs in CI, because a CI
+      # runner has no pack checkout on disk and nothing here clones one. Say
+      # that plainly: the one thing neither repository's CI can see any more
+      # is whether core and a pack actually compose. That is a real reduction
+      # in coverage, accepted so that the deployed game is honestly what this
+      # repository's own `verify` gated, and it is covered instead by two
+      # scripts a human runs locally before a release.
       - name: Deploy to Cloudflare Pages
         if: >-
           github.event_name == 'push'
