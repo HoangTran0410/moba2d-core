@@ -77,3 +77,94 @@ registerRoute(
     ],
   })
 );
+
+/* ------------------------------------------------------------------ packs */
+
+/**
+ * A content pack's bytes. See `src/content/packCache.ts` for the other half
+ * of this — the page fills this cache, and this route is what serves it back
+ * with the network off.
+ *
+ * **The name is a literal here and a constant there**, because this file is
+ * its own TypeScript program (`tsconfig.sw.json`) and cannot import from
+ * `src/content/`. `tests/content/packCache.test.ts` asserts the two agree.
+ */
+const PACK_CACHE_NAME = 'lol2d-packs-v1';
+
+/**
+ * The base URLs the page has told us belong to packs, and where that list is
+ * kept so a restarted worker still knows.
+ *
+ * A prefix test, not an origin test: in production core and the pack are
+ * served from the *same* origin under different paths, so an origin test
+ * would claim core's own un-precached requests. And spec §6 rules out the
+ * broad shape outright.
+ */
+const PACK_BASES_KEY = new URL('__lol2d_pack_bases__', self.registration.scope).href;
+const packBases: string[] = [];
+
+function rememberBases(bases: unknown): void {
+  packBases.length = 0;
+  if (!Array.isArray(bases)) return;
+  for (const base of bases) {
+    if (typeof base === 'string' && base.length > 0) packBases.push(base);
+  }
+}
+
+/**
+ * Reads the stored list at module scope, so a worker the browser restarted —
+ * which does not re-run `activate` — still matches pack requests.
+ *
+ * There is a race and it is bounded: a fetch that arrives before this
+ * resolves does not match, so it goes to the network, which is exactly the
+ * behaviour before this feature existed. In practice the first event a
+ * restarted worker sees is a navigation, and a pack chunk is asked for
+ * seconds later.
+ */
+const basesLoaded = (async () => {
+  try {
+    const cache = await caches.open(PACK_CACHE_NAME);
+    const stored = await cache.match(PACK_BASES_KEY);
+    if (stored) rememberBases(await stored.json());
+  } catch {
+    // An unreadable list costs offline packs, never the app.
+  }
+})();
+
+self.addEventListener('install', event => event.waitUntil(basesLoaded));
+self.addEventListener('activate', event => event.waitUntil(basesLoaded));
+
+self.addEventListener('message', event => {
+  const data = event.data as { type?: string; bases?: unknown } | null;
+  if (!data || data.type !== 'PACK_BASES') return;
+  rememberBases(data.bases);
+  event.waitUntil(
+    caches
+      .open(PACK_CACHE_NAME)
+      .then(cache =>
+        cache.put(
+          PACK_BASES_KEY,
+          new Response(JSON.stringify(packBases), {
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+      )
+      .catch(() => {})
+  );
+});
+
+/**
+ * `CacheFirst`, and with no `ExpirationPlugin` on purpose. Every file under a
+ * base is content-hashed by the pack's own build, so a stale entry is not a
+ * thing that can happen — and an entry cap would evict the very chunks the
+ * prefetch just spent a megabyte fetching. Removal is the player's, through
+ * the packs screen.
+ */
+registerRoute(
+  ({ url, request }) =>
+    request.method === 'GET' && packBases.some(base => url.href.startsWith(base)),
+  new CacheFirst({
+    cacheName: PACK_CACHE_NAME,
+    plugins: [new CacheableResponsePlugin({ statuses: [0, 200] })],
+  })
+);

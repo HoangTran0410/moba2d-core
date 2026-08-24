@@ -42,6 +42,12 @@ export interface RuntimePackManifest {
   entry: string;
   assets: string;
   champions?: number;
+  /**
+   * Every file the pack published, relative to this manifest — spec §3.1.
+   * Optional: a pack without it installs and plays, and simply has nothing
+   * prefetched for offline.
+   */
+  files?: string[];
 }
 
 /** Everything one install produced, ready for the registry. */
@@ -221,6 +227,9 @@ export async function fetchPackManifest(
     if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
       throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
     }
+    if (candidate.files !== undefined && !Array.isArray(candidate.files)) {
+      throw new PackLoadError('manifest', 'manifest.files must be an array when present');
+    }
 
     const manifest = candidate as unknown as RuntimePackManifest;
     if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
@@ -233,6 +242,15 @@ export async function fetchPackManifest(
     // for `loadPackFromManifest` to discover — see `resolveWithin`'s own
     // comment for why this is the design's whole point.
     resolveWithin(manifest.assets, manifestUrl, 'assets');
+    if (Array.isArray(manifest.files)) {
+      // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
+      // this project and cannot narrow a type (CLAUDE.md).
+      const paths: string[] = [];
+      for (const entry of manifest.files) {
+        if (typeof entry === 'string' && entry.length > 0) paths.push(entry);
+      }
+      manifest.files = paths;
+    }
     return manifest;
   } finally {
     clearTimeout(alarm);

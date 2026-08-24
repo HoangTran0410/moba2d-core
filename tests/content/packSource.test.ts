@@ -105,6 +105,19 @@ describe('fetchPackManifest', () => {
     expect(error.stage).toBe('manifest');
     expect(error.message).toContain('assets');
   });
+
+  it('reports the manifest stage when files is present but not an array', async () => {
+    vi.stubGlobal('fetch', respondWith({ ...MANIFEST, files: 'nope' }));
+    const error = await fetchPackManifest('https://h/p/manifest.json', '1.0.0').catch(e => e);
+    expect(error.stage).toBe('manifest');
+    expect(error.message).toContain('files');
+  });
+
+  it('keeps only the string entries of files, dropping the rest', async () => {
+    vi.stubGlobal('fetch', respondWith({ ...MANIFEST, files: ['a.js', 42] }));
+    const manifest = await fetchPackManifest('https://h/p/manifest.json', '1.0.0');
+    expect(manifest.files).toEqual(['a.js']);
+  });
 });
 
 describe('loadPackFromManifest', () => {
