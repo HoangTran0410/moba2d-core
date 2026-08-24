@@ -1,75 +1,69 @@
-# League of Legends - 2D (Fan-made)
+# MOBA2D Core
 
 [![Build](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml/badge.svg)](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml)
 
-Play League-of-Legends-style champions right in the browser — 2D team fights, bot opponents, and an installable PWA you can play offline. This repository is the engine: it ships one champion of its own out of the box, and every larger roster — including a 58-champion Riot-derived one — comes from installing a separate content pack. See "Content packs" below.
+A 2D MOBA engine that runs entirely in the browser — team fights, bot opponents, fog of war, lanes and minion waves, and an installable PWA that plays offline.
 
-**[▶ Play Now](https://hoangtran0410.github.io/LOL2D)**
+**This repository is the engine, not a game's worth of content.** It ships one champion of its own (Vera, in `packs/reference/`) and one map. Every larger roster arrives as a **content pack**: a separate package, built against a published `ContentApi`, that the game fetches from a URL at runtime. See [Content packs](#content-packs).
 
-![Screenshot](/assets/images/screenshots/Screenshot_1.jpg)
-
-![Screenshot](/assets/images/screenshots/Screenshot_4.jpg)
-
-![Screenshot](/assets/images/screenshots/Screenshot_3.jpg)
+**[▶ Play](https://hoangtran99.is-a.dev/moba2d-core/)**
 
 ## Contents
 
-- [League of Legends - 2D (Fan-made)](#league-of-legends---2d-fan-made)
-  - [Contents](#contents)
-  - [Introduction](#introduction)
-  - [Controls](#controls)
-  - [Getting started](#getting-started)
-  - [npm scripts](#npm-scripts)
-  - [Project layout](#project-layout)
-  - [Architecture](#architecture)
-  - [Content packs](#content-packs)
-  - [Assets](#assets)
-  - [Testing](#testing)
-  - [Contributing](#contributing)
-  - [Disclaimer](#disclaimer)
+- [What core is](#what-core-is)
+- [Controls](#controls)
+- [Getting started](#getting-started)
+- [npm scripts](#npm-scripts)
+- [Project layout](#project-layout)
+- [Architecture](#architecture)
+- [Content packs](#content-packs)
+- [Assets](#assets)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Trademarks and third-party assets](#trademarks-and-third-party-assets)
 
-## Introduction
+## What core is
 
-A fan-made, indie game based on [League of Legends](https://www.leagueoflegends.com/) by [Riot Games](https://www.riotgames.com/en). It runs entirely in the browser: [p5.js](https://p5js.org/) draws the canvas, [Vue 3](https://vuejs.org/) drives the HUD, all in TypeScript and bundled with [Vite](https://vitejs.dev/).
-
-What core is:
+TypeScript throughout: [p5.js](https://p5js.org/) draws the canvas, [Vue 3](https://vuejs.org/) drives the HUD, [Vite](https://vitejs.dev/) bundles it.
 
 - **A spell runtime** — skillshots, charged casts, channels, recasts, shields, heals, and a full spread of crowd control, all driven by a typed `castSpec` lifecycle rather than hand-rolled state.
 - **A kit builder**: mix and match abilities from an installed roster into a custom loadout, save it, and drop it onto yourself or any bot.
-- **Blue-vs-Red team fights** with bots, neutral jungle camps, allied fountains and turrets, and three lanes of minion waves.
+- **Team fights** — Blue vs Red, with bots, neutral jungle camps, fountains and turrets, and three lanes of minion waves.
+- **A bot brain** with a posture FSM, lane assignment, turret-threat geometry, and no ability to see through terrain.
 - **Fog of war** built from a visibility-polygon sweep, with bushes and walls that really do block line of sight.
-- **Touch controls** and a mobile-friendly HUD alongside mouse/keyboard.
-- **Installable as a PWA** — works offline once cached.
-- **A content-pack SDK**: champions, spells, maps and monsters are npm packages built against a public `ContentApi`, not code forked into this repository.
+- **Touch controls** and a mobile-friendly HUD alongside mouse and keyboard.
+- **Installable as a PWA** — plays offline once cached.
+- **A content-pack SDK**: champions, spells, maps and monsters are packages built against a public `ContentApi`, never code forked into this repository.
 
 ## Controls
 
-| Action | Key |
-| --- | --- |
-| Move / attack target | Right click ground / enemy |
-| Abilities | `A` `Q` `W` `E` `R` |
-| Summoner spells | `D` `F` |
-| Toggle camera follow | `Space` |
-| Zoom | Mouse wheel |
-| Nav debug overlay | `N` |
-| Practice panel (pause + live settings) | `Esc` |
+| Action                                     | Key                        |
+| ------------------------------------------ | -------------------------- |
+| Move / attack target                       | Right click ground / enemy |
+| Abilities                                  | `A` `Q` `W` `E` `R`        |
+| Summoner spells                            | `D` `F`                    |
+| Recall to fountain                         | `B` (hold)                 |
+| Toggle camera follow                       | `Space`                    |
+| Zoom                                       | Mouse wheel                |
+| Nav debug overlay                          | `N`                        |
+| Match config panel (pause + live settings) | `Esc`                      |
 
-Charged abilities are held down and fire on release. `Esc` pauses and opens the practice panel rather than leaving the match — exit from the panel's *Trận đấu* tab.
+Charged abilities are held down and fire on release. `Esc` pauses and opens the config panel rather than leaving the match — exit from the panel's _Trận đấu_ tab.
 
 ## Getting started
 
 Requires [Node.js](https://nodejs.org/) 20 or newer.
 
 ```bash
-git clone https://github.com/HoangTran0410/LOL2D.git
-cd LOL2D
+git clone https://github.com/HoangTran0410/moba2d-core.git
+cd moba2d-core
 npm install
 npm run dev
 ```
 
-Open the URL Vite prints (http://localhost:5173 by default).
+Open the URL Vite prints (http://localhost:5173 by default). You will get the menu, a match, and one champion — that is core standing on its own, which is exactly what CI gates.
 
-> `npm run dev` runs `assets:generate` first, so the asset manifest always matches what is on disk in `assets/` without you having to think about it.
+> `npm run dev` runs `assets:generate` and `vendor:copy` first, so the asset manifest matches what is on disk and p5 is served locally rather than from a CDN.
 
 Production build:
 
@@ -80,64 +74,69 @@ npm run preview   # serve the built output
 
 ## npm scripts
 
-| Script | What it does |
-| --- | --- |
-| `npm run dev` | Dev server with hot reload (copies vendor libs + regenerates assets and the spell catalogue first) |
-| `npm run build` | Production build into `dist/` |
-| `npm run preview` | Serve the built output |
-| `npm test` | Run the unit suite once |
-| `npm run test:watch` | Run the unit suite in watch mode |
-| `npm run typecheck` | Type-check the whole project |
-| `npm run typecheck:core` | Strict type-check of the core modules |
-| `npm run verify` | **Everything CI runs** — installed-packs/asset/catalogue checks, both type-checks, tests, build, the per-champion chunk check, and the source-scan seams. Run before opening a PR |
-| `npm run verify:all` | `verify`, plus the reference pack's own `check-seams` |
-| `npm run assets:generate` | Regenerate the asset manifest from `assets/` |
-| `npm run assets:check` | Fail if the asset manifest is out of date |
-| `npm run catalog:generate` / `catalog:check` | Regenerate / verify the generated spell catalogue |
-| `npm run vendor:copy` | Copy p5 from `node_modules` into `public/vendor/` (PWA needs it local, not a CDN) |
-| `npm run pack:new` | Scaffold a new content pack — see `docs/PACK_AUTHORING.md` |
-| `npm run chunks:check` | Fail if a per-champion spell chunk exists, or if menu/pregame code leaked into the match chunk |
-| `npm run check-seams` | Run the source-scan seam rules (`pack-core-boundary`, `dash-onupdate`, and the rest) over core's own spell/buff/attackable-unit trees |
-| `npm run e2e:core-alone` | Drive a real browser to a real, playable match with no optional content pack installed |
-| `npm run e2e:pwa` | Build, then verify the PWA boots offline in a real browser |
-| `npm run e2e:pack` / `e2e:map-picker` / `e2e:bots` | Narrower Playwright scripts — see `tests/e2e/` for the full list |
-| `npm run verify:pack-standalone <path>` | The pack-repository acceptance drill: pack core, install it from that tarball into a fresh sandbox alongside a scaffolded pack, and prove both green |
+| Script                                             | What it does                                                                                                                                                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                      | Dev server with hot reload (copies vendor libs + regenerates assets and the spell catalogue first)                                                                                     |
+| `npm run build`                                    | Production build into `dist/`                                                                                                                                                          |
+| `npm run preview`                                  | Serve the built output                                                                                                                                                                 |
+| `npm test`                                         | Run the unit suite once                                                                                                                                                                |
+| `npm run test:watch`                               | Run the unit suite in watch mode                                                                                                                                                       |
+| `npm run typecheck`                                | Type-check the whole project                                                                                                                                                           |
+| `npm run typecheck:core`                           | Strict type-check of the core modules                                                                                                                                                  |
+| `npm run typecheck:sw`                             | Strict type-check of the service worker, which needs the WebWorker lib rather than the DOM one                                                                                         |
+| `npm run verify`                                   | **Everything CI runs** — installed-packs/asset/catalogue checks, all three type-checks, tests, build, the per-champion chunk check, and the source-scan seams. Run before opening a PR |
+| `npm run verify:all`                               | `verify`, plus the reference pack's own `check-seams`                                                                                                                                  |
+| `npm run assets:generate` / `assets:check`         | Regenerate / verify the asset manifest from `assets/`                                                                                                                                  |
+| `npm run catalog:generate` / `catalog:check`       | Regenerate / verify the generated spell catalogue                                                                                                                                      |
+| `npm run vendor:copy`                              | Copy p5 from `node_modules` into `public/vendor/` (the PWA needs it local, not on a CDN)                                                                                               |
+| `npm run pack:new`                                 | Scaffold a new content pack — see `docs/PACK_AUTHORING.md`                                                                                                                             |
+| `npm run chunks:check`                             | Fail if a per-champion spell chunk leaked, or if menu/pregame code reached the match chunk                                                                                             |
+| `npm run check-seams`                              | Run the source-scan seam rules (`pack-core-boundary`, `dash-onupdate`, and the rest) over core's own spell/buff/attackable-unit trees                                                  |
+| `npm run e2e:core-alone`                           | Drive a real browser to a real, playable match with no optional content pack installed                                                                                                 |
+| `npm run e2e:runtime-pack`                         | Serve a built pack from a second origin and prove it installs, grows the roster, and casts                                                                                             |
+| `npm run e2e:pwa`                                  | Build, then verify the PWA boots and plays offline in a real browser                                                                                                                   |
+| `npm run e2e:pack` / `e2e:map-picker` / `e2e:bots` | Narrower Playwright scripts — see `tests/e2e/` for the full list                                                                                                                       |
+| `npm run verify:pack-standalone <path>`            | The pack-repository acceptance drill: pack core, install it from that tarball into a fresh sandbox alongside a scaffolded pack, and prove both green                                   |
 
 ## Project layout
 
 ```
 src/
-├── main.ts               # entry point: boots p5 (global mode) and the SceneManager
-├── scenes/                   # LoadingScene → MenuScene → GameScene
+├── main.ts                    # entry point: boots p5 (global mode) and the SceneManager
+├── sw.ts                      # the service worker, hand-written (see its own header)
+├── scenes/                    # LoadingScene → MenuScene → GameScene
 │   └── setup/                 # pregame setup screen (roster, kit builder, rules)
+├── content/                   # the pack boundary: registry, install, validate, packSource
 ├── game/
-│   ├── Game.ts               # main loop, owns camera/objectManager/terrainMap/fogOfWar
+│   ├── Game.ts                # main loop, owns camera/objectManager/terrainMap/fogOfWar
 │   ├── MatchDirector.ts       # every mutation of a running match, and the only thing that persists them
-│   ├── preset.ts              # champion kits, jungle camps, turret and fountain spots
+│   ├── ai/                    # the bot brain: posture FSM, lanes, turret threat, aim prediction
 │   ├── gameObject/
-│   │   ├── attackableUnits/    # Champion, AIChampion, Minion, Monster, Turret
-│   │   ├── coreSpells/         # engine-owned spells only — champion abilities live in a content pack
-│   │   ├── spellObjects/       # base classes: Missile, Area, Beam, HomingMissile
-│   │   ├── buffs/              # Stun, Slow, Shield, Invisible, ...
-│   │   ├── structures/         # Turret, Fountain
-│   │   └── map/                # TerrainMap, FogOfWar, Camera, Obstacle, Minimap
+│   │   ├── attackableUnits/   # Champion, AIChampion, Minion, Monster, Turret
+│   │   ├── coreSpells/        # engine-owned spells only — champion abilities live in a content pack
+│   │   ├── spellObjects/      # base classes: Missile, Area, Beam, HomingMissile
+│   │   ├── buffs/             # Stun, Slow, Shield, Invisible, ...
+│   │   ├── structures/        # Turret, Fountain
+│   │   └── map/               # TerrainMap, FogOfWar, Camera, Obstacle, Minimap
 │   ├── combat/                # Vision, MatchTally, ExecuteTargeting
 │   ├── nav/                   # NavGrid pathfinding
-│   ├── managers/               # ObjectManager (quadtree), MinionSpawner, EventManager
-│   ├── input/                  # keyboard/mouse + TouchControls
-│   ├── spell/runtime/          # the spell lifecycle state machine
-│   ├── config/                 # PregameConfig, savedKits (localStorage)
-│   ├── enums/                   # TeamId, ActionState, StatusFlags, SpellState, EventType
-│   ├── vfx/, debug/             # shared VFX helpers, nav/debug overlays
-│   └── hud/                     # Vue-based HUD, incl. hud/practice/ (the Esc panel)
+│   ├── managers/              # ObjectManager (quadtree), MinionSpawner, EventManager
+│   ├── input/                 # keyboard/mouse + TouchControls
+│   ├── spell/runtime/         # the spell lifecycle state machine
+│   ├── config/                # PregameConfig, savedKits (localStorage)
+│   ├── enums/                 # TeamId, ActionState, StatusFlags, SpellState, EventType
+│   ├── vfx/, debug/           # shared VFX helpers, nav/debug overlays
+│   └── hud/                   # Vue-based HUD, incl. hud/config/ (the Esc panel)
 ├── managers/                  # AssetManager, SceneManager
-├── pwa/                       # service worker registration/update flow
-└── generated/                 # script-generated asset manifest — do not hand-edit
+├── pwa/                       # service worker registration and the update prompt
+├── seams/                     # the source-scan rules `check-seams` runs
+└── generated/                 # script-generated manifests — do not hand-edit
+packs/reference/               # core's own champion and map, and the worked example for pack authors
 ```
 
 ## Architecture
 
-**Spell lifecycle.** Every spell declares a `castSpec` describing how it is cast — press, hold-and-release, channel, or recast — and `SpellRuntime` runs the `READY → CASTING/CHARGING → ACTIVE → COOLDOWN` state machine, including resource commit, refund on interrupt, and interrupt sources (death, stun, silence, displacement). Spells only implement the `onCastStart` / `onRelease` / `onSpellCast` hooks.
+**Spell lifecycle.** Every spell declares a `castSpec` describing how it is cast — press, hold-and-release, channel, or recast — and `SpellRuntime` runs the `READY → CASTING/CHARGING → ACTIVE → COOLDOWN` state machine, including resource commit, refund on interrupt, and interrupt sources (death, stun, silence, displacement). Spells implement only the `onCastStart` / `onRelease` / `onSpellCast` hooks.
 
 **Spell objects.** Projectiles extend `MissileSpellObject`, area effects extend `AreaSpellObject`, lines use `BeamSpellObject` — note that the beam is hit detection only and **does not draw itself**, so subclass it and write a `draw()`.
 
@@ -145,23 +144,25 @@ src/
 
 **Crowd control.** Buffs raise and clear bits in `StatusFlags`, which the system resolves into `ActionState` (can move / can cast / targetable).
 
-**Teams and lanes.** A running match assigns the player to Blue and balances bots across Blue/Red; champions share their side's fountain, turret row, and lane minions. Neutral/standalone objects keep the unique `teamId` fallback. `MinionSpawner` runs mirrored waves down the three paths in `lanes.ts`, including melee, caster, and cannon minions.
+**Teams and lanes.** A running match assigns the player to Blue and balances bots across Blue/Red; champions share their side's fountain, turret row, and lane minions. `MinionSpawner` runs mirrored waves down the three paths in `lanes.ts`, including melee, caster and cannon minions.
 
-**The practice panel** (`Esc`) is a superset of the pregame setup screen: three tabs (*Đấu thủ*, *Trận đấu*, *Gian lận*) that reshape a paused, live match through `MatchDirector` rather than touching `localStorage` directly.
+**The bot brain** (`src/game/ai/`) is one shared FSM — `RETREAT RECOVER DISENGAGE FIGHT SEARCH ENGAGE PUSH ROAM` — with lane assignment, turret-ring geometry, and spell scoring. It reads the whole object list exactly once per 250ms, through `TeamBlackboard`, and a source scan keeps it that way.
 
-**PWA.** The build copies p5 into `public/vendor/` and loads it locally instead of from a CDN, and a service worker precaches the app shell, so the game can boot fully offline after the first visit.
+**The match config panel** (`Esc`) is one component mounted in two places — over the menu and over a paused match — behind the `MatchConfigSource` seam, so a control cannot exist on one screen and not the other.
 
-The full details live in [`docs/ADDING_SPELLS.md`](./docs/ADDING_SPELLS.md) — **read it before writing a new spell.** It covers the three registration points, the mandatory buff `stackId` rule, and the engine traps `tsc` cannot catch. Writing a spell, a champion or a map for a content pack of your own starts one level up, at [`docs/PACK_AUTHORING.md`](./docs/PACK_AUTHORING.md).
+**PWA.** The build copies p5 into `public/vendor/` and loads it locally instead of from a CDN, and a hand-written service worker (`src/sw.ts`) precaches the app shell and caches installed packs, so the game boots and plays fully offline after the first visit.
+
+Details live in [`docs/ADDING_SPELLS.md`](./docs/ADDING_SPELLS.md) — **read it before writing a spell.** Writing one for a pack of your own starts a level up, at [`docs/PACK_AUTHORING.md`](./docs/PACK_AUTHORING.md).
 
 ## Content packs
 
-Core ships one champion of its own (`packs/reference/`) and reaches every
-other champion, spell, map or monster only through a content pack — an
-ordinary npm package that depends on `@moba2d/core` and never imports its
-internals as a value, only through the published `ContentApi`. A 58-champion
-Riot-derived pack used to live inside this repository at `packs/riot/` and
-now lives in its own; installing it (or any other pack) as a real dependency
-is what turns core from one champion into a full roster:
+Core reaches every champion, spell, map or monster beyond its own single reference champion through a content pack: an ordinary package that depends on `@moba2d/core` and never imports its internals as a value, only through the published `ContentApi`.
+
+There are two ways a pack gets in.
+
+**At runtime, from a URL.** The game fetches `manifest.json`, checks it against core's version, imports the entry, and installs it during the loading screen — no rebuild of core involved. A first boot with nothing installed seeds one default URL; after that the list is the player's, stored in `localStorage` under `lol2d:packs:v1`.
+
+**At build time, as a dependency.** Still supported, and what the pack's own CI uses to prove a pack composes:
 
 ```bash
 npm install github:HoangTran0410/moba2d-content-riot
@@ -169,17 +170,11 @@ npm run packs:generate     # rewrites src/generated/installedPacks.ts
 npm run dev
 ```
 
-`packs:generate` is what makes the pack visible to `src/content/install.ts`;
-`predev`/`prebuild` already run it, so the middle line is only needed if you
-want to see the barrel change before starting anything. Measured on a clean
-clone: `npm run chunks:check` reports 0 per-champion spell chunks before and
-59 after — 58 champions plus the shared `spell-common` chunk that the five
-prefix-less spells (`Flash`, `Ghost`, `Heal`, `Ignite`, `StealthWard`) land
-in. Uninstalling the package and re-running `packs:generate` puts core back
-to one champion; nothing else has to be undone.
+`packs:generate` is what makes the pack visible to `src/content/install.ts`; `predev`/`prebuild` already run it. Uninstalling the package and re-running it puts core back to one champion; nothing else has to be undone.
 
-`docs/PACK_AUTHORING.md` is the whole guide to writing one, starting from
-`npx moba2d-pack-new`.
+**A pack is code, not data.** It is JavaScript running on the game's own origin, with the game's `localStorage` and the game's DOM. `validate.ts` rejects a pack of the wrong _shape_ — missing fields, wrong types, a duplicate id — and rejects nothing that is deliberately hostile. Install packs from sources you trust.
+
+[`docs/PACK_AUTHORING.md`](./docs/PACK_AUTHORING.md) is the whole guide to writing one, starting from `npx moba2d-pack-new`.
 
 ## Assets
 
@@ -198,29 +193,47 @@ npx vitest run tests/game/spells/MySpell.test.ts   # a single file
 
 House rule: **tuning values are exported as constants from the spell file and imported by its test.** Tests assert the wiring, not a copy of the numbers — retuning damage should never mean editing a test.
 
-**End-to-end** tests drive real Chrome through Playwright, because a unit test cannot prove the game boots and paints. `tests/e2e/` has 25+ scripts covering the practice panel, touch controls, minimap, kit builder, PWA offline boot, and more — run the one that touches what you changed rather than the whole folder:
+**End-to-end** tests drive real Chrome through Playwright, because a unit test cannot prove the game boots and paints. `tests/e2e/` has 25+ scripts covering the config panel, touch controls, minimap, kit builder, runtime pack install, and the offline PWA boot — run the one that touches what you changed rather than the whole folder:
 
 ```bash
-npx vite --port 5199 --strictPort   # in another terminal
-npm run e2e                         # or e.g. node tests/e2e/drive-practice-panel.mjs
+npm run e2e:core-alone              # a real, playable match on core alone
+npm run e2e:pwa                     # build, then boot and play with the network cut
+node tests/e2e/drive-practice-panel.mjs
 ```
 
-Scripts reach into the running game through `window.__lol2d`, which only exists in dev builds. `drive-new-spells.mjs` and `drive-touch-controls.mjs` have known rare flakes unrelated to code correctness when a content pack is installed — a stray dev server already holding port 5173 makes both more likely — but neither runs at all with no pack installed, since both drive real spells by path.
+Scripts reach into the running game through `window.__lol2d`, which only exists in dev builds. `LOL2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled Chromium. Scripts that need a pack read one from a sibling `moba2d-content-riot` checkout, or from `LOL2D_PACK_DIST`.
 
 ## Contributing
 
 Contributions are welcome. What you need to know:
 
 1. **Fork and branch** off `main`.
-2. **Run `npm run verify` before opening a PR.** It runs exactly what CI runs: installed-packs/asset/catalogue checks, both type-check passes, the full test suite, the build, the per-champion chunk check, and the source-scan seams. That is the repository's complete offline check.
-3. **Adding a spell?** Read [`docs/ADDING_SPELLS.md`](./docs/ADDING_SPELLS.md) first — or [`docs/PACK_AUTHORING.md`](./docs/PACK_AUTHORING.md) if the spell belongs to a content pack rather than to `packs/reference/`. There are three registration points, and missing one means the spell never shows up.
-4. **Bring tests.** Each spell should have a file in `tests/game/spells/`. Export the tuning constants from the spell and import them in the test rather than copying numbers.
+2. **Run `npm run verify` before opening a PR.** It runs exactly what CI runs. That is the repository's complete offline check.
+3. **Adding a spell?** Read [`docs/ADDING_SPELLS.md`](./docs/ADDING_SPELLS.md) first — or [`docs/PACK_AUTHORING.md`](./docs/PACK_AUTHORING.md) if the spell belongs to a content pack. There are three registration points, and missing one means the spell never shows up.
+4. **Bring tests.** Export the tuning constants from the spell and import them in the test rather than copying numbers.
 5. **Look at it.** If your change is visual, open the real game — or write a script in `tests/e2e/`. A test asserting `draw()` was called proves nothing about how it looks.
 6. **Formatting** follows Prettier (`.prettierrc`: 2 spaces, single quotes, trailing commas, 100 columns).
-7. **Comments explain *why*, not *what*.** Prefer recording the reason an approach was chosen, or the trap that forced the code into its current shape.
+7. **Comments explain _why_, not _what_.** Prefer recording the reason an approach was chosen, or the trap that forced the code into its current shape.
+8. **Do not add third-party art.** See the section below — core is meant to be installable and redistributable on its own.
 
-## Disclaimer
+## Trademarks and third-party assets
 
-This is a non-commercial, fan-made project, **not affiliated with or endorsed by [Riot Games](https://www.riotgames.com/en)**. The game is free and generates no revenue; it exists for entertainment only.
+This is a non-commercial, unofficial hobby project. It is **not affiliated with, authorised by, or endorsed by [Riot Games](https://www.riotgames.com/)**, and it generates no revenue.
 
-[League of Legends](https://www.leagueoflegends.com/) and all related trademarks, characters, artwork, and other assets are the property of [Riot Games](https://www.riotgames.com/en). This project claims no ownership over that intellectual property.
+The engine's own code is original. Some of the **artwork currently in this repository is not**, and is listed here rather than left for someone to discover:
+
+| File                                                    | What it is                                          |
+| ------------------------------------------------------- | --------------------------------------------------- |
+| `assets/images/others/logo.svg`                         | Riot's League of Legends "L" mark                   |
+| `assets/images/others/newlogo-vi.png`                   | Riot's _Liên Minh Huyền Thoại_ wordmark, ® included |
+| `assets/images/others/newlogo-en.png`                   | Riot's _League of Legends_ wordmark                 |
+| `assets/images/others/menu-bg.webp`                     | Riot champion splash art                            |
+| `public/favicon/*`                                      | the same "L" mark, as the app and PWA icon          |
+| `assets/images/buffs/stasis.png`, `buffs/invisible.png` | Riot ability icons                                  |
+| `assets/images/spells/basic_attack.png`                 | a Riot-framed ability icon                          |
+| `assets/images/screenshots/*.jpg`                       | screenshots showing Riot champions                  |
+| `assets/cursors/normal.cur`                             | the League of Legends cursor                        |
+
+These are placeholders inherited from the project this engine grew out of, and replacing them is open work — a MOBA engine has no business shipping another company's trademarks as its own identity. Champion art, ability icons and champion names for the 58-champion roster are **not** here at all: they live in the separate content pack, which is where Riot-derived material belongs.
+
+League of Legends and all related trademarks, characters, artwork and other assets are the property of Riot Games. This project claims no ownership over that intellectual property, and asks that no one treat the files above as licensed for reuse.
