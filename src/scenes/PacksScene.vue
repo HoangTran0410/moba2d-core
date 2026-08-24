@@ -64,14 +64,38 @@ interface PackRow {
   /** The origin, unabbreviated. The whole reason this screen exists. */
   origin: string;
   base: string;
+  /** `-1` until `packCacheUsage` answers — see `usageLabel`. */
   entries: number;
   bytes: number;
 }
 
 const rows = ref<PackRow[]>([]);
 
-/** `content-length` is a floor, not an exact size — see `packCache.ts`. */
-const formatApproxMB = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
+/**
+ * What this browser has cached of a pack, in a sentence rather than in two
+ * numbers that can both legitimately be zero.
+ *
+ * `entries` starts at `-1`, not `0`: the count arrives from `packCacheUsage`
+ * one round trip after the row is drawn, so a row that has not been measured
+ * yet and a row with genuinely nothing cached are different facts and used to
+ * render identically — as `0 tệp · ~0.0 MB`, which reads as a broken row
+ * rather than as "not saved yet". The second state is real and reachable
+ * today: a pack whose manifest declares no `files` installs and plays and
+ * prefetches nothing (see `packSource.ts`), so this is what the shipped
+ * default pack currently shows.
+ *
+ * `content-length` is a floor, not an exact size — see `packCache.ts` — hence
+ * the `~`, and KB below a megabyte so a small pack does not round to nothing.
+ */
+const usageLabel = (row: PackRow): string => {
+  if (row.entries < 0) return 'Đang xem dung lượng đã lưu…';
+  if (row.entries === 0) return 'Chưa lưu để chơi offline';
+  const size =
+    row.bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(row.bytes / 1024))} KB`
+      : `${(row.bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${row.entries} tệp · ~${size}`;
+};
 
 const removeLabel = (row: PackRow): string => {
   if (removingUrl.value === row.manifestUrl) return 'Đang gỡ…';
@@ -107,7 +131,7 @@ onMounted(() => {
       version: record.version,
       origin: originOf(record.manifestUrl, base),
       base,
-      entries: 0,
+      entries: -1,
       bytes: 0,
     });
   }
@@ -307,7 +331,7 @@ const confirmInstall = async (): Promise<void> => {
         version: manifest.version,
         origin: originOf(manifestUrl, base),
         base,
-        entries: 0,
+        entries: -1,
         bytes: 0,
       };
       rows.value = [...rows.value, newRow];
@@ -467,7 +491,7 @@ onBeforeUnmount(() => {
                 <span class="packs-version">v{{ row.version }}</span>
               </div>
               <p class="packs-origin packs-selectable">{{ row.origin }}</p>
-              <p class="packs-usage">{{ row.entries }} tệp · ~{{ formatApproxMB(row.bytes) }} MB</p>
+              <p class="packs-usage">{{ usageLabel(row) }}</p>
               <button
                 type="button"
                 class="packs-remove"
