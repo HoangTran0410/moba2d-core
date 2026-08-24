@@ -176,8 +176,10 @@ two callers two different classes with the same name, between which every
 Written out by hand that is three top-level declarations per class — a
 `__build`, a `__cache` WeakMap and a `make` that reads and writes it. The
 codemod that first moved a 237-file pack onto `api` did exactly that, 650
-times, and the result reads like build output rather than like source.
-`packClass.ts` is the eight lines that collapse it:
+times, and the result read like build output rather than like source; it was
+reported as such, and collapsing it back onto `packClass` removed some five
+thousand lines without changing a single class body. `packClass.ts` is the
+eight lines that hold the memo instead:
 
 ```ts
 export default packClass(api => class Hero_Q extends api.Spell { /* ... */ });
