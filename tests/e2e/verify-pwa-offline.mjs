@@ -50,7 +50,21 @@ const distDir = join(process.cwd(), 'dist');
  */
 const declaredPrecacheCount = () => {
   const source = readFileSync(join(distDir, 'sw.js'), 'utf8');
-  const urls = [...source.matchAll(/\{url:"([^"]+)"/g)].map(match => match[1]);
+  /**
+   * Two manifest shapes have shipped from this file, and the regex has to
+   * read both. `generateSW`'s output put an unquoted `url` key first in the
+   * object literal (`{url:"index.html",revision:...}`); `injectManifest`
+   * bundles the whole worker and then splices in `JSON.stringify`'d objects
+   * — quoted keys, and `revision` first (`{"revision":"...","url":"..."}`) —
+   * so a regex anchored to `{url` (quoted or not) matches zero entries on
+   * the real output, measured directly rather than assumed. Matching `"url"`
+   * unanchored, wherever it falls in the object, is what makes both shapes
+   * readable with one pattern.
+   */
+  const urls = [...source.matchAll(/(?:\{url:|"url":)\s*"([^"]+)"/g)].map(match => match[1]);
+  if (urls.length === 0) {
+    throw new Error('no precache entries found in dist/sw.js — the manifest shape changed');
+  }
   return new Set(urls).size;
 };
 

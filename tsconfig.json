@@ -4,5 +4,5 @@
     "strict": false
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "testzone", "tools", "dist"]
+  "exclude": ["node_modules", "testzone", "tools", "dist", "src/sw.ts"]
 }

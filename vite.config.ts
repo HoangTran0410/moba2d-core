@@ -50,6 +50,15 @@ export default defineConfig({
        * script, because the prompt above needs the callbacks it returns.
        */
       injectRegister: null,
+      /**
+       * The worker is `src/sw.ts`, not a generated file — see its own header.
+       * In this mode the `workbox` key is *ignored*; the glob options move
+       * to `injectManifest` below, and every runtime-caching rule moves into
+       * the worker itself.
+       */
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       /** Referenced by the manifest rather than by index.html, so name them. */
       includeAssets: [
         'favicon/favicon.ico',
@@ -86,7 +95,7 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         /**
          * Everything the game needs to start with no network — including
          * `vendor/`, which is why p5 and stats.js were taken off their CDNs
@@ -114,23 +123,6 @@ export default defineConfig({
         globIgnores: ['**/source-manifest-*.json'],
         /** The menu chunk alone is ~830KB; the default 2MB cap is too tight to trust. */
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        /**
-         * Font Awesome is the one thing still on a CDN, deliberately: a missing
-         * icon is a missing icon, not a blank screen. Cached on first sight so
-         * the second launch has it offline. Opaque cross-origin responses carry
-         * a status of 0, hence the explicit allowance.
-         */
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'cdn-fontawesome',
-              expiration: { maxEntries: 24, maxAgeSeconds: 60 * 60 * 24 * 90 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
       },
       devOptions: {
         /**
