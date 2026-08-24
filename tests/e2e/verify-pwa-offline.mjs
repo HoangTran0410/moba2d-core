@@ -26,7 +26,7 @@
  */
 import { preview } from 'vite';
 import { chromium } from 'playwright';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer as createStaticServer } from 'node:http';
 import { join, extname } from 'node:path';
@@ -98,6 +98,31 @@ const declaredPrecacheCount = () => {
  */
 const PACK_DIST =
   process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
+
+/**
+ * A missing or stale checkout must fail here, before `preview()` or the
+ * browser even starts, not as a 180-second timeout inside one. Left
+ * unchecked, every pack request 404s against the static server below, the
+ * manifest fetch fails inside `installRuntimePacks()`,
+ * `window.__lol2dPackPrefetch` never publishes (the `if (toPrefetch.length >
+ * 0)` guard around its only writer never runs), and the five pack checks
+ * below fail — bit-for-bit the same shape this task's own Step 5 falsification
+ * produces by disabling the prefetch on purpose. A developer without the
+ * sibling checkout, or with a typo in `LOL2D_PACK_DIST`, would read that as a
+ * regression in Task 4's code with nothing pointing at the real cause, and it
+ * lands before the `pageerror` listener below is even registered, so nothing
+ * else surfaces it either. `manifest.json`, not just the directory, because a
+ * stale empty `dist/` left over from an interrupted build passes an
+ * `existsSync` on the directory alone.
+ */
+if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
+  console.error(
+    `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
+      `moba2d-content-riot repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
+  );
+  process.exit(1);
+}
+
 const PACK_PORT = 4398;
 const TYPES = {
   '.js': 'text/javascript',
@@ -342,8 +367,10 @@ try {
   // `verify-runtime-pack.mjs` reads off `spell.name` through the game object
   // directly. Wrapped in its own try so a selector that never appears — the
   // finding itself, in a first run — reports through the checks below rather
-  // than losing every one of them to a single thrown error.
-  await page.waitForTimeout(1000);
+  // than losing every one of them to a single thrown error. No fixed sleep
+  // ahead of it: the `waitForSelector` right below is the real gate, on the
+  // same reasoning as the prefetch wait above — a guess at timing is not a
+  // signal.
   try {
     await page.waitForSelector('.corner-btn.spell-picker-btn', {
       state: 'visible',

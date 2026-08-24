@@ -41,6 +41,7 @@
 // same-origin would prove nothing). Renaming it also just says what it is.
 import { createServer as createStaticServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { CFG_KEY, startHarness } from './harness.mjs';
 
@@ -53,6 +54,27 @@ import { CFG_KEY, startHarness } from './harness.mjs';
  */
 const PACK_DIST =
   process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
+
+/**
+ * A missing or stale checkout must fail here, in a second, not as a 404 the
+ * static server below shrugs off silently. Left unchecked, every request this
+ * script's page makes against the pack resolves 404 (the server's own `catch`
+ * branch), the manifest fetch fails inside `installRuntimePacks()`, and the
+ * roster/kit checks below fail exactly the way they would for a genuine
+ * regression in that code — a developer without the sibling checkout, or with
+ * a typo in `LOL2D_PACK_DIST`, gets a report that reads as core's bug with
+ * nothing pointing at the real cause. `manifest.json`, not just the
+ * directory, because a stale empty `dist/` left over from an interrupted
+ * build passes an `existsSync` on the directory alone.
+ */
+if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
+  console.error(
+    `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
+      `moba2d-content-riot repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
+  );
+  process.exit(1);
+}
+
 const PACK_PORT = 4399;
 const TYPES = {
   '.js': 'text/javascript',
