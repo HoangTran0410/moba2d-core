@@ -295,7 +295,10 @@
   border-color: var(--hextech-teal);
 }
 
-.packs-add-row input:disabled {
+/* `readonly`, not `disabled`, while a check is in flight — see the template's
+   own comment on the focus this used to throw away. It has to *look* the same
+   as it did, though, or the panel reads as idle while it is working. */
+.packs-add-row input[readonly] {
   opacity: 0.6;
 }
 
@@ -310,7 +313,8 @@
   cursor: pointer;
 }
 
-.packs-add-row button:disabled {
+.packs-add-row button:disabled,
+.packs-add-row button[aria-disabled='true'] {
   opacity: 0.5;
   cursor: default;
 }

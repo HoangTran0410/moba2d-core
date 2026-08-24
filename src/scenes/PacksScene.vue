@@ -568,6 +568,14 @@ onBeforeUnmount(() => {
               Dán link manifest.json của pack
             </label>
             <div class="packs-add-row">
+              <!-- `readonly` and `aria-disabled`, never `disabled`, while a
+                   check is in flight. A browser blurs an element the moment it
+                   becomes disabled, so `:disabled="checking"` moved focus to
+                   `<body>` before the confirmation had even mounted — and the
+                   confirmation's own focus restore then had nothing to give
+                   back to. Both still refuse input: the field is `readonly`,
+                   and `checkUrl` has guarded against a second run since it was
+                   written. -->
               <input
                 id="pack-url-input"
                 v-model="url"
@@ -575,13 +583,15 @@ onBeforeUnmount(() => {
                 inputmode="url"
                 autocomplete="off"
                 placeholder="https://vi-du.com/pack/manifest.json"
-                :disabled="checking"
+                :readonly="checking"
+                :aria-busy="checking"
                 @keyup.enter="checkUrl"
               />
               <button
                 type="button"
                 id="pack-url-check"
-                :disabled="checking || !url.trim()"
+                :disabled="!url.trim()"
+                :aria-disabled="checking"
                 @click="checkUrl"
                 @touchend.prevent="checkUrl"
               >

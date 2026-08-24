@@ -151,6 +151,40 @@ await guard(
       /toàn quyền/.test(confirmText)
     );
 
+    // The dialog takes focus, and takes it to Huỷ — the answer a key pressed
+    // by reflex has to give. Without this a keyboard player could Tab
+    // straight past the disclosure onto the URL field still behind it.
+    const focusedOnOpen = await page.evaluate(() => document.activeElement?.id ?? null);
+    check(
+      'it moves focus onto Huỷ, not onto Cài đặt',
+      focusedOnOpen === 'pack-confirm-cancel',
+      `activeElement = ${focusedOnOpen}`
+    );
+
+    // Escape is Huỷ. Two things separate it from a broken dialog that merely
+    // vanished: nothing installed, and the URL field still holds what was
+    // typed — `cancelInstall` never touches it, `confirmInstall` always
+    // clears it, which is the same discriminator Part 5 rests on.
+    await page.keyboard.press('Escape');
+    const escapeClosed = await page
+      .waitForSelector('#pack-install-confirm', { state: 'detached', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    const rowsAfterEscape = await page.locator('.packs-row').count();
+    const inputAfterEscape = await page.inputValue('#pack-url-input');
+    check(
+      'Escape cancels it, installing nothing',
+      escapeClosed && rowsAfterEscape === 0 && inputAfterEscape === PACK_URL,
+      `closed=${escapeClosed} rows=${rowsAfterEscape} input=${JSON.stringify(inputAfterEscape)}`
+    );
+
+    const focusedAfterEscape = await page.evaluate(() => document.activeElement?.id ?? null);
+    check(
+      'and hands focus back where it came from',
+      focusedAfterEscape === 'pack-url-check',
+      `activeElement = ${focusedAfterEscape}`
+    );
+
     // -------------------------------------------------------------- Part 3
     // The boundary: nothing has run yet. Leaving the packs screen with the
     // confirmation only pending (never confirmed) discards it without
@@ -191,6 +225,20 @@ await guard(
       `origin = ${listedOrigin}`
     );
 
+    // The shelf's own entry is the *live* riot pack — a different URL from the
+    // one just installed off `localhost`, same id. `isInstalled` matches on
+    // either, because `installPackNow` refuses a duplicate id whatever URL it
+    // came from: matching on URL alone would leave a Cài button that can only
+    // ever answer "đã được cài rồi".
+    const shelfInstalledLabel = (
+      await page.locator('.packs-card-install').first().textContent()
+    )?.trim();
+    check(
+      'and the shelf marks that pack installed, by id rather than by URL',
+      shelfInstalledLabel === 'Đã cài',
+      `label = ${JSON.stringify(shelfInstalledLabel)}`
+    );
+
     // -------------------------------------------------------------- Part 5
     // Cancel path, on a second attempt — reusing the URL Part 4 already
     // installed. That is deliberate: `installPackNow` answers a repeat of an
@@ -229,6 +277,45 @@ await guard(
     await closePacksScreen();
     const rosterAfterRemove = await readRosterFromMenu();
     check('and the roster is back to core alone', rosterAfterRemove === 1, `${rosterAfterRemove}`);
+
+    // -------------------------------------------------------------- Part 7
+    // The shelf (`scenes/packs/suggestedPacks.ts`). Last on purpose: pressing
+    // Cài starts a fetch of the *live* default pack, which this script
+    // otherwise never touches — everything above is served from the local
+    // second origin. Whatever that fetch does afterwards, it cannot disturb a
+    // check that has already run.
+    await openPacksScreen();
+    const shelfCards = await page.locator('.packs-card').count();
+    check(
+      'the screen offers a pack shelf, not a line of dead text',
+      shelfCards > 0,
+      `${shelfCards}`
+    );
+
+    const shelfUrl = (await page.locator('.packs-card-url').first().textContent())?.trim();
+    report.shelfUrl = shelfUrl;
+    check(
+      'each card names the manifest URL in full',
+      /^https:\/\/\S+\/manifest\.json$/.test(shelfUrl ?? ''),
+      `${shelfUrl}`
+    );
+    check(
+      'and links to where the pack can be read',
+      (await page.locator('.packs-card a[href^="https://"]').count()) > 0
+    );
+
+    // The security property, at the level a browser can see it: Cài fills the
+    // same field a pasted URL goes into and runs the same check. It does not
+    // install — the row count is still 0 the instant after the press, and the
+    // only thing that can add one is the confirmation.
+    await page.click('.packs-card-install');
+    const filled = await page.inputValue('#pack-url-input');
+    const rowsAfterShelfPress = await page.locator('.packs-row').count();
+    check(
+      'pressing Cài routes through the URL field, installing nothing by itself',
+      filled === shelfUrl && rowsAfterShelfPress === 0,
+      `input=${JSON.stringify(filled)} rows=${rowsAfterShelfPress}`
+    );
 
     report.rosterBefore = rosterBefore;
     report.rosterAfter = rosterAfter;
