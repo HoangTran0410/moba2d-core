@@ -7,6 +7,7 @@ import {
   packCacheUsage,
   prefetchPackFiles,
 } from '@/content/packCache';
+import { stripComments } from '@/seams/importScan';
 
 /**
  * A `CacheStorage` small enough to assert against. `caches` does not exist in
@@ -222,7 +223,10 @@ describe('the cache name', () => {
   it('matches the literal the worker uses', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const sw = readFileSync(join(__dirname, '../../src/sw.ts'), 'utf8');
+    // Comments stripped before matching — see `@/seams/importScan` — so a
+    // doc comment that happens to quote the literal (this file's own header
+    // does, for instance) cannot pass this in place of the real declaration.
+    const sw = stripComments(readFileSync(join(__dirname, '../../src/sw.ts'), 'utf8'));
     // The worker is a separate TypeScript program (`tsconfig.sw.json`) and
     // cannot import from `src/content/`. Two literals, one meaning — a
     // mismatch is a cache the page fills and the worker never reads, which is

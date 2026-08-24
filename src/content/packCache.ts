@@ -229,8 +229,13 @@ export async function prefetchPackFiles(
  *
  * Read off `content-length` rather than by reading each body: 590 entries
  * decoded to blobs is real work for a number rendered in megabytes. A host
- * that omits the header contributes 0, so this is a floor, and the screen
- * says so.
+ * that omits the header contributes 0, so this is a floor, not an exact
+ * size. **The screen only marks it approximate** (`PacksScene.vue`'s `~`
+ * prefix on the megabyte figure, from its own `formatApproxMB` — see that
+ * function's own comment) rather than explaining why: a `~` in front of a
+ * number a player is not trying to audit is the right amount of honesty for
+ * a screen whose whole reason to exist is the origin above it, not this
+ * figure.
  */
 export async function packCacheUsage(base: string): Promise<{ entries: number; bytes: number }> {
   const cache = await openPackCache();
