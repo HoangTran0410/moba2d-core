@@ -9,6 +9,7 @@ import {
   buyItem,
   refusalFor,
   sellItem,
+  sellRefusalFor,
   sellValueOf,
 } from '@/game/economy/ItemShop';
 import { registerSpellForTests, resetSpellRegistryForTests } from '@/game/spellRegistry';
@@ -214,5 +215,92 @@ describe('the shop', () => {
       expect(sellItem(champion, 3, host)).toBe(0);
       expect(champion.wallet!.balance).toBe(before);
     });
+  });
+});
+
+/**
+ * Selling has rules too, and until now nothing could ask what they were.
+ *
+ * `refusalFor` exists because a bare `false` leaves a panel greying a button
+ * out for reasons the player has to guess — and selling had **no** equivalent,
+ * so the shop panel gated its Bán button on `canShop` alone, which is one of
+ * the two rules `sellItem` actually applies. A dead champion's sell button
+ * looked enabled and did nothing: the exact "button says yes, purchase says
+ * no" failure the buy side was designed against, reproduced on the other half
+ * of the same panel.
+ *
+ * `sellItem` is now this function plus the mutation, the same way `buyItem` is
+ * `refusalFor` plus the mutation, so the two cannot come apart.
+ */
+describe('what refuses a sale', () => {
+  let game: TestGame;
+  let champion: Champion;
+  let host: {
+    fountains: { teamId?: string; position: { x: number; y: number }; radius: number }[];
+  };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    resetSpellRegistryForTests();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+    champion.equipItem(new HeldItem(def({ cost: 300 }), null, null), 0);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('refuses nothing when the item is there and the champion is home', () => {
+    expect(sellRefusalFor(champion, 0, host)).toBeNull();
+  });
+
+  it('says the slot is empty rather than pretending it is sellable', () => {
+    expect(sellRefusalFor(champion, 3, host)).toBe('EMPTY');
+  });
+
+  it('refuses a slot that is not one', () => {
+    expect(sellRefusalFor(champion, -1, host)).toBe('EMPTY');
+    expect(sellRefusalFor(champion, INVENTORY_SIZE, host)).toBe('EMPTY');
+  });
+
+  it('refuses away from the fountain, the same rule buying uses', () => {
+    champion.position.set(2_000, 0);
+    expect(sellRefusalFor(champion, 0, host)).toBe('NOT_AT_FOUNTAIN');
+  });
+
+  it('refuses a corpse, which is the case the panel could not see', () => {
+    champion.takeDamage(99_999, undefined, 'TRUE');
+    expect(champion.isDead).toBe(true);
+    expect(sellRefusalFor(champion, 0, host)).toBe('DEAD');
+  });
+
+  it('answers DEAD before NOT_AT_FOUNTAIN, because a corpse is never at one', () => {
+    // Order matters only in that the sentence shown has to be the true one.
+    // A dead champion off the platform is dead first.
+    champion.position.set(2_000, 0);
+    champion.takeDamage(99_999, undefined, 'TRUE');
+    expect(sellRefusalFor(champion, 0, host)).toBe('DEAD');
+  });
+
+  it('is the whole of what `sellItem` checks, so the two can never disagree', () => {
+    // Driven rather than asserted structurally: for every state the refusal
+    // has an opinion about, the mutation has to agree with it.
+    const cases: [string, () => void][] = [
+      ['at home, holding it', () => {}],
+      ['away', () => champion.position.set(2_000, 0)],
+      ['dead', () => champion.takeDamage(99_999, undefined, 'TRUE')],
+    ];
+    for (const [label, arrange] of cases) {
+      const fresh = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+      indexObjects(game, [fresh]);
+      fresh.equipItem(new HeldItem(def({ cost: 300 }), null, null), 0);
+      champion = fresh;
+      arrange();
+
+      const refused = sellRefusalFor(fresh, 0, host) !== null;
+      const paid = sellItem(fresh, 0, host);
+      expect(refused, `${label}: refusal said ${refused}, sale paid ${paid}`).toBe(paid === 0);
+    }
   });
 });

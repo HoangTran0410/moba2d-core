@@ -49,6 +49,20 @@ export const SELL_REFUND_FRACTION = 0.7;
 export type ShopRefusal = 'DEAD' | 'NOT_AT_FOUNTAIN' | 'NO_SLOT' | 'TOO_EXPENSIVE' | 'NOT_LOADED';
 
 /**
+ * The same question for a sale. Two of the buy refusals apply unchanged —
+ * selling is gated on the fountain for the reason `sellItem` gives, and a
+ * corpse trades no more than it shops — plus one that only makes sense here.
+ *
+ * It exists because there was no way to *ask*. The panel gated its Bán button
+ * on "am I at the fountain" alone, which is one of the two rules `sellItem`
+ * really applies, so a dead champion's sell button looked enabled and did
+ * nothing — the exact "the button says yes and the purchase says no" failure
+ * `refusalFor` was written to prevent, reproduced on the other half of the
+ * same panel because only one half had a seam to ask.
+ */
+export type SellRefusal = 'DEAD' | 'NOT_AT_FOUNTAIN' | 'EMPTY';
+
+/**
  * The bits of a `Game` this file reads. Structural rather than `Game` itself,
  * so a test can drive the whole shop without building a match — and so this
  * module never grows a second reason to know about the game object.
@@ -275,15 +289,36 @@ export function buyItem(champion: Champion, def: QualifiedItem, host: ShopHost):
 }
 
 /**
+ * Which rule refuses to sell what is in `slot`, or `null` when none does.
+ *
+ * Selling is gated on the fountain exactly like buying: an inventory that can
+ * be liquidated mid-fight is a second set of abilities, not a build. `EMPTY`
+ * covers both nothing-in-the-slot and not-a-slot, because to a panel they are
+ * the same fact — there is nothing there to sell — and splitting them would
+ * mean a sentence for a state no player can produce.
+ */
+export function sellRefusalFor(
+  champion: Champion,
+  slot: number,
+  host: ShopHost
+): SellRefusal | null {
+  if (champion.isDead) return 'DEAD';
+  if (!atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
+  if (!champion.items?.[slot]) return 'EMPTY';
+  return null;
+}
+
+/**
  * Sells whatever is in `slot`, and answers how much it paid — `0` for a
  * refusal or an empty slot, which the caller can treat the same way because
  * neither changed anything.
  *
- * Selling is gated on the fountain exactly like buying: an inventory that can
- * be liquidated mid-fight is a second set of abilities, not a build.
+ * `sellRefusalFor` plus the mutation, exactly the way `buyItem` is
+ * `refusalFor` plus the mutation. Re-deriving the rules here is how the two
+ * halves of one panel came apart in the first place.
  */
 export function sellItem(champion: Champion, slot: number, host: ShopHost): number {
-  if (champion.isDead || !atOwnFountain(champion, host)) return 0;
+  if (sellRefusalFor(champion, slot, host) !== null) return 0;
 
   const held = champion.items?.[slot];
   if (!held) return 0;

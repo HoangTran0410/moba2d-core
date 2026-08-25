@@ -135,12 +135,12 @@ describe('sellRows', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('is empty for an empty bag', () => {
-    expect(sellRows(champion)).toEqual([]);
+    expect(sellRows(champion, host)).toEqual([]);
   });
 
   it('names what is held and what it pays back', () => {
     buyItem(champion, item() as never, host);
-    const [row] = sellRows(champion);
+    const [row] = sellRows(champion, host);
     expect(row).toMatchObject({ slot: 0, name: 'Giày' });
     expect(row.refund).toBeGreaterThan(0);
     expect(row.refund, 'selling paid the full price back').toBeLessThan(300);
@@ -154,7 +154,7 @@ describe('sellRows', () => {
     buyItem(champion, item({ id: 'ref:b', name: 'B' }) as never, host);
     champion.unequipItem(0);
 
-    expect(sellRows(champion).map(row => ({ slot: row.slot, name: row.name }))).toEqual([
+    expect(sellRows(champion, host).map(row => ({ slot: row.slot, name: row.name }))).toEqual([
       { slot: 1, name: 'B' },
     ]);
   });
@@ -277,13 +277,13 @@ describe('sellRows', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('names the item it is, not only the slot it is in', () => {
-    const [row] = sellRows(champion);
+    const [row] = sellRows(champion, host);
     expect(row.id).toBe('ref:sword');
     expect(row.slot).toBe(0);
   });
 
   it('carries the total beside the refund, so the price of the mistake is legible', () => {
-    const [row] = sellRows(champion);
+    const [row] = sellRows(champion, host);
     expect(row.cost).toBe(350);
     expect(row.refund).toBe(245); // 350 * 0.7
   });
@@ -476,5 +476,60 @@ describe('recipeTree', () => {
     expect(tree[0].link.id).toBe('ref:b');
     expect(tree[0].parts[0].link.id).toBe('ref:a');
     expect(tree[0].parts[0].parts).toEqual([]);
+  });
+});
+
+/**
+ * The bag row's own refusal.
+ *
+ * The panel used to gate its Bán button on `state.canShop` alone, which is one
+ * of the two rules `sellItem` applies — so a dead champion's sell button
+ * looked enabled and did nothing. That is the failure the whole `refusalFor`
+ * design exists to prevent, and it happened on the sell half precisely because
+ * only the buy half had a seam to ask.
+ */
+describe('a bag row’s refusal', () => {
+  let game: TestGame;
+  let champion: Champion;
+  const host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    champion.wallet!.earn(10_000);
+    stock = [item({ id: 'ref:sword', name: 'Kiếm Dài', cost: 350 })];
+    buyItem(champion, stock[0], host);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is null at the fountain, holding the thing', () => {
+    const [row] = sellRows(champion, host);
+    expect(row.refusal).toBeNull();
+    expect(row.reason).toBe('');
+  });
+
+  it('names the fountain rule, in the player’s own language', () => {
+    champion.position.set(2_000, 0);
+    const [row] = sellRows(champion, host);
+    expect(row.refusal).toBe('NOT_AT_FOUNTAIN');
+    expect(row.reason).toBe(REFUSAL_TEXT.NOT_AT_FOUNTAIN);
+  });
+
+  it('names death, which is the case the panel could not see', () => {
+    champion.takeDamage(99_999, undefined, 'TRUE');
+    const [row] = sellRows(champion, host);
+    expect(row.refusal).toBe('DEAD');
+    expect(row.reason).toBe(REFUSAL_TEXT.DEAD);
+  });
+
+  it('has a sentence for every refusal a sale can produce', () => {
+    // A missing entry renders `undefined` at the player. Asserted against the
+    // union rather than a list kept here, so adding a refusal breaks this.
+    for (const refusal of ['DEAD', 'NOT_AT_FOUNTAIN', 'EMPTY'] as const) {
+      expect(REFUSAL_TEXT[refusal], refusal).toBeTruthy();
+    }
   });
 });

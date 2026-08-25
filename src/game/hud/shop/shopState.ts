@@ -2,7 +2,9 @@ import {
   componentSlotsFor,
   priceFor,
   refusalFor,
+  sellRefusalFor,
   sellValueOf,
+  type SellRefusal,
   type ShopHost,
   type ShopRefusal,
 } from '@/game/economy/ItemShop';
@@ -56,12 +58,13 @@ const STAT_LABEL: Record<ItemStatKey, string> = {
 const AS_PERCENT = new Set<ItemStatKey>(['critChance', 'critDamage', 'omnivamp']);
 
 /** Why the shop said no, in the player's own language. */
-export const REFUSAL_TEXT: Record<ShopRefusal, string> = {
+export const REFUSAL_TEXT: Record<ShopRefusal | SellRefusal, string> = {
   DEAD: 'Đang chết',
   NOT_AT_FOUNTAIN: 'Phải đứng ở bệ đá',
   NO_SLOT: 'Túi đồ đã đầy',
   TOO_EXPENSIVE: 'Không đủ vàng',
   NOT_LOADED: 'Đang tải…',
+  EMPTY: 'Ô trống',
 };
 
 export interface StatLine {
@@ -246,15 +249,25 @@ export interface SellRow {
   cost: number;
   /** What selling it pays. See `SELL_REFUND_FRACTION` for why it is not the price. */
   refund: number;
+  /**
+   * Null when it can be sold right now. From `ItemShop.sellRefusalFor`, for
+   * the same reason the buy side reads `refusalFor`: the panel gated its Bán
+   * button on `canShop` alone, which is one of the two rules a sale applies,
+   * so a dead champion's sell button looked enabled and did nothing.
+   */
+  refusal: SellRefusal | null;
+  /** '' when there is no refusal. See `REFUSAL_TEXT`. */
+  reason: string;
 }
 
 /** What is in the bag right now, sellable. Empty slots are left out. */
-export function sellRows(champion: Champion): SellRow[] {
+export function sellRows(champion: Champion, host: ShopHost): SellRow[] {
   const rows: SellRow[] = [];
   const held = champion.items ?? [];
   for (let slot = 0; slot < held.length; slot++) {
     const item = held[slot];
     if (!item) continue;
+    const refusal = sellRefusalFor(champion, slot, host);
     rows.push({
       slot,
       id: item.def.id,
@@ -262,6 +275,8 @@ export function sellRows(champion: Champion): SellRow[] {
       image: item.icon?.path ?? '',
       cost: item.def.cost,
       refund: sellValueOf(item.def as QualifiedItem),
+      refusal,
+      reason: refusal ? REFUSAL_TEXT[refusal] : '',
     });
   }
   return rows;

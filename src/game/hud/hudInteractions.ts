@@ -335,7 +335,7 @@ export function createHudInteractions(game: Game): HudInteractions {
 
     shopBag(): SellRow[] {
       const player = game.player;
-      return player ? sellRows(player) : [];
+      return player ? sellRows(player, game) : [];
     },
 
     /**
