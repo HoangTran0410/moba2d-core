@@ -2,7 +2,7 @@
  * The static file server three Playwright scripts each stood up on their own
  * for a genuinely separate origin: `verify-runtime-pack.mjs`,
  * `verify-pwa-offline.mjs` and `verify-pack-management.mjs` all serve the
- * sibling `moba2d-content-riot` checkout's built `dist/` from a second local
+ * sibling content-pack checkout's built `dist/` from a second local
  * port, because the property every one of them exercises is a cross-origin
  * install — same-origin would prove nothing.
  *
@@ -37,8 +37,28 @@ import { join, extname } from 'node:path';
  * being fine. `LOL2D_PACK_DIST` overrides; the default is the sibling
  * checkout, which is how both repositories are actually laid out.
  */
-export const PACK_DIST =
-  process.env.LOL2D_PACK_DIST ?? join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
+const SIBLING_CANDIDATES = ['moba2d-content-lol', 'lol', 'moba2d-content-riot'];
+
+/**
+ * Several names, tried in order, because the pack repository is being renamed
+ * (`riot` -> `lol`, the game rather than the company) and a checkout on disk
+ * may be under either. The old name is last rather than removed: a developer
+ * who cloned it before the rename should not have their e2e runs start
+ * failing with "no pack build found" over a directory that is right there.
+ * `LOL2D_PACK_DIST` overrides all of it.
+ */
+function findPackDist() {
+  if (process.env.LOL2D_PACK_DIST) return process.env.LOL2D_PACK_DIST;
+  for (const name of SIBLING_CANDIDATES) {
+    const candidate = join(process.cwd(), '..', name, 'dist');
+    if (existsSync(join(candidate, 'manifest.json'))) return candidate;
+  }
+  // Nothing found: answer the preferred name so the error below names the
+  // directory a developer should be creating, not the last one tried.
+  return join(process.cwd(), '..', SIBLING_CANDIDATES[0], 'dist');
+}
+
+export const PACK_DIST = findPackDist();
 
 /**
  * Fails fast, before any server or browser starts, rather than as a 404 (or,
@@ -56,7 +76,7 @@ export function requirePackDist() {
   if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
     console.error(
       `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
-        `moba2d-content-riot repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
+        `content pack repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
     );
     process.exit(1);
   }
