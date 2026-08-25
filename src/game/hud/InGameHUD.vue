@@ -109,40 +109,52 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Hidden behind the panel: it lives in the top-right corner too (its
-       own close button), and this would otherwise sit on top of it — the
-       only way out of the modal. -->
-  <button
-    v-if="!hud.showSpellsPicker && !hud.showShop"
-    class="corner-btn spell-picker-btn"
-    @click="hud.openSpellPicker()"
-    @touchend.prevent="hud.openSpellPicker()"
-    title="Bảng luyện tập"
-  >
-    <i class="fa-solid fa-wand-magic-sparkles"></i>
-  </button>
-
   <!--
-    The way into the shop **in touch mode only**, and the reason it exists at
-    all: every other door is desktop-only. The gold pill and the six inventory
-    tiles live in `DesktopHudView`, which a phone does not render, and `P` is
-    not a key a thumb can press — so without this button the shop was
-    unreachable on the device this game is most played on.
+    The corner cluster: everything that opens a panel, in one row, all the same
+    size and shape.
 
-    Under the practice-panel button rather than beside it: they are both
-    top-right corner controls, and the panel is the one a player reaches for
-    more often. Hidden behind either modal for the same reason that one is.
+    They used to be three unrelated things in one corner — a round canvas
+    button for Hồi Thành, and two DOM squares stacked below the corner, one of
+    which only exists on a phone. Three renderings of three shapes reading as
+    an accident rather than a control group, which is what was reported.
+
+    Now: one flex row, right-aligned, and `TouchLayout`'s `CORNER_BUTTON_BOX`
+    reserves exactly its width so the canvas recall lands immediately to its
+    left on the same line. Order is corner-outward — the panel in the very
+    corner, then the shop — so the button a player reaches for most often is
+    the one furthest from the screen edge and hardest to fat-finger.
+
+    Both hide behind either modal: each of those occupies this same corner with
+    its own close button, and a control underneath one is a control that cannot
+    be pressed.
   -->
-  <button
-    v-if="hud.touchUi && !hud.showSpellsPicker && !hud.showShop"
-    class="corner-btn shop-btn"
-    :class="{ 'at-shop': state?.canShop }"
-    @click="hud.openShop()"
-    @touchend.prevent="hud.openShop()"
-    title="Cửa hàng"
-  >
-    <i class="fa-solid fa-coins"></i>
-  </button>
+  <div v-if="!hud.showSpellsPicker && !hud.showShop" class="corner-cluster">
+    <!--
+      Touch only. On a phone the gold pill and the six inventory tiles do not
+      render at all and `P` is not a key a thumb can press, so without this the
+      shop is unreachable on the device this game is most played on. On a
+      desktop the bar already carries two ways in.
+    -->
+    <button
+      v-if="hud.touchUi"
+      class="corner-btn shop-btn"
+      :class="{ 'at-shop': state?.canShop }"
+      @click="hud.openShop()"
+      @touchend.prevent="hud.openShop()"
+      title="Cửa hàng"
+    >
+      <i class="fa-solid fa-coins"></i>
+    </button>
+
+    <button
+      class="corner-btn spell-picker-btn"
+      @click="hud.openSpellPicker()"
+      @touchend.prevent="hud.openSpellPicker()"
+      title="Bảng luyện tập"
+    >
+      <i class="fa-solid fa-wand-magic-sparkles"></i>
+    </button>
+  </div>
 
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />

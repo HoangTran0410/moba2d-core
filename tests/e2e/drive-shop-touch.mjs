@@ -81,5 +81,65 @@ await guard(async () => {
   );
 
   await page.screenshot({ path: `${OUT}-phone.png` });
+
+  // ------------------------------------------------ the item actives' grid
+  //
+  // The whole point of an active item is that it is an extra spell, and on a
+  // phone it was bound to the digits 1-6 — keys a thumb does not have. So the
+  // grid has to draw, and a tap on it has to reach the *inventory's* input
+  // controller and not the kit's.
+  await page.evaluate(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeShop());
+  await page.waitForTimeout(300);
+
+  const drawn = await page.evaluate(async () => {
+    const { HeldItem } = await import('/src/game/items/Item.ts');
+    const { packAsset } = await import('/src/game/config/packAsset.ts');
+    const game = window.__lol2d.scene.oScene.game;
+    const kitSpell = game.player.spells[2];
+    const def = { id: 'probe:blade', name: 'Gươm Thử', icon: 'spell_basic_attack', cost: 0 };
+    // The champion's own W, worn as an item active: a real `Spell` with a real
+    // icon, so the button has something to draw and something to press.
+    const active = new kitSpell.constructor(game.player);
+    game.player.equipItem(new HeldItem(def, null, active, packAsset(def.icon)), 0);
+
+    const controls = game.touchControls;
+    const layout = controls.currentLayout;
+    return {
+      positions: layout.items.length,
+      slot0: {
+        x: Math.round(layout.items[0].x),
+        y: Math.round(layout.items[0].y),
+        r: Math.round(layout.items[0].radius),
+      },
+      viewForFilled: !!controls.host?.spellView?.(0, 'item'),
+    };
+  });
+  report.itemPositions = drawn.positions;
+  report.itemSlot0 = drawn.slot0;
+  check('six item positions exist', drawn.positions === 6, `${drawn.positions}`);
+
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}-items.png` });
+
+  // A real touch on slot 0 must reach the item controller. The kit spell in
+  // slot 2 is the *same class*, so pressing the wrong row would look identical
+  // in a screenshot — this checks the instance the item is holding.
+  const before = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.items[0].active.state
+  );
+  await tap(drawn.slot0.x, drawn.slot0.y, 80);
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    item: window.__lol2d.scene.oScene.game.player.items[0].active.state,
+    kit: window.__lol2d.scene.oScene.game.player.spells[2].state,
+  }));
+  report.itemPress = { before, after };
+  check('a tap fires the item’s own spell', after.item !== before, `${before} -> ${after.item}`);
+  check(
+    'and leaves the kit slot of the same index alone',
+    after.kit === 'READY',
+    `kit slot 2 is ${after.kit}`
+  );
+
   check('no runtime errors', h.errors.length === 0, h.errors.slice(0, 3).join(' | '));
 });

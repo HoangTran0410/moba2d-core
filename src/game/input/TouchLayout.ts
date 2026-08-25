@@ -49,6 +49,21 @@ export interface TouchLayout {
    * spell outside `spells[]`. See `RECALL_SLOT`.
    */
   readonly recall: TouchButton;
+  /**
+   * One position per inventory slot — **always six, filled or not.**
+   *
+   * The same rule the desktop inventory grid follows and for the same reason:
+   * a row that grew as items were bought would move every button under the
+   * player's thumb between one fight and the next. `TouchControls` draws and
+   * hit-tests only the slots that actually hold an item with an active; the
+   * geometry does not know or care which those are.
+   *
+   * Its own array rather than more of `buttons`, for the same reason `recall`
+   * is its own field: that array is indexed by *kit* slot and drives one
+   * `SpellInputController`, and these drive a second one pointed at the
+   * inventory. A reader that mixed them would press the wrong spell.
+   */
+  readonly items: readonly TouchButton[];
   /** Screen pixels of drag that map to a spell's full range. */
   readonly dragToRange: number;
   /** Below this much movement a gesture is a tap, not an aim. */
@@ -114,12 +129,26 @@ const BUTTON_GAP_SCALE = 0.42;
 export const RECALL_SLOT = -1;
 
 /**
- * Room kept clear at the top-right for `InGameHUD.vue`'s practice-panel
- * button: a DOM control at `top: 6px; right: 6px`, 46px square under
- * `body.touch-ui`. It is drawn by the browser over the canvas, so nothing here
- * can see it — this number is how the two stay out of each other's way.
+ * How many item positions the row holds. Six, matching `INVENTORY_SIZE` —
+ * restated rather than imported because this module is pure geometry with no
+ * game imports at all, and `layoutItemCount.test.ts`… there is no such test:
+ * `TouchControls` reads the host's own inventory, so a disagreement here shows
+ * as a slot that is never drawn rather than as a wrong number anywhere.
  */
-const CORNER_BUTTON_BOX = 52;
+const ITEM_SLOT_COUNT = 6;
+
+/**
+ * Room kept clear at the top-right for `InGameHUD.vue`'s corner cluster: two
+ * DOM buttons — the shop and the practice panel — in a flex row at
+ * `top: 6px; right: 6px`, 46px square each with a 6px gap under
+ * `body.touch-ui`. They are drawn by the browser over the canvas, so nothing
+ * here can see them; this number is how the two rendering systems stay out of
+ * each other's way, and it is what puts the recall button on the same line as
+ * them rather than in a corner of its own.
+ *
+ * 46 + 6 + 46 + 6 = 104.
+ */
+const CORNER_BUTTON_BOX = 104;
 
 export function computeTouchLayout(viewport: TouchViewport, slotCount: number): TouchLayout {
   const unit = Math.min(viewport.width, viewport.height);
@@ -178,8 +207,60 @@ export function computeTouchLayout(viewport: TouchViewport, slotCount: number): 
   }
 
   /**
-   * Hồi Thành sits on the top edge, one gap left of the practice-panel corner
-   * button — the only part of the screen no thumb visits during a fight. The
+   * The item actives: the same 3x2 grid the desktop bar draws, tucked into the
+   * bottom edge left of the ability fan.
+   *
+   * That strip is dead space on every landscape phone — the joystick's band
+   * ends well before it and the fan starts well after — and it is close enough
+   * to the abilities that the same thumb serves both, which is what these are:
+   * extra spells.
+   *
+   * **Two columns of three**, which is the desktop grid's 3x2 turned on its
+   * side — and the turn is measured, not a preference. The strip between the
+   * stick's band and the fan is about 250px on an 844x390 phone and only
+   * ~115px on a 667x375 one, while the height above it is free either way. Six
+   * thumb-sized circles need 14.5 radii of width in one row and 7.5 in three
+   * columns; both overflow the smaller phone, and the leftmost lands *inside*
+   * the stick's band, where a finger reaching for it steers the champion
+   * instead of casting. Two columns need 4.5 and fit on both.
+   *
+   * The reading order is still the desktop's — slot 0 top-left, filling left
+   * to right then down — so the two layouts disagree about shape and agree
+   * about which circle is which.
+   */
+  const itemRadius = clamp(unit * 0.05, 18, 26);
+  const itemGap = itemRadius * 0.5;
+  const itemStep = itemRadius * 2 + itemGap;
+  const itemColumns = 2;
+  const itemRows = ITEM_SLOT_COUNT / itemColumns;
+  // Anchored to the **summoner** ring, not the ability ring: the summoners sit
+  // further out, and measuring to the abilities put the grid's top-right
+  // circle 35px inside the left-hand summoner. Computed unconditionally rather
+  // than from whichever buttons this kit actually pushed, so a kit with fewer
+  // slots does not slide the player's item grid somewhere else.
+  const fanLeftEdge = attackX - summonerRing - summonerRadius;
+  const rightColumnX = fanLeftEdge - itemGap - itemRadius;
+  const bottomRowY = viewport.height - margin - itemRadius;
+  const items: TouchButton[] = [];
+  for (let slot = 0; slot < ITEM_SLOT_COUNT; slot++) {
+    const column = slot % itemColumns;
+    const row = Math.floor(slot / itemColumns);
+    const x = rightColumnX - (itemColumns - 1 - column) * itemStep;
+    const y = bottomRowY - (itemRows - 1 - row) * itemStep;
+    items.push({
+      slot,
+      x: clamp(x, itemRadius + 2, viewport.width - itemRadius - 2),
+      y: clamp(y, itemRadius + 2, viewport.height - itemRadius - 2),
+      radius: itemRadius,
+      primary: false,
+    });
+  }
+
+  /**
+   * Hồi Thành sits on the top edge, one gap left of the corner cluster and on
+   * the same line as it — the only part of the screen no thumb visits during a
+   * fight, and now a row of three matched circles rather than three unrelated
+   * things sharing a corner. The
    * stick's band stops well short of it, the ability fan reaches nowhere near
    * it, and the expanded minimap (which `Game.syncTouches` gives first refusal
    * on every new finger) is centred, so it never covers this corner either.
@@ -219,6 +300,7 @@ export function computeTouchLayout(viewport: TouchViewport, slotCount: number): 
     knobRadius: joystickRadius * 0.44,
     buttons,
     recall,
+    items,
     // Full range at 70% of the joystick's reach: a right thumb has less room
     // than a left one, because it starts in a corner.
     dragToRange: joystickRadius * 0.7,
@@ -254,6 +336,30 @@ export function buttonAt(layout: TouchLayout, x: number, y: number): TouchButton
 export function hitRecall(layout: TouchLayout, x: number, y: number): boolean {
   const button = layout.recall;
   return Math.hypot(x - button.x, y - button.y) <= button.radius;
+}
+
+/**
+ * The item button under a screen point, or null.
+ *
+ * A separate function from `buttonAt` rather than a flag on it, because the
+ * two answer to different controllers: `buttons` is the kit and `items` is the
+ * inventory, and one function returning either would hand a caller a slot
+ * number with no way to know which row it indexes.
+ *
+ * The same 1.15-radius slack the kit buttons get — these are abilities as far
+ * as a thumb is concerned, and the cost of a mis-hit is the wrong spell rather
+ * than leaving a fight (which is why `hitRecall` has none).
+ */
+export function itemButtonAt(layout: TouchLayout, x: number, y: number): TouchButton | null {
+  let best: TouchButton | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const button of layout.items) {
+    const distance = Math.hypot(x - button.x, y - button.y);
+    if (distance > button.radius * 1.15 || distance >= bestDistance) continue;
+    bestDistance = distance;
+    best = button;
+  }
+  return best;
 }
 
 export function insideJoystickZone(layout: TouchLayout, x: number, y: number): boolean {

@@ -26,6 +26,7 @@
  */
 import {
   buttonAt,
+  itemButtonAt,
   computeTouchLayout,
   hitRecall,
   insideJoystickZone,
@@ -137,10 +138,23 @@ export function describeButtonVisual(view: TouchSpellView): ButtonVisual {
   };
 }
 
+/**
+ * Which of the two rows a slot number indexes.
+ *
+ * There are two `SpellInputController`s in a match — one over `spells[]` and
+ * one over the inventory — and a bare slot number cannot say which. Threading
+ * the row through the five host calls is what keeps a thumb on the item grid
+ * from pressing an ability with the same index.
+ *
+ * Every method below defaults it to `'kit'`, so nothing that existed before
+ * items did has to say so.
+ */
+export type TouchRow = 'kit' | 'item';
+
 export interface TouchControlsHost {
   viewport(): TouchViewport;
   slotCount(): number;
-  spellView(slot: number): TouchSpellView | null;
+  spellView(slot: number, row?: TouchRow): TouchSpellView | null;
   /** Hồi Thành, built through the same shape as a kit slot. Null if there is none. */
   recallView(): TouchSpellView | null;
   /**
@@ -160,10 +174,10 @@ export interface TouchControlsHost {
   /** Held stick direction, or null the frame the thumb lifts. */
   steer(direction: JoystickVector | null): void;
   /** Where slot `slot` is currently aimed, or null once the gesture is over. */
-  setSlotAim(slot: number, world: Vec2 | null): void;
-  beginSlot(slot: number): void;
-  commitSlot(slot: number): void;
-  cancelSlot(slot: number): void;
+  setSlotAim(slot: number, world: Vec2 | null, row?: TouchRow): void;
+  beginSlot(slot: number, row?: TouchRow): void;
+  commitSlot(slot: number, row?: TouchRow): void;
+  cancelSlot(slot: number, row?: TouchRow): void;
   /** Runs `draw` inside the camera transform, for the world-space telegraph. */
   withWorldTransform(draw: () => void): void;
 }
@@ -173,6 +187,8 @@ type GesturePhase = 'AIMING' | 'CANCEL';
 interface SlotGesture {
   readonly pointerId: number;
   readonly slot: number;
+  /** Which row `slot` indexes — see `TouchRow`. */
+  readonly row: TouchRow;
   readonly button: TouchButton;
   readonly downX: number;
   readonly downY: number;
@@ -272,12 +288,18 @@ export class TouchControls {
     return this.layout;
   }
 
-  /** True while a thumb is on this slot's button, for the button's own look. */
+  /**
+   * True while a thumb is on this slot's button, for the button's own look.
+   *
+   * `row` matters: item slot 2 and kit slot 2 are different buttons, and
+   * without it a thumb on one would light the other.
+   */
   gestureFor(
-    slot: number
+    slot: number,
+    row: TouchRow = 'kit'
   ): { readonly phase: GesturePhase; readonly aim: SpellAimResult | null } | null {
     for (const gesture of this.gestures.values()) {
-      if (gesture.slot === slot) return gesture;
+      if (gesture.slot === slot && gesture.row === row) return gesture;
     }
     return null;
   }
@@ -388,16 +410,20 @@ export class TouchControls {
       return;
     }
 
-    const button = buttonAt(this.layout, point.x, point.y);
+    const kitButton = buttonAt(this.layout, point.x, point.y);
+    const itemButton = kitButton ? null : this.itemButtonUnder(point.x, point.y);
+    const button = kitButton ?? itemButton;
+    const row: TouchRow = kitButton ? 'kit' : 'item';
     if (button) {
       // One thumb per slot. A second finger arriving on a button already held
       // is a fumble, not a second cast.
       for (const existing of this.gestures.values()) {
-        if (existing.slot === button.slot) return;
+        if (existing.slot === button.slot && existing.row === row) return;
       }
       const gesture: SlotGesture = {
         pointerId: point.id,
         slot: button.slot,
+        row,
         button,
         downX: point.x,
         downY: point.y,
@@ -413,8 +439,8 @@ export class TouchControls {
       // beginSlot, and it builds its cast context there — if the aim has not
       // landed yet, a charge spell starts charging at whatever the mouse last touched.
       gesture.aim = this.aimFor(gesture);
-      this.host.setSlotAim(button.slot, gesture.aim ? gesture.aim.cursorWorld : null);
-      this.host.beginSlot(button.slot);
+      this.host.setSlotAim(button.slot, gesture.aim ? gesture.aim.cursorWorld : null, row);
+      this.host.beginSlot(button.slot, row);
       pulseTouchHaptic();
       return;
     }
@@ -425,6 +451,22 @@ export class TouchControls {
         height: this.viewportHeight,
       });
     }
+  }
+
+  /**
+   * The item button under a point, **only if that slot actually holds an item
+   * with an active**.
+   *
+   * The geometry lays out all six positions whether or not anything is in them
+   * — so that the row never moves under a player's thumb — and this is the
+   * other half of that bargain: an empty position is not a button, so a finger
+   * that lands on one falls through to whatever is behind it rather than
+   * pressing nothing.
+   */
+  private itemButtonUnder(x: number, y: number): TouchButton | null {
+    const button = itemButtonAt(this.layout, x, y);
+    if (!button) return null;
+    return this.host.spellView(button.slot, 'item') ? button : null;
   }
 
   private moveGesture(gesture: SlotGesture, x: number, y: number): void {
@@ -447,20 +489,20 @@ export class TouchControls {
   private endGesture(gesture: SlotGesture): void {
     this.gestures.delete(gesture.pointerId);
     if (gesture.phase === 'CANCEL') {
-      this.host.setSlotAim(gesture.slot, null);
-      this.host.cancelSlot(gesture.slot);
+      this.host.setSlotAim(gesture.slot, null, gesture.row);
+      this.host.cancelSlot(gesture.slot, gesture.row);
       return;
     }
     // The aim is recomputed here rather than reused from the last update, so a
     // flick that lands and lifts inside one frame still casts where it pointed.
     const aim = this.aimFor(gesture);
-    this.host.setSlotAim(gesture.slot, aim ? aim.cursorWorld : null);
-    this.host.commitSlot(gesture.slot);
-    this.host.setSlotAim(gesture.slot, null);
+    this.host.setSlotAim(gesture.slot, aim ? aim.cursorWorld : null, gesture.row);
+    this.host.commitSlot(gesture.slot, gesture.row);
+    this.host.setSlotAim(gesture.slot, null, gesture.row);
   }
 
   private aimFor(gesture: SlotGesture): SpellAimResult | null {
-    const view = this.host.spellView(gesture.slot);
+    const view = this.host.spellView(gesture.slot, gesture.row);
     if (!view) return null;
 
     const drag = gesture.moved
@@ -493,6 +535,7 @@ export class TouchControls {
     this.drawAimTelegraph();
     this.drawJoystick();
     this.drawButtons();
+    this.drawItemButtons();
     this.drawRecallButton();
   }
 
@@ -681,6 +724,94 @@ export class TouchControls {
 
     fill(240, 240, 240, this.joystick.active ? 220 : 130);
     circle(knob.x, knob.y, this.layout.knobRadius * 2);
+    pop();
+  }
+
+  /**
+   * The item grid, drawn with the same three states as an ability — see
+   * `describeButtonVisual`. Only the slots that hold an item with an active
+   * are drawn; the empty positions stay invisible rather than being rendered
+   * as dead circles, which would read as six abilities the player does not
+   * have.
+   */
+  private drawItemButtons(): void {
+    push();
+    noTint();
+    textAlign(CENTER, CENTER);
+
+    for (const button of this.layout.items) {
+      const view = this.host.spellView(button.slot, 'item');
+      if (!view) continue;
+      const gesture = this.gestureFor(button.slot, 'item');
+      const cancelling = gesture?.phase === 'CANCEL';
+      const visual = describeButtonVisual(view);
+      const diameter = button.radius * 2;
+
+      noStroke();
+      fill(12, 16, 24, 200);
+      circle(button.x, button.y, diameter);
+
+      if (view.icon) {
+        image(
+          view.icon as p5.Image,
+          button.x,
+          button.y,
+          button.radius * 1.36,
+          button.radius * 1.36
+        );
+      } else {
+        fill(230, 230, 230, visual.dim ? 120 : 230);
+        textSize(button.radius * 0.8);
+        text(view.label, button.x, button.y);
+      }
+
+      if (visual.dim) {
+        noStroke();
+        fill(8, 12, 20, 130);
+        circle(button.x, button.y, diameter);
+      }
+
+      if (view.cooldownRatio > 0) {
+        noStroke();
+        fill(...visual.wedgeColor);
+        arc(
+          button.x,
+          button.y,
+          diameter,
+          diameter,
+          -HALF_PI,
+          -HALF_PI + TWO_PI * view.cooldownRatio,
+          PIE
+        );
+      }
+
+      if (visual.showSeconds) {
+        noStroke();
+        fill(240, 240, 240, 235);
+        textSize(button.radius * 0.62);
+        text(String(view.remainingSeconds), button.x, button.y);
+      }
+
+      noFill();
+      strokeWeight(3);
+      if (cancelling) stroke(235, 70, 70, 240);
+      else if (gesture) stroke(120, 220, 255, 240);
+      // Running right now — the same green the desktop tile and the ability
+      // buttons use, so "this is on" reads identically wherever it is drawn.
+      else if (view.sustaining) stroke(75, 208, 134, 240);
+      // Gold at rest, which is what tells this row apart from the abilities
+      // beside it at a glance: these came out of the shop.
+      else stroke(200, 170, 110, visual.dim ? 90 : 170);
+      circle(button.x, button.y, diameter);
+
+      if (cancelling) {
+        stroke(235, 70, 70, 245);
+        strokeWeight(4);
+        const arm = button.radius * 0.45;
+        line(button.x - arm, button.y - arm, button.x + arm, button.y + arm);
+        line(button.x + arm, button.y - arm, button.x - arm, button.y + arm);
+      }
+    }
     pop();
   }
 

@@ -56,6 +56,7 @@ import TouchControls, {
   rememberTouchControlsPreference,
   type TouchControlsHost,
   type TouchPoint,
+  type TouchRow,
   type TouchSpellView,
 } from './input/TouchControls';
 import { touchAimRange } from './input/SpellAim';
@@ -220,6 +221,13 @@ export default class Game {
    */
   private touchAim = new Map<number, Vec2>();
   /**
+   * The same thing for the inventory row. A second map rather than a shared
+   * one, because both rows are indexed from 0 — item slot 2 and kit slot 2 are
+   * different buttons, and one map would have a thumb on an item aim the
+   * champion's W.
+   */
+  private itemTouchAim = new Map<number, Vec2>();
+  /**
    * Every finger currently on the glass, and the subset of them the minimap
    * claimed. Both live here rather than in `TouchControls` because the whole
    * point is to decide *before* the controls are told anything.
@@ -354,11 +362,11 @@ export default class Game {
       createContext: (_spell, slot) => {
         const spell = this.player.items[slot]?.active;
         if (!spell) return undefined;
-        // No `touchAim` lookup: that map is keyed by *kit* slot, and reading it
-        // here would have item slot 2 aim at whatever the thumb last did to the
-        // champion's W. Item actives are mouse- and key-aimed until the touch
-        // layer grows a row of its own.
-        return this.createSpellContext(spell, this.player, this.worldMouse);
+        // `itemTouchAim`, never `touchAim`: both rows index from 0, so the
+        // kit's map would have item slot 2 aim at whatever the thumb last did
+        // to the champion's W.
+        const aim = this.itemTouchAim.get(slot) ?? this.worldMouse;
+        return this.createSpellContext(spell, this.player, aim);
       },
     });
 
@@ -859,6 +867,20 @@ export default class Game {
   }
 
   /**
+   * An item active's button view, or null for a slot holding nothing — or
+   * holding an item that grants only stats and a passive, which is most of
+   * them. `TouchControls` draws exactly the slots this answers for, which is
+   * what keeps the six fixed positions from rendering as six dead circles.
+   */
+  private touchItemView(slot: number): TouchSpellView | null {
+    const active = this.player.items?.[slot]?.active;
+    if (!active?.image) return null;
+
+    const hotKey = ItemHotKeys[slot];
+    return this.touchViewOf(active, hotKey ? String.fromCharCode(hotKey) : String(slot + 1));
+  }
+
+  /**
    * The recall button's view.
    *
    * Through `touchViewOf` rather than a shape of its own, so the one button
@@ -961,11 +983,16 @@ export default class Game {
     };
   }
 
+  private controllerFor(row: TouchRow | undefined): SpellInputController {
+    return row === 'item' ? this.itemInputController : this.spellInputController;
+  }
+
   private touchControlsHost(): TouchControlsHost {
     return {
       viewport: () => ({ width: windowWidth, height: windowHeight }),
       slotCount: () => this.player.spells.length,
-      spellView: slot => this.touchSpellView(slot),
+      spellView: (slot, row) =>
+        row === 'item' ? this.touchItemView(slot) : this.touchSpellView(slot),
       recallView: () => this.touchRecallView(),
       // Straight to the seam the `B` key already uses. On a phone there is no
       // keyboard at all, so this button is the *only* way home.
@@ -991,18 +1018,21 @@ export default class Game {
           preferred as AttackableUnit | null
         ) as AimCandidate | null,
       steer: direction => this.steerPlayer(direction),
-      setSlotAim: (slot, world) => {
-        if (world) this.touchAim.set(slot, world);
-        else this.touchAim.delete(slot);
+      setSlotAim: (slot, world, row) => {
+        const aims = row === 'item' ? this.itemTouchAim : this.touchAim;
+        if (world) aims.set(slot, world);
+        else aims.delete(slot);
       },
-      beginSlot: slot => {
-        this.spellInputController.pointerDown(slot);
+      // One controller per row, chosen here and nowhere else — the touch layer
+      // carries the row and never has to know there are two of these.
+      beginSlot: (slot, row) => {
+        this.controllerFor(row).pointerDown(slot);
       },
-      commitSlot: slot => {
-        this.spellInputController.pointerUp(slot);
+      commitSlot: (slot, row) => {
+        this.controllerFor(row).pointerUp(slot);
       },
-      cancelSlot: slot => {
-        this.spellInputController.pointerCancel(slot);
+      cancelSlot: (slot, row) => {
+        this.controllerFor(row).pointerCancel(slot);
       },
       withWorldTransform: draw => {
         this.camera.push();

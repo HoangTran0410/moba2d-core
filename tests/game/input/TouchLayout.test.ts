@@ -4,6 +4,7 @@ import {
   computeTouchLayout,
   hitRecall,
   insideJoystickZone,
+  itemButtonAt,
   RECALL_SLOT,
 } from '../../../src/game/input/TouchLayout';
 import { minimapRect } from '../../../src/game/gameObject/map/Minimap';
@@ -290,19 +291,21 @@ describe('the recall button', () => {
   });
 
   /**
-   * Two things already own the top-right: `InGameHUD.vue`'s practice-panel
-   * button (a DOM control, `top: 6px; right: 6px`, 46px square in touch mode)
-   * and the expanded minimap, which `Game.syncTouches` gives first refusal on
+   * Two things already own the top-right: `InGameHUD.vue`'s corner cluster
+   * (two DOM buttons — shop and practice panel — in a row at
+   * `top: 6px; right: 6px`, 46px square each with a 6px gap in touch mode) and
+   * the expanded minimap, which `Game.syncTouches` gives first refusal on
    * every new finger — a tap that lands on it teleports instead.
    */
-  it('clears the practice-panel corner button and the expanded minimap', () => {
+  it('clears the corner cluster and the expanded minimap', () => {
     for (const viewport of VIEWPORTS) {
       const recall = computeTouchLayout(viewport, SLOTS).recall;
       const label = `${viewport.width}x${viewport.height}`;
 
-      // 46px button + its 6px inset from the right edge.
-      expect(recall.x + recall.radius, `${label}: corner button`).toBeLessThan(
-        viewport.width - 52 - 12
+      // Two 46px buttons, a 6px gap between them, and a 6px inset from the
+      // right edge — then a gap of its own before the recall circle starts.
+      expect(recall.x + recall.radius, `${label}: corner cluster`).toBeLessThan(
+        viewport.width - 104 - 12
       );
 
       const map = minimapRect(true, viewport);
@@ -329,5 +332,176 @@ describe('the recall button', () => {
     const layout = computeTouchLayout(PHONE, SLOTS);
 
     expect(buttonAt(layout, layout.recall.x, layout.recall.y)).toBeNull();
+  });
+});
+
+/**
+ * The item actives' row.
+ *
+ * An item's active is "an extra spell slot", which is what makes it worth
+ * buying at all — and on a phone it was bound to the digits 1-6 and therefore
+ * unreachable. Buying an active item on a phone got you its stats and its
+ * passive and nothing else.
+ *
+ * **Six positions, always, whether or not anything is in them.** The same rule
+ * the desktop inventory grid follows and for the same reason: a row that grew
+ * as items were bought would move every button under the player's thumb
+ * between one fight and the next. `TouchControls` draws only the slots that
+ * hold something; the geometry does not know or care.
+ *
+ * They sit along the bottom edge, left of the ability fan — dead space on
+ * every landscape phone, right of the joystick's band so a finger reaching for
+ * one can never be read as grabbing the stick, and close enough to the
+ * abilities that the same thumb serves both.
+ */
+describe('the item buttons', () => {
+  const VIEWPORTS = [PHONE, { width: 667, height: 375 }, { width: 932, height: 430 }];
+
+  it('lays out one position per inventory slot, filling left to right then down', () => {
+    // Two columns of three: the desktop grid turned on its side, because the
+    // strip beside the ability fan is ~115px wide on a 667x375 phone and three
+    // thumb-sized columns do not fit in it. The *reading order* is the
+    // desktop's, so the two layouts disagree about shape and agree about which
+    // circle is which.
+    const items = computeTouchLayout(PHONE, SLOTS).items;
+
+    expect(items).toHaveLength(6);
+    expect(items.map(button => button.slot)).toEqual([0, 1, 2, 3, 4, 5]);
+
+    for (const [left, right] of [
+      [0, 1],
+      [2, 3],
+      [4, 5],
+    ]) {
+      expect(items[right].x, `slot ${right} is not right of slot ${left}`).toBeGreaterThan(
+        items[left].x
+      );
+      expect(items[right].y, `slot ${right} is not level with slot ${left}`).toBeCloseTo(
+        items[left].y,
+        6
+      );
+    }
+    for (const [top, bottom] of [
+      [0, 2],
+      [2, 4],
+      [1, 3],
+      [3, 5],
+    ]) {
+      expect(items[bottom].y, `slot ${bottom} is not below slot ${top}`).toBeGreaterThan(
+        items[top].y
+      );
+      expect(items[bottom].x).toBeCloseTo(items[top].x, 6);
+    }
+  });
+
+  it('carries slots that can never be confused with a kit slot', () => {
+    // `layout.buttons` is indexed by kit slot and drives one
+    // `SpellInputController`; these drive a second one, over the inventory.
+    // They are separate arrays for that reason, and a reader that mixed them
+    // would press the wrong spell.
+    const layout = computeTouchLayout(PHONE, SLOTS);
+    expect(layout.buttons.some(kit => layout.items.some(item => item === kit))).toBe(false);
+  });
+
+  it('stays fully on screen at every viewport', () => {
+    for (const viewport of [...VIEWPORTS, { width: 1280, height: 800 }]) {
+      for (const button of computeTouchLayout(viewport, SLOTS).items) {
+        const label = `${viewport.width}x${viewport.height} slot ${button.slot}`;
+        expect(button.x - button.radius, label).toBeGreaterThanOrEqual(0);
+        expect(button.y - button.radius, label).toBeGreaterThanOrEqual(0);
+        expect(button.x + button.radius, label).toBeLessThanOrEqual(viewport.width);
+        expect(button.y + button.radius, label).toBeLessThanOrEqual(viewport.height);
+      }
+    }
+  });
+
+  it('is a thumb-sized target', () => {
+    for (const viewport of VIEWPORTS) {
+      for (const button of computeTouchLayout(viewport, SLOTS).items) {
+        expect(button.radius * 2, `${viewport.width}x${viewport.height}`).toBeGreaterThanOrEqual(
+          36
+        );
+      }
+    }
+  });
+
+  it('never overlaps an ability, a summoner or the attack button', () => {
+    for (const viewport of VIEWPORTS) {
+      const layout = computeTouchLayout(viewport, SLOTS);
+      for (const item of layout.items) {
+        for (const kit of layout.buttons) {
+          const gap = Math.hypot(item.x - kit.x, item.y - kit.y) - item.radius - kit.radius;
+          expect(
+            gap,
+            `${viewport.width}x${viewport.height}: item ${item.slot} vs kit ${kit.slot}`
+          ).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('leaves a gap between every pair, so a thumb cannot press two', () => {
+    for (const viewport of VIEWPORTS) {
+      const items = computeTouchLayout(viewport, SLOTS).items;
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const gap =
+            Math.hypot(items[i].x - items[j].x, items[i].y - items[j].y) -
+            items[i].radius -
+            items[j].radius;
+          expect(gap, `${viewport.width}x${viewport.height}: ${i} to ${j}`).toBeGreaterThan(4);
+        }
+      }
+    }
+  });
+
+  it('stays clear of the joystick’s band', () => {
+    // The band claims any finger that lands in it, so a button inside it would
+    // steer the champion instead of casting.
+    for (const viewport of VIEWPORTS) {
+      const layout = computeTouchLayout(viewport, SLOTS);
+      for (const button of layout.items) {
+        expect(
+          insideJoystickZone(layout, button.x - button.radius, button.y),
+          `${viewport.width}x${viewport.height}: slot ${button.slot}`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('does not move when the kit is smaller', () => {
+    // A pack whose champion carries fewer summoner spells must not shift the
+    // player's item row: these are different rows answering to different keys.
+    const full = computeTouchLayout(PHONE, 7).items;
+    const short = computeTouchLayout(PHONE, 5).items;
+    expect(short.map(b => Math.round(b.x))).toEqual(full.map(b => Math.round(b.x)));
+  });
+});
+
+describe('itemButtonAt', () => {
+  it('finds the button under a thumb', () => {
+    const layout = computeTouchLayout(PHONE, SLOTS);
+    expect(itemButtonAt(layout, layout.items[2].x, layout.items[2].y)?.slot).toBe(2);
+  });
+
+  it('answers nothing in the gap between two of them', () => {
+    // The point exactly between two neighbours, which is the one a sloppy
+    // thumb is most likely to land on: it is 1.25 radii from each and the
+    // slack is 1.15, so the gap is genuinely dead rather than belonging to
+    // whichever button the loop happened to reach first.
+    const layout = computeTouchLayout(PHONE, SLOTS);
+    const [a, b] = [layout.items[0], layout.items[2]];
+    expect(itemButtonAt(layout, (a.x + b.x) / 2, (a.y + b.y) / 2)).toBeNull();
+  });
+
+  it('answers nothing well away from the grid', () => {
+    const layout = computeTouchLayout(PHONE, SLOTS);
+    expect(itemButtonAt(layout, 0, 0)).toBeNull();
+  });
+
+  it('never answers with a kit button', () => {
+    const layout = computeTouchLayout(PHONE, SLOTS);
+    const ability = layout.buttons[1];
+    expect(itemButtonAt(layout, ability.x, ability.y)).toBeNull();
   });
 });
