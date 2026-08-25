@@ -80,7 +80,7 @@
  */
 import { CFG_KEY, startHarness } from './harness.mjs';
 
-const SUMMONERS_RIFT_ID = 'riot:summoners-rift';
+const SUMMONERS_RIFT_ID = 'lol:summoners-rift';
 const PROVING_GROUNDS_ID = 'reference:proving-grounds';
 
 /** Source-derived, per this file's own header table. */

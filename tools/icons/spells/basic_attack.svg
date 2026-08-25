@@ -1,10 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Basic attack">
   <title>Basic attack</title>
+    <!--
+      The blade is drawn pointing straight up and the whole sword is then tilted
+      as one group. Drawing it already-diagonal is what gave the first version
+      one fat edge and one thin one — reported as "lưỡi kiếm sao bên bự bên nhỏ".
+      Symmetry here is structural, not eyeballed.
+    -->
   <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M6 26 C6 48 18 60 40 60" fill="none" stroke-width="12"/>
-    <path d="M6 26 C6 48 18 60 40 60" fill="none" stroke="#e0b356" stroke-width="6"/>
-    <path d="M58 4 L60 18 L30 48 L18 46 L16 34 Z" fill="#dff4f7"/>
-    <path d="M12 30 L34 52 L26 60 L4 38 Z" fill="#8a6320"/>
-    <path d="M20 38 L26 44" stroke="#12171d" stroke-width="3"/>
+    <path d="M5 22 C5 46 16 58 40 58" fill="none" stroke-width="12"/>
+    <path d="M5 22 C5 46 16 58 40 58" fill="none" stroke="#e0b356" stroke-width="6"/>
+    <g transform="translate(37 27) rotate(45)">
+      <path d="M0 -32 L7 -22 L7 2 L-7 2 L-7 -22 Z" fill="#dff4f7"/>
+      <path d="M0 -30 L0 2" stroke="#9fb2c4" stroke-width="2.5"/>
+      <path d="M-19 2 H19 A4 4 0 0 1 19 11 H-19 A4 4 0 0 1 -19 2 Z" fill="#8a6320"/>
+      <path d="M-5 11 H5 V25 H-5 Z" fill="#9c7a52"/>
+      <circle cx="0" cy="29" r="6" fill="#e0b356"/>
+    </g>
   </g>
 </svg>

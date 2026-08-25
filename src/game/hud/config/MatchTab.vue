@@ -19,6 +19,7 @@
  * *do* confirm are at the bottom, and they are the two that are not recoverable.
  */
 import { computed, inject, ref } from 'vue';
+import { resolveMapId } from '@/content/defaultMap';
 import { CONFIG_PANEL } from './panelState';
 import { CDR_PERCENT_MAX, CDR_PERCENT_MIN } from '@/game/config/PregameConfig';
 
@@ -94,15 +95,13 @@ const onMinionsChange = (event: Event): void =>
  */
 const maps = source.availableMaps();
 // Not `ref(source.getMap())` directly: on a core-alone install `getMap()` can
-// still return a persisted `'riot:summoners-rift'` from before the pack
-// departed, which names no `<option>` this `<select>` actually has (its only
-// one is `reference:proving-grounds`) — the control rendered with nothing
-// selected while the match itself played correctly, on
-// `GameScene.startGame()`'s own `?? maps[0]` fallback. That fallback lives in
-// the match, not the picker, so the picker needs the same one.
-const selectedMapId = ref(
-  maps.find(map => map.id === source.getMap())?.id ?? maps[0]?.id ?? source.getMap()
-);
+// still return a persisted id from before a pack departed, which names no
+// `<option>` this control actually has — it rendered with nothing selected
+// while the match itself played correctly, on the match's own fallback. That
+// fallback is `content/defaultMap.ts` now, shared rather than written twice:
+// the two copies disagreed the moment the content pack stopped being bundled,
+// and `maps[0]` started meaning core's test arena.
+const selectedMapId = ref(resolveMapId(maps, source.getMap()) ?? source.getMap());
 
 const pickMap = (id: string): void => {
   if (id === selectedMapId.value) return;

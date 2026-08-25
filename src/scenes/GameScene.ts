@@ -12,6 +12,7 @@ import { ensurePackAsset } from '@/game/config/packAsset';
 import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
 import { renderAlpha } from '@/game/render/Interpolation';
 import { contentCatalog } from '@/content/catalog';
+import { resolveMapId } from '@/content/defaultMap';
 import { notePackSpellFailures } from '@/content/runtimePacks';
 import { hideMatchStartFailure, showMatchStartFailure } from './matchStartFailure';
 
@@ -278,7 +279,8 @@ export default class GameScene extends Scene {
     // whatever installs first rather than throwing: a config that named a map
     // that no longer exists must not brick the menu.
     const maps = contentCatalog().maps();
-    const mapSummary = maps.find(map => map.id === config.mapId) ?? maps[0];
+    const chosenId = resolveMapId(maps, config.mapId);
+    const mapSummary = maps.find(map => map.id === chosenId);
     if (!mapSummary) throw new Error('GameScene.startGame: no map installed');
 
     const [[failedSpellIds], geometry] = await Promise.all([
