@@ -44,7 +44,15 @@ import {
 } from '@/game/input/touchPreferences';
 import type { RenderFps } from '@/game/config/renderPreferences';
 import type { RenderQuality } from '@/game/managers/ObjectManager';
-import { scoreLine, statGroups, type ScoreLine, type StatGroup } from '../practice/participantStats';
+import {
+  scoreLine,
+  statGroups,
+  type ScoreLine,
+  type StatGroup,
+} from '../practice/participantStats';
+import { grantItem } from '@/game/economy/ItemShop';
+import { shopItems } from '@/game/economy/itemCatalog';
+import { contentCatalog } from '@/content/catalog';
 import type { SpellDisplay } from '@/game/config/spellCatalog';
 import type {
   ConfigRosterEntry,
@@ -54,7 +62,6 @@ import type {
   RosterStack,
 } from './MatchConfigSource';
 import { ABILITY_LETTERS } from './rosterVisuals';
-import { contentCatalog } from '@/content/catalog';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
 
 /**
@@ -93,6 +100,22 @@ export default class MatchDirectorSource implements MatchConfigSource {
       addStacks: (id, spellId, amount) =>
         this.withStack(id, spellId, spell => spell.setStackCount((spell.stackCount ?? 0) + amount)),
       clearStacks: (id, spellId) => this.withStack(id, spellId, spell => spell.setStackCount(0)),
+
+      goldOf: id => this.unitOf(id)?.wallet?.balance ?? 0,
+      // Straight at the wallet, not through `MatchDirector`, for the same
+      // reason `addStacks` above goes straight at the spell: this is an action
+      // on a live unit, not a setting the match persists.
+      grantGold: (id, amount) => this.withUnit(id, unit => unit.wallet?.earn(amount)),
+      itemStock: () => shopItems().map(item => ({ id: item.id, name: item.name, cost: item.cost })),
+      giveItem: (id, itemId) =>
+        this.withUnit(id, unit => {
+          const def = contentCatalog().item(itemId);
+          if (def) grantItem(unit, def);
+        }),
+      clearItems: id =>
+        this.withUnit(id, unit => {
+          for (let slot = 0; slot < (unit.items?.length ?? 0); slot++) unit.unequipItem(slot);
+        }),
 
       get zoom(): number {
         return host.camera.zoomFactor;

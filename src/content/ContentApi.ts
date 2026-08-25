@@ -46,6 +46,7 @@ import TrueSight, { createReveal } from '@/game/gameObject/buffs/TrueSight';
 import Untargetable from '@/game/gameObject/buffs/Untargetable';
 import Buff from '@/game/gameObject/Buff';
 
+import * as Mitigation from '@/game/combat/Mitigation';
 import * as Reach from '@/game/combat/Reach';
 import * as Vision from '@/game/combat/Vision';
 import * as ExecuteTargeting from '@/game/combat/ExecuteTargeting';
@@ -236,6 +237,7 @@ export interface ContentApi {
 }
 
 const COMBAT = Object.freeze({
+  Mitigation,
   Reach,
   Vision,
   ExecuteTargeting,

@@ -1,5 +1,6 @@
 import { Circle } from '@/libs/quadtree';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
+import { MINION_BOUNTY } from '@/game/economy/Wallet';
 import TeamId from '@/game/enums/TeamId';
 import type { LaneWaypoint } from '@/game/lanes';
 import { MINION_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
@@ -155,6 +156,9 @@ export type MinionPhase = (typeof Minion.PHASES)[keyof typeof Minion.PHASES];
  * comes back once killed.
  */
 export default class Minion extends AttackableUnit {
+  /** The last hit is the whole skill, and this is what it pays. See `Wallet`. */
+  goldBounty = MINION_BOUNTY;
+
   static PHASES = {
     WALK: 'WALK',
     ATTACK: 'ATTACK',

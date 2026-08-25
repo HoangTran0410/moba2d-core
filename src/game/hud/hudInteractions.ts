@@ -28,6 +28,9 @@ import type Camera from '@/game/gameObject/map/Camera';
 import type { RenderQuality } from '@/game/managers/ObjectManager';
 import { removeAccents } from '@/utils/index';
 import type { AssetKey } from '@/managers/AssetManager';
+import { buyItem, sellItem } from '@/game/economy/ItemShop';
+import { sellRows, shopRows, type SellRow, type ShopRow } from '@/game/hud/shop/shopState';
+import { contentCatalog } from '@/content/catalog';
 
 export interface SpellItemDisplay {
   name: string;
@@ -168,6 +171,38 @@ export interface HudInteractions {
    * on this object it is a move in the match, not a way into the panel.
    */
   recall(): void;
+  /**
+   * The shop is open over the match.
+   *
+   * A separate layer from `showSpellsPicker`, and the two are mutually
+   * exclusive by construction — opening either closes the other — because both
+   * are full-width modals and stacking them leaves a player looking at two
+   * close buttons.
+   *
+   * **It does not pause.** Every other panel here does, and this one must not:
+   * pausing at will would make the shop a way to freeze a fight, and the
+   * fountain rule is only a rule while the world keeps moving. It also means
+   * the panel's own "can I buy this" reads stay live — walk off the platform
+   * and every card greys out under the cursor, which is how the rule teaches
+   * itself.
+   */
+  showShop: boolean;
+  /** Open it. Refuses nothing: the cards carry their own refusals. */
+  openShop(): void;
+  closeShop(): void;
+  /** What the `P` key does — one key in, one key out. */
+  toggleShop(): void;
+  /** Everything on sale right now, each row carrying why it cannot be bought. */
+  shopStock(): ShopRow[];
+  /** What is in the bag, sellable, with what each would pay back. */
+  shopBag(): SellRow[];
+  /**
+   * Buy by qualified id. Goes through `ItemShop`, which re-checks every rule —
+   * the card's `refusal` is what the player *sees*, never what is trusted.
+   */
+  buy(itemId: string): void;
+  /** Sell whatever is in `slot`. Same seam, same re-check. */
+  sell(slot: number): void;
   mouseover(spellProxy: any, event: any): void;
   mouseout(spellProxy: any): void;
   showSpellInfo(spellProxy: any, element: any): void;
@@ -211,6 +246,7 @@ export function createHudInteractions(game: Game): HudInteractions {
     showSpellsPicker: false,
     editPlayerSlot: null as number | null,
     onEscapeInner: null as (() => boolean) | null,
+    showShop: false,
     spellHover: null as any,
     spellInfo: { top: 'auto', bottom: '0px', left: '0px', width: '300px' },
     touchUi: false,
@@ -240,6 +276,11 @@ export function createHudInteractions(game: Game): HudInteractions {
       // the panel under it on one keypress is the mis-hit this whole change
       // exists to design out.
       if (state.onEscapeInner?.()) return;
+      // The shop is a layer over the match too, and it is the innermost thing
+      // Escape can reach when it is up — closing the whole config panel out
+      // from under someone who meant to leave the shop is the same mis-hit
+      // `onEscapeInner` exists for.
+      if (state.showShop) return state.closeShop();
       if (state.showSpellsPicker) state.closeSpellPicker();
       else state.openSpellPicker();
     },
@@ -248,6 +289,7 @@ export function createHudInteractions(game: Game): HudInteractions {
       // Closed first so the panel is not left standing over a scene that is
       // about to be torn down.
       state.showSpellsPicker = false;
+      state.showShop = false;
       state.editPlayerSlot = null;
       game.onExitRequested?.();
     },
@@ -257,7 +299,56 @@ export function createHudInteractions(game: Game): HudInteractions {
      * there is one way in and the panel carries its own close, so a second
      * press on a button that is hidden behind the panel cannot happen.
      */
+    openShop(): void {
+      // The two modals are mutually exclusive: both are full-width, and
+      // stacking them leaves the player looking at two close buttons.
+      state.showSpellsPicker = false;
+      state.editPlayerSlot = null;
+      state.showShop = true;
+      state.spellHover = null;
+      // Deliberately no `game.pause()`. See `showShop`.
+    },
+
+    closeShop(): void {
+      state.showShop = false;
+      state.spellHover = null;
+    },
+
+    toggleShop(): void {
+      if (state.showShop) state.closeShop();
+      else state.openShop();
+    },
+
+    shopStock(): ShopRow[] {
+      const player = game.player;
+      return player ? shopRows(player, game) : [];
+    },
+
+    shopBag(): SellRow[] {
+      const player = game.player;
+      return player ? sellRows(player) : [];
+    },
+
+    /**
+     * The card's `refusal` is what the player *sees*; this is what is trusted.
+     * `ItemShop.buyItem` re-checks every rule from scratch — the panel repaints
+     * on a 20Hz tick, so a card can be a fifth of a second out of date by the
+     * time it is clicked, which is exactly long enough to walk off the
+     * platform.
+     */
+    buy(itemId: string): void {
+      const player = game.player;
+      const def = contentCatalog().item(itemId);
+      if (player && def) buyItem(player, def, game);
+    },
+
+    sell(slot: number): void {
+      const player = game.player;
+      if (player) sellItem(player, slot, game);
+    },
+
     openSpellPicker(): void {
+      state.showShop = false;
       state.editPlayerSlot = null;
       state.showSpellsPicker = true;
       game.pause();

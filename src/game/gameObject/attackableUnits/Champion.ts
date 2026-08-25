@@ -3,6 +3,8 @@ import { packAsset } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
 import BasicAttackController from '@/game/combat/BasicAttackController';
+import { uuidv4 } from '@/utils/index';
+import { HeldItem, INVENTORY_SIZE, type ItemStatKey } from '@/game/items/Item';
 import AttackableUnit from './AttackableUnit';
 import type {
   AttackableUnitOptions,
@@ -19,6 +21,7 @@ import Silence from '@/game/gameObject/buffs/Silence';
 import Slow from '@/game/gameObject/buffs/Slow';
 import Stun from '@/game/gameObject/buffs/Stun';
 import Taunt from '@/game/gameObject/buffs/Taunt';
+import Wallet, { CHAMPION_BOUNTY, STARTING_GOLD } from '@/game/economy/Wallet';
 import type Buff from '@/game/gameObject/Buff';
 import type { BuffStackId } from '@/game/gameObject/Buff';
 
@@ -65,6 +68,17 @@ export interface ChampionPresetData {
    */
   avatar?: string;
   spells?: Array<new (owner: Champion) => Spell>;
+  /**
+   * This champion's passive, or absent.
+   *
+   * **In the preset, unlike `recall`, and the difference is the point.** Going
+   * home is a property of the *map* — a fountain exists or it does not — so a
+   * preset swap must never take it away, which is why `Champion.recall` sits
+   * outside `ChampionPresetData` entirely. A passive is a property of the
+   * *champion*, so becoming a different champion must absolutely replace it.
+   * The two live in different places because they answer to different owners.
+   */
+  passive?: new (owner: Champion) => Spell;
   /** Overrides DEFAULT_CHAMPION_ATTACK. Drop `range` below the melee threshold
    *  and the champion swings instead of shooting; nothing else changes. */
   attack?: ChampionAttackTuning;
@@ -171,6 +185,11 @@ export default class Champion extends AttackableUnit {
   static displayZIndex = CHAMPION_Z_INDEX;
   killCredit: KillCredit = 'champion';
 
+  /** See `Wallet` — the base class has none, and this is the class that does. */
+  wallet: Wallet | null = new Wallet(STARTING_GOLD);
+
+  goldBounty = CHAMPION_BOUNTY;
+
   /**
    * Whether a `BotBrain` is driving this body. `AIChampion` overrides it to
    * true.
@@ -216,6 +235,59 @@ export default class Champion extends AttackableUnit {
    * `replaceSpells`/`applyPreset` never touch it either.
    */
   recall: Spell | null = null;
+
+  /**
+   * A spell this champion *has* rather than one it casts, or null — which is
+   * most champions.
+   *
+   * Outside `spells[]` for the same reason `recall` is, and the reason is
+   * worth restating because the pull to make it an eighth entry is strong:
+   * that array is indexed by `SpellHotKeys` and is also what the loadout
+   * editor lets a player rearrange. A passive has no key to press and no
+   * cooldown to read, and offering it in a kit builder as something to drop
+   * into `W` is offering nonsense.
+   *
+   * **Core presses it exactly once per life**, on the dead → alive transition
+   * (`armPassive`). Not once per match, because a passive that hung its effect
+   * on a buff or an event listener has lost both by the time its champion
+   * respawns; and not "whenever it is READY", which for any passive that
+   * completes instantly is sixty presses a second.
+   *
+   * The same field is what an *item* passive will hang off when items exist —
+   * an item that grants an always-on effect is this mechanism with a different
+   * owner, not a second one.
+   */
+  passive: Spell | null = null;
+
+  /**
+   * What this champion is carrying. Fixed length, `null` where empty — a slot
+   * is a place, so a sparse array would make "the third slot" mean different
+   * things before and after the second one is sold.
+   *
+   * A **parallel row to `spells[]`, never part of it.** See
+   * `game/items/Item.ts` for the whole reasoning; the short version is that
+   * the kit array is the hotkey layout the loadout editor rearranges, and an
+   * item is not something a player slots into `W`.
+   */
+  readonly items: (HeldItem | null)[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+
+  /**
+   * Which passives have been armed for the life this champion is currently
+   * living — the champion's own and every held item's, in one set because they
+   * are one mechanism.
+   *
+   * Cleared by death, not by respawn, so a champion that never dies is armed
+   * once and one that dies twice is armed three times.
+   *
+   * Keyed by the `Spell` instance rather than by slot, because a slot is not
+   * what a passive belongs to — moving an item from slot 3 to slot 5 must not
+   * re-arm it, and two items in one slot over a match are two passives.
+   * `unequipItem` takes its entry back out, which is what makes re-equipping
+   * the *same* instance arm it again: unequipping ran `removeSpell` on it, so
+   * its buffs and listeners are already gone and an item put back on with a
+   * stale "already armed" record would sit there doing nothing.
+   */
+  private readonly _armedPassives = new Set<Spell>();
 
   constructor({
     game,
@@ -279,7 +351,30 @@ export default class Champion extends AttackableUnit {
         return standing?.constructor === SpellClass ? standing : new SpellClass(this);
       })
     );
+    this.applyPassive(preset.passive);
     this.applyAttackTuning(preset.attack ?? DEFAULT_CHAMPION_ATTACK);
+  }
+
+  /**
+   * Swaps the passive, keeping the instance when the class has not changed.
+   *
+   * Same rule `applyPreset` follows for a kit slot, and for the same reason:
+   * the loadout editor commits the whole loadout on every edit, so rebuilding
+   * unconditionally would re-arm a passive — and reset whatever state it keeps
+   * on its own instance — every time the player touched an unrelated slot.
+   *
+   * Re-arming is deliberate when the class *does* change: the outgoing passive
+   * is retired through `removeSpell` so its buffs and listeners go with it, and
+   * `_passiveArmed` is cleared so the incoming one is pressed on the next frame
+   * rather than never.
+   */
+  private applyPassive(PassiveClass?: new (owner: Champion) => Spell): void {
+    if (this.passive?.constructor === PassiveClass) return;
+    this.removeSpell(this.passive ?? undefined);
+    this.passive = PassiveClass ? new PassiveClass(this) : null;
+    // Nothing to clear from `_armedPassives`: it is keyed by instance, and the
+    // outgoing instance is gone. The incoming one has never been armed, so the
+    // next frame arms it.
   }
 
   private applyAttackTuning(attack: ChampionAttackTuning): void {
@@ -295,6 +390,71 @@ export default class Champion extends AttackableUnit {
     // `?.` for the same reason `drawAttackOrder` uses it: prototype-only
     // champions built with Object.create never run a field initializer.
     this.recall?.update();
+    this.passive?.update();
+    // `?? []` for the same reason the `?.` above exists: a prototype-only
+    // champion built with `Object.create` never ran a field initializer, so
+    // `items` is `undefined` rather than empty.
+    for (const item of this.items ?? []) {
+      item?.passive?.update();
+      item?.active?.update();
+    }
+    this.armPassives();
+    // Per unit of *time*, not per frame — `Wallet.accrue`'s own doc comment has
+    // the reason. Deliberately outside any `isDead` check: income is the floor
+    // under a player who is losing, and stopping it while they are dead stops
+    // it hardest exactly when it is doing its job.
+    this.wallet?.accrue(deltaTime);
+  }
+
+  /**
+   * Presses the passive on the frame this champion is alive and has not been
+   * armed for this life. See `passive`'s own doc comment for why the trigger
+   * is the dead → alive transition and not anything simpler.
+   *
+   * The context is built here rather than fetched from
+   * `game.createSpellContext`, and that is not a shortcut. A passive is `SELF`
+   * by definition: it has no cursor, resolves no target, and needs nothing the
+   * targeting layer produces. Depending on the game context for it also makes
+   * a passive silently *never arm* anywhere that context is minimal — the test
+   * world stubs `createSpellContext` to `undefined` on purpose, and a champion
+   * built by a pack's own harness would have had a dead passive with nothing
+   * to see. Origin and cursor are both the champion's own feet, which is the
+   * literal truth about where a passive is aimed.
+   *
+   * It still goes through `press` rather than `onSpellCast`, so a passive is
+   * subject to the same activation, resource and cooldown rules as everything
+   * else — one that refuses its own cast stays visibly unarmed rather than
+   * half-running.
+   */
+  private armPassives(): void {
+    if (this.isDead) {
+      this._armedPassives?.clear();
+      return;
+    }
+    this.armPassive(this.passive);
+    for (const item of this.items ?? []) this.armPassive(item?.passive ?? null);
+  }
+
+  /** One passive, armed if it is not already armed for this life. */
+  private armPassive(passive: Spell | null): void {
+    if (!passive || this._armedPassives?.has(passive)) return;
+
+    const here = Object.freeze({ x: this.position.x, y: this.position.y });
+    this._armedPassives?.add(passive);
+    passive.press(
+      Object.freeze({
+        spellId: passive.id,
+        activationId: uuidv4(),
+        startedAtMs: Date.now(),
+        caster: this,
+        origin: here,
+        cursorWorld: here,
+        // A self cast aims nowhere. `Spell.cast()` produces the same degenerate
+        // direction when the cursor sits exactly on the caster, so this is the
+        // established shape rather than a new one — and no `SELF` spell reads it.
+        direction: Object.freeze({ x: 0, y: 0 }),
+      })
+    );
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
@@ -302,6 +462,11 @@ export default class Champion extends AttackableUnit {
     this.drawAttackOrder();
     this.spells.forEach(spell => spell.drawVfx());
     this.recall?.drawVfx();
+    this.passive?.drawVfx();
+    for (const item of this.items ?? []) {
+      item?.passive?.drawVfx();
+      item?.active?.drawVfx();
+    }
   }
 
   /**
@@ -352,6 +517,14 @@ export default class Champion extends AttackableUnit {
     // `?? undefined`: `removeSpell` takes `Spell | undefined`, and `recall` is
     // `Spell | null` now that a map without a fountain can leave it unset.
     this.removeSpell(this.recall ?? undefined);
+    // A passive left behind keeps its buffs and its event listeners after the
+    // champion carrying it is gone — the same leak `recall` is retired to avoid.
+    this.removeSpell(this.passive ?? undefined);
+    // Items go the same way, and through `unequipItem` rather than by clearing
+    // the array: the stat grant has to come back off too, and a champion
+    // removed mid-match with a live modifier still on their `Stats` is a leak
+    // nothing else would ever notice.
+    for (let slot = 0; slot < (this.items?.length ?? 0); slot++) this.unequipItem(slot);
   }
 
   /**
@@ -374,6 +547,55 @@ export default class Champion extends AttackableUnit {
   private removeSpell(spell?: Spell) {
     spell?.deactivate();
     spell?.onRemoved?.();
+  }
+
+  /**
+   * Puts an item in a slot, taking whatever was there out first.
+   *
+   * `passive` and `active` arrive as already-constructed spells rather than as
+   * classes, because resolving a *local pack id* to a class is `preset.ts`'s
+   * job and nothing in this file may reach the content registry — the same
+   * split that keeps `applyPreset` taking classes and not ids.
+   *
+   * Returns the item that was displaced, or null. A caller putting an item
+   * into an occupied slot has to decide what happens to the old one (sold,
+   * dropped, destroyed), and returning it is how this stays out of that
+   * decision.
+   */
+  equipItem(item: HeldItem, slot: number): HeldItem | null {
+    if (!this.items || slot < 0 || slot >= this.items.length) return null;
+    const displaced = this.unequipItem(slot);
+    this.items[slot] = item;
+    this.stats.addModifier(item.modifier);
+    // Not armed here. `armPassives` runs on the next frame and arms it then,
+    // which is the same path a champion's own passive takes — and the same
+    // path a respawn takes. One arming rule, one place.
+    return displaced;
+  }
+
+  /**
+   * Takes the item in a slot back off, and everything it granted with it.
+   *
+   * The stat modifier, both spells and the armed-passive record all have to go
+   * together. Dropping any one of them is a champion who sold an item and kept
+   * its armour, or kept its on-hit listener firing off an item they no longer
+   * own — and neither shows up anywhere except as a number that will not add
+   * up much later.
+   */
+  unequipItem(slot: number): HeldItem | null {
+    const item = this.items?.[slot];
+    if (!item) return null;
+    this.items[slot] = null;
+    this.stats.removeModifier(item.modifier);
+    if (item.passive) this._armedPassives?.delete(item.passive);
+    this.removeSpell(item.passive ?? undefined);
+    this.removeSpell(item.active ?? undefined);
+    return item;
+  }
+
+  /** The first empty slot, or -1. What a shop asks before it takes anyone's gold. */
+  firstEmptyItemSlot(): number {
+    return this.items?.findIndex(slot => slot === null) ?? -1;
   }
 
   /** A champion fights through its standing order, so a taunt writes that. */

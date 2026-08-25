@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import { scoreLine, statGroups } from '../../../src/game/hud/practice/participantStats';
 import { createGame, stubGameGlobals, type TestGame } from '../fixtures';
+import { DAMAGE_TEXT_COLOR } from '../../../src/game/gameObject/helpers/CombatText';
 
 let game: TestGame;
 
@@ -122,5 +123,57 @@ describe('statGroups', () => {
     expect(groups.length).toBeGreaterThan(1);
     expect(groups.every(group => group.title.length > 0 && group.rows.length > 0)).toBe(true);
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+/**
+ * The resistances, and the reason they carry a colour.
+ *
+ * `armor` and `magicResist` shipped with damage types and nothing anywhere
+ * displayed either of them — a player could buy 40 armour and read the same
+ * card as before. Worse, the floating numbers had just learned three colours
+ * with no legend anywhere: amber, violet, white, and nothing on screen saying
+ * which was which.
+ *
+ * These two rows are that legend. Tinting each resistance with the colour of
+ * the damage it stops makes the pair self-teaching — "the violet numbers are
+ * the ones this violet stat is for" — which is why the tint is read straight
+ * off `DAMAGE_TEXT_COLOR` rather than restated as a hex here, where it could
+ * drift away from the thing it is explaining.
+ */
+describe('the resistances', () => {
+  const rowsOf = (title: string) =>
+    statGroups(unit()).find(group => group.title === title)?.rows ?? [];
+
+  it('are both on the card', () => {
+    const labels = rowsOf('Sinh tồn').map(row => row.label);
+    expect(labels).toContain('Giáp');
+    expect(labels).toContain('Kháng phép');
+  });
+
+  it('report whole points', () => {
+    const champion = unit();
+    champion.stats.armor.baseValue = 41.6;
+    const armour = statGroups(champion)
+      .flatMap(group => group.rows)
+      .find(row => row.label === 'Giáp');
+    expect(armour?.value).toBe('42');
+  });
+
+  it('wear the colour of the damage each one stops', () => {
+    const rows = rowsOf('Sinh tồn');
+    const armour = rows.find(row => row.label === 'Giáp');
+    const magic = rows.find(row => row.label === 'Kháng phép');
+
+    expect(armour?.tint).toBe(`rgb(${DAMAGE_TEXT_COLOR.PHYSICAL.join(', ')})`);
+    expect(magic?.tint).toBe(`rgb(${DAMAGE_TEXT_COLOR.MAGIC.join(', ')})`);
+  });
+
+  it('leaves every other row untinted, so the two that mean something stand out', () => {
+    const tinted = statGroups(unit())
+      .flatMap(group => group.rows)
+      .filter(row => row.tint !== undefined)
+      .map(row => row.label);
+    expect(tinted.sort()).toEqual(['Giáp', 'Kháng phép']);
   });
 });

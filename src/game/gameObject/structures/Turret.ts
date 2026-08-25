@@ -1,10 +1,14 @@
 import { Circle } from '@/libs/quadtree';
 import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
+import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
 import type { AttackableUnitOptions } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
-import Minion, { AGGRO_SCAN_INTERVAL_MS, teamColors } from '@/game/gameObject/attackableUnits/Minion';
+import Minion, {
+  AGGRO_SCAN_INTERVAL_MS,
+  teamColors,
+} from '@/game/gameObject/attackableUnits/Minion';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
@@ -55,6 +59,9 @@ export interface TurretOptions {
  * exception is needed.
  */
 export default class Turret extends AttackableUnit {
+  /** See `Wallet`. Killer-only, like every bounty here — no team split yet. */
+  goldBounty = TURRET_BOUNTY;
+
   /** A building is not farm — killing one moves nobody's CS. */
   killCredit: KillCredit = 'none';
 

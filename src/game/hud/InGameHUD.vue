@@ -45,6 +45,7 @@ import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
 import MatchConfigPanel from './config/MatchConfigPanel.vue';
+import ShopPanel from './shop/ShopPanel.vue';
 import MatchDirectorSource from './config/MatchDirectorSource';
 
 const props = defineProps<{ hud: HudInteractions }>();
@@ -112,7 +113,7 @@ defineExpose({
        own close button), and this would otherwise sit on top of it — the
        only way out of the modal. -->
   <button
-    v-if="!hud.showSpellsPicker"
+    v-if="!hud.showSpellsPicker && !hud.showShop"
     class="corner-btn spell-picker-btn"
     @click="hud.openSpellPicker()"
     @touchend.prevent="hud.openSpellPicker()"
@@ -121,8 +122,35 @@ defineExpose({
     <i class="fa-solid fa-wand-magic-sparkles"></i>
   </button>
 
+  <!--
+    The way into the shop **in touch mode only**, and the reason it exists at
+    all: every other door is desktop-only. The gold pill and the six inventory
+    tiles live in `DesktopHudView`, which a phone does not render, and `P` is
+    not a key a thumb can press — so without this button the shop was
+    unreachable on the device this game is most played on.
+
+    Under the practice-panel button rather than beside it: they are both
+    top-right corner controls, and the panel is the one a player reaches for
+    more often. Hidden behind either modal for the same reason that one is.
+  -->
+  <button
+    v-if="hud.touchUi && !hud.showSpellsPicker && !hud.showShop"
+    class="corner-btn shop-btn"
+    :class="{ 'at-shop': state?.canShop }"
+    @click="hud.openShop()"
+    @touchend.prevent="hud.openShop()"
+    title="Cửa hàng"
+  >
+    <i class="fa-solid fa-coins"></i>
+  </button>
+
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
+
+  <!-- Over the match, not over a pause: see `ShopPanel.vue`. It needs `state`
+       for the live gold and bag, which is why it is mounted here beside the
+       config panel rather than inside either layout view. -->
+  <ShopPanel v-if="state && hud.showShop" :state="state" @close="hud.closeShop()" />
 
   <MatchConfigPanel
     v-if="hud.showSpellsPicker"

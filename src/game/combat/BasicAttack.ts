@@ -85,7 +85,12 @@ export function landBasicAttack(
   const crit = rollCrit(attacker);
   const total = (damage + bonus) * (crit ? (attacker.stats?.critDamage?.value ?? 1) : 1);
 
-  victim.takeDamage(total, attacker);
+  // **The one caller that names a type.** Everything else in the game is an
+  // ability, and an ability is magic unless it says otherwise — see
+  // `combat/Mitigation.ts`'s header on why the default runs that way round.
+  // `landBasicAttack` is the sole place a swing becomes damage, so this single
+  // line is what makes armour mean anything at all.
+  victim.takeDamage(total, attacker, 'PHYSICAL');
   if (crit) showCritSpark(attacker, victim);
   attacker.game?.eventManager?.emit(EventType.ON_ATTACK_HIT, {
     attacker,

@@ -1,5 +1,5 @@
 import type { ActiveMap, NeutralSlot, SpawnSlot, StructureSlot } from '@/content/ContentPack';
-import { HotKeys, SpellHotKeys } from './constants';
+import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
 import Champion from './gameObject/attackableUnits/Champion';
@@ -164,6 +164,14 @@ export default class Game {
   inGameHUD!: InGameHUD;
   player!: Champion;
   spellInputController!: SpellInputController;
+  /**
+   * The inventory's own input, a second instance of the same controller. See
+   * `ItemHotKeys` for why the row is parallel to the kit rather than part of
+   * it; the consequence here is that an item active gets press, hold-and-
+   * release and charging for free, and that neither controller can see the
+   * other's slots.
+   */
+  itemInputController!: SpellInputController;
   minionSpawner!: MinionSpawner;
   touchControls!: TouchControls;
   minimap!: Minimap;
@@ -340,6 +348,20 @@ export default class Game {
       },
     });
 
+    this.itemInputController = new SpellInputController({
+      keyBindings: ItemHotKeys,
+      getSpell: slot => this.player.items[slot]?.active ?? undefined,
+      createContext: (_spell, slot) => {
+        const spell = this.player.items[slot]?.active;
+        if (!spell) return undefined;
+        // No `touchAim` lookup: that map is keyed by *kit* slot, and reading it
+        // here would have item slot 2 aim at whatever the thumb last did to the
+        // champion's W. Item actives are mouse- and key-aimed until the touch
+        // layer grows a row of its own.
+        return this.createSpellContext(spell, this.player, this.worldMouse);
+      },
+    });
+
     this.touchControls = new TouchControls(this.touchControlsHost(), this.touchUi);
     this.applyTouchUiClass();
 
@@ -463,11 +485,11 @@ export default class Game {
    * Every body for one slot is built from `monsterBodyPreset`, whose `camp`
    * is the slot object itself — every member of the same camp ends up
    * holding the exact same `camp` reference, which is what
-   * `Monster.alertCamp` matches on. Each body's starting `position` is then
-   * placed at `slot.{x,y} + member.offset` — a Greater Wolf and its two
-   * Wolves land where the pack's own layout says, not stacked on the slot's
-   * centre; the camp point they idle at and leash back to is `camp`
-   * (unaffected by the offset).
+   * `Monster.alertCamp` matches on. Each body's own spot — `slot.{x,y} +
+   * member.offset` — arrives as `MonsterPresetData.home`, which is what the
+   * body spawns on, walks back to, counts as arrived at and respawns on. The
+   * *leash* is still measured from `camp`, because how far a camp will chase
+   * is a property of the camp and not of one wolf.
    */
   spawnJungle() {
     for (const slot of this.neutralSlots) {
@@ -477,7 +499,6 @@ export default class Game {
       for (const member of monster.members) {
         const preset = monsterBodyPreset(monster, member, slot);
         const body = new Monster({ game: this, preset });
-        body.position.set(slot.x + member.offset.x, slot.y + member.offset.y);
         this.monsters.push(body);
         this.objectManager.addObject(body);
       }
@@ -548,6 +569,7 @@ export default class Game {
     // trails the drag by a frame.
     this.touchControls.update();
     this.spellInputController.update(deltaTime);
+    this.itemInputController.update(deltaTime);
   }
 
   update() {
@@ -882,6 +904,8 @@ export default class Game {
       // `channelProgress` is `Recall`'s own; a spell without one is not
       // channelling anything a button would draw a clock for.
       channelProgress: (spell as Spell & { channelProgress?: number }).channelProgress ?? 0,
+      sustaining: spell.isSustaining,
+      toggle: spell.isToggle,
     };
   }
 
@@ -1089,10 +1113,17 @@ export default class Game {
     }
     // B: go home. Not one of SpellHotKeys' letters, so it never steals a cast.
     if (keyCode === HotKeys.B && !repeated) this.recall();
+    // P: the shop. Same reasoning as B and N — not a kit letter, not an item
+    // digit, so it can never steal a cast. It toggles rather than only
+    // opening, because unlike the config panel the shop does not pause and a
+    // player mid-fight needs one key back out.
+    if (keyCode === HotKeys.P && !repeated) this.inGameHUD?.vueInstance?.hud.toggleShop();
     this.spellInputController.keyDown(keyCode, repeated);
+    this.itemInputController.keyDown(keyCode, repeated);
   }
 
   keyReleased(keyCode: number) {
     this.spellInputController.keyUp(keyCode);
+    this.itemInputController.keyUp(keyCode);
   }
 }

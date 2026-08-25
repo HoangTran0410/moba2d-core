@@ -22,6 +22,8 @@ const fakeSpell = (overrides: Record<string, unknown> = {}) => ({
 
 const fakePlayer = (overrides: Record<string, unknown> = {}) => ({
   avatar: { path: 'avatar.png', key: 'champ_x', status: 'ready' },
+  position: { x: 0, y: 0 },
+  teamId: 'blue',
   isDead: false,
   deathData: null,
   canCast: true,
@@ -314,5 +316,200 @@ describe('computeHudState — the recall control', () => {
   it('cannot be cast by a corpse', () => {
     const player = fakePlayer({ isDead: true, recall: fakeRecall() });
     expect(computeHudState({ player } as any)!.recall!.canCast).toBe(false);
+  });
+});
+
+/**
+ * Whether an ability is *on* — the one thing about a spell the bar never said.
+ *
+ * Reported from a real match: Pudge's W is a toggle and its icon looked
+ * identical whether the meat hook's rot was burning the player's own health or
+ * not. The cooldown wedge is the only state the bar drew, and a toggle spends
+ * almost none of its life in it.
+ */
+describe('a spell that is running', () => {
+  it('says nothing at all for an ordinary spell sitting ready', () => {
+    const state = computeHudState({ player: fakePlayer() } as any)!;
+    expect(state.spells[0].sustaining).toBe(false);
+    expect(state.spells[0].toggle).toBe(false);
+  });
+
+  it('marks a toggle that is on, and calls it a toggle', () => {
+    const player = fakePlayer({
+      spells: [fakeSpell({ isSustaining: true, isToggle: true, sustainDurationMs: 0 })],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustaining).toBe(true);
+    expect(state.spells[0].toggle).toBe(true);
+  });
+
+  it('leaves an open-ended toggle without a clock rather than inventing one', () => {
+    // 0 duration is "no declared end" — the badge says on, and no bar drains.
+    const player = fakePlayer({
+      spells: [fakeSpell({ isSustaining: true, isToggle: true, sustainDurationMs: 0 })],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustainPercent).toBe(0);
+    expect(state.spells[0].sustainSecondsLeft).toBe(0);
+  });
+
+  it('drains a bounded window as a percentage of its own length', () => {
+    const player = fakePlayer({
+      spells: [
+        fakeSpell({ isSustaining: true, sustainDurationMs: 5_000, sustainRemainingMs: 2_000 }),
+      ],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustainPercent).toBe(40);
+    expect(state.spells[0].sustainSecondsLeft).toBe(2);
+  });
+
+  it('survives a spell that has never heard of any of it', () => {
+    // `pregameCatalog` builds ownerless instances, and a pack written against
+    // an older core has no such getters at all. Neither may make the bar throw.
+    const player = fakePlayer({ spells: [{ image: { path: 'x.png' } }] });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustaining).toBe(false);
+    expect(state.spells[0].sustainPercent).toBe(0);
+  });
+});
+
+/**
+ * The three things a champion carries that the bar never showed.
+ *
+ * Gold, six inventory slots and the passive all landed as engine mechanisms
+ * with no way for a player to see any of them — a champion could be holding
+ * two items and 900 gold and the screen looked exactly as it did before items
+ * existed.
+ */
+describe('gold, items and the passive', () => {
+  it('reports the balance the wallet says, and 0 for a unit with no wallet', () => {
+    expect(computeHudState({ player: fakePlayer({ wallet: { balance: 940 } }) } as any)!.gold).toBe(
+      940
+    );
+    expect(computeHudState({ player: fakePlayer() } as any)!.gold).toBe(0);
+  });
+
+  it('always reports six slots, so the row does not reflow as items are bought', () => {
+    const state = computeHudState({ player: fakePlayer() } as any)!;
+    expect(state.items).toHaveLength(6);
+    expect(state.items.every(slot => !slot.filled)).toBe(true);
+  });
+
+  it('describes a held item by what it is', () => {
+    const player = fakePlayer({
+      items: [
+        {
+          def: { name: 'Giày', description: 'đi nhanh hơn' },
+          icon: { path: 'boots.png', key: 'item_boots', status: 'ready' },
+          active: null,
+        },
+      ],
+    });
+    const slot = computeHudState({ player } as any)!.items[0];
+    expect(slot).toMatchObject({
+      filled: true,
+      name: 'Giày',
+      description: 'đi nhanh hơn',
+      image: 'boots.png',
+      hasActive: false,
+    });
+  });
+
+  it('gives a slot its number as a hotkey only when there is something to press', () => {
+    // A key printed on an item that does nothing when pressed is a promise the
+    // bar does not keep. The number is the slot's own, so slot 3 is always "3".
+    const withActive = fakePlayer({
+      items: [
+        {
+          def: { name: 'Gươm' },
+          icon: null,
+          active: { currentCooldown: 0, coolDown: 1_000, isSustaining: false },
+        },
+      ],
+    });
+    expect(computeHudState({ player: withActive } as any)!.items[0].hotKey).toBe('1');
+
+    const inert = fakePlayer({ items: [{ def: { name: 'Giày' }, icon: null, active: null }] });
+    expect(computeHudState({ player: inert } as any)!.items[0].hotKey).toBe('');
+  });
+
+  it('draws an item active’s cooldown the same way an ability’s is drawn', () => {
+    const player = fakePlayer({
+      items: [
+        {
+          def: { name: 'Gươm' },
+          icon: null,
+          active: { currentCooldown: 3_000, effectiveCoolDownMs: 10_000, isSustaining: false },
+        },
+      ],
+    });
+    const slot = computeHudState({ player } as any)!.items[0];
+    expect(slot.showCoolDown).toBe(true);
+    expect(slot.coolDownPercent).toBe(30);
+    expect(slot.coolDownText).toBe(3);
+  });
+
+  it('marks an item active that is running, the same as a toggle ability', () => {
+    const player = fakePlayer({
+      items: [{ def: { name: 'Khiên' }, icon: null, active: { isSustaining: true } }],
+    });
+    expect(computeHudState({ player } as any)!.items[0].sustaining).toBe(true);
+  });
+
+  it('reports the passive, and null for the champions that have none', () => {
+    expect(computeHudState({ player: fakePlayer() } as any)!.passive).toBeNull();
+
+    const player = fakePlayer({
+      passive: {
+        name: 'Nội tại',
+        description: 'luôn bật',
+        image: { path: 'p.png', key: 'spell_p', status: 'ready' },
+      },
+    });
+    expect(computeHudState({ player } as any)!.passive).toMatchObject({
+      name: 'Nội tại',
+      image: 'p.png',
+    });
+  });
+
+  it('leaves a passive with no icon out rather than rendering an empty square', () => {
+    const player = fakePlayer({ passive: { name: 'Nội tại', description: '', image: undefined } });
+    expect(computeHudState({ player } as any)!.passive).toBeNull();
+  });
+
+  it('survives a champion built before any of this existed', () => {
+    // Prototype-only champions (`Object.create`) never run a field
+    // initializer, so `items` is `undefined` rather than empty.
+    const state = computeHudState({ player: { stats: {}, spells: [], buffs: [] } } as any)!;
+    expect(state.items).toHaveLength(6);
+    expect(state.gold).toBe(0);
+    expect(state.passive).toBeNull();
+  });
+});
+
+/**
+ * Whether the shop is reachable from where the player is standing.
+ *
+ * The bar has to answer this without the player having to try: a gold pill
+ * that lights up at the fountain and is quiet everywhere else teaches the rule
+ * in one match, where a button that silently refuses teaches nothing.
+ */
+describe('canShop', () => {
+  const atFountain = (x: number) => ({
+    player: fakePlayer({ teamId: 'blue', position: { x, y: 0 } }),
+    fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }],
+  });
+
+  it('is true standing in your own fountain', () => {
+    expect(computeHudState(atFountain(0) as any)!.canShop).toBe(true);
+  });
+
+  it('is false out in the world', () => {
+    expect(computeHudState(atFountain(2_000) as any)!.canShop).toBe(false);
+  });
+
+  it('is false when the game has no fountains to ask about', () => {
+    expect(computeHudState({ player: fakePlayer() } as any)!.canShop).toBe(false);
   });
 });

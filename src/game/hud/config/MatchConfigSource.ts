@@ -113,6 +113,17 @@ export interface RosterStack {
 }
 
 /**
+ * One buyable item, as the panel's cheat menu lists it. A bare shape rather
+ * than `QualifiedItem` — this file may name a `src/game/` type but must never
+ * import one, and the panel needs three fields of it.
+ */
+export interface ItemOption {
+  id: string;
+  name: string;
+  cost: number;
+}
+
+/**
  * The controls that need a match to be running. Reachable only through
  * `MatchConfigSource.live`, which is `null` on the menu — so a tab cannot
  * render a button that would do nothing, and cannot compile one either.
@@ -128,6 +139,35 @@ export interface MatchLiveControls {
   /** Relative, because the buttons are `+1 / +10 / +100`. */
   addStacks(id: string, spellId: string, amount: number): void;
   clearStacks(id: string, spellId: string): void;
+
+  /**
+   * What this participant can spend, and a way to hand them more.
+   *
+   * Relative like `addStacks`, because the buttons are `+200 / +1000`: an
+   * absolute setter would need a text field, and a text field in a panel with
+   * no keyboard on a phone is a control that does not work.
+   *
+   * A cheat, not a setting, so it is here and not on `CheatConfig`: it changes
+   * the match rather than describing it, and `PregameConfig` has no wallet to
+   * write it into. The same reasoning that keeps refill and clear-cooldowns
+   * out of the persisted config.
+   */
+  goldOf(id: string): number;
+  grantGold(id: string, amount: number): void;
+  /**
+   * Everything any installed pack sells, so a bot can be handed one directly.
+   *
+   * This is the answer to "the player buys items and the bots never do": until
+   * a bot has a shop of its own, the way to a fair match is the panel. Bots
+   * were deliberately not given an automatic buy path — that is a design
+   * decision about how the AI plays, and this is the manual door that does not
+   * pre-empt it.
+   */
+  itemStock(): ItemOption[];
+  /** Into the first free slot. No gold charged and no fountain required — it is a cheat. */
+  giveItem(id: string, itemId: string): void;
+  /** Everything in the bag, back off. */
+  clearItems(id: string): void;
 
   readonly zoom: number;
   setZoom(factor: number): void;

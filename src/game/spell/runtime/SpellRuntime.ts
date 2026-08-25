@@ -113,6 +113,47 @@ export class SpellRuntime {
     return this._cooldownRemainingMs;
   }
 
+  /**
+   * The activation is *running* rather than waiting: a toggle that is on, an
+   * active window open, a channel under way.
+   *
+   * Called `sustain` and not `active` on purpose. `SpellState.ACTIVE` and
+   * `castSpec.active` already both name the narrower of the two states this
+   * covers, and an `isActive` that quietly also counted `CHANNELING` would be
+   * a name that reads correct and is not. `CASTING` and `CHARGING` are
+   * deliberately out: a windup is the ability being *aimed*, not being on.
+   *
+   * It is not `currentCooldown > 0` seen from the other side — a spell whose
+   * cooldown starts at `'start'` is running and counting down at once, and one
+   * waiting on a cooldown has nothing running at all. The HUD had no way to
+   * ask this before, which is why a toggle looked identical on and off.
+   */
+  get isSustaining(): boolean {
+    return this._state === 'ACTIVE' || this._state === 'CHANNELING';
+  }
+
+  /**
+   * How long the running sustain lasts, or **0 when it has no declared end** —
+   * an open-ended toggle the player switches off themselves is exactly that,
+   * and inventing a clock for it would draw a bar filling toward nothing.
+   * 0 also when nothing is running, so a reader never has to ask twice.
+   */
+  get sustainDurationMs(): number {
+    if (!this.isSustaining) return 0;
+    if (this._state === 'CHANNELING') return this.spec.channel?.durationMs ?? 0;
+    return this.spec.active?.maxDurationMs ?? 0;
+  }
+
+  /**
+   * Milliseconds left of it, clamped at 0: `elapsedMs` advances by whatever
+   * the frame was worth, so it can overshoot the end of the window before the
+   * transition that closes it is read on the same tick.
+   */
+  get sustainRemainingMs(): number {
+    const durationMs = this.sustainDurationMs;
+    return durationMs > 0 ? Math.max(0, durationMs - this.elapsedMs) : 0;
+  }
+
   press(context: CastContext): boolean {
     if (this._state === 'ACTIVE') return this.recast(context);
     if (this._state !== 'READY' || !this.delegate.canStart(context)) return false;

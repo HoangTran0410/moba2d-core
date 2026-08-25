@@ -137,6 +137,8 @@ export interface PlayableChampionKit {
   name: string;
   image: string;
   spells: string[];
+  /** Local id of this champion's passive, or absent. See `ChampionEntry.passive`. */
+  passive?: string;
   attack: ChampionAttackTuning;
 }
 
@@ -200,6 +202,7 @@ export const playableKits = (): PlayableChampionKit[] => {
       name: champion.name,
       image: champion.image,
       spells: champion.spells,
+      passive: champion.passive,
       attack: champion.attack ?? DEFAULT_CHAMPION_ATTACK,
     });
   }
@@ -378,6 +381,16 @@ export interface KitPlan {
   attack: ChampionAttackTuning;
   /** Exactly `SLOT_COUNT` ids, in A/Q/W/E/R/D/F order. */
   spellIds: string[];
+  /**
+   * The champion's passive id, or absent.
+   *
+   * Outside `spellIds` on purpose: that list is the hotkey layout, exactly
+   * `SLOT_COUNT` long, and every consumer indexes into it. A passive has no
+   * slot — see `Champion.passive`. It is carried here rather than re-derived
+   * later because a plan is the point where *all* randomness is already
+   * resolved, and a randomly-rolled champion has to bring its own passive.
+   */
+  passiveId?: string;
 }
 
 export interface MatchPlan {
@@ -440,6 +453,7 @@ const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan => {
     name: kit.name,
     avatar: kit.image,
     attack: kit.attack,
+    passiveId: kit.passive,
     spellIds: [
       // Slot 0 is the internal slot and SpellHotKeys[0] is `A`, so whatever sits
       // here is what `A` presses. The basic attack lives there: it is an ability
@@ -515,7 +529,15 @@ export const planMatchKits = (config: {
 
 /** The flat, deduplicated id list a plan needs loaded — what `GameScene` awaits. */
 export const plannedSpellIds = (plan: MatchPlan): string[] => [
-  ...new Set([plan.player, ...plan.bots].flatMap(kit => kit.spellIds)),
+  // Passives ride along: they are ordinary spell modules and `presetFromPlan`
+  // resolves them through the same `classForId`, so a passive left out here is
+  // a champion whose passive is silently missing on the first match and
+  // present on the second, once the background warm-up has caught up.
+  ...new Set(
+    [plan.player, ...plan.bots].flatMap(kit =>
+      kit.passiveId ? [...kit.spellIds, kit.passiveId] : kit.spellIds
+    )
+  ),
 ];
 
 /** A plan with its classes attached. Everything it names must already be loaded. */
@@ -524,6 +546,12 @@ export const presetFromPlan = (plan: KitPlan): ChampionPresetData & { avatar: st
   avatar: plan.avatar,
   attack: plan.attack,
   spells: plan.spellIds.map(classForId),
+  // `classForId` has fallbacks for a miss (a stale slot, a catalogue still
+  // warming) and answers with core's own basic attack. That is right for a
+  // *slot*, which must always hold something pressable, and wrong for a
+  // passive: a champion whose passive did not resolve should have none, not
+  // silently gain a second basic attack armed once per life.
+  passive: plan.passiveId ? classForId(plan.passiveId) : undefined,
 });
 
 /**
@@ -588,6 +616,35 @@ export const monsterFillingSlot = (slot: NeutralSlot): QualifiedMonster | null =
  * specific to that monster, though — a second pack's monster with its own kit needs no
  * change here to pick this up.
  */
+/**
+ * A body's home: its slot, plus its offset turned by the slot's own
+ * `rotationDeg`.
+ *
+ * The rotation is in screen space, where y grows downward, so a positive angle
+ * reads clockwise on screen — which is what a map author sees. See
+ * `NeutralSlot.rotationDeg` for why a map needs to say this at all.
+ *
+ * A non-number is treated as no rotation rather than propagated: `NaN` here is
+ * a monster at `NaN`, which is a body nothing can path to and a health bar
+ * drawn nowhere.
+ */
+const rotatedHome = (
+  offset: { x: number; y: number },
+  slot: NeutralSlot
+): { x: number; y: number } => {
+  const degrees = slot.rotationDeg;
+  if (!Number.isFinite(degrees) || degrees === 0) {
+    return { x: slot.x + offset.x, y: slot.y + offset.y };
+  }
+  const radians = ((degrees as number) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return {
+    x: slot.x + offset.x * cos - offset.y * sin,
+    y: slot.y + offset.x * sin + offset.y * cos,
+  };
+};
+
 export const monsterBodyPreset = (
   monster: QualifiedMonster,
   member: MonsterBody,
@@ -596,6 +653,12 @@ export const monsterBodyPreset = (
   name: member.name,
   avatar: member.avatar,
   camp: slot,
+  // Where this one body stands, which is a different question from where the
+  // camp is: `camp` is the slot object itself, shared by reference across
+  // every member so `alertCamp` can match on identity. `Monster` reads `home`
+  // for its spawn point, its walk home, its arrived check and its respawn —
+  // all four used to read `camp` and collapsed a pit into a pile.
+  home: rotatedHome(member.offset, slot),
   speed: member.speed,
   size: member.size,
   attackRange: member.attackRange,

@@ -1,6 +1,6 @@
 {
   "name": "@moba2d/core",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "type": "module",
   "workspaces": [
     ".",
@@ -80,6 +80,9 @@
     "verify:all": "npm run verify && npm run check-seams --workspace=@moba2d/content-reference",
     "e2e": "node tests/e2e/drive-game.mjs",
     "e2e:hud": "node tests/e2e/hud-mana.mjs",
+    "e2e:shop": "node tests/e2e/drive-shop-hud.mjs",
+    "e2e:shop-touch": "node tests/e2e/drive-shop-touch.mjs",
+    "e2e:camps": "node tests/e2e/verify-camp-spread.mjs",
     "e2e:attacks": "node tests/e2e/drive-basic-attacks.mjs",
     "vendor:copy": "node scripts/copy-vendor.mjs",
     "chunks:check": "node scripts/check-chunks.mjs",

@@ -1,4 +1,5 @@
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
 
 /**
  * What a roster card says about a participant.
@@ -35,6 +36,17 @@ export interface StatRow {
    * plausible one where it does not; the text is the source of truth.
    */
   icon: string;
+  /**
+   * A CSS colour for the value, or absent — which is every row but two.
+   *
+   * It exists for the resistances, and it is a legend rather than decoration:
+   * damage numbers learned three colours (`DAMAGE_TEXT_COLOR`) with nothing on
+   * screen saying which was which, and tinting each resistance with the colour
+   * of the damage it stops makes the pair teach each other. Read straight off
+   * that constant, never restated as a hex, so the explanation cannot drift
+   * away from the thing it explains.
+   */
+  tint?: string;
 }
 
 export interface StatGroup {
@@ -62,6 +74,8 @@ const whole = (value: number): string => String(Math.round(value));
 
 const percent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
 
+const cssColor = (rgb: readonly [number, number, number]): string => `rgb(${rgb.join(', ')})`;
+
 /** One decimal, and no trailing `.0` to make a round number look measured. */
 const perSecond = (perFrame: number): string =>
   `${Number((perFrame * FRAMES_PER_SECOND).toFixed(1))} / giây`;
@@ -86,6 +100,18 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
         },
         { icon: 'fa-heart-pulse', label: 'Hồi máu', value: perSecond(stats.healthRegen.value) },
         { icon: 'fa-bolt', label: 'Hồi năng lượng', value: perSecond(stats.manaRegen.value) },
+        {
+          icon: 'fa-shield-halved',
+          label: 'Giáp',
+          value: whole(stats.armor.value),
+          tint: cssColor(DAMAGE_TEXT_COLOR.PHYSICAL),
+        },
+        {
+          icon: 'fa-hat-wizard',
+          label: 'Kháng phép',
+          value: whole(stats.magicResist.value),
+          tint: cssColor(DAMAGE_TEXT_COLOR.MAGIC),
+        },
       ],
     },
     {
@@ -117,7 +143,7 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
         { icon: 'fa-skull', label: 'Bị hạ', value: whole(tally.deaths) },
         { icon: 'fa-coins', label: 'Lính & quái', value: whole(tally.minionsKilled) },
         { icon: 'fa-hand-fist', label: 'Sát thương gây ra', value: whole(tally.damageDealt) },
-        { icon: 'fa-shield-halved', label: 'Sát thương nhận', value: whole(tally.damageTaken) },
+        { icon: 'fa-heart-crack', label: 'Sát thương nhận', value: whole(tally.damageTaken) },
       ],
     },
   ];

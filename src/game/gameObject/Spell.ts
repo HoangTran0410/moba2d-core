@@ -101,6 +101,41 @@ export default class Spell {
     this.runtime.setCompatibilityCooldown(remainingMs);
   }
 
+  /**
+   * Whether this ability is running right now — a toggle that is on, an active
+   * window open, a channel under way. See `SpellRuntime.isSustaining` for why
+   * it is not called `isActive` and why a windup does not count.
+   *
+   * Read by the HUD, which had no way to ask before: a toggle drew exactly the
+   * same icon on and off, and the only ability state a player could see was
+   * the cooldown wedge.
+   */
+  get isSustaining(): boolean {
+    return this.runtime.isSustaining;
+  }
+
+  /** How long that sustain lasts, or 0 when it has no declared end. */
+  get sustainDurationMs(): number {
+    return this.runtime.sustainDurationMs;
+  }
+
+  /** Milliseconds left of it; 0 both when nothing runs and when it is open-ended. */
+  get sustainRemainingMs(): number {
+    return this.runtime.sustainRemainingMs;
+  }
+
+  /**
+   * Pressing the key again turns it off, rather than doing something new.
+   *
+   * The HUD needs the distinction that `isSustaining` alone does not carry: a
+   * bounded active window ends on its own and wants a countdown, while a
+   * toggle wants a plain on/off badge and the promise that the same key is the
+   * way out.
+   */
+  get isToggle(): boolean {
+    return this.castSpec.activation === 'TOGGLE';
+  }
+
   get castContext(): CastContext | undefined {
     return this._castContext;
   }

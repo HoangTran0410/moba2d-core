@@ -1,5 +1,5 @@
 {
-  "contract": 1,
+  "contract": 3,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -54,6 +54,11 @@
     "combat.GlobalShot.acceleratedSpeed:function",
     "combat.GlobalShot.enemyChampionsOnly:function",
     "combat.GlobalShot.travelRamp:function",
+    "combat.Mitigation:object",
+    "combat.Mitigation.DEFAULT_DAMAGE_TYPE:string",
+    "combat.Mitigation.effectiveDamage:function",
+    "combat.Mitigation.mitigationMultiplier:function",
+    "combat.Mitigation.resistanceAgainst:function",
     "combat.PredefinedFilters:object",
     "combat.PredefinedFilters.attackableUnitInRange:function",
     "combat.PredefinedFilters.canTakeDamage:function",

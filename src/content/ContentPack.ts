@@ -136,6 +136,41 @@ export function isSpellLoader(source: SpellSource): source is SpellLoader {
   return (source as unknown as Record<symbol, unknown>)[SPELL_LOADER_MARK] === true;
 }
 
+/**
+ * An item, as a pack declares it.
+ *
+ * Three optional grants and none of them is a new mechanism: `stats` is a
+ * `StatsModifier`, `passive` is a spell armed once per life exactly like
+ * `ChampionEntry.passive`, and `active` is a spell bound to a key exactly like
+ * a kit slot. See `game/items/Item.ts` for why an item is a *parallel* row
+ * rather than a longer kit.
+ *
+ * An item with none of the three is legal and inert — a component a bigger
+ * item is built out of is exactly that, and refusing it here would mean a pack
+ * could not express a build path.
+ */
+export interface ItemDef {
+  /** A bare identifier, local to this pack. */
+  id: string;
+  name: string;
+  /** Pack-relative asset key. Required: an item with no icon is unbuyable in a shop. */
+  icon: string;
+  /** What it costs. `0` is legal — a starting item, or a quest reward. */
+  cost: number;
+  /** One line, player-facing. What holding it does. */
+  description?: string;
+  /**
+   * Flat bonuses while held. Keys are `ItemStatKey` — an allow-list, not every
+   * field on `StatsModifier`; see that constant's own doc comment for why
+   * `health` and `size` are deliberately not on it.
+   */
+  stats?: Record<string, number>;
+  /** Local spell id, armed once per life while this is held. */
+  passive?: string;
+  /** Local spell id, bound to this item's inventory hotkey. */
+  active?: string;
+}
+
 export interface ChampionEntry {
   id: string;
   name: string;
@@ -145,6 +180,20 @@ export interface ChampionEntry {
   spells: string[];
   /** Local id of this champion's way home. Absent on a map that grants none. */
   recall?: string;
+  /**
+   * Local id of this champion's passive, or absent — which is most champions.
+   *
+   * A spell the champion *has* rather than one it casts: core presses it once
+   * per life and binds it to no key. It is deliberately not a fifth entry in
+   * `spells` — that array is the kit's hotkey layout and the thing a player
+   * rearranges in the loadout editor, and a passive has neither a key nor a
+   * slot to be moved into. See `Champion.passive`.
+   *
+   * The id still has to name a spell in this pack, and its `spellDisplay`
+   * entry is what the HUD reads, so a passive is described to the player
+   * exactly the way an ability is.
+   */
+  passive?: string;
   /**
    * Whether the pregame screen may offer this as a champion.
    *
@@ -311,6 +360,27 @@ export interface NeutralSlot {
   x: number;
   y: number;
   r: number;
+  /**
+   * Degrees to turn this camp's internal layout by — every `MonsterBody.offset`
+   * is rotated about the slot before it becomes a body's home. Absent means 0,
+   * which is every camp of one and every slot a layout was drawn for directly.
+   *
+   * It exists because a map's symmetry meets a shared `MonsterDef`. Summoner's
+   * Rift's two halves are 180° *rotations* of each other, not copies, and one
+   * `members` array serves both of a camp's slots — so the pit whose layout the
+   * offsets were not drawn from had its bodies pointing the wrong way, and
+   * stood them in a wall. Measured: on the red side two of two wolves and three
+   * of three raptors were on unwalkable ground, and every one of them became
+   * walkable once its offset was negated.
+   *
+   * Core cannot work that out for itself — "my two halves are rotations of each
+   * other" is a fact about a map — so the map states it here.
+   *
+   * A rotation and not a `mirrored` boolean on purpose: a mirror is the wrong
+   * transform. Reflecting a layout swaps its handedness, so a pit laid out
+   * clockwise would come back anticlockwise.
+   */
+  rotationDeg?: number;
 }
 
 export interface LaneDefinition {
@@ -402,6 +472,12 @@ export interface ContentPackData {
   champions?: ChampionEntry[];
   /** Keyed by *local* spell id — the same keys as `ContentPackCode.spells`. */
   spellDisplay?: Record<string, SpellDisplayData>;
+  /**
+   * Keyed by *local* item id. Absent for a pack that ships no items, which is
+   * every pack that existed before items did — the field is optional for the
+   * same reason `maps` is.
+   */
+  items?: Record<string, ItemDef>;
   monsters?: Record<string, MonsterDef>;
   maps?: MapDefinition[];
 }

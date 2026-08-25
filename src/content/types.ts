@@ -78,6 +78,11 @@ export type { AssetHandle } from '@/managers/AssetManager';
  * objects has had no published element type to name it with.
  */
 export type { MatchRules } from '@/game/config/PregameConfig';
+/**
+ * The third argument to `takeDamage`. A pack names it when its ability is not
+ * magic — a physical on-hit, a true-damage execute — and omits it otherwise.
+ */
+export type { DamageType } from '@/game/combat/Mitigation';
 export type { default as GameObject } from '@/game/gameObject/GameObject';
 
 export type { ContentApi } from './ContentApi';

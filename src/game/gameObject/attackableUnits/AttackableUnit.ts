@@ -6,8 +6,13 @@ import StatusFlags from '@/game/enums/StatusFlags';
 import GameObject from '@/game/gameObject/GameObject';
 import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import Stats from '@/game/gameObject/Stats';
-import CombatText from '@/game/gameObject/helpers/CombatText';
+import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
+import CombatText, {
+  DAMAGE_TEXT_COLOR,
+  GOLD_TEXT_COLOR,
+} from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
+import type Wallet from '@/game/economy/Wallet';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import PathAgent from '@/game/nav/PathAgent';
 import { NAV_MAX_TERRAIN_RADIUS } from '@/game/nav/NavGrid';
@@ -48,6 +53,32 @@ export const DISPLACEMENT_GRACE_FRAMES = 2;
  */
 export const RECENT_ATTACKER_MS = 1500;
 
+/**
+ * The status flags that count as crowd control — what a cleanse takes off.
+ *
+ * A mask rather than a list of buff classes, so a pack's own stun is cleansed
+ * without core having ever heard of it. The definition lives here because it
+ * is already core's: `Stats.updateActionState` derives `CAN_MOVE`/`CAN_CAST`
+ * from these same bits every frame, and a pack computing its own answer would
+ * be a second one.
+ *
+ * `Invulnerable`, `Stealthed`, `Ghosted` and `Targetable` are deliberately
+ * out: they are not things done *to* you, and a cleanse that stripped them
+ * would be a dispel wearing a smaller name. So is `Slow`, which is not a
+ * status flag at all — it is a stat modifier, and it stays.
+ */
+export const CROWD_CONTROL_FLAGS =
+  StatusFlags.Disarmed |
+  StatusFlags.Charmed |
+  StatusFlags.Taunted |
+  StatusFlags.Feared |
+  StatusFlags.Grounded |
+  StatusFlags.NearSighted |
+  StatusFlags.Rooted |
+  StatusFlags.Silenced |
+  StatusFlags.Stunned |
+  StatusFlags.Suppressed;
+
 export default class AttackableUnit extends GameObject {
   declare game: GameObjectRuntimeContext;
 
@@ -85,6 +116,26 @@ export default class AttackableUnit extends GameObject {
    * `Pet`/`Turret` are neither.
    */
   killCredit: KillCredit = 'minion';
+
+  /**
+   * What killing this unit pays whoever did it. `0` for anything that is not
+   * worth money, which is the base case — a `Fountain`, a ward, a summoned pet.
+   *
+   * Asked of the **victim**, exactly like `killCredit` beside it, and for the
+   * same reason: an `instanceof` at the crediting site is how a `Pet` (which
+   * extends `Champion`) ends up paying out a champion bounty. That bug has
+   * already shipped here once, on the kill-count side.
+   */
+  goldBounty = 0;
+
+  /**
+   * What this unit can spend, or `null` for one that never spends anything.
+   *
+   * Null is the base case and `Champion` is what fills it in — a minion that
+   * last-hits another minion is not banking gold, and nothing at the crediting
+   * site has to know that. `Pet` nulls it again on purpose; see `Wallet`.
+   */
+  wallet: Wallet | null = null;
 
   buffs: Buff[] = [];
   _buffEffectsToEnable = 0;
@@ -511,7 +562,18 @@ export default class AttackableUnit extends GameObject {
     );
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit): void {
+  /**
+   * `type` is optional and defaults to `MAGIC` — see `combat/Mitigation.ts` for
+   * why that default is the only one that could have been chosen. Every
+   * ability in every published pack calls this with two arguments, and every
+   * unit starts at zero of both resistances, so adding the parameter moved no
+   * number in the game on the day it landed.
+   */
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type: DamageType = DEFAULT_DAMAGE_TYPE
+  ): void {
     if (this.isDead) return;
 
     // Whole points, in and out. Damage is built from lerps, percentages and
@@ -521,6 +583,20 @@ export default class AttackableUnit extends GameObject {
     // shields also deal in whole points, and again after, because a partial
     // absorb reintroduces a fraction.
     damage = Math.round(damage);
+    if (damage <= 0) return;
+
+    // **Resistance first, shields second, and the order is the rule.** Armour
+    // is a property of the body being hit, so it makes the hit *smaller*; a
+    // shield is a pool standing in front of the body, which eats a hit whose
+    // size is already settled. Doing it the other way round has a shield
+    // absorb the raw number and then mitigate the remainder, which prices a
+    // shield differently depending on the victim's armour for no reason a
+    // player could ever recover.
+    //
+    // It also settles what `swung` below means: a reflect answers the hit that
+    // arrived, and 40 stopped to 20 by armour genuinely *was* a 20, whereas 40
+    // eaten by a shield was still a 40.
+    damage = Math.round(effectiveDamage(damage, type, this));
     if (damage <= 0) return;
 
     // What was aimed at this unit, before anything ate it. Retaliation is
@@ -551,7 +627,11 @@ export default class AttackableUnit extends GameObject {
       return;
     }
 
-    CombatText.show(this, 'damage', damage, [255, 0, 0]);
+    // Its own type's colour, not one red for all three: see `DAMAGE_TEXT_COLOR`.
+    // `CombatText.show` keys its merge on the colour too, so this is also what
+    // keeps a physical hit and a magic hit on one victim from blending into a
+    // single number that hides which was which.
+    CombatText.show(this, 'damage', damage, [...DAMAGE_TEXT_COLOR[type]]);
 
     // What actually landed, for the scoreboard: capped at the pool that was
     // there to take it, so a 200-damage execute on a 12-health minion is 12
@@ -600,6 +680,36 @@ export default class AttackableUnit extends GameObject {
     }
   }
 
+  /**
+   * Drops every crowd-control effect **somebody else** put on this unit, and
+   * answers how many it took.
+   *
+   * The mechanic a Quicksilver-style item is, and the one an ally-cast cleanse
+   * will be. It lives here rather than in whichever pack wants it first
+   * because the definition of "this buff is crowd control" is core's — see
+   * `CROWD_CONTROL_FLAGS`.
+   *
+   * **Only what someone else did to you.** `Stasis` locks a champion down with
+   * the same `Stunned` bit a real stun uses, but it is self-cast and it is a
+   * way *out* of a fight: one item cancelling another is a bug with two
+   * buttons. The unit's own buffs are left alone, which is also the rule the
+   * health bar's CC line already follows.
+   *
+   * Iterated over a copy, for the same reason `reactToDamage` is: deactivating
+   * a buff calls out to listeners that must not mutate `buffs` under the loop.
+   */
+  cleanse(): number {
+    let removed = 0;
+    for (const buff of [...this.buffs]) {
+      if (buff.toRemove) continue;
+      if (buff.sourceUnit === this) continue;
+      if ((buff.statusFlagsToEnable & CROWD_CONTROL_FLAGS) === 0) continue;
+      buff.deactivateBuff();
+      removed += 1;
+    }
+    return removed;
+  }
+
   die(deathData: UnitDeathData): void {
     // `die` is reachable on a corpse — `Champion.die` runs cleanup that is safe
     // to repeat — so the ledger is only touched on the transition.
@@ -609,6 +719,18 @@ export default class AttackableUnit extends GameObject {
       if (killer && killer !== this) {
         if (this.killCredit === 'champion') killer.tally.kills++;
         else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
+        // Inside the same `!isDead` guard the ledger is: `die` is reachable on
+        // a corpse (`Champion.die` runs cleanup that is safe to repeat), and a
+        // bounty paid on every one of those calls is an unbounded gold press
+        // pointed at anything that keeps hitting a body.
+        killer.wallet?.earn(this.goldBounty);
+        // Over the **killer**, which is the opposite of every other combat
+        // text — see `GOLD_TEXT_COLOR`. Guarded on a wallet as well as on the
+        // bounty, so a minion that last-hits another minion does not float a
+        // number for money it cannot hold.
+        if (killer.wallet && this.goldBounty > 0) {
+          CombatText.show(killer, 'gold', this.goldBounty, [...GOLD_TEXT_COLOR]);
+        }
       }
     }
     this.deathData = deathData;

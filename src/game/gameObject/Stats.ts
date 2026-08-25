@@ -136,6 +136,8 @@ export class StatsModifier {
   onHitDamage = new StatModifier(0);
   critChance = new StatModifier(0);
   critDamage = new StatModifier(0);
+  armor = new StatModifier(0);
+  magicResist = new StatModifier(0);
 
   addModifier(modifier: StatsModifier) {
     if (!(modifier instanceof StatsModifier)) return;
@@ -156,6 +158,8 @@ export class StatsModifier {
     this.onHitDamage.add(modifier.onHitDamage);
     this.critChance.add(modifier.critChance);
     this.critDamage.add(modifier.critDamage);
+    this.armor.add(modifier.armor);
+    this.magicResist.add(modifier.magicResist);
   }
 
   removeModifier(modifier: StatsModifier) {
@@ -177,6 +181,8 @@ export class StatsModifier {
     this.onHitDamage.remove(modifier.onHitDamage);
     this.critChance.remove(modifier.critChance);
     this.critDamage.remove(modifier.critDamage);
+    this.armor.remove(modifier.armor);
+    this.magicResist.remove(modifier.magicResist);
   }
 }
 
@@ -259,6 +265,24 @@ export default class Stats {
   critChance = new Stat(0, 1, 0);
   /** What a crit multiplies the swing by. 1.75 is +75%, League's own number. */
   critDamage = new Stat(CRIT_MULTIPLIER);
+  /**
+   * Resistance to `PHYSICAL` damage, on the `100 / (100 + r)` curve
+   * `combat/Mitigation.ts` owns — 100 halves the hit.
+   *
+   * **Zero by default, and that is the whole migration plan.** Damage types
+   * arrived long after 240 abilities were written and tuned; starting every
+   * unit in the game at 0 of both resistances means the multiplier is exactly
+   * 1 everywhere on the day they landed, so not one existing number moved.
+   * A resistance is something a champion preset, a buff or a pack now *can*
+   * grant, never something they inherited.
+   *
+   * Negative is meaningful and supported — armour shred — and `Mitigation`
+   * mirrors the curve rather than extending it, so no amount of shred ever
+   * turns a hit into a heal.
+   */
+  armor = new Stat(0);
+  /** Resistance to `MAGIC` damage. Same curve, same default, same reasoning as `armor`. */
+  magicResist = new Stat(0);
 
   actionState =
     ActionState.CAN_CAST | ActionState.CAN_MOVE | ActionState.CAN_ATTACK | ActionState.TARGETABLE;
@@ -282,6 +306,8 @@ export default class Stats {
     this.onHitDamage.addModifier(modifier.onHitDamage);
     this.critChance.addModifier(modifier.critChance);
     this.critDamage.addModifier(modifier.critDamage);
+    this.armor.addModifier(modifier.armor);
+    this.magicResist.addModifier(modifier.magicResist);
   }
 
   removeModifier(modifier: StatsModifier) {
@@ -303,6 +329,8 @@ export default class Stats {
     this.onHitDamage.removeModifier(modifier.onHitDamage);
     this.critChance.removeModifier(modifier.critChance);
     this.critDamage.removeModifier(modifier.critDamage);
+    this.armor.removeModifier(modifier.armor);
+    this.magicResist.removeModifier(modifier.magicResist);
   }
 
   getActionState(state: number): boolean {

@@ -19,6 +19,11 @@ import {
  * refuses the map). Each of those surfaces as a broken match some minutes
  * in. Named at load, they are a sentence.
  */
+import { ITEM_STAT_KEYS } from '@/game/items/itemStats';
+
+/** `ITEM_STAT_KEYS` as a set — see `checkItems`. */
+const GRANTABLE_STATS = new Set<string>(ITEM_STAT_KEYS);
+
 export type ValidationResult = { ok: true; pack: ContentPack } | { ok: false; errors: string[] };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -168,6 +173,21 @@ function checkChampions(pack: Record<string, unknown>, errors: string[]): void {
         errors.push(`champions.${entry.id}: spell ${id} is not in this pack`);
       }
     }
+    if (entry.passive !== undefined) {
+      if (typeof entry.passive !== 'string') {
+        errors.push(`champions.${entry.id}.passive: must be a string`);
+      } else if (spellsProvided && !(entry.passive in spells)) {
+        errors.push(`champions.${entry.id}: passive ${entry.passive} is not in this pack`);
+      } else if (entry.spells?.includes?.(entry.passive)) {
+        // Both a passive *and* a kit slot is two instances of one spell on one
+        // champion, one of them armed by core and one bound to a key. The
+        // player then sees the same icon twice and only one of them does
+        // anything the tooltip describes.
+        errors.push(
+          `champions.${entry.id}: passive ${entry.passive} is also in the kit; it must be one or the other`
+        );
+      }
+    }
     if (entry.recall !== undefined) {
       if (typeof entry.recall !== 'string') {
         errors.push(`champions.${entry.id}.recall: must be a string`);
@@ -216,6 +236,87 @@ function checkSpellDisplay(pack: Record<string, unknown>, errors: string[]): voi
             : fieldValue === null || typeof fieldValue === 'string';
       if (!ok) {
         errors.push(`spellDisplay.${id}.${field}: must be a ${kind}`);
+      }
+    }
+  }
+}
+
+/**
+ * An item, as a pack declares it.
+ *
+ * Two of these checks close a silent failure rather than a loud one, which is
+ * the whole argument for this file existing:
+ *
+ *   - a `stats` key that is not on `ITEM_STAT_KEYS` grants nothing, for ever,
+ *     with nothing anywhere to look at. `modifierFor` skips it deliberately —
+ *     reaching that branch at runtime means core and this validator disagree.
+ *   - a `passive`/`active` naming a spell the pack does not ship builds an
+ *     item whose whole point never happens, and the player is simply out the
+ *     gold.
+ *
+ * The `health`/`mana`/`size` exclusion is not pedantry: those are current
+ * pools and the body, so an item granting one would top a champion up on
+ * equip and **take it back on sale**, which is a shop that can kill you. See
+ * `ITEM_STAT_KEYS`.
+ */
+function checkItems(pack: Record<string, unknown>, errors: string[]): void {
+  if (pack.items === undefined) return;
+  if (!isObject(pack.items)) {
+    errors.push('items: must be an object');
+    return;
+  }
+  // See `checkChampions`'s identical guard: an absent `spells` key means only
+  // the data half is on the table, so there is nothing yet to resolve an
+  // item's spell ids against. `install()` still validates the merged pack.
+  const spellsProvided = pack.spells !== undefined;
+  const spells = isObject(pack.spells) ? pack.spells : {};
+
+  for (const [key, value] of Object.entries(pack.items)) {
+    const path = `items.${key}`;
+    if (!isObject(value)) {
+      errors.push(`${path}: must be an object`);
+      continue;
+    }
+    // The map key is what everything else looks this item up by, so an `id`
+    // saying something else is two names for one thing.
+    if (value.id !== key) {
+      errors.push(`${path}.id: must equal its key, got ${JSON.stringify(value.id)}`);
+    }
+    if (typeof value.name !== 'string') errors.push(`${path}.name: must be a string`);
+    if (typeof value.icon !== 'string') {
+      errors.push(`${path}.icon: must be a string — an item with no icon is unbuyable`);
+    }
+    if (!isFiniteNumber(value.cost) || (value.cost as number) < 0) {
+      errors.push(`${path}.cost: must be a number of 0 or more`);
+    }
+    if (value.description !== undefined && typeof value.description !== 'string') {
+      errors.push(`${path}.description: must be a string when present`);
+    }
+
+    if (value.stats !== undefined) {
+      if (!isObject(value.stats)) {
+        errors.push(`${path}.stats: must be an object`);
+      } else {
+        for (const [statKey, amount] of Object.entries(value.stats)) {
+          if (!GRANTABLE_STATS.has(statKey)) {
+            errors.push(`${path}.stats.${statKey}: not a stat an item may grant`);
+          }
+          if (!isFiniteNumber(amount)) {
+            errors.push(`${path}.stats.${statKey}: must be a finite number`);
+          }
+        }
+      }
+    }
+
+    for (const slot of ['passive', 'active'] as const) {
+      const spellId = value[slot];
+      if (spellId === undefined) continue;
+      if (typeof spellId !== 'string') {
+        errors.push(`${path}.${slot}: must be a string`);
+        continue;
+      }
+      if (spellsProvided && !(spellId in spells)) {
+        errors.push(`${path}: ${slot} ${spellId} is not in this pack`);
       }
     }
   }
@@ -454,6 +555,7 @@ export function validatePack(candidate: unknown): ValidationResult {
   checkMonsterAbilities(candidate, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkItems(candidate, errors);
   checkMonsters(candidate, errors);
   checkMaps(candidate, errors);
 
@@ -483,6 +585,7 @@ export function validatePackData(candidate: unknown): DataValidationResult {
   checkManifest(candidate.manifest, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkItems(candidate, errors);
   checkMonsters(candidate, errors);
   checkMaps(candidate, errors);
 

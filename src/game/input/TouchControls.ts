@@ -78,6 +78,14 @@ export interface TouchSpellView {
   readonly channeling?: boolean;
   /** 0..1 through that channel. Meaningless, and 0, while `channeling` is false. */
   readonly channelProgress?: number;
+  /**
+   * The ability is running right now — a toggle that is on, an active window
+   * open. See `Spell.isSustaining`; the desktop bar draws the same fact as a
+   * lit tile and a BẬT/TẮT badge.
+   */
+  readonly sustaining?: boolean;
+  /** Pressing the button again turns it off rather than doing something new. */
+  readonly toggle?: boolean;
 }
 
 /**
@@ -766,6 +774,12 @@ export class TouchControls {
       if (cancelling) stroke(235, 70, 70, 240);
       else if (view.charging) stroke(255, 208, 120, 240);
       else if (gesture) stroke(120, 220, 255, 240);
+      // Running right now — the same green the desktop bar lights a toggle's
+      // tile with. Below the three gesture colours because those describe what
+      // the thumb is doing this instant, which always wins over a standing
+      // state; above the resting ring because "this is on" is the only thing
+      // here a player can otherwise not see at all.
+      else if (view.sustaining) stroke(75, 208, 134, 240);
       else stroke(210, 210, 210, visual.dim ? 90 : 160);
       circle(button.x, button.y, diameter);
 

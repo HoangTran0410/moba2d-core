@@ -9,7 +9,9 @@
  * here, and both views only choose how to lay the result out.
  */
 import type Game from '@/game/Game';
-import { HotKeys, SpellHotKeys } from '@/game/constants';
+import { HotKeys, ItemHotKeys, SpellHotKeys } from '@/game/constants';
+import { INVENTORY_SIZE } from '@/game/items/Item';
+import { atOwnFountain } from '@/game/economy/ItemShop';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 
 function ensureVisibleAsset(asset: Pick<AssetHandle, 'key' | 'status'> | undefined): void {
@@ -54,6 +56,21 @@ export interface SpellDisplay {
   manaCost: number;
   /** False once the pool has dropped below manaCost, which greys the icon. */
   affordable: boolean;
+  /**
+   * The ability is running right now — a toggle that is on, an active window
+   * open, a channel under way. See `Spell.isSustaining`.
+   *
+   * Deliberately not the same question as `showCoolDown`: a spell whose
+   * cooldown starts at `'start'` is running and counting down at once, and
+   * before this existed a toggle drew exactly the same icon on and off.
+   */
+  sustaining: boolean;
+  /** Pressing the key again turns it off. Drives an on/off badge, not a clock. */
+  toggle: boolean;
+  /** 0..100 of the sustain left. **0 when it has no declared end**, not 100. */
+  sustainPercent: number;
+  /** Whole seconds left; 0 when it has no declared end. */
+  sustainSecondsLeft: number;
 }
 
 export interface BuffDisplay {
@@ -97,6 +114,45 @@ export interface RecallDisplay {
   canCast: boolean;
 }
 
+/**
+ * One inventory slot. **Always six of them**, filled or not: the row is a
+ * fixed shape a player learns the position of, and a list that grew as items
+ * were bought would move every key under their thumb.
+ */
+export interface ItemSlotDisplay {
+  filled: boolean;
+  /** '' for an empty slot, and for an item whose pack named art nothing registered. */
+  image: string;
+  name: string;
+  description: string;
+  /**
+   * '1'..'6', or **''** for an item with no active.
+   *
+   * A key printed on something that does nothing when pressed is a promise the
+   * bar does not keep — and most items are exactly that: stats and a passive.
+   */
+  hotKey: string;
+  hasActive: boolean;
+  coolDownPercent: number;
+  coolDownText: number;
+  showCoolDown: boolean;
+  canCast: boolean;
+  /** The active is running — same question, same answer, as `SpellDisplay.sustaining`. */
+  sustaining: boolean;
+}
+
+/**
+ * The champion's own passive: a spell it *has* rather than one it casts, so it
+ * carries no key, no cooldown and no cost. Null for the champions that have
+ * none, which is most of them, and null for one whose spell has no icon —
+ * there is nothing to draw, and an empty square in the bar reads as a bug.
+ */
+export interface PassiveDisplay {
+  image: string;
+  name: string;
+  description: string;
+}
+
 export interface HudState {
   avatar: string;
   isDead: boolean;
@@ -106,6 +162,21 @@ export interface HudState {
   buffs: BuffDisplay[];
   /** Null for a unit with no recall at all — a headless test, mostly. */
   recall: RecallDisplay | null;
+  /** Whole coins. 0 for a unit with no wallet — a minion, a pet, a test double. */
+  gold: number;
+  /** Always `INVENTORY_SIZE` entries. See `ItemSlotDisplay`. */
+  items: ItemSlotDisplay[];
+  passive: PassiveDisplay | null;
+  /**
+   * The shop is reachable from where this champion is standing.
+   *
+   * Read through `ItemShop.atOwnFountain` rather than restated here: the bar
+   * lighting up somewhere the shop would then refuse is worse than no light at
+   * all, and one rule with two implementations is how that happens. It is what
+   * teaches the rule — a pill that brightens at the fountain says "here" in
+   * one match, where a button that silently refuses says nothing.
+   */
+  canShop: boolean;
 }
 
 function buildStats(player: any): StatsDisplay {
@@ -152,6 +223,12 @@ function buildSpells(player: any): SpellDisplay[] {
       const coolDown = spell?.effectiveCoolDownMs ?? spell?.coolDown ?? 0;
       const manaCost = spell?.effectiveManaCost ?? spell?.manaCost ?? 0;
 
+      // `=== true` rather than a truthy read: an ownerless catalogue instance
+      // and a spell from a pack built against an older core both answer
+      // `undefined` here, and neither may make the bar throw or glow.
+      const sustaining = spell?.isSustaining === true;
+      const sustainDurationMs = sustaining ? (spell?.sustainDurationMs ?? 0) : 0;
+
       return {
         instance: spell,
         image: image?.path,
@@ -173,8 +250,98 @@ function buildSpells(player: any): SpellDisplay[] {
         stackCount,
         manaCost,
         affordable: (mana?.value ?? 0) >= manaCost,
+        sustaining,
+        toggle: spell?.isToggle === true,
+        // A duration of 0 means "no declared end" (`SpellRuntime.sustainDurationMs`),
+        // so the percentage is 0 rather than a bar filling toward nothing.
+        sustainPercent:
+          sustainDurationMs > 0
+            ? Math.min(
+                100,
+                Math.max(0, ((spell?.sustainRemainingMs ?? 0) / sustainDurationMs) * 100)
+              )
+            : 0,
+        sustainSecondsLeft:
+          sustainDurationMs > 0 ? Math.ceil((spell?.sustainRemainingMs ?? 0) / 1000) : 0,
       };
     });
+}
+
+const EMPTY_SLOT: Omit<ItemSlotDisplay, 'hotKey'> = {
+  filled: false,
+  image: '',
+  name: '',
+  description: '',
+  hasActive: false,
+  coolDownPercent: 0,
+  coolDownText: 0,
+  showCoolDown: false,
+  canCast: false,
+  sustaining: false,
+};
+
+/**
+ * Six slots, always. See `ItemSlotDisplay` for why the empty ones are here.
+ *
+ * The icon comes off `HeldItem.icon`, an already-resolved handle, rather than
+ * being looked up from the def's key: `AssetManager.get` throws on an unknown
+ * key and this function runs twenty times a second, so a pack with one bad
+ * icon key would take the whole bar down mid match. `ItemShop` does that
+ * lookup once, at purchase, and guards it.
+ */
+function buildItems(player: any): ItemSlotDisplay[] {
+  const held = player.items ?? [];
+  const slots: ItemSlotDisplay[] = [];
+
+  for (let slot = 0; slot < INVENTORY_SIZE; slot++) {
+    const item = held[slot];
+    const key = ItemHotKeys[slot] ? String.fromCharCode(ItemHotKeys[slot]).toUpperCase() : '';
+
+    if (!item) {
+      slots.push({ ...EMPTY_SLOT, hotKey: '' });
+      continue;
+    }
+
+    ensureVisibleAsset(item.icon);
+    const active = item.active ?? null;
+    // `effectiveCoolDownMs`, not the spell's own tuning field, for the same
+    // reason `buildSpells` uses it: under a cooldown-reduction match the two
+    // differ and the icon has to agree with what the cast path actually waits.
+    const coolDown = active?.effectiveCoolDownMs ?? active?.coolDown ?? 0;
+    const currentCooldown = active?.currentCooldown ?? 0;
+
+    slots.push({
+      filled: true,
+      image: item.icon?.path ?? '',
+      name: item.def?.name ?? '',
+      description: item.def?.description ?? '',
+      hotKey: active ? key : '',
+      hasActive: !!active,
+      coolDownPercent: coolDown > 0 ? Math.min((currentCooldown / coolDown) * 100, 100) : 0,
+      coolDownText: Math.ceil(currentCooldown / 1000),
+      showCoolDown: currentCooldown > 0,
+      canCast: !!active && !!player.canCast && !player.isDead,
+      sustaining: active?.isSustaining === true,
+    });
+  }
+
+  return slots;
+}
+
+/**
+ * The passive, or null. Null for a champion with none *and* for one whose
+ * passive spell carries no icon — the bar has nothing to draw, and an empty
+ * square in a row of artwork reads as a broken image rather than as a feature.
+ */
+function buildPassive(player: any): PassiveDisplay | null {
+  const passive = player.passive;
+  if (!passive?.image?.path) return null;
+  ensureVisibleAsset(passive.image);
+  return {
+    image: passive.image.path,
+    name: passive.name ?? '',
+    description: passive.description ?? '',
+  };
 }
 
 /**
@@ -256,5 +423,9 @@ export function computeHudState(game: Game | undefined | null): HudState | null 
     spells: buildSpells(player),
     buffs: buildBuffs(player),
     recall: buildRecall(player),
+    gold: player.wallet?.balance ?? 0,
+    items: buildItems(player),
+    passive: buildPassive(player),
+    canShop: atOwnFountain(player, { fountains: (game as any)?.fountains ?? [] }),
   };
 }

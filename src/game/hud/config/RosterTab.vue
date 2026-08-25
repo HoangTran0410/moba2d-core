@@ -219,6 +219,56 @@ const clearStacks = (row: ConfigRosterEntry, spellId: string): void => {
 
 const STACK_STEPS = [1, 10, 100];
 
+/**
+ * The gold cheat's steps.
+ *
+ * Buttons rather than a text field, and relative rather than absolute, for the
+ * same reason `STACK_STEPS` is: this panel has to work under a thumb on a
+ * phone, where opening a keyboard over a modal to type "2500" is a control
+ * that does not work. Two sizes — a component and roughly a finished item.
+ */
+const GOLD_STEPS = [200, 1000];
+
+const goldOf = (row: ConfigRosterEntry): number => {
+  void panel.version.value;
+  return live.value?.goldOf(row.id) ?? 0;
+};
+
+const grantGold = (row: ConfigRosterEntry, amount: number): void => {
+  live.value?.grantGold(row.id, amount);
+  panel.invalidate();
+};
+
+const itemStock = computed(() => {
+  void panel.version.value;
+  return live.value?.itemStock() ?? [];
+});
+
+/**
+ * Which item each row's picker is showing, keyed by participant id.
+ *
+ * Keyed by id and not by index because the roster is spliced when a bot is
+ * removed — an index-keyed map would silently move one bot's selection onto
+ * another's picker.
+ */
+const pickedItem = ref<Record<string, string>>({});
+
+const giveItem = (row: ConfigRosterEntry): void => {
+  const itemId = pickedItem.value[row.id] ?? itemStock.value[0]?.id;
+  if (!itemId) return;
+  live.value?.giveItem(row.id, itemId);
+  panel.invalidate();
+};
+
+const clearItems = (row: ConfigRosterEntry): void => {
+  live.value?.clearItems(row.id);
+  panel.invalidate();
+};
+
+const onItemPicked = (row: ConfigRosterEntry, event: Event): void => {
+  pickedItem.value[row.id] = (event.target as HTMLSelectElement).value;
+};
+
 const scoreOf = (row: ConfigRosterEntry) => {
   void panel.version.value;
   return live.value?.scoreOf(row.id) ?? { kills: 0, deaths: 0, cs: 0 };
@@ -433,10 +483,23 @@ defineExpose({
               <h4 class="practice-stat-title">{{ group.title }}</h4>
               <div v-for="stat of group.rows" :key="stat.label" class="practice-stat-row">
                 <span class="practice-stat-label">
-                  <i class="fas practice-stat-icon" :class="stat.icon" aria-hidden="true"></i>
+                  <i
+                    class="fas practice-stat-icon"
+                    :class="stat.icon"
+                    :style="stat.tint ? { color: stat.tint } : undefined"
+                    aria-hidden="true"
+                  ></i>
                   {{ stat.label }}
                 </span>
-                <span class="practice-stat-value">{{ stat.value }}</span>
+                <!-- `tint` is a legend, not decoration: the two resistances
+                     wear the colour of the damage each one stops, which is the
+                     only thing on screen that says what the amber, violet and
+                     white floating numbers mean. See `StatRow.tint`. -->
+                <span
+                  class="practice-stat-value"
+                  :style="stat.tint ? { color: stat.tint } : undefined"
+                  >{{ stat.value }}</span
+                >
               </div>
             </section>
           </div>
@@ -516,6 +579,72 @@ defineExpose({
               >
                 Xoá hồi chiêu
               </button>
+            </div>
+
+            <!--
+              Gold and items: the two cheats that exist because bots do not buy
+              anything. The player earns gold and shops; a bot earns gold and
+              has nowhere to spend it, so a match drifts one-sided a few
+              minutes in. Until the AI has a shop of its own this row is the
+              way to a fair fight — and it is deliberately manual, so it does
+              not pre-empt what that AI should eventually decide for itself.
+
+              `@touchend.prevent` beside every `@click`: `GameScene` cancels
+              every touch on the page, so a `@click`-only button is dead under
+              a thumb.
+            -->
+            <div v-if="live" class="practice-cheat-stack">
+              <span class="practice-cheat-stack-name">
+                Vàng
+                <strong class="practice-cheat-stack-count">{{ goldOf(row) }}</strong>
+              </span>
+              <span class="practice-cheat-stack-actions">
+                <button
+                  v-for="step of GOLD_STEPS"
+                  :key="step"
+                  type="button"
+                  class="practice-cheat-btn"
+                  :id="`practice-cheat-gold-${step}-${row.index}`"
+                  @click="grantGold(row, step)"
+                  @touchend.prevent="grantGold(row, step)"
+                >
+                  +{{ step }}
+                </button>
+              </span>
+            </div>
+
+            <!-- Nothing to show when no installed pack sells anything, which
+                 is every pack that predates items. -->
+            <div v-if="live && itemStock.length" class="practice-cheat-item">
+              <select
+                class="practice-cheat-item-picker"
+                :id="`practice-cheat-item-${row.index}`"
+                :value="pickedItem[row.id] ?? itemStock[0].id"
+                @change="onItemPicked(row, $event)"
+              >
+                <option v-for="option of itemStock" :key="option.id" :value="option.id">
+                  {{ option.name }} — {{ option.cost }}
+                </option>
+              </select>
+              <span class="practice-cheat-stack-actions">
+                <button
+                  type="button"
+                  class="practice-cheat-btn"
+                  :id="`practice-cheat-give-item-${row.index}`"
+                  @click="giveItem(row)"
+                  @touchend.prevent="giveItem(row)"
+                >
+                  Cho
+                </button>
+                <button
+                  type="button"
+                  class="practice-cheat-btn"
+                  @click="clearItems(row)"
+                  @touchend.prevent="clearItems(row)"
+                >
+                  Xoá đồ
+                </button>
+              </span>
             </div>
 
             <div
