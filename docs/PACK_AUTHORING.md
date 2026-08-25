@@ -188,6 +188,29 @@ export default packClass(api => class Hero_Q extends api.Spell { /* ... */ });
 It imports nothing of core but a type, so it costs the pack nothing at
 runtime and stays the pack's own to change.
 
+### Naming a type
+
+`api` hands out *constructors*. To write a field or a parameter you need the
+instance type, and both halves have a published name:
+
+```ts
+import type { AttackableUnit, Slow } from '@moba2d/core/content/types';
+import { packClass, type Instance } from '../packClass';
+
+type Thresh_Q_Object = Instance<typeof makeThresh_Q_Object>;
+```
+
+`@moba2d/core/content/types` carries the instance type of every class `api`
+gives you — the spell hierarchy, the six unit classes, all 25 buffs, the VFX
+helpers, the two Quadtree shapes. `Instance<typeof makeX>` is for the pack's
+*own* classes, which no barrel can publish because `packClass` returns a
+factory.
+
+Do not derive these by hand. `InstanceType<ContentApi['units']['AttackableUnit']>`
+is correct and it is what a pack wrote before the barrel existed — one pack
+accumulated 221 of them, 120 being that exact line — and each one is a place
+the name can go stale on its own.
+
 ## Add another ability
 
 ```sh
