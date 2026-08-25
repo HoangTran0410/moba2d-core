@@ -460,6 +460,50 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
     it('offers them only when a match is running', () => {
       expect(source.live === null).toBe(isPregame);
     });
+
+    /**
+     * Gold and items are cheats, not settings: they change the match rather
+     * than describing it, and `PregameConfig` has no wallet to write either
+     * into. So they live behind `live` with refill and clear-cooldowns, and
+     * the pregame source is right to offer nothing.
+     *
+     * They exist because bots do not buy anything. The player earns gold and
+     * shops; a bot earns gold and has nowhere to spend it, so a match drifts
+     * one-sided a few minutes in — and this panel is the way to a fair fight
+     * until the AI has a shop of its own.
+     */
+    it('hands out gold, and reports what a participant has', () => {
+      if (!source.live) return;
+      const id = source.roster()[0].id;
+      const before = source.live.goldOf(id);
+
+      source.live.grantGold(id, 1_000);
+
+      expect(source.live.goldOf(id)).toBe(before + 1_000);
+    });
+
+    it('lists what any installed pack sells, so a bot can be handed one', () => {
+      if (!source.live) return;
+      // The list is whatever the installed packs ship — possibly nothing, and
+      // that is a legal state (every pack predating items). What is checked is
+      // the *shape*, because an entry missing `cost` renders as `— undefined`
+      // in the picker.
+      for (const option of source.live.itemStock()) {
+        expect(typeof option.id).toBe('string');
+        expect(typeof option.name).toBe('string');
+        expect(Number.isFinite(option.cost)).toBe(true);
+      }
+    });
+
+    it('empties a bag without charging or refunding anything', () => {
+      if (!source.live) return;
+      const id = source.roster()[0].id;
+      const before = source.live.goldOf(id);
+
+      source.live.clearItems(id);
+
+      expect(source.live.goldOf(id), 'clearing the bag paid a refund').toBe(before);
+    });
   });
 
   describe('reset', () => {

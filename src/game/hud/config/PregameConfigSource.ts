@@ -386,4 +386,3 @@ export default class PregameConfigSource implements MatchConfigSource {
     this.persist();
   }
 }
-

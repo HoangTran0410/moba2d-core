@@ -2131,3 +2131,24 @@ body.touch-ui .corner-btn {
   font-size: 0.8em;
   color: #7c8798;
 }
+
+/* The item cheat's picker row. Shares `.practice-cheat-stack-actions` with the
+   stack rows beside it, so the buttons line up; the `<select>` takes the space
+   the stack's name would. */
+.practice-cheat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.practice-cheat-item-picker {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid #fff3;
+  background: #161b22;
+  color: #ddd;
+  font-size: 0.78em;
+}
