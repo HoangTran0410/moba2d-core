@@ -285,7 +285,7 @@ export const CDR_PERCENT_MIN = 0;
 export const CDR_PERCENT_MAX = 90;
 
 /**
- * `PackRegistry.qualify('riot', 'summoners-rift')` — the map every match
+ * `PackRegistry.qualify('lol', 'summoners-rift')` — the map every match
  * played on before this was configurable, restated as a literal because this
  * module cannot import `PackRegistry` (see `mapId`'s own doc comment: pure
  * data, no knowledge of the content-pack seam). A second, independent copy

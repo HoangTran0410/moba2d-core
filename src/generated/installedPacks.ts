@@ -12,7 +12,7 @@ import type { PackAssetManifest } from '@/managers/AssetManager';
 
 /** One installed pack, with both halves and its own generated asset manifest. */
 export interface InstalledPack {
-  /** The id the pack's own manifest declares — `'riot'`. */
+  /** The id the pack's own manifest declares — `'lol'`. */
   readonly id: string;
   /** The pack's local name, i.e. its package name without the `@moba2d/content-` prefix. */
   readonly name: string;

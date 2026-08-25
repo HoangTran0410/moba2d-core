@@ -8,11 +8,18 @@
  * one way, in one message, is the whole protocol.
  *
  * The rejected alternative is the one spec §6 names: a `CacheFirst` rule
- * matching every cross-origin request. Beyond being broader than anything
- * anyone intended, it is not even correct here — core and the pack are served
- * from the *same origin* in production
- * (`hoangtran99.is-a.dev/moba2d-core/` and `/moba2d-content-riot/`), so
- * "cross-origin" identifies neither. The match is on base-URL prefix.
+ * matching every cross-origin request. It is broader than anything anyone
+ * intended, and it identifies the wrong thing — a player may install a pack
+ * from anywhere, including a host that also serves something this worker has
+ * no business caching. The match is on **base-URL prefix**, which is a rule
+ * about the pack rather than about where it happens to live.
+ *
+ * That distinction used to be even sharper: core and the default pack were
+ * served from the *same* origin (`hoangtran99.is-a.dev/moba2d-core/` and
+ * `/moba2d-content-riot/`), so "cross-origin" matched neither of them. The
+ * pack has since moved to `moba2d-packs.github.io`, which makes it genuinely
+ * cross-origin — and changes nothing here, because the rule never depended on
+ * the answer.
  *
  * Nothing in this module throws. It is reached from `LoadingScene.boot()`,
  * where a rejection is an unhandled one and the menu never opens, and from a

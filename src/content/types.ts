@@ -118,7 +118,7 @@ export type {
  *
  *     type AttackableUnit = InstanceType<ContentApi['units']['AttackableUnit']>;
  *
- * Measured on `moba2d-content-riot`: 221 of those lines still being read
+ * Measured on `@moba2d/content-lol`: 221 of those lines still being read
  * after the dead ones were deleted, spelling out 18 distinct types, 120 of
  * them that same `AttackableUnit`. Each is correct and each was invented
  * independently, which is the real cost — the shape of it teaches a new pack

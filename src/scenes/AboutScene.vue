@@ -132,6 +132,29 @@ const REPO_URL = 'https://github.com/HoangTran0410/moba2d-core';
         <p v-else class="about-empty">Chưa có bài viết nào ở đây.</p>
       </section>
 
+      <!-- Last, and deliberately on this screen rather than only in a README.
+           The champions, their names and their artwork belong to Riot Games;
+           a player looking at 58 of them has no way to know from the game
+           itself that this is a fan project, and a README is not something a
+           player reads. The packs screen already says it about the pack; this
+           says it about the whole thing. -->
+      <section class="about-section about-legal">
+        <h2><i class="fas fa-scale-balanced" aria-hidden="true"></i> Bản quyền</h2>
+        <p class="about-legal-text">
+          Đây là dự án fan-made phi thương mại,
+          <strong>không liên kết, không được uỷ quyền hay chứng thực bởi Riot Games</strong>.
+        </p>
+        <p class="about-legal-text">
+          League of Legends cùng toàn bộ tên tướng, hình ảnh và nhãn hiệu liên quan thuộc quyền sở
+          hữu của Riot Games. Dự án này không nhận sở hữu bất kỳ phần nào trong đó. Phần nội dung
+          LMHT nằm ở gói nội dung riêng, cài thêm chứ không đi kèm engine.
+        </p>
+        <p class="about-legal-text">
+          Mã nguồn của engine là của dự án này và mở tại
+          <a :href="REPO_URL" target="_blank" rel="noopener noreferrer">GitHub</a>.
+        </p>
+      </section>
+
       <section class="about-section about-changelog">
         <h2><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Có gì mới</h2>
         <!-- Newest open, the rest folded. A changelog only grows, and every

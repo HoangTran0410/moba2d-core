@@ -74,13 +74,13 @@ export interface SuggestedPack {
 
 export const SUGGESTED_PACKS: SuggestedPack[] = [
   {
-    id: 'riot',
+    id: 'lol',
     name: 'Liên Minh Huyền Thoại',
     description:
       'Hơn 50 tướng LMHT đủ 4 chiêu, phép bổ trợ, quái rừng, bản đồ Summoner’s Rift. Bản fan-made, không liên kết với Riot Games.',
-    manifestUrl: 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json',
-    repoUrl: 'https://github.com/HoangTran0410/moba2d-content-riot',
-    icon: 'https://hoangtran99.is-a.dev/moba2d-content-riot/icon.png',
+    manifestUrl: 'https://moba2d-packs.github.io/lol/manifest.json',
+    repoUrl: 'https://github.com/moba2d-packs/lol',
+    icon: 'https://moba2d-packs.github.io/lol/icon.png',
   },
 ];
 

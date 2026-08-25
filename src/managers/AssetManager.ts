@@ -494,7 +494,7 @@ export default class AssetManager {
    * Unused today (verified: zero call sites) but kept correct rather than
    * left silently broken. Before this task every `champ_` key lived in
    * core's own manifest; after it, champion portraits are `packs/riot`'s
-   * art, registered under the `'riot'` pack id — so this now walks every
+   * art, registered under the `'lol'` pack id — so this now walks every
    * registered pack's manifest too, qualifying the key the same way
    * `PackRegistry.writeData` already qualifies a champion's own `image`.
    */

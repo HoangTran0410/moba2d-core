@@ -246,7 +246,7 @@ export class PackRegistry {
     // from *two* sources — the riot pack's own generated catalogue and
     // core's) would have this qualify `BasicAttack`'s `iconKey` into
     // `'riot:spell_basic_attack'` even though that art never moved and
-    // `AssetManager.registerPackAssets('riot', …)` was never handed it —
+    // `AssetManager.registerPackAssets('lol', …)` was never handed it —
     // `coreSpells/BasicAttack.ts` still resolves it as `spell_basic_attack`,
     // unqualified, directly off core's own manifest (see that file's
     // permanent exclusion in `coreSpellsApiSurface.test.ts`).

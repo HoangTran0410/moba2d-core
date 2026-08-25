@@ -113,22 +113,28 @@ import {
  * anything. Seeded into the stored list on first run, after which it is an
  * ordinary entry the player can remove.
  *
- * **`hoangtran99.is-a.dev`, not the `hoangtran0410.github.io` alias for the
- * same repository.** The `github.io` form was the original choice, on the
- * reasoning that the name survives a future custom-domain change — true,
- * and the wrong thing to optimise for: measured with `curl -sI`, that form
- * 301-redirects to `http://hoangtran99.is-a.dev/...` (a downgrade to plain
- * HTTP) and the redirect response itself carries no
- * `access-control-allow-origin` header. A browser `fetch()` requires *every*
- * hop in a cross-origin redirect chain to carry CORS headers, not just the
- * final one, so the `github.io` form cannot ever succeed from a page — not
- * "not published yet", structurally broken. The `is-a.dev` host, fetched
- * directly, answers `200`/`404` with `access-control-allow-origin: *`, the
- * same as any other path on it. If this ever needs to move again, measure
- * the redirect chain with `curl -sI` first — a name that "should" be more
- * stable is not a reason to reopen this.
+ * **Measure the redirect chain before changing this string.** That is the
+ * lesson the previous host taught and it outlived the host itself: the pack
+ * used to live under `hoangtran0410.github.io`, and — measured with `curl -sI`
+ * — that form 301-redirects to `http://hoangtran99.is-a.dev/...`, a downgrade
+ * to plain HTTP, with no `access-control-allow-origin` on the redirect
+ * response. A browser `fetch()` requires *every* hop of a cross-origin
+ * redirect to carry CORS headers, not just the last, so that form could never
+ * succeed from a page — not "not published yet", structurally broken. The
+ * redirect exists because that account has a custom domain on its user page,
+ * which makes every project path under `github.io` bounce to it.
+ *
+ * This host has no such redirect: an organisation with no custom domain
+ * answers directly, and measurement says `200` and `404` alike carry
+ * `access-control-allow-origin: *`. A name that "should" be more stable is
+ * not a reason to reopen this — a measurement is.
+ *
+ * The pack is `lol`, for the game, rather than `riot`, for the company that
+ * makes it. The company also makes other games; the pack holds champions from
+ * exactly one of them, and naming it after the company both overclaims and
+ * describes less.
  */
-export const DEFAULT_PACK_URL = 'https://hoangtran99.is-a.dev/moba2d-content-riot/manifest.json';
+export const DEFAULT_PACK_URL = 'https://moba2d-packs.github.io/lol/manifest.json';
 
 export type PackInstallOutcome =
   /**

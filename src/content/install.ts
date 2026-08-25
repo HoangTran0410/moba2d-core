@@ -11,7 +11,7 @@ import type { LoadedPack } from './packSource';
 import type { ChampionAttackTuning } from '@/game/gameObject/attackableUnits/Champion';
 import AssetManager from '@/managers/AssetManager';
 // **Every optional pack arrives through this one generated barrel**, and the
-// barrel names each one by *package* name (`@moba2d/content-riot`), never by
+// barrel names each one by *package* name (`@moba2d/content-lol`), never by
 // relative path — which is the whole of content-pack-extraction batch 5 task
 // 8.
 //
@@ -65,7 +65,7 @@ import { spellModules as coreSpellModules } from '@/generated/spellModules';
  * nothing below it changes, because a pack is a factory taking core's API in
  * both cases:
  *
- *     Stage 1  import code from '@moba2d/content-riot'     -> code(api)
+ *     Stage 1  import code from '@moba2d/content-lol'     -> code(api)
  *     Stage 2  const { default: code } = await import(url) -> code(api)
  *
  * Keeping that one seam is what makes Stage 2 a change to this file rather
@@ -165,7 +165,7 @@ const packsInInstallOrder: BundledPack[] = [
 
 /**
  * The pack a bare, unqualified spell id resolves against — `spellRegistry.ts`'s
- * `qualifySpellId`. `'riot'` in any build that has the riot pack, which is
+ * `qualifySpellId`. `'lol'` in any build that has the League pack, which is
  * every shipped one; `'reference'` in a core-only checkout.
  */
 export const BUNDLED_PACK_ID: string = packsInInstallOrder[0].id;

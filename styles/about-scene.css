@@ -277,3 +277,20 @@
     border-width: 0;
   }
 }
+
+/* Smaller and quieter than the rest of the screen: it has to be present and
+   readable, not compete with what a player came here for. */
+.about-legal-text {
+  margin: 0 0 8px;
+  color: #a09b8c;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.about-legal-text strong {
+  color: #f0e6d2;
+}
+
+.about-legal-text a {
+  color: #c8aa6e;
+}
