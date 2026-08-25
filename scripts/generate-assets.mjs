@@ -58,6 +58,11 @@ export function assetKeyForPath(inputPath) {
       {
         buffs: 'buff',
         cursors: 'cursor',
+        // Singular like every other entry here, and worth stating rather than
+        // falling through: an item's icon key is written by hand in a pack's
+        // `ItemDef.icon`, so `items_long_sword` would be a plural nobody
+        // guesses and a broken key nobody sees until the shop draws a blank.
+        items: 'item',
         monsters: 'monster',
         objects: 'obj',
         others: 'other',

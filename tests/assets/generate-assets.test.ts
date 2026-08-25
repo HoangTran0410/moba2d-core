@@ -20,6 +20,10 @@ describe('asset manifest generator', () => {
     ['assets/images/spells/janna_q.png', 'spell_janna_q'],
     ['assets/images/buffs/stun.png', 'buff_stun'],
     ['assets/images/monsters/Blue_Sentinel.png', 'monster_Blue_Sentinel'],
+    // Singular, like every other prefix. A pack writes this key by hand in its
+    // `ItemDef.icon`, so a plural `items_` would be a key nobody guesses and a
+    // break nobody sees until the shop draws a blank square.
+    ['assets/images/items/long_sword.png', 'item_long_sword'],
     ['assets/json/summoner_map.json', 'json_summoner_map'],
     ['assets/images/others/menu-bg.webp', 'other_menu_bg'],
   ])('maps %s to stable key %s', (path, key) => {
