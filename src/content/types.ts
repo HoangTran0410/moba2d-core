@@ -108,3 +108,85 @@ export type {
   StructureKind,
   StructureSlot,
 } from './ContentPack';
+
+/**
+ * The instance type of every class `api` hands out.
+ *
+ * A pack receives constructors — `api.Spell`, `api.buffs.Slow` — and needs
+ * their *instance* types to write a field or a parameter. Without these it
+ * derives each one itself, at the top of every file that wants one:
+ *
+ *     type AttackableUnit = InstanceType<ContentApi['units']['AttackableUnit']>;
+ *
+ * Measured on `moba2d-content-riot`: 221 of those lines still being read
+ * after the dead ones were deleted, spelling out 18 distinct types, 120 of
+ * them that same `AttackableUnit`. Each is correct and each was invented
+ * independently, which is the real cost — the shape of it teaches a new pack
+ * author that naming a core type is supposed to be hard.
+ *
+ * **Derived from `ContentApi`, never re-exported from `@/game/...`.** A
+ * direct re-export would be a second declaration of the same thing, free to
+ * say something `api` does not the day a member is narrowed; deriving keeps
+ * one source of truth and makes these strictly a shorter spelling of what a
+ * pack would have written. It also adds no reach: every one of them was
+ * already nameable through `ContentApi`, which this module already publishes.
+ *
+ * `tests/content/contentTypes.test.ts` pins the buff list against `BUFFS`
+ * itself, so a new buff class cannot land without a pack being able to name
+ * it.
+ */
+import type { ContentApi } from './ContentApi';
+
+// The spell hierarchy, and the delivery primitives a skillshot extends.
+export type Spell = InstanceType<ContentApi['Spell']>;
+export type SpellObject = InstanceType<ContentApi['SpellObject']>;
+export type MissileSpellObject = InstanceType<ContentApi['MissileSpellObject']>;
+export type AreaSpellObject = InstanceType<ContentApi['AreaSpellObject']>;
+export type BeamSpellObject = InstanceType<ContentApi['BeamSpellObject']>;
+export type HomingMissileSpellObject = InstanceType<ContentApi['HomingMissileSpellObject']>;
+export type AoePulse = InstanceType<ContentApi['AoePulse']>;
+
+// Units. `AttackableUnit` is the one a spell names most: it is what a hit
+// lands on, what a filter narrows to, and what a buff is applied to.
+export type AttackableUnit = InstanceType<ContentApi['units']['AttackableUnit']>;
+export type Champion = InstanceType<ContentApi['units']['Champion']>;
+export type Pet = InstanceType<ContentApi['units']['Pet']>;
+export type Monster = InstanceType<ContentApi['units']['Monster']>;
+export type StatModifier = InstanceType<ContentApi['units']['StatModifier']>;
+export type StatsModifier = InstanceType<ContentApi['units']['StatsModifier']>;
+
+// Buffs — the whole of `BUFFS`, kept complete by contentTypes.test.ts.
+export type Buff = InstanceType<ContentApi['buffs']['Buff']>;
+export type Airborne = InstanceType<ContentApi['buffs']['Airborne']>;
+export type Charm = InstanceType<ContentApi['buffs']['Charm']>;
+export type Chilled = InstanceType<ContentApi['buffs']['Chilled']>;
+export type DamageOverTime = InstanceType<ContentApi['buffs']['DamageOverTime']>;
+export type DamageReflect = InstanceType<ContentApi['buffs']['DamageReflect']>;
+export type Dash = InstanceType<ContentApi['buffs']['Dash']>;
+export type Disarm = InstanceType<ContentApi['buffs']['Disarm']>;
+export type Fear = InstanceType<ContentApi['buffs']['Fear']>;
+export type Ground = InstanceType<ContentApi['buffs']['Ground']>;
+export type Invisible = InstanceType<ContentApi['buffs']['Invisible']>;
+export type Invulnerable = InstanceType<ContentApi['buffs']['Invulnerable']>;
+export type Nearsight = InstanceType<ContentApi['buffs']['Nearsight']>;
+export type Phasing = InstanceType<ContentApi['buffs']['Phasing']>;
+export type Root = InstanceType<ContentApi['buffs']['Root']>;
+export type Shield = InstanceType<ContentApi['buffs']['Shield']>;
+export type Silence = InstanceType<ContentApi['buffs']['Silence']>;
+export type Slow = InstanceType<ContentApi['buffs']['Slow']>;
+export type Speedup = InstanceType<ContentApi['buffs']['Speedup']>;
+export type Stasis = InstanceType<ContentApi['buffs']['Stasis']>;
+export type StatAmp = InstanceType<ContentApi['buffs']['StatAmp']>;
+export type Stun = InstanceType<ContentApi['buffs']['Stun']>;
+export type Taunt = InstanceType<ContentApi['buffs']['Taunt']>;
+export type TrueSight = InstanceType<ContentApi['buffs']['TrueSight']>;
+export type Untargetable = InstanceType<ContentApi['buffs']['Untargetable']>;
+
+// Helpers a spell constructs for its own VFX.
+export type ParticleSystem = InstanceType<ContentApi['helpers']['ParticleSystem']>;
+export type TrailSystem = InstanceType<ContentApi['helpers']['TrailSystem']>;
+export type CombatText = InstanceType<ContentApi['helpers']['CombatText']>;
+
+// Quadtree shapes, which every area query is expressed in.
+export type Circle = InstanceType<ContentApi['utils']['Quadtree']['Circle']>;
+export type Rectangle = InstanceType<ContentApi['utils']['Quadtree']['Rectangle']>;

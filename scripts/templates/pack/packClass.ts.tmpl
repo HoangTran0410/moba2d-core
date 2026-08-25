@@ -35,3 +35,19 @@ export function packClass<T>(build: (api: ContentApi) => T): (api: ContentApi) =
     return built;
   };
 }
+
+/**
+ * The instance type of a class this pack builds — `Instance<typeof makeX>`.
+ *
+ * `packClass` returns a *factory*, so naming what it eventually constructs
+ * takes two unwrappings: `InstanceType<ReturnType<typeof makeX>>`. A file
+ * that defines a spell, its missile and its buff writes that three times
+ * before its first line of content.
+ *
+ * Only for this pack's own classes. A core class — `AttackableUnit`,
+ * `Spell`, `Slow` — has a published name already:
+ *
+ *     import type { AttackableUnit, Slow } from '@moba2d/core/content/types';
+ */
+export type Instance<F extends (api: ContentApi) => abstract new (...args: never[]) => unknown> =
+  InstanceType<ReturnType<F>>;
