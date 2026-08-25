@@ -285,6 +285,28 @@ export async function renderSpellCatalogSource(tree = CORE_SPELL_TREE, treeRoot 
       setter(api);
     }
 
+    // Art before the barrels, for the same reason the api goes before them and
+    // one step further than it used to be needed.
+    //
+    // `image = api.asset('spell_x')` is an *instance* field, so it runs when
+    // `describe()` constructs the spell, and registering the manifest after
+    // the barrel was fine for years. A `static` field is not: it runs when the
+    // class is **defined**, which for a pack whose spells are module-scope
+    // declarations is the moment the barrel loads. One spell in the separated
+    // content pack has a static one, and it is what turned this ordering from
+    // a preference into a failure — "Unknown asset key …", thrown out of a
+    // static initialiser during module evaluation.
+    //
+    // The real game gets this from the pack install path; this SSR process
+    // loads only the barrel and `ContentApi.ts`, never the registry bridge.
+    if (tree.assetManifestOutputPath) {
+      const AssetManagerModule = await server.ssrLoadModule('/src/managers/AssetManager.ts');
+      const { assetManifest: packAssetManifest } = await server.ssrLoadModule(
+        `/@fs/${resolve(treeRoot, tree.assetManifestOutputPath)}`
+      );
+      AssetManagerModule.default.registerPackAssets(tree.packId, packAssetManifest);
+    }
+
     // Content-last: an earlier barrel's id can never shadow a later one's —
     // core's own two barrels are `tree.barrels` in that order, matching
     // `renderSpellModulesSource`.
@@ -292,19 +314,6 @@ export async function renderSpellCatalogSource(tree = CORE_SPELL_TREE, treeRoot 
     for (const barrel of tree.barrels) {
       const loaded = await server.ssrLoadModule(`/@fs/${resolve(treeRoot, barrel.path)}`);
       AllSpells = { ...AllSpells, ...loaded };
-    }
-    // Every spell's `image = api.asset('spell_x')` field initializer runs the
-    // moment `describe()` constructs it, so this tree's own art has to be
-    // registered with `AssetManager` first — the real game gets this from
-    // `bundledPack.ts`'s module-level `registerPackAssets` call, which this
-    // SSR process never imports (it loads only the spell barrel and
-    // `ContentApi.ts`, not the whole content-registry bridge).
-    if (tree.assetManifestOutputPath) {
-      const AssetManagerModule = await server.ssrLoadModule('/src/managers/AssetManager.ts');
-      const { assetManifest: packAssetManifest } = await server.ssrLoadModule(
-        `/@fs/${resolve(treeRoot, tree.assetManifestOutputPath)}`
-      );
-      AssetManagerModule.default.registerPackAssets(tree.packId, packAssetManifest);
     }
     const entries = Object.entries(AllSpells)
       .filter(([, value]) => typeof value === 'function')

@@ -3,21 +3,38 @@ import { buildContentApi, type ContentApi } from '../content/ContentApi';
 import { registerSpellForTests, resetSpellRegistryForTests } from '../game/spellRegistry';
 
 /**
- * Every pack spell's `default` export is now `(api: ContentApi) => SpellClass`
- * (batch 4 task 3), not the class itself — resolved here, against one shared
- * `buildContentApi()` singleton, so a barrel's entries come back as plain
- * constructible classes for every caller, exactly like they were before that
- * move. Exported on its own, distinct from `loadSpellsForTests` below,
- * because a test may want the resolved classes without touching the
- * registry — reading a barrel's own entries straight off the return value,
- * the way its members used to read directly, before they were factories.
+ * A barrel's entries, as constructible classes, whichever shape the pack uses.
+ *
+ * Two shapes exist and both are legitimate. A pack may export the class
+ * directly — the engine having arrived through its own `packApi` module before
+ * the barrel loaded — or it may export `(api: ContentApi) => SpellClass`, the
+ * factory form that came in when packs first stopped importing core. This
+ * resolves the second against one shared `buildContentApi()` singleton and
+ * passes the first through untouched.
+ *
+ * Telling them apart is `class` in the function's own source, which is what
+ * the language gives us: both are `typeof === 'function'`, and calling a class
+ * without `new` is a `TypeError` rather than anything a caller could recover
+ * from. That failure is exactly how this was found — `loadSpellsForTests`
+ * invoking a migrated pack's class and reporting "Class constructor … cannot
+ * be invoked without 'new'" from inside core, four frames from any file the
+ * pack author wrote.
+ *
+ * Exported on its own, distinct from `loadSpellsForTests` below, because a
+ * test may want the resolved classes without touching the registry.
  */
+function isClass(value: unknown): boolean {
+  return typeof value === 'function' && /^\s*class\s/.test(Function.prototype.toString.call(value));
+}
+
 export function resolveSpellBarrel(barrel: Record<string, unknown>): Record<string, unknown> {
   const api = buildContentApi();
   return Object.fromEntries(
-    Object.entries(barrel).map(([id, factory]) => [
+    Object.entries(barrel).map(([id, entry]) => [
       id,
-      typeof factory === 'function' ? (factory as (api: ContentApi) => unknown)(api) : factory,
+      typeof entry === 'function' && !isClass(entry)
+        ? (entry as (api: ContentApi) => unknown)(api)
+        : entry,
     ])
   );
 }
