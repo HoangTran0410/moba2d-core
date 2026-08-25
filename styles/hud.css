@@ -1731,3 +1731,403 @@ body.touch-ui .corner-btn {
   border-color: rgba(200, 170, 110, 0.8);
   opacity: 1;
 }
+
+/* ============================ Inventory, gold and the passive ============================ */
+
+/* The passive, on the portrait rather than in the ability row: it is a spell
+   the champion *has*, not one it casts — no key, no cooldown, no cost — and a
+   pressable-looking icon in a row of pressable icons would say the opposite.
+   Bottom-right of the circle, where the portrait's own edge gives it a frame. */
+.champion-avatar .passive-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #c8a15e;
+  background: #14100a;
+  box-shadow: 0 0 6px #0009;
+  cursor: help;
+  z-index: 12;
+}
+
+.champion-avatar .passive-badge img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Third column of the bar, after the abilities and the bars — the same place
+   both games this engine's players know put it. */
+.inventory {
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Three across, two down. Fixed at six whether they are filled or not: a row
+   that grew as items were bought would move every key under the player's hand,
+   and a grid is a shape they learn the position of. */
+.inventory .items {
+  display: grid;
+  grid-template-columns: repeat(3, 2.1em);
+  grid-template-rows: repeat(2, 2.1em);
+  gap: 3px;
+}
+
+.item-slot {
+  position: relative;
+  width: 2.1em;
+  height: 2.1em;
+  background: #0006;
+  border: 1px solid #fff2;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.item-slot.filled {
+  background: #aaa6;
+  border-color: #c8a15e66;
+}
+
+.item-slot:hover {
+  border-color: #eee;
+}
+
+/* Same green, same meaning, as `.spells .spell.sustaining` — an item's active
+   that is running is the identical question about a different row. */
+.item-slot.sustaining {
+  border-color: #4bd086;
+  box-shadow: 0 0 6px #4bd08677;
+}
+
+.item-slot img {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.item-slot .hotKey {
+  position: absolute;
+  bottom: -4px;
+  right: -3px;
+  color: #e8c17d;
+  font-size: 0.72em;
+  font-weight: bold;
+  text-shadow: #000 1px 0 6px;
+  z-index: 10;
+}
+
+.item-slot .cooldown-overlay {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #060a12aa;
+  border-radius: 2px;
+}
+
+.item-slot .cooldown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-slot .cooldown p {
+  margin: 0;
+  color: #eee;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+
+/* The gold pill is also the way into the shop, which is why it is a button and
+   not a label: a player who has gold and nowhere obvious to spend it is the
+   state this whole feature was added to leave behind. It brightens at the
+   fountain, which teaches the rule without a sentence. */
+.gold-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid #6b5a30;
+  background: #17130a;
+  color: #d9bd7a;
+  font-size: 0.82em;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.gold-pill.at-shop {
+  border-color: #e3c078;
+  color: #ffe2a3;
+  box-shadow: 0 0 8px #e3c07855;
+}
+
+.gold-pill:hover {
+  background: #241d0e;
+}
+
+/* ============================ Cửa hàng ============================ */
+
+/* Over the match and *not* over a pause — see `ShopPanel.vue`. Right-hand side
+   rather than centred, because the panel has to leave the champion and the
+   fountain visible: the rule it enforces is about where the player is
+   standing, and a modal that hides that is a modal that hides the rule. */
+.shop-panel {
+  position: fixed;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(78vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: #0d1117f2;
+  border: 2px solid #c8a15e66;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px #000a;
+  z-index: 120;
+  color: #e6e6e6;
+}
+
+.shop-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #fff1;
+}
+
+.shop-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.05em;
+  color: #e8c17d;
+}
+
+.shop-gold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #ffe2a3;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid #fff2;
+  background: #1b2029;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.shop-close:hover {
+  background: #2a3140;
+}
+
+/* The one sentence the grid cannot say for itself: away from the platform
+   every card is greyed, which reads as "everything is too expensive". */
+.shop-warning {
+  margin: 0;
+  padding: 6px 10px;
+  background: #2a1a08;
+  color: #ffcf8a;
+  font-size: 0.82em;
+  border-bottom: 1px solid #fff1;
+}
+
+.shop-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Load-bearing on a phone: `GameScene` cancels touches on the page, so the
+     browser scrolls this only because the property says it may. */
+  touch-action: pan-y;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shop-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shop-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 5px;
+  border: 1px solid #fff2;
+  background: #161b22;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.shop-card:hover {
+  border-color: #e3c078;
+  background: #1d232c;
+}
+
+/* Refused, with the reason printed inside it. Never "hidden" — an item a
+   player cannot afford yet is the thing they are saving for. */
+.shop-card.blocked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shop-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shop-card-top img,
+.shop-card-blank {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.shop-card-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a3140;
+  color: #9fb0c8;
+  font-weight: bold;
+}
+
+.shop-card-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shop-card-active {
+  align-self: flex-start;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: #06280f;
+  border: 1px solid #4bd086;
+  color: #b6ffd4;
+  font-size: 0.68em;
+}
+
+.shop-card-cost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffe2a3;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-card-stats {
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 0.8em;
+  color: #b9c4d2;
+}
+
+.shop-card-stats .amount {
+  color: #8fe0a8;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-card-text {
+  margin: 5px 0 0;
+  font-size: 0.78em;
+  color: #97a3b3;
+}
+
+.shop-card-reason {
+  margin: 4px 0 0;
+  font-size: 0.75em;
+  color: #ff9e9e;
+}
+
+.shop-bag {
+  border-top: 1px solid #fff1;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.shop-bag h4 {
+  margin: 0 0 2px;
+  font-size: 0.9em;
+  color: #e8c17d;
+}
+
+.shop-sell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid #fff2;
+  background: #161b22;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.shop-sell:hover {
+  border-color: #e3c078;
+}
+
+.shop-sell.blocked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shop-sell img {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+}
+
+.shop-sell-name {
+  flex: 1;
+  text-align: left;
+  font-size: 0.85em;
+}
+
+.shop-sell-refund {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffe2a3;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-empty {
+  margin: 0;
+  font-size: 0.8em;
+  color: #7c8798;
+}

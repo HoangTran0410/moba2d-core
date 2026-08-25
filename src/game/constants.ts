@@ -14,6 +14,11 @@ export const HotKeys = {
   // loadout editor, the HUD and every persisted config.
   B: 66,
 
+  // The shop (Game.keyPressed -> HudInteractions.toggleShop). Not one of
+  // SpellHotKeys' letters and not one of the inventory's digits, so it can
+  // never steal a cast.
+  P: 80,
+
   // The inventory row. A *second* layout, not more of the kit — see
   // `ItemHotKeys` below.
   ONE: 49,

@@ -45,6 +45,7 @@ import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
 import MatchConfigPanel from './config/MatchConfigPanel.vue';
+import ShopPanel from './shop/ShopPanel.vue';
 import MatchDirectorSource from './config/MatchDirectorSource';
 
 const props = defineProps<{ hud: HudInteractions }>();
@@ -112,7 +113,7 @@ defineExpose({
        own close button), and this would otherwise sit on top of it — the
        only way out of the modal. -->
   <button
-    v-if="!hud.showSpellsPicker"
+    v-if="!hud.showSpellsPicker && !hud.showShop"
     class="corner-btn spell-picker-btn"
     @click="hud.openSpellPicker()"
     @touchend.prevent="hud.openSpellPicker()"
@@ -123,6 +124,11 @@ defineExpose({
 
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
+
+  <!-- Over the match, not over a pause: see `ShopPanel.vue`. It needs `state`
+       for the live gold and bag, which is why it is mounted here beside the
+       config panel rather than inside either layout view. -->
+  <ShopPanel v-if="state && hud.showShop" :state="state" @close="hud.closeShop()" />
 
   <MatchConfigPanel
     v-if="hud.showSpellsPicker"

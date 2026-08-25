@@ -39,8 +39,12 @@ const hud = inject<HudInteractions>('hud')!;
         <img crossorigin="anonymous" :src="hud.spellHover.image" alt="spell" />
         <h4>{{ hud.spellHover.name }}</h4>
       </div>
-      <div class="costs">
-        <span>{{ FormatUtils.spellSeconds(hud.spellHover.coolDown) }}s</span>
+      <!-- An item with no active has neither number, and "0s / 0 mana" under
+           its name is noise rather than information. -->
+      <div v-if="hud.spellHover.coolDown > 0 || hud.spellHover.manaCost > 0" class="costs">
+        <span v-if="hud.spellHover.coolDown > 0"
+          >{{ FormatUtils.spellSeconds(hud.spellHover.coolDown) }}s</span
+        >
         <span v-if="hud.spellHover.manaCost > 0" class="mana"
           >{{ hud.spellHover.manaCost }} mana</span
         >
@@ -58,6 +62,22 @@ const hud = inject<HudInteractions>('hud')!;
         :style="state.isDead ? 'filter: grayscale(100%)' : ''"
       />
       <span v-if="state.isDead" class="revive-counter">{{ state.reviveAfter }}</span>
+
+      <!--
+        The passive, on the portrait rather than in the ability row. It is a
+        spell the champion *has*, not one it casts — no key, no cooldown, no
+        cost — and putting it in a row of pressable icons would say the
+        opposite. Both games this engine's players know place it here for the
+        same reason.
+      -->
+      <div
+        v-if="state.passive"
+        class="passive-badge"
+        @mouseover="hud.mouseover(state.passive, $event)"
+        @mouseout="hud.mouseout(state.passive)"
+      >
+        <img crossorigin="anonymous" :src="state.passive.image" alt="passive" />
+      </div>
     </div>
 
     <div class="champion-details">
@@ -191,6 +211,52 @@ const hud = inject<HudInteractions>('hud')!;
           <span v-if="buff.stacks > 1" class="stacks">{{ buff.stacks }}</span>
         </div>
       </div>
+    </div>
+
+    <!--
+      The inventory, to the right of the abilities and the bars — six slots,
+      always, filled or not. A row that grew as items were bought would move
+      every key under the player's hand; a fixed grid is a shape they learn the
+      position of.
+
+      Clicking a slot opens the shop, which is the only place an item can be
+      sold, so the row is also how a player finds it. `@touchend.prevent`
+      beside `@click` for the reason every control here needs it: `GameScene`
+      cancels touches on the page, so a thumb never synthesises the click.
+    -->
+    <div class="inventory">
+      <div class="items">
+        <div
+          v-for="(item, index) of state.items"
+          :key="index"
+          class="item-slot"
+          :class="{ filled: item.filled, sustaining: item.sustaining }"
+          @click="hud.openShop()"
+          @touchend.prevent="hud.openShop()"
+          @mouseover="item.filled && hud.mouseover(item, $event)"
+          @mouseout="hud.mouseout(item)"
+        >
+          <img v-if="item.image" crossorigin="anonymous" :src="item.image" alt="item" />
+          <span v-if="item.hotKey" class="hotKey">{{ item.hotKey }}</span>
+          <div v-if="item.showCoolDown">
+            <div class="cooldown-overlay" :style="'height:' + item.coolDownPercent + '%'"></div>
+            <div class="cooldown">
+              <p>{{ item.coolDownText }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        class="gold-pill"
+        :class="{ 'at-shop': state.canShop }"
+        :title="state.canShop ? 'Mở cửa hàng' : 'Về bệ đá để mua đồ'"
+        @click="hud.openShop()"
+        @touchend.prevent="hud.openShop()"
+      >
+        <i class="fa-solid fa-coins"></i>
+        <span>{{ state.gold }}</span>
+      </button>
     </div>
   </div>
 </template>

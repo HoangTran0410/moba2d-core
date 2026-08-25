@@ -1,6 +1,8 @@
-import Champion from '@/game/gameObject/attackableUnits/Champion';
+import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import { HeldItem } from '@/game/items/Item';
 import { spellClassOfId } from '@/game/spellRegistry';
+import { packAsset } from '@/game/config/packAsset';
+import type { AssetHandle } from '@/managers/AssetManager';
 import type Spell from '@/game/gameObject/Spell';
 import type { QualifiedItem } from '@/content/PackRegistry';
 
@@ -103,6 +105,60 @@ export function refusalFor(
 }
 
 /**
+ * The item's icon, or `null` when the pack named a key nothing registered.
+ *
+ * `AssetManager.get` throws on an unknown key, deliberately — a mistyped key
+ * should be loud. But the *place* it becomes loud has to be here, once, at
+ * purchase, and not in the HUD's twenty-times-a-second read: a bad pack would
+ * otherwise take the whole bar down mid match. `validate.ts` checks the icon
+ * is a string; nothing can check it names registered art until the art is
+ * registered.
+ */
+function iconOf(def: QualifiedItem): AssetHandle | null {
+  try {
+    return packAsset(def.icon);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds the live item — its two spells and its icon — for `owner`.
+ *
+ * `null` when a spell class this item names has not landed yet, which is the
+ * `NOT_LOADED` refusal. Never a half-built item: see the header.
+ */
+export function buildHeldItem(champion: Champion, def: QualifiedItem): HeldItem | null {
+  const classes = resolveSpellClasses(def);
+  if (!classes) return null;
+
+  const build = (SpellClass: unknown): Spell | null =>
+    SpellClass ? new (SpellClass as new (owner: Champion) => Spell)(champion) : null;
+
+  return new HeldItem(def, build(classes.passive), build(classes.active), iconOf(def));
+}
+
+/**
+ * Hands `champion` an item outright — no gold, no fountain, no full-bag check
+ * beyond needing a slot. The practice panel's cheat, and the only door into an
+ * inventory that is not a purchase.
+ *
+ * Deliberately its own function rather than a flag on `buyItem`: a cheat that
+ * shares a code path with the real thing is a cheat that can be reached by
+ * accident, and the gates are the entire content of `buyItem`.
+ */
+export function grantItem(champion: Champion, def: QualifiedItem): boolean {
+  const slot = champion.firstEmptyItemSlot();
+  if (slot < 0) return false;
+
+  const held = buildHeldItem(champion, def);
+  if (!held) return false;
+
+  champion.equipItem(held, slot);
+  return true;
+}
+
+/**
  * Buys `def` into the first free slot. Answers whether it happened.
  *
  * Everything is checked before anything is touched — see the header. The gold
@@ -112,17 +168,14 @@ export function refusalFor(
 export function buyItem(champion: Champion, def: QualifiedItem, host: ShopHost): boolean {
   if (refusalFor(champion, def, host) !== null) return false;
 
-  const classes = resolveSpellClasses(def);
-  if (!classes) return false;
+  const held = buildHeldItem(champion, def);
+  if (!held) return false;
 
   const slot = champion.firstEmptyItemSlot();
   if (slot < 0) return false;
   if (!champion.wallet?.spend(def.cost)) return false;
 
-  const build = (SpellClass: unknown): Spell | null =>
-    SpellClass ? new (SpellClass as new (owner: Champion) => Spell)(champion) : null;
-
-  champion.equipItem(new HeldItem(def, build(classes.passive), build(classes.active)), slot);
+  champion.equipItem(held, slot);
   return true;
 }
 

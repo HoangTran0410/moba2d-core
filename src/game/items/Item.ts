@@ -1,6 +1,7 @@
 import type Spell from '@/game/gameObject/Spell';
 import { StatModifier, StatsModifier } from '@/game/gameObject/Stats';
 import { ITEM_STAT_KEYS, type ItemStatKey } from './itemStats';
+import type { AssetHandle } from '@/managers/AssetManager';
 import type { ItemDef } from '@/content/ContentPack';
 
 /**
@@ -94,7 +95,18 @@ export class HeldItem {
     /** Armed once per life by `Champion.armPassives`, exactly like the champion's own. */
     readonly passive: Spell | null,
     /** Bound to this slot's key by the inventory's own `SpellInputController`. */
-    readonly active: Spell | null
+    readonly active: Spell | null,
+    /**
+     * The icon, resolved **once, here**, or `null` for an item whose pack named
+     * a key nothing registered.
+     *
+     * Resolved at purchase rather than read by the HUD, because
+     * `AssetManager.get` throws on an unknown key and the HUD asks twenty
+     * times a second — a bad pack would otherwise take the whole bar down mid
+     * match, which is both the worst place to find out and the hardest to read
+     * a stack trace from. `ItemShop` owns the guarded lookup.
+     */
+    readonly icon: AssetHandle | null = null
   ) {
     this.modifier = modifierFor(def.stats);
   }

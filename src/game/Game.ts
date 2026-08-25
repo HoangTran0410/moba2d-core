@@ -1113,6 +1113,11 @@ export default class Game {
     }
     // B: go home. Not one of SpellHotKeys' letters, so it never steals a cast.
     if (keyCode === HotKeys.B && !repeated) this.recall();
+    // P: the shop. Same reasoning as B and N — not a kit letter, not an item
+    // digit, so it can never steal a cast. It toggles rather than only
+    // opening, because unlike the config panel the shop does not pause and a
+    // player mid-fight needs one key back out.
+    if (keyCode === HotKeys.P && !repeated) this.inGameHUD?.vueInstance?.hud.toggleShop();
     this.spellInputController.keyDown(keyCode, repeated);
     this.itemInputController.keyDown(keyCode, repeated);
   }
