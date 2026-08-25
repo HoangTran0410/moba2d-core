@@ -183,28 +183,6 @@ const resetLabel = computed(() =>
 
 <template>
   <div class="practice-tab-body">
-    <label class="pregame-field">
-      <span
-        >Giảm hồi chiêu:
-        <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span
-      >
-      <input
-        type="range"
-        id="practice-cdr"
-        :min="CDR_PERCENT_MIN"
-        :max="CDR_PERCENT_MAX"
-        :step="CDR_PERCENT_STEP"
-        :value="rules.cooldownReductionPercent"
-        @input="onCdrInput"
-        @change="onCdrChange"
-      />
-    </label>
-
-    <label class="pregame-toggle">
-      <input type="checkbox" id="practice-urf" :checked="rules.manaFree" @change="onUrfChange" />
-      <span>URF (không tốn mana)</span>
-    </label>
-
     <!-- Cards, not a `<select>` — see the script's own comment on what a
          player could not see before. A `<select>` was also the one control on
          this tab that needed no touch handler, because `@change` fires under
@@ -217,25 +195,12 @@ const resetLabel = computed(() =>
     <div class="map-field">
       <span class="map-field-label">Bản đồ</span>
       <div id="practice-map" class="map-picker" role="radiogroup" aria-label="Bản đồ">
-        <button
-          v-for="map of maps"
-          :key="map.id"
-          type="button"
-          class="map-option"
-          :class="{ selected: map.id === selectedMapId }"
-          role="radio"
-          :aria-checked="map.id === selectedMapId"
-          :data-map="map.id"
-          @click="pickMap(map.id)"
-          @touchend.prevent="pickMap(map.id)"
-        >
+        <button v-for="map of maps" :key="map.id" type="button" class="map-option"
+          :class="{ selected: map.id === selectedMapId }" role="radio" :aria-checked="map.id === selectedMapId"
+          :data-map="map.id" @click="pickMap(map.id)" @touchend.prevent="pickMap(map.id)">
           <span class="map-option-name">
             {{ map.name }}
-            <i
-              v-if="map.id === selectedMapId"
-              class="fas fa-check map-option-tick"
-              aria-hidden="true"
-            ></i>
+            <i v-if="map.id === selectedMapId" class="fas fa-check map-option-tick" aria-hidden="true"></i>
           </span>
           <span class="map-option-meta">
             {{ map.size }}×{{ map.size }} · {{ map.factions.length }} phe
@@ -245,31 +210,32 @@ const resetLabel = computed(() =>
       </div>
     </div>
 
+    <label class="pregame-field">
+      <span>Giảm hồi chiêu:
+        <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span>
+      <input type="range" id="practice-cdr" :min="CDR_PERCENT_MIN" :max="CDR_PERCENT_MAX" :step="CDR_PERCENT_STEP"
+        :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange" />
+    </label>
+
+    <label class="pregame-toggle">
+      <input type="checkbox" id="practice-urf" :checked="rules.manaFree" @change="onUrfChange" />
+      <span>URF (không tốn mana)</span>
+    </label>
+
     <!-- Only in a match, and only for the map: a live match cannot swap its
          own world out from under itself — see `MatchConfigSource.getMap`. -->
     <p v-if="live" class="practice-note">
       Bản đồ mới sẽ áp dụng cho trận tiếp theo — trận đang chạy vẫn trên
-      <strong>{{ liveMapName }}</strong
-      >.
+      <strong>{{ liveMapName }}</strong>.
     </p>
 
     <label class="pregame-toggle">
-      <input
-        type="checkbox"
-        id="practice-jungle"
-        :checked="world.jungle"
-        @change="onJungleChange"
-      />
+      <input type="checkbox" id="practice-jungle" :checked="world.jungle" @change="onJungleChange" />
       <span>Quái rừng</span>
     </label>
 
     <label class="pregame-toggle">
-      <input
-        type="checkbox"
-        id="practice-minions"
-        :checked="world.minions"
-        @change="onMinionsChange"
-      />
+      <input type="checkbox" id="practice-minions" :checked="world.minions" @change="onMinionsChange" />
       <span>Lính</span>
     </label>
 
@@ -283,39 +249,21 @@ const resetLabel = computed(() =>
     <!-- Last in the flow and visually apart: the irreversible controls. See the
          file comment on why each is here and why both confirm. -->
     <div class="practice-tab-actions">
-      <button
-        type="button"
-        class="practice-reset"
-        :class="{ confirming: confirmingReset }"
-        :disabled="resetting"
-        id="practice-reset"
-        @click="resetDefaults"
-      >
+      <button type="button" class="practice-reset" :class="{ confirming: confirmingReset }" :disabled="resetting"
+        id="practice-reset" @click="resetDefaults">
         <i class="fas fa-rotate-left" aria-hidden="true"></i>
         <span>{{ resetLabel }}</span>
       </button>
 
-      <button
-        v-if="live"
-        type="button"
-        class="practice-exit"
-        :class="{ confirming: confirmingExit }"
-        id="practice-exit"
-        @click="exitMatch"
-      >
+      <button v-if="live" type="button" class="practice-exit" :class="{ confirming: confirmingExit }" id="practice-exit"
+        @click="exitMatch">
         <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
         <span>{{ confirmingExit ? 'Chắc chưa?' : 'Thoát trận' }}</span>
       </button>
 
       <!-- Outside a match the equivalent is simply going back to the menu; it
            discards nothing, so it does not confirm. -->
-      <button
-        v-else
-        type="button"
-        class="practice-exit"
-        id="pregame-back-btn"
-        @click="emit('close')"
-      >
+      <button v-else type="button" class="practice-exit" id="pregame-back-btn" @click="emit('close')">
         <i class="fas fa-arrow-left" aria-hidden="true"></i>
         <span>Về menu</span>
       </button>
