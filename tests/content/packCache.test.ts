@@ -6,6 +6,9 @@ import {
   packBaseFor,
   packCacheUsage,
   prefetchPackFiles,
+  missingPackFiles,
+  pinPackManifest,
+  readPinnedManifest,
 } from '@/content/packCache';
 import { stripComments } from '@/seams/importScan';
 
@@ -203,7 +206,30 @@ describe('announcePackBases', () => {
       serviceWorker: { controller: { postMessage }, ready: Promise.resolve({ active: null }) },
     });
     announcePackBases([BASE]);
-    expect(postMessage).toHaveBeenCalledWith({ type: 'PACK_BASES', bases: [BASE] });
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'PACK_BASES',
+      bases: [BASE],
+      manifests: [],
+    });
+  });
+
+  /**
+   * The exclusion travels with the bases, not as a second message. They are
+   * one rule (`seams/packRoute.ts`), and a worker holding half of it answers
+   * every manifest from cache — which is the frozen-pack bug the exclusion
+   * exists to end.
+   */
+  it('carries the manifest exclusions in the same message', () => {
+    const postMessage = vi.fn();
+    vi.stubGlobal('navigator', {
+      serviceWorker: { controller: { postMessage }, ready: Promise.resolve({ active: null }) },
+    });
+    announcePackBases([BASE], [`${BASE}manifest.json`]);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'PACK_BASES',
+      bases: [BASE],
+      manifests: [`${BASE}manifest.json`],
+    });
   });
 
   it('is a no-op with no service worker, rather than a throw on the boot path', () => {
@@ -232,5 +258,117 @@ describe('the cache name', () => {
     // mismatch is a cache the page fills and the worker never reads, which is
     // silent and offline-only.
     expect(sw).toContain(`'${PACK_CACHE_NAME}'`);
+  });
+});
+
+/**
+ * Boot must not ask the network what a pack is.
+ *
+ * It used to: `runtimePacks.ts` called `fetchPackManifest` on every launch and
+ * let the worker's `CacheFirst` route decide where the answer came from. That
+ * is how the manifest ended up frozen — the strategy was making a decision
+ * nobody had stated. The manifest is out of that route now, so the two reads
+ * become explicit: this pair is the pinned one, and the update check fetches.
+ */
+describe('the pinned manifest', () => {
+  const MANIFEST_URL = `${BASE}manifest.json`;
+
+  it('reads back exactly what was pinned', async () => {
+    await pinPackManifest(MANIFEST_URL, '{"id":"riot","buildId":"abc"}');
+    expect(await readPinnedManifest(MANIFEST_URL)).toBe('{"id":"riot","buildId":"abc"}');
+  });
+
+  it('answers null for a pack that was never pinned', async () => {
+    expect(await readPinnedManifest(MANIFEST_URL)).toBeNull();
+  });
+
+  it('replaces the pin rather than accumulating copies', async () => {
+    await pinPackManifest(MANIFEST_URL, '{"buildId":"one"}');
+    await pinPackManifest(MANIFEST_URL, '{"buildId":"two"}');
+    expect(await readPinnedManifest(MANIFEST_URL)).toBe('{"buildId":"two"}');
+    expect(caches.store.size).toBe(1);
+  });
+
+  it('survives a browser with no CacheStorage, rather than throwing on boot', async () => {
+    delete (globalThis as Record<string, unknown>).caches;
+    await expect(pinPackManifest(MANIFEST_URL, '{}')).resolves.toBe(false);
+    await expect(readPinnedManifest(MANIFEST_URL)).resolves.toBeNull();
+  });
+
+  /** `forgetPack` empties by base prefix, and the pin lives under that base. */
+  it('goes when the pack is removed', async () => {
+    await pinPackManifest(MANIFEST_URL, '{}');
+    await forgetPack(BASE);
+    expect(await readPinnedManifest(MANIFEST_URL)).toBeNull();
+  });
+});
+
+/**
+ * What is still missing from a pinned install, so the next boot can finish
+ * what the first one started.
+ *
+ * Derived from the cache rather than stored in `localStorage`: the store's own
+ * contract is "a few hundred bytes", and 592 file names is not that. One
+ * `keys()` walk answers it exactly, and it cannot drift from the truth the way
+ * a stored list would.
+ */
+describe('missingPackFiles', () => {
+  it('names the files that are not in the cache', async () => {
+    await (await caches.open()).put(`${BASE}a.js`, new Response('x'));
+    expect(await missingPackFiles(BASE, ['a.js', 'b.js', 'c.js'])).toEqual(['b.js', 'c.js']);
+  });
+
+  it('is empty for a complete install', async () => {
+    await (await caches.open()).put(`${BASE}a.js`, new Response('x'));
+    expect(await missingPackFiles(BASE, ['a.js'])).toEqual([]);
+  });
+
+  it('treats a file that escapes the base as missing, never as cached', async () => {
+    // Same guard the prefetch applies on the way in: a manifest is a
+    // stranger's file, and `../` is an ordinary resolve.
+    expect(await missingPackFiles(BASE, ['../elsewhere.js'])).toEqual(['../elsewhere.js']);
+  });
+
+  it('reports everything missing when there is no CacheStorage at all', async () => {
+    delete (globalThis as Record<string, unknown>).caches;
+    expect(await missingPackFiles(BASE, ['a.js'])).toEqual(['a.js']);
+  });
+});
+
+/**
+ * A 404 and a dropped connection are not the same news.
+ *
+ * A dropped connection means "try later". A 404 on a file this pack's own
+ * manifest listed means the build being installed no longer exists on the
+ * server — the deploy keeps exactly one build — so this snapshot can never be
+ * completed and the only way forward is a newer manifest. That is evidence,
+ * not a guess, and it is the strongest stale signal available.
+ */
+describe('prefetch tells a 404 from a network failure', () => {
+  it('counts a 404 as gone', async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(
+      async () => new Response('', { status: 404 })
+    );
+    const report = await prefetchPackFiles(BASE, ['a.js']);
+    expect(report.gone).toBe(1);
+    expect(report.failed).toBe(1);
+  });
+
+  it('does not count a refused connection as gone', async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const report = await prefetchPackFiles(BASE, ['a.js']);
+    expect(report.gone).toBe(0);
+    expect(report.failed).toBe(1);
+  });
+
+  it('does not count a 500 as gone either', async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(
+      async () => new Response('', { status: 500 })
+    );
+    const report = await prefetchPackFiles(BASE, ['a.js']);
+    expect(report.gone).toBe(0);
+    expect(report.failed).toBe(1);
   });
 });

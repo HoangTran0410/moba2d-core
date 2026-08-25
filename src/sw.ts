@@ -33,6 +33,7 @@ import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { isPackRequest, isValidPackBase } from './seams/packRoute';
 
 /**
  * `declare let`, not `declare const`, and typed as a module-scope shadow of
@@ -140,34 +141,29 @@ const PACK_CACHE_NAME = 'lol2d-packs-v1';
 const PACK_BASES_KEY = new URL('__lol2d_pack_bases__', self.registration.scope).href;
 const packBases: string[] = [];
 
-/**
- * A base worth trusting: an absolute http(s) URL ending in `/`.
- *
- * The router below is a bare `url.href.startsWith(base)`, so an unslashed
- * base — `https://h/riot` rather than `https://h/riot/` — would also claim
- * `https://h/riot-evil/anything`: the exact "rule too broad" shape spec §6
- * rules out by name, reached here through the narrow per-pack rule instead
- * of a deliberately wide one. `packCache.ts`'s `packBaseFor` never emits
- * anything else, but that is a fact about one sender, not one this worker's
- * own type checker can see across a `postMessage` — `src/content/packCache.ts`
- * runs its own copy of this same check on the way out, and neither file can
- * import the other's to share it.
- */
-function isValidPackBase(base: string): boolean {
-  if (!base.endsWith('/')) return false;
-  try {
-    const url = new URL(base);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function rememberBases(bases: unknown): void {
   packBases.length = 0;
   if (!Array.isArray(bases)) return;
   for (const base of bases) {
     if (typeof base === 'string' && isValidPackBase(base)) packBases.push(base);
+  }
+}
+
+/**
+ * The manifest URLs the route must *not* claim — see `seams/packRoute.ts`.
+ *
+ * Kept beside the bases and persisted with them, because the exclusion is
+ * useless if a restarted worker remembers the bases and forgets it: the very
+ * next manifest fetch would be answered from cache and the pack would be
+ * frozen again, silently, until the next time the worker happened to be told.
+ */
+const packManifests: string[] = [];
+
+function rememberManifests(manifests: unknown): void {
+  packManifests.length = 0;
+  if (!Array.isArray(manifests)) return;
+  for (const manifest of manifests) {
+    if (typeof manifest === 'string' && manifest.length > 0) packManifests.push(manifest);
   }
 }
 
@@ -210,7 +206,19 @@ const basesLoaded = (async () => {
     // See the comment above: a `PACK_BASES` message may have already landed
     // while the two awaits above were in flight, and its data is strictly
     // fresher than whatever was persisted last session.
-    if (!announced) rememberBases(parsed);
+    //
+    // A bare array is what this key held before manifests joined it. Read as
+    // "bases, no exclusions", which is the pre-existing behaviour: the page
+    // re-announces both on the very next boot, so the old shape is seen at
+    // most once per browser.
+    if (announced) return;
+    if (Array.isArray(parsed)) {
+      rememberBases(parsed);
+      return;
+    }
+    const stored_ = parsed as { bases?: unknown; manifests?: unknown };
+    rememberBases(stored_.bases);
+    rememberManifests(stored_.manifests);
   } catch {
     // An unreadable list costs offline packs, never the app.
   }
@@ -220,12 +228,13 @@ self.addEventListener('install', event => event.waitUntil(basesLoaded));
 self.addEventListener('activate', event => event.waitUntil(basesLoaded));
 
 self.addEventListener('message', event => {
-  const data = event.data as { type?: string; bases?: unknown } | null;
+  const data = event.data as { type?: string; bases?: unknown; manifests?: unknown } | null;
   if (!data || data.type !== 'PACK_BASES') return;
   // Set before anything else in this handler, synchronously — this is the
   // half of the race `basesLoaded` above reads.
   announced = true;
   rememberBases(data.bases);
+  rememberManifests(data.manifests);
   // Snapshotted here, synchronously, rather than inside the `.then` below:
   // `packBases` is module state, and reading it only after `caches.open`
   // resolves would let anything that mutates it in between — a second
@@ -233,7 +242,7 @@ self.addEventListener('message', event => {
   // persisting out from under it. There is nothing between this line and the
   // `rememberBases` call above that yields, so this is exactly what was just
   // announced.
-  const toPersist = JSON.stringify(packBases);
+  const toPersist = JSON.stringify({ bases: packBases, manifests: packManifests });
   event.waitUntil(
     caches
       .open(PACK_CACHE_NAME)
@@ -250,11 +259,22 @@ self.addEventListener('message', event => {
 });
 
 /**
- * `CacheFirst`, and with no `ExpirationPlugin` on purpose. Every file under a
- * base is content-hashed by the pack's own build, so a stale entry is not a
- * thing that can happen — and an entry cap would evict the very chunks the
- * prefetch just spent a megabyte fetching. Removal is the player's, through
- * the packs screen.
+ * `CacheFirst`, and with no `ExpirationPlugin` on purpose: an entry cap would
+ * evict the very chunks the prefetch just spent a megabyte fetching. Removal
+ * is the player's, through the packs screen.
+ *
+ * This comment used to add "every file under a base is content-hashed by the
+ * pack's own build, so a stale entry is not a thing that can happen", and
+ * that was the error the whole pinning change exists to correct. Two names
+ * under a pack's base are *not* content-hashed — `manifest.json` and the
+ * entry `pack.js` — and both are the ones that matter. Caching the manifest
+ * for ever froze the pack at whatever build was installed first; caching the
+ * entry for ever pointed it at a chunk graph the deploy had already deleted.
+ *
+ * The manifest is excluded from this route entirely. The entry is kept, and
+ * is now safe to keep, because `packSource.ts` hangs the build id off its URL
+ * — one URL per build, so an old entry and a new manifest can no longer be
+ * confused for each other.
  *
  * `matchOptions: { ignoreVary: true }` because the two sides write and read
  * with different `Request`s: `packCache.ts` calls `cache.put(urlString, …)`,
@@ -267,7 +287,7 @@ self.addEventListener('message', event => {
  */
 registerRoute(
   ({ url, request }) =>
-    request.method === 'GET' && packBases.some(base => url.href.startsWith(base)),
+    request.method === 'GET' && isPackRequest(url.href, packBases, packManifests),
   new CacheFirst({
     cacheName: PACK_CACHE_NAME,
     matchOptions: { ignoreVary: true },

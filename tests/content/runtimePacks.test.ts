@@ -10,6 +10,11 @@ vi.mock('@/content/packSource', () => ({
   },
   fetchPackManifest: vi.fn(),
   loadPackFromManifest: vi.fn(),
+  // Boot reads the pinned manifest through this. A real pass-through, not a
+  // stub: the pin is re-checked on the way in on purpose (a stored manifest is
+  // still a stranger's file), and a stub that waved it through would make the
+  // pinned path look safer here than it is in the app.
+  checkPackManifest: (parsed: unknown) => parsed,
   // A real implementation, not a bare `vi.fn()`, for the reason the
   // `packCache` mock below gives: what this returns lands in the stored
   // record, and several cases assert on that record whole. A stub returning
@@ -44,9 +49,16 @@ vi.mock('@/content/packCache', () => ({
   }),
   announcePackBases: vi.fn(),
   prefetchPackFiles: vi.fn(),
+  // Defaults to "nothing is pinned", which is a browser installing for the
+  // first time — the state every case below was written against, and the one
+  // that still exercises the network path.
+  readPinnedManifest: vi.fn(async () => null),
+  pinPackManifest: vi.fn(async () => true),
+  missingPackFiles: vi.fn(async () => []),
 }));
 
 import { installRuntimePacks, installPackNow, DEFAULT_PACK_URL } from '@/content/runtimePacks';
+import { pinPackManifest, readPinnedManifest } from '@/content/packCache';
 import { fetchPackManifest, loadPackFromManifest } from '@/content/packSource';
 import { installRuntimePack } from '@/content/install';
 import { contentRegistry, rebuildContentRegistry } from '@/content/registry';
@@ -84,7 +96,14 @@ const manifest = {
  * (`packCache.ts`) field for field, since it stands in for a resolved value
  * `prefetchPackFiles` never actually computed in these tests.
  */
-const EMPTY_REPORT: PrefetchReport = { base: '', requested: 0, added: 0, skipped: 0, failed: 0 };
+const EMPTY_REPORT: PrefetchReport = {
+  base: '',
+  requested: 0,
+  added: 0,
+  skipped: 0,
+  failed: 0,
+  gone: 0,
+};
 
 describe('installRuntimePacks', () => {
   beforeEach(() => {
@@ -316,7 +335,7 @@ describe('the offline prefetch', () => {
 
     await installRuntimePacks();
 
-    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE]);
+    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE], [PACK_URL]);
   });
 
   it('prefetches the files the manifest listed', async () => {
@@ -355,7 +374,7 @@ describe('the offline prefetch', () => {
 
     await installRuntimePacks();
 
-    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE]);
+    expect(announcePackBases).toHaveBeenCalledWith([PACK_BASE], [PACK_URL]);
     expect(prefetchPackFiles).toHaveBeenCalledWith(PACK_BASE, ['pack.js']);
   });
 
@@ -390,7 +409,11 @@ describe('the offline prefetch', () => {
     // does not mean the background `.then` has run yet.
     await vi.waitFor(() => {
       expect((globalThis as Record<string, unknown>).__lol2dPackPrefetch).toEqual([
-        { base: PACK_BASE, requested: 1, added: 0, skipped: 0, failed: 1 },
+        // `gone: 0` and not `gone: 1`: the promise rejected, so nothing was
+        // ever asked and nothing came back 404. A synthesized report must not
+        // invent the one signal that means "this build is gone from the
+        // server".
+        { base: PACK_BASE, requested: 1, added: 0, skipped: 0, failed: 1, gone: 0 },
       ]);
     });
   });
@@ -436,7 +459,7 @@ describe('the offline prefetch', () => {
 
     await expect(installRuntimePacks()).resolves.toBeInstanceOf(Array);
 
-    expect(announcePackBases).toHaveBeenCalledWith([]);
+    expect(announcePackBases).toHaveBeenCalledWith([], []);
     expect(prefetchPackFiles).not.toHaveBeenCalled();
   });
 
@@ -451,7 +474,140 @@ describe('the offline prefetch', () => {
 
     await installRuntimePacks();
 
-    expect(announcePackBases).toHaveBeenCalledWith([]);
+    expect(announcePackBases).toHaveBeenCalledWith([], []);
+  });
+});
+
+/**
+ * Boot must not ask the network what a pack is.
+ *
+ * It used to, on every launch — and let the worker's `CacheFirst` route decide
+ * where the answer came from. The route claimed the manifest by prefix, so the
+ * first fetch froze it and every later boot got that same copy for ever: an
+ * installed pack could never see a newer build of itself, and any file the
+ * first prefetch missed 404'd for ever against a deploy that keeps exactly one
+ * build. The strategy was making a decision nobody had stated.
+ *
+ * Now there are two named reads. This is the pinned one.
+ */
+describe('the pinned manifest', () => {
+  const PACK_URL = 'https://packs.example/riot/manifest.json';
+
+  // A sibling block, so it carries its own resets — see `installPackNow`'s.
+  // `readPinnedManifest` in particular has to be re-stated every test:
+  // `clearAllMocks` clears recorded calls and not implementations, so one
+  // test's `mockResolvedValue` would otherwise pin every test after it.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(rebuildContentRegistry).mockReturnValue({ hasPack: () => false } as never);
+    vi.mocked(readPinnedManifest).mockResolvedValue(null);
+    vi.mocked(prefetchPackFiles).mockResolvedValue({ ...EMPTY_REPORT });
+    withStorage();
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  const pinned = (manifest: unknown) =>
+    vi.mocked(readPinnedManifest).mockResolvedValue(JSON.stringify(manifest));
+
+  it('boots from the pin without touching the network', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    pinned({
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '*',
+      name: 'Riot',
+      entry: 'pack.js',
+      assets: 'assets/',
+    });
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: { id: 'riot' } } as never);
+
+    await installRuntimePacks();
+
+    expect(fetchPackManifest).not.toHaveBeenCalled();
+    expect(loadPackFromManifest).toHaveBeenCalled();
+  });
+
+  it('fetches and pins when there is no pin yet', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    const manifest = {
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '*',
+      name: 'Riot',
+      entry: 'pack.js',
+      assets: 'assets/',
+    };
+    vi.mocked(fetchPackManifest).mockResolvedValue(manifest as never);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    await installRuntimePacks();
+
+    expect(fetchPackManifest).toHaveBeenCalledWith(PACK_URL);
+    // Pinned as the *checked* object re-serialised, not as the bytes that
+    // arrived: what is worth keeping is exactly what passed validation.
+    expect(pinPackManifest).toHaveBeenCalledWith(PACK_URL, JSON.stringify(manifest));
+  });
+
+  /**
+   * A pin is a stranger's file that has been sitting on the player's own disk.
+   * It gets the same checks the network copy gets, and a pin that no longer
+   * passes them falls back to the network rather than refusing the pack.
+   */
+  it('falls back to the network when the pin no longer checks out', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    vi.mocked(readPinnedManifest).mockResolvedValue('{ not json');
+    const manifest = {
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '*',
+      name: 'Riot',
+      entry: 'pack.js',
+      assets: 'assets/',
+    };
+    vi.mocked(fetchPackManifest).mockResolvedValue(manifest as never);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest } as never);
+
+    const outcomes = await installRuntimePacks();
+
+    expect(fetchPackManifest).toHaveBeenCalledWith(PACK_URL);
+    expect(outcomes[0]).toMatchObject({ ok: true });
+  });
+
+  it('tells the worker which URL it must never answer from its own cache', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    pinned({
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '*',
+      name: 'Riot',
+      entry: 'pack.js',
+      assets: 'assets/',
+    });
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: { id: 'riot' } } as never);
+
+    await installRuntimePacks();
+
+    expect(announcePackBases).toHaveBeenCalledWith(['https://packs.example/riot/'], [PACK_URL]);
+  });
+
+  it('remembers which build it pinned', async () => {
+    writeInstalledPacks([{ manifestUrl: PACK_URL, id: 'riot', version: '1.0.0' }]);
+    pinned({
+      id: 'riot',
+      version: '1.0.0',
+      coreRange: '*',
+      name: 'Riot',
+      entry: 'pack.js',
+      assets: 'assets/',
+      buildId: 'deadbeef',
+    });
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: { id: 'riot' } } as never);
+
+    await installRuntimePacks();
+
+    expect(readInstalledPacks()[0].buildId).toBe('deadbeef');
   });
 });
 
@@ -519,7 +675,10 @@ describe('installPackNow', () => {
 
     await installPackNow(packUrl, manifest);
 
-    expect(announcePackBases).toHaveBeenCalledWith(['https://a/', packBase]);
+    expect(announcePackBases).toHaveBeenCalledWith(
+      ['https://a/', packBase],
+      ['https://a/manifest.json', packUrl]
+    );
   });
 
   it('comes back ok: false with the stage, instead of throwing, when loadPackFromManifest rejects', async () => {

@@ -140,3 +140,54 @@ describe('installedPackStore', () => {
     expect(hasSeededDefaultPack()).toBe(false);
   });
 });
+
+/**
+ * Which build is pinned — the field that makes "this pack is out of date"
+ * answerable at all.
+ *
+ * `version` was already there for this, carrying a comment that said "so an
+ * update can be noticed later", and it could never work: it is a number a
+ * human has to remember to bump, and riot's stayed `1.0.0` across dozens of
+ * publishes. `buildId` is derived by the pack's own manifest writer from its
+ * file list, so it moves whether anyone remembers or not.
+ */
+describe('buildId', () => {
+  beforeEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it('round-trips', () => {
+    withStorage();
+    writeInstalledPacks([
+      { manifestUrl: 'https://h/p/manifest.json', id: 'riot', version: '1.0.0', buildId: 'abc123' },
+    ]);
+    expect(readInstalledPacks()[0].buildId).toBe('abc123');
+  });
+
+  /** Same defensive read as `name` and `icon`: this value is hand-editable. */
+  it('is dropped when it is not a non-empty string', () => {
+    const map = withStorage();
+    map.set(
+      PACK_STORE_KEY,
+      JSON.stringify([
+        { manifestUrl: 'https://h/p/manifest.json', id: 'riot', version: '1.0.0', buildId: 7 },
+      ])
+    );
+    expect(readInstalledPacks()[0].buildId).toBeUndefined();
+  });
+
+  /**
+   * A record written before pinning existed has none, and must still load.
+   * Core reads its absence as "not pinned", falls back to the network, and
+   * pins on the way through — so the upgrade costs one fetch, once.
+   */
+  it('is absent, not invalid, for a record from before it existed', () => {
+    const map = withStorage();
+    map.set(
+      PACK_STORE_KEY,
+      JSON.stringify([{ manifestUrl: 'https://h/p/manifest.json', id: 'riot', version: '1.0.0' }])
+    );
+    expect(readInstalledPacks()).toHaveLength(1);
+    expect(readInstalledPacks()[0].buildId).toBeUndefined();
+  });
+});

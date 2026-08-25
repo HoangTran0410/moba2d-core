@@ -20,8 +20,24 @@ export interface InstalledPackRecord {
   manifestUrl: string;
   /** The pack id the manifest declared, kept so a stale list can be shown. */
   id: string;
-  /** The version last installed, so an update can be noticed later. */
+  /** The semver the manifest declared, shown to a person. Not a staleness test. */
   version: string;
+  /**
+   * Which build is pinned in the pack cache — the thing an update check
+   * compares against.
+   *
+   * `version` was written for this job and cannot do it. It is a number a
+   * human has to remember to bump, and riot's stayed `1.0.0` across dozens of
+   * publishes, so the "so an update can be noticed later" this field's comment
+   * used to carry described something no code could act on. `buildId` is
+   * derived by the pack's own manifest writer from its emitted file list, so
+   * it moves exactly when a content hash does and nobody has to remember
+   * anything.
+   *
+   * Optional: a record written before pinning existed has none, which reads as
+   * "not pinned" and costs one fetch on the next boot.
+   */
+  buildId?: string;
   /**
    * The name the manifest declared, so the packs screen can show a pack the
    * way its author named it rather than by the machine id. Optional: a record
@@ -75,6 +91,8 @@ export function readInstalledPacks(): InstalledPackRecord[] {
       };
       // Copied only when they are strings: this value is hand-editable and
       // survives across versions, same as every other read here.
+      if (typeof entry.buildId === 'string' && entry.buildId.length > 0)
+        record.buildId = entry.buildId;
       if (typeof entry.name === 'string' && entry.name.length > 0) record.name = entry.name;
       if (typeof entry.icon === 'string' && entry.icon.length > 0) record.icon = entry.icon;
       out.push(record);

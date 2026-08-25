@@ -85,18 +85,41 @@ describe('the hand-written service worker keeps what generateSW gave us', () => 
  * A behavioural test would need a real service worker; this is the cheap
  * half, same as the rest of this file.
  */
-describe('the pack route only trusts a base worth trusting', () => {
-  it('requires the trailing slash before remembering a base', () => {
+/**
+ * The routing rule itself now lives in `src/seams/packRoute.ts` and has real
+ * unit tests (`tests/content/packRoute.test.ts`), because it is imported by
+ * both the page and the worker rather than written out twice.
+ *
+ * What is left to scan for is the wiring, which no unit test can see: that
+ * this worker reaches for the shared rule instead of growing a third copy, and
+ * that the rule actually gates the route rather than merely being imported.
+ */
+describe('the pack route uses the shared rule', () => {
+  it('imports it rather than restating it', () => {
     const source = sw();
-    expect(source).toContain('function isValidPackBase(base: string): boolean {');
-    expect(source).toContain("if (!base.endsWith('/')) return false;");
-    // The check has to actually gate `rememberBases`, not merely exist.
-    expect(source).toMatch(/typeof base === 'string' && isValidPackBase\(base\)/);
+    expect(source).toContain("from './seams/packRoute'");
+    // A private copy is how the two sides drifted apart the first time.
+    expect(source).not.toContain('function isValidPackBase(base: string): boolean {');
   });
 
-  it('requires an http(s) protocol before remembering a base', () => {
+  it('gates what it remembers on the shared base check', () => {
+    expect(sw()).toMatch(/typeof base === 'string' && isValidPackBase\(base\)/);
+  });
+
+  /**
+   * The manifest exclusion is the whole point of `isPackRequest` existing
+   * instead of a bare `startsWith`. A route that went back to the prefix test
+   * would freeze every installed pack at its first build, silently.
+   */
+  it('answers the route with isPackRequest, not a bare prefix test', () => {
     const source = sw();
-    expect(source).toMatch(/url\.protocol === 'http:'\s*\|\|\s*url\.protocol === 'https:'/);
+    expect(source).toMatch(/isPackRequest\(url\.href, packBases, packManifests\)/);
+    expect(source).not.toMatch(/packBases\.some\(base => url\.href\.startsWith\(base\)\)/);
+  });
+
+  /** A remembered base with a forgotten exclusion is a frozen pack. */
+  it('persists the exclusions alongside the bases', () => {
+    expect(sw()).toMatch(/JSON\.stringify\(\{ bases: packBases, manifests: packManifests \}\)/);
   });
 
   it('routes a request whose Vary header the page-side write never carried', () => {

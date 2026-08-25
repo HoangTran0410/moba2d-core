@@ -2,12 +2,16 @@ import { buildContentApi, type ContentApi } from './ContentApi';
 import { installRuntimePack } from './install';
 import {
   announcePackBases,
+  missingPackFiles,
+  pinPackManifest,
+  readPinnedManifest,
   packBaseFor,
   prefetchPackFiles,
   type PrefetchReport,
 } from './packCache';
 import {
   fetchPackManifest,
+  checkPackManifest,
   loadPackFromManifest,
   PackLoadError,
   resolvePackIcon,
@@ -149,9 +153,44 @@ function recordFor(manifestUrl: string, manifest: RuntimePackManifest): Installe
     manifestUrl,
     id: manifest.id,
     version: manifest.version,
+    // Which build is pinned. `version` was already meant to carry this and
+    // could not: riot's stayed `1.0.0` across dozens of publishes, so the
+    // "so an update can be noticed later" comment on that field described
+    // something no code could ever act on. `buildId` is derived by the pack's
+    // manifest writer from its own file list, so it moves on its own.
+    buildId: manifest.buildId,
     name: manifest.name,
     icon: resolvePackIcon(manifest, manifestUrl),
   };
+}
+
+/**
+ * The manifest this browser pinned at install, or `null` to go and fetch one.
+ *
+ * **Boot's read.** The network one is `fetchPackManifest`, and keeping them
+ * two named calls is the correction: they used to be one `fetch()` whose
+ * answer came from wherever the worker's `CacheFirst` route decided, and it
+ * decided "cache, for ever" — so an installed pack could never see a newer
+ * build of itself, and any file the first prefetch missed 404'd against a
+ * deploy that keeps exactly one build.
+ *
+ * The pinned copy is re-checked, not trusted. It was a stranger's file when it
+ * was written and `CacheStorage` is the player's own disk; the origin and
+ * `coreRange` rules are what the install confirmation's promise rests on, so
+ * they are re-applied here through the very same function the network path
+ * uses.
+ */
+async function readPinnedPackManifest(manifestUrl: string): Promise<RuntimePackManifest | null> {
+  const body = await readPinnedManifest(manifestUrl);
+  if (!body) return null;
+  try {
+    return checkPackManifest(JSON.parse(body), manifestUrl);
+  } catch {
+    // A pin that no longer passes — a core whose `coreRange` floor has moved
+    // under it, or a hand-edited cache — is not a reason to refuse the pack.
+    // Fall through to the network, which is what a browser with no pin does.
+    return null;
+  }
 }
 
 export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
@@ -184,6 +223,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // branches below, because a pack core already has under its id is still a
   // pack whose bytes are worth caching, same as one this call just fetched.
   const bases: string[] = [];
+  const manifests: string[] = [];
   const toPrefetch: { base: string; files: string[] }[] = [];
 
   let api: ContentApi;
@@ -217,13 +257,35 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
     const base = packBaseFor(manifestUrl);
     if (!base) return;
     bases.push(base);
+    // The worker must be told to leave this URL alone, or the route's prefix
+    // match claims it and the pack is frozen at whatever build installed
+    // first — see `seams/packRoute.ts`.
+    manifests.push(manifestUrl);
     if (manifest.files && manifest.files.length > 0)
       toPrefetch.push({ base, files: manifest.files });
   };
 
+  /**
+   * Fetch a manifest and pin it, so the next boot needs no network.
+   *
+   * Pinned as the *checked* object re-serialised rather than as the bytes
+   * that arrived: what is worth keeping is exactly what passed
+   * `checkPackManifest`, and an unknown field surviving the round trip would
+   * be a field nothing validated.
+   */
+  const fetched = async (url: string): Promise<RuntimePackManifest> => {
+    const manifest = await fetchPackManifest(url);
+    await pinPackManifest(url, JSON.stringify(manifest));
+    return manifest;
+  };
+
   for (const manifestUrl of wanted) {
     try {
-      const manifest = await fetchPackManifest(manifestUrl);
+      // The pin first, the network second. A pinned pack boots with no request
+      // at all, which is what makes it immune to the server moving underneath
+      // it — and is also the offline story, now that the manifest is out of
+      // the worker's cache-first route.
+      const manifest = (await readPinnedPackManifest(manifestUrl)) ?? (await fetched(manifestUrl));
       // Ahead of `loadPackFromManifest`, so a pack core already has is not
       // re-downloaded, and ahead of any asset registration — see this
       // file's own header.
@@ -273,7 +335,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // but it widens Important 1's stale-persisted-list window from "bounded by
   // this boot" to "unbounded", since nothing ever tells the worker the list
   // shrank.
-  announcePackBases(bases);
+  announcePackBases(bases, manifests);
 
   // **Not awaited, deliberately.** This is 4.7MB on the real pack, and the
   // menu handover is the statement after the caller's `await` on this
@@ -315,6 +377,11 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
             added: 0,
             skipped: 0,
             failed: pack.files.length,
+            // Nothing was asked, so nothing came back 404. A synthesized
+            // report must not invent the one signal that means "this build is
+            // gone from the server" — that would send a player to an update
+            // on the strength of a promise that rejected.
+            gone: 0,
           });
         }
         publishPrefetchReports(reports);
@@ -351,6 +418,11 @@ export async function installPackNow(
     const pack = await loadPackFromManifest(manifest, manifestUrl);
     installRuntimePack(registry, buildContentApi(), pack);
 
+    // Pinned here, at the moment of installing, so the next boot needs no
+    // network to know what this pack is. The caller fetched this manifest to
+    // show the player an origin; that same checked object is what gets kept.
+    await pinPackManifest(manifestUrl, JSON.stringify(manifest));
+
     const stored = readInstalledPacks();
     // A plain loop, not `.filter` — see CLAUDE.md.
     const next: InstalledPackRecord[] = [];
@@ -377,11 +449,15 @@ export async function installPackNow(
       // Every base, not just this one: the message replaces the worker's whole
       // list, so sending one would drop the packs installed at boot.
       const bases: string[] = [];
+      const manifests: string[] = [];
       for (const record of next) {
         const recordBase = packBaseFor(record.manifestUrl);
-        if (recordBase) bases.push(recordBase);
+        if (recordBase) {
+          bases.push(recordBase);
+          manifests.push(record.manifestUrl);
+        }
       }
-      announcePackBases(bases);
+      announcePackBases(bases, manifests);
       if (manifest.files && manifest.files.length > 0) {
         void prefetchPackFiles(base, manifest.files).catch(() => {});
       }

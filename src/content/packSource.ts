@@ -220,6 +220,75 @@ export function resolvePackIcon(
 }
 
 /**
+ * Everything `fetchPackManifest` checks once the bytes are in hand — split out
+ * because a manifest now arrives two ways.
+ *
+ * Boot reads the **pinned** copy out of `CacheStorage` rather than fetching,
+ * so that copy has to face exactly the same checks the network one does. It is
+ * not more trustworthy for having been stored: it was a stranger's file when
+ * it was written, `CacheStorage` is the player's own disk, and the origin and
+ * `coreRange` rules are what the install confirmation's promise rests on.
+ * Sharing the function is what makes "same checks" a fact rather than an
+ * intention.
+ */
+export function checkPackManifest(
+  parsed: unknown,
+  manifestUrl: string,
+  coreVersion: string = CORE_VERSION
+): RuntimePackManifest {
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new PackLoadError('manifest', `${manifestUrl} is not an object`);
+  }
+
+  const candidate = parsed as Record<string, unknown>;
+  const missing: string[] = [];
+  for (const field of REQUIRED) {
+    if (typeof candidate[field] !== 'string') missing.push(field);
+  }
+  if (missing.length > 0) {
+    throw new PackLoadError('manifest', `manifest is missing: ${missing.join(', ')}`);
+  }
+  if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
+    throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
+  }
+  if (candidate.files !== undefined && !Array.isArray(candidate.files)) {
+    throw new PackLoadError('manifest', 'manifest.files must be an array when present');
+  }
+  if (candidate.icon !== undefined && typeof candidate.icon !== 'string') {
+    throw new PackLoadError('manifest', 'manifest.icon must be a string when present');
+  }
+  if (candidate.buildId !== undefined && typeof candidate.buildId !== 'string') {
+    throw new PackLoadError('manifest', 'manifest.buildId must be a string when present');
+  }
+
+  const manifest = candidate as unknown as RuntimePackManifest;
+  if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
+    throw new PackLoadError(
+      'compat',
+      `pack ${manifest.id} needs core ${manifest.coreRange}, this is ${coreVersion}`
+    );
+  }
+  // Refused here, before any code has even been fetched, rather than left
+  // for `loadPackFromManifest` to discover — see `resolveWithin`'s own
+  // comment for why this is the design's whole point.
+  resolveWithin(manifest.assets, manifestUrl, 'assets');
+  // Same rule as `assets` and `entry`: a pack may not point core's `<img>`
+  // at some other host. Refused here rather than at render time, so a
+  // manifest that tries it never reaches the confirmation at all.
+  if (manifest.icon) resolveWithin(manifest.icon, manifestUrl, 'icon');
+  if (Array.isArray(manifest.files)) {
+    // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
+    // this project and cannot narrow a type (CLAUDE.md).
+    const paths: string[] = [];
+    for (const entry of manifest.files) {
+      if (typeof entry === 'string' && entry.length > 0) paths.push(entry);
+    }
+    manifest.files = paths;
+  }
+  return manifest;
+}
+
+/**
  * Fetches and checks a manifest. Nothing the pack wrote as *code* has run
  * when this resolves — that is the whole point of it being its own step.
  *
@@ -258,56 +327,7 @@ export async function fetchPackManifest(
       if (abort.signal.aborted) throw tooSlow();
       throw new PackLoadError('manifest', `${manifestUrl} is not JSON`);
     }
-    if (typeof parsed !== 'object' || parsed === null) {
-      throw new PackLoadError('manifest', `${manifestUrl} is not an object`);
-    }
-
-    const candidate = parsed as Record<string, unknown>;
-    const missing: string[] = [];
-    for (const field of REQUIRED) {
-      if (typeof candidate[field] !== 'string') missing.push(field);
-    }
-    if (missing.length > 0) {
-      throw new PackLoadError('manifest', `manifest is missing: ${missing.join(', ')}`);
-    }
-    if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
-      throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
-    }
-    if (candidate.files !== undefined && !Array.isArray(candidate.files)) {
-      throw new PackLoadError('manifest', 'manifest.files must be an array when present');
-    }
-    if (candidate.icon !== undefined && typeof candidate.icon !== 'string') {
-      throw new PackLoadError('manifest', 'manifest.icon must be a string when present');
-    }
-    if (candidate.buildId !== undefined && typeof candidate.buildId !== 'string') {
-      throw new PackLoadError('manifest', 'manifest.buildId must be a string when present');
-    }
-
-    const manifest = candidate as unknown as RuntimePackManifest;
-    if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
-      throw new PackLoadError(
-        'compat',
-        `pack ${manifest.id} needs core ${manifest.coreRange}, this is ${coreVersion}`
-      );
-    }
-    // Refused here, before any code has even been fetched, rather than left
-    // for `loadPackFromManifest` to discover — see `resolveWithin`'s own
-    // comment for why this is the design's whole point.
-    resolveWithin(manifest.assets, manifestUrl, 'assets');
-    // Same rule as `assets` and `entry`: a pack may not point core's `<img>`
-    // at some other host. Refused here rather than at render time, so a
-    // manifest that tries it never reaches the confirmation at all.
-    if (manifest.icon) resolveWithin(manifest.icon, manifestUrl, 'icon');
-    if (Array.isArray(manifest.files)) {
-      // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
-      // this project and cannot narrow a type (CLAUDE.md).
-      const paths: string[] = [];
-      for (const entry of manifest.files) {
-        if (typeof entry === 'string' && entry.length > 0) paths.push(entry);
-      }
-      manifest.files = paths;
-    }
-    return manifest;
+    return checkPackManifest(parsed, manifestUrl, coreVersion);
   } finally {
     clearTimeout(alarm);
   }

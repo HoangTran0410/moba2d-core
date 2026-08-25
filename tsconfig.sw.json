@@ -13,5 +13,5 @@
     "lib": ["ESNext", "WebWorker"],
     "types": []
   },
-  "include": ["src/sw.ts"]
+  "include": ["src/sw.ts", "src/seams/packRoute.ts"]
 }

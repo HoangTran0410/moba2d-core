@@ -20,6 +20,8 @@
  * is counted and returned.
  */
 
+import { isValidPackBase } from '@/seams/packRoute';
+
 /**
  * Where a pack's bytes live. Versioned in the name so a future change of
  * layout can be a new cache rather than a migration.
@@ -40,6 +42,18 @@ export interface PrefetchReport {
   added: number;
   skipped: number;
   failed: number;
+  /**
+   * How many of `failed` answered **404**, rather than failing to answer.
+   *
+   * The distinction is the whole stale-detection story. A refused connection
+   * or a 500 means "try later". A 404 on a path this pack's own manifest
+   * listed means the build being installed is no longer on the server — a
+   * deploy keeps exactly one build — so this snapshot can never be completed
+   * and no amount of retrying will change that. It is the one signal that is
+   * evidence rather than inference, and it is what turns "the pack might be
+   * out of date" into "the pack is out of date, here is the proof".
+   */
+  gone: number;
 }
 
 /**
@@ -60,20 +74,32 @@ export function packBaseFor(manifestUrl: string): string {
 }
 
 /**
- * Tells the service worker which base URLs belong to packs.
+ * Tells the service worker which URLs belong to packs, and which one of them
+ * it must never answer from cache.
  *
  * Fire-and-forget by design — there is nothing to await and nothing a caller
  * could do about a failure. A page with no worker (dev, or a browser without
  * one) simply has no offline story, which is the same as today.
  */
-export function announcePackBases(bases: readonly string[]): void {
+export function announcePackBases(
+  bases: readonly string[],
+  manifests: readonly string[] = []
+): void {
   try {
     // `[...bases]` is inside the `try` on purpose: `tsconfig.json`'s
     // `strict: false` lets a caller pass `undefined` here and still compile
     // (Task 4's caller does exactly this for a manifest with no `files`),
     // and spreading a non-iterable throws synchronously, before the
     // `navigator` guard below ever runs.
-    const message = { type: 'PACK_BASES', bases: [...bases] };
+    const message = {
+      type: 'PACK_BASES',
+      bases: [...bases],
+      // The URLs the worker must **not** answer from cache. Sent with the
+      // bases rather than as a second message: the two are one rule
+      // (`seams/packRoute.ts`), and a worker that received half of it would
+      // freeze every manifest until the other half arrived.
+      manifests: [...manifests],
+    };
     const container = navigator?.serviceWorker;
     if (!container) return;
     if (container.controller) {
@@ -99,32 +125,6 @@ async function openPackCache(): Promise<Cache | null> {
     return await caches.open(PACK_CACHE_NAME);
   } catch {
     return null;
-  }
-}
-
-/**
- * A base worth writing under: an absolute http(s) URL ending in `/`.
- *
- * `packBaseFor` never emits anything else, but that is a fact about one
- * caller, not a fact the type checker enforces at this function's own
- * boundary — and the slash is load-bearing beyond this module. `src/sw.ts`
- * runs its own copy of this same check on the base a `PACK_BASES` message
- * carries (the two cannot share code; see that file's own doc comment), and
- * an unslashed base defeats both sides at once: `new URL('../riot-evil/x.js',
- * 'https://h/riot')` resolves to `https://h/riot-evil/x.js`, which — because
- * `'https://h/riot'` is a plain string *prefix* of it — passes the escape
- * guard below, gets written into the shared cache, and would then be served
- * by the worker's own prefix match to any request for that sibling path.
- * Requiring the slash here is what makes the escape guard mean what its own
- * comment says.
- */
-function validBase(base: string): boolean {
-  if (!base.endsWith('/')) return false;
-  try {
-    const url = new URL(base);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
   }
 }
 
@@ -158,9 +158,10 @@ export async function prefetchPackFiles(
     added: 0,
     skipped: 0,
     failed: 0,
+    gone: 0,
   };
   const cache = await openPackCache();
-  if (!cache || !validBase(base)) {
+  if (!cache || !isValidPackBase(base)) {
     report.failed = list.length;
     return report;
   }
@@ -203,6 +204,10 @@ export async function prefetchPackFiles(
         // fetch ever gains `mode: 'no-cors'`, not because it fires today.
         if (!response.ok || response.type === 'opaque') {
           report.failed++;
+          // Only a 404. A 500 is a host having a bad day and a 0 is an opaque
+          // response, and reading either as "this build is gone" would send a
+          // player to a re-install that fixes nothing.
+          if (response.status === 404) report.gone++;
           continue;
         }
         await cache.put(url, response);
@@ -270,4 +275,92 @@ export async function forgetPack(base: string): Promise<number> {
     // Nothing to do about it; the store is the player's disk.
   }
   return removed;
+}
+
+/**
+ * Writes a pack's manifest into the pack cache, under its own URL.
+ *
+ * **This is what makes boot network-free.** The manifest is excluded from the
+ * worker's `CacheFirst` route (`seams/packRoute.ts`), so it is no longer
+ * cached as a side effect of being fetched — which is the point: the strategy
+ * used to decide where the manifest came from, and it decided "cache, for
+ * ever". Pinning is now a deliberate act at install time, and reading the pin
+ * is a deliberate act at boot.
+ *
+ * Answers whether it landed. Never throws: this runs on the boot path, where
+ * a rejection is an unhandled one and the menu never opens.
+ */
+export async function pinPackManifest(manifestUrl: string, body: string): Promise<boolean> {
+  const cache = await openPackCache();
+  if (!cache || !manifestUrl) return false;
+  try {
+    await cache.put(
+      manifestUrl,
+      new Response(body, { headers: { 'content-type': 'application/json' } })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The pinned manifest's body, or `null` if this pack has none.
+ *
+ * `null` is not an error — a pack installed before pinning existed has no pin,
+ * and the caller falls back to the network exactly as it always did.
+ */
+export async function readPinnedManifest(manifestUrl: string): Promise<string | null> {
+  const cache = await openPackCache();
+  if (!cache || !manifestUrl) return null;
+  try {
+    const stored = await cache.match(manifestUrl);
+    if (!stored) return null;
+    return await stored.text();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which of `files` are not in the cache yet — what a resumed prefetch has left
+ * to do.
+ *
+ * Derived from one `keys()` walk rather than remembered in `localStorage`.
+ * That store's own contract is "a few hundred bytes, because `LoadingScene`
+ * reads it synchronously", and 592 file names is not that; and a stored list
+ * can drift from what the cache actually holds, while this cannot.
+ *
+ * A path that escapes the base is reported missing rather than skipped. It can
+ * never be cached — the prefetch refuses to write it, for the reason
+ * `prefetchPackFiles` gives — so calling it present would make an install look
+ * complete that never can be.
+ */
+export async function missingPackFiles(base: string, files: readonly string[]): Promise<string[]> {
+  const list = Array.isArray(files) ? files : [];
+  const cache = await openPackCache();
+  if (!cache || !isValidPackBase(base)) return [...list];
+
+  let held: Set<string>;
+  try {
+    held = new Set((await cache.keys()).map(request => request.url));
+  } catch {
+    return [...list];
+  }
+
+  // A plain loop, not `.filter`: `Array.prototype.filter` is polyfilled in
+  // this project and cannot narrow (CLAUDE.md), and this needs the original
+  // relative path in the answer rather than the resolved URL it tests.
+  const missing: string[] = [];
+  for (const relative of list) {
+    let url: string;
+    try {
+      url = new URL(relative, base).href;
+    } catch {
+      missing.push(relative);
+      continue;
+    }
+    if (!url.startsWith(base) || !held.has(url)) missing.push(relative);
+  }
+  return missing;
 }
