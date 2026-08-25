@@ -129,6 +129,22 @@ function resolveSpellClasses(def: QualifiedItem): { passive: unknown; active: un
  * resolves both halves of a doubled recipe to whichever copy it met first —
  * billing the player for two longswords and taking one. So each entry claims
  * one slot, and a claimed slot is out of the running for the entries after it.
+ *
+ * ## One level deep, deliberately
+ *
+ * A recipe naming `berserkers_greaves` is **not** satisfied by holding the
+ * `boots` that greaves are built from. That reads like a missing recursion and
+ * is the rule both games this engine's players have played use: you buy the
+ * intermediate item — which credits the boots at *that* purchase — and the
+ * intermediate is then what the next tier consumes. Crediting transitively
+ * would let a bag of six cheap components collapse into a top-tier item in one
+ * click, which deletes the build path the recipe exists to draw. The total
+ * spent is identical either way; only the number of decisions changes.
+ *
+ * The *display* tree in `shopState.recipeTree` does descend several levels, on
+ * purpose: what a part is eventually made of is worth reading, and is a
+ * different question from what this purchase consumes. Do not reconcile the
+ * two. `itemRecipes.test.ts` pins both halves.
  */
 export function componentSlotsFor(champion: Champion, def: QualifiedItem): number[] {
   // `Array.isArray` and not a length check: `buildsFrom` reaches here from a

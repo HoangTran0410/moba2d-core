@@ -273,3 +273,69 @@ describe('ghép đồ', () => {
     });
   });
 });
+
+/**
+ * The recursion that deliberately is not there.
+ *
+ * Holding the parts of a part is not holding the part. It is the rule both
+ * games this engine's players have played use — you buy the intermediate item,
+ * which credits its own components at *that* purchase, and the intermediate is
+ * then what the next tier consumes. Crediting transitively would let a bag of
+ * six cheap components collapse into a top-tier item in one click, which
+ * deletes the build path the recipe exists to draw.
+ *
+ * Written down because it reads like a missing feature, and the fix for a
+ * missing feature is to add it.
+ *
+ * These are characterization tests, and worth saying so: the behaviour is
+ * currently true by the *shape* of `componentSlotsFor`, which holds component
+ * ids and no way to resolve them, so transitive credit is not something a
+ * small mistake can produce — it would take a registry lookup somebody added
+ * on purpose. What these pin is that adding one has to come here first. (They
+ * do still bite: loosening the id match to "any held item" turns the first of
+ * them red along with three of the cases above.)
+ */
+describe('a two-level build path', () => {
+  let game: TestGame;
+  let champion: Champion;
+  const host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+
+  const PART = def({ id: 'ref:part', cost: 300 });
+  const MIDDLE = def({ id: 'ref:middle', cost: 800, buildsFrom: ['ref:part'] });
+  const TOP = def({ id: 'ref:top', cost: 2000, buildsFrom: ['ref:middle'] });
+
+  beforeEach(() => {
+    stubGameGlobals();
+    resetSpellRegistryForTests();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    champion.wallet!.earn(10_000);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('gives no credit for holding the part of a part', () => {
+    champion.equipItem(new HeldItem(PART, null, null), 0);
+    expect(priceFor(champion, TOP)).toBe(2000);
+    expect(componentSlotsFor(champion, TOP)).toEqual([]);
+  });
+
+  it('credits it once the intermediate is actually bought', () => {
+    champion.equipItem(new HeldItem(PART, null, null), 0);
+    expect(priceFor(champion, MIDDLE)).toBe(500); // 800 - 300
+    buyItem(champion, MIDDLE, host);
+    expect(priceFor(champion, TOP)).toBe(1200); // 2000 - 800
+  });
+
+  it('still costs the same in total whichever way round it is climbed', () => {
+    const start = champion.wallet!.balance;
+    buyItem(champion, PART, host);
+    buyItem(champion, MIDDLE, host);
+    buyItem(champion, TOP, host);
+    expect(start - champion.wallet!.balance).toBe(2000);
+  });
+});
