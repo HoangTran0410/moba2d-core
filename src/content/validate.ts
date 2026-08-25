@@ -168,6 +168,21 @@ function checkChampions(pack: Record<string, unknown>, errors: string[]): void {
         errors.push(`champions.${entry.id}: spell ${id} is not in this pack`);
       }
     }
+    if (entry.passive !== undefined) {
+      if (typeof entry.passive !== 'string') {
+        errors.push(`champions.${entry.id}.passive: must be a string`);
+      } else if (spellsProvided && !(entry.passive in spells)) {
+        errors.push(`champions.${entry.id}: passive ${entry.passive} is not in this pack`);
+      } else if (entry.spells?.includes?.(entry.passive)) {
+        // Both a passive *and* a kit slot is two instances of one spell on one
+        // champion, one of them armed by core and one bound to a key. The
+        // player then sees the same icon twice and only one of them does
+        // anything the tooltip describes.
+        errors.push(
+          `champions.${entry.id}: passive ${entry.passive} is also in the kit; it must be one or the other`
+        );
+      }
+    }
     if (entry.recall !== undefined) {
       if (typeof entry.recall !== 'string') {
         errors.push(`champions.${entry.id}.recall: must be a string`);

@@ -146,6 +146,20 @@ export interface ChampionEntry {
   /** Local id of this champion's way home. Absent on a map that grants none. */
   recall?: string;
   /**
+   * Local id of this champion's passive, or absent — which is most champions.
+   *
+   * A spell the champion *has* rather than one it casts: core presses it once
+   * per life and binds it to no key. It is deliberately not a fifth entry in
+   * `spells` — that array is the kit's hotkey layout and the thing a player
+   * rearranges in the loadout editor, and a passive has neither a key nor a
+   * slot to be moved into. See `Champion.passive`.
+   *
+   * The id still has to name a spell in this pack, and its `spellDisplay`
+   * entry is what the HUD reads, so a passive is described to the player
+   * exactly the way an ability is.
+   */
+  passive?: string;
+  /**
    * Whether the pregame screen may offer this as a champion.
    *
    * `false` is the normal answer for a shelf — a group of loose abilities, or

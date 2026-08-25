@@ -3,6 +3,7 @@ import { packAsset } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
 import BasicAttackController from '@/game/combat/BasicAttackController';
+import { uuidv4 } from '@/utils/index';
 import AttackableUnit from './AttackableUnit';
 import type {
   AttackableUnitOptions,
@@ -65,6 +66,17 @@ export interface ChampionPresetData {
    */
   avatar?: string;
   spells?: Array<new (owner: Champion) => Spell>;
+  /**
+   * This champion's passive, or absent.
+   *
+   * **In the preset, unlike `recall`, and the difference is the point.** Going
+   * home is a property of the *map* — a fountain exists or it does not — so a
+   * preset swap must never take it away, which is why `Champion.recall` sits
+   * outside `ChampionPresetData` entirely. A passive is a property of the
+   * *champion*, so becoming a different champion must absolutely replace it.
+   * The two live in different places because they answer to different owners.
+   */
+  passive?: new (owner: Champion) => Spell;
   /** Overrides DEFAULT_CHAMPION_ATTACK. Drop `range` below the melee threshold
    *  and the champion swings instead of shooting; nothing else changes. */
   attack?: ChampionAttackTuning;
@@ -217,6 +229,36 @@ export default class Champion extends AttackableUnit {
    */
   recall: Spell | null = null;
 
+  /**
+   * A spell this champion *has* rather than one it casts, or null — which is
+   * most champions.
+   *
+   * Outside `spells[]` for the same reason `recall` is, and the reason is
+   * worth restating because the pull to make it an eighth entry is strong:
+   * that array is indexed by `SpellHotKeys` and is also what the loadout
+   * editor lets a player rearrange. A passive has no key to press and no
+   * cooldown to read, and offering it in a kit builder as something to drop
+   * into `W` is offering nonsense.
+   *
+   * **Core presses it exactly once per life**, on the dead → alive transition
+   * (`armPassive`). Not once per match, because a passive that hung its effect
+   * on a buff or an event listener has lost both by the time its champion
+   * respawns; and not "whenever it is READY", which for any passive that
+   * completes instantly is sixty presses a second.
+   *
+   * The same field is what an *item* passive will hang off when items exist —
+   * an item that grants an always-on effect is this mechanism with a different
+   * owner, not a second one.
+   */
+  passive: Spell | null = null;
+
+  /**
+   * Whether `passive` has been armed for the life the champion is currently
+   * living. Reset by death, not by respawn, so a champion that never dies is
+   * armed once and a champion that dies twice is armed three times.
+   */
+  private _passiveArmed = false;
+
   constructor({
     game,
     position,
@@ -279,7 +321,28 @@ export default class Champion extends AttackableUnit {
         return standing?.constructor === SpellClass ? standing : new SpellClass(this);
       })
     );
+    this.applyPassive(preset.passive);
     this.applyAttackTuning(preset.attack ?? DEFAULT_CHAMPION_ATTACK);
+  }
+
+  /**
+   * Swaps the passive, keeping the instance when the class has not changed.
+   *
+   * Same rule `applyPreset` follows for a kit slot, and for the same reason:
+   * the loadout editor commits the whole loadout on every edit, so rebuilding
+   * unconditionally would re-arm a passive — and reset whatever state it keeps
+   * on its own instance — every time the player touched an unrelated slot.
+   *
+   * Re-arming is deliberate when the class *does* change: the outgoing passive
+   * is retired through `removeSpell` so its buffs and listeners go with it, and
+   * `_passiveArmed` is cleared so the incoming one is pressed on the next frame
+   * rather than never.
+   */
+  private applyPassive(PassiveClass?: new (owner: Champion) => Spell): void {
+    if (this.passive?.constructor === PassiveClass) return;
+    this.removeSpell(this.passive ?? undefined);
+    this.passive = PassiveClass ? new PassiveClass(this) : null;
+    this._passiveArmed = false;
   }
 
   private applyAttackTuning(attack: ChampionAttackTuning): void {
@@ -295,6 +358,55 @@ export default class Champion extends AttackableUnit {
     // `?.` for the same reason `drawAttackOrder` uses it: prototype-only
     // champions built with Object.create never run a field initializer.
     this.recall?.update();
+    this.passive?.update();
+    this.armPassive();
+  }
+
+  /**
+   * Presses the passive on the frame this champion is alive and has not been
+   * armed for this life. See `passive`'s own doc comment for why the trigger
+   * is the dead → alive transition and not anything simpler.
+   *
+   * The context is built here rather than fetched from
+   * `game.createSpellContext`, and that is not a shortcut. A passive is `SELF`
+   * by definition: it has no cursor, resolves no target, and needs nothing the
+   * targeting layer produces. Depending on the game context for it also makes
+   * a passive silently *never arm* anywhere that context is minimal — the test
+   * world stubs `createSpellContext` to `undefined` on purpose, and a champion
+   * built by a pack's own harness would have had a dead passive with nothing
+   * to see. Origin and cursor are both the champion's own feet, which is the
+   * literal truth about where a passive is aimed.
+   *
+   * It still goes through `press` rather than `onSpellCast`, so a passive is
+   * subject to the same activation, resource and cooldown rules as everything
+   * else — one that refuses its own cast stays visibly unarmed rather than
+   * half-running.
+   */
+  private armPassive(): void {
+    const passive = this.passive;
+    if (!passive) return;
+    if (this.isDead) {
+      this._passiveArmed = false;
+      return;
+    }
+    if (this._passiveArmed) return;
+
+    const here = Object.freeze({ x: this.position.x, y: this.position.y });
+    this._passiveArmed = true;
+    passive.press(
+      Object.freeze({
+        spellId: passive.id,
+        activationId: uuidv4(),
+        startedAtMs: Date.now(),
+        caster: this,
+        origin: here,
+        cursorWorld: here,
+        // A self cast aims nowhere. `Spell.cast()` produces the same degenerate
+        // direction when the cursor sits exactly on the caster, so this is the
+        // established shape rather than a new one — and no `SELF` spell reads it.
+        direction: Object.freeze({ x: 0, y: 0 }),
+      })
+    );
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
@@ -302,6 +414,7 @@ export default class Champion extends AttackableUnit {
     this.drawAttackOrder();
     this.spells.forEach(spell => spell.drawVfx());
     this.recall?.drawVfx();
+    this.passive?.drawVfx();
   }
 
   /**
@@ -352,6 +465,9 @@ export default class Champion extends AttackableUnit {
     // `?? undefined`: `removeSpell` takes `Spell | undefined`, and `recall` is
     // `Spell | null` now that a map without a fountain can leave it unset.
     this.removeSpell(this.recall ?? undefined);
+    // A passive left behind keeps its buffs and its event listeners after the
+    // champion carrying it is gone — the same leak `recall` is retired to avoid.
+    this.removeSpell(this.passive ?? undefined);
   }
 
   /**
