@@ -1,5 +1,6 @@
 import type Spell from '@/game/gameObject/Spell';
 import { StatModifier, StatsModifier } from '@/game/gameObject/Stats';
+import { ITEM_STAT_KEYS, type ItemStatKey } from './itemStats';
 import type { ItemDef } from '@/content/ContentPack';
 
 /**
@@ -41,38 +42,12 @@ import type { ItemDef } from '@/content/ContentPack';
 export const INVENTORY_SIZE = 6;
 
 /**
- * The stats an item may grant.
- *
- * An allow-list rather than "every field on `StatsModifier`", and the
- * exclusions are the point. `health` and `mana` are *current pools*, not
- * capacities — an item granting `health` would top a champion up on equip and
- * **take that health back on unequip**, which is a shop that can kill you.
- * `size` and `height` are presentation and collision, and an item that changed
- * a champion's body radius would silently change every ability range measured
- * against it (`combat/Reach.ts`).
- *
- * `itemStats.test.ts` checks every key here is a real `StatsModifier` field, so
- * a typo is a caught error rather than an item that silently grants nothing.
+ * Re-exported so `Item.ts` stays the one place a reader looks for what an item
+ * is. The list itself lives in a leaf module with no imports, because
+ * `content/validate.ts` needs it too and cannot afford this file's reach —
+ * see `itemStats.ts`.
  */
-export const ITEM_STAT_KEYS = [
-  'maxHealth',
-  'maxMana',
-  'healthRegen',
-  'manaRegen',
-  'speed',
-  'attackDamage',
-  'attackSpeed',
-  'attackRange',
-  'armor',
-  'magicResist',
-  'critChance',
-  'critDamage',
-  'omnivamp',
-  'onHitDamage',
-  'visionRadius',
-] as const;
-
-export type ItemStatKey = (typeof ITEM_STAT_KEYS)[number];
+export { ITEM_STAT_KEYS, type ItemStatKey };
 
 const GRANTABLE = new Set<string>(ITEM_STAT_KEYS);
 
@@ -85,7 +60,9 @@ const GRANTABLE = new Set<string>(ITEM_STAT_KEYS);
  * moment anything else read the stat. It also has to come back off cleanly on
  * unequip, and `StatModifier.remove` subtracts exactly what was added.
  */
-export function modifierFor(stats: Partial<Record<ItemStatKey, number>> | undefined): StatsModifier {
+export function modifierFor(
+  stats: Partial<Record<ItemStatKey, number>> | undefined
+): StatsModifier {
   const modifier = new StatsModifier();
   if (!stats) return modifier;
   for (const [key, amount] of Object.entries(stats)) {

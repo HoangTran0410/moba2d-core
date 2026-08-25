@@ -2,6 +2,7 @@ import { Scene } from '@/managers/SceneManager';
 import Game, { renderFpsPreference } from '@/game/Game';
 import { planMatchKits, plannedSpellIds, type MatchPlan } from '@/game/preset';
 import { loadRemainingSpells, loadSpells } from '@/game/spellRegistry';
+import { shopIconKeys, shopSpellIds } from '@/game/economy/itemCatalog';
 import { loadPregameConfig } from '@/game/config/PregameConfig';
 import { spellIconKey } from '@/game/config/spellCatalog';
 import { assetManifest, type AssetKey } from '@/generated/assetManifest';
@@ -263,8 +264,12 @@ export default class GameScene extends Scene {
 
     const config = loadPregameConfig();
     const plan = planMatchKits(config);
-    const kitIds = plannedSpellIds(plan);
-    const artKeys = matchArtKeys(plan);
+    // The shop's stock rides along with the kits. A champion spawns standing
+    // *in* the fountain and can buy on the first frame, and `ItemShop` refuses
+    // an item whose spell class has not landed rather than selling an inert
+    // copy of it — see `itemCatalog.ts`.
+    const kitIds = [...plannedSpellIds(plan), ...shopSpellIds()];
+    const artKeys = [...matchArtKeys(plan), ...shopIconKeys()];
 
     this._kitsLoaded = 0;
     this._kitsTotal = kitIds.length + artKeys.length;

@@ -239,6 +239,21 @@ export default defineConfig({
            */
           if (/src\/utils\/(index|format\.utils|dom\.utils)\.ts$/.test(id)) return 'shared';
           /**
+           * The same shape, one directory over: `ITEM_STAT_KEYS` is a bare
+           * string array with no imports, and **both sides of the pack
+           * boundary read it** — `game/items/Item.ts` builds an item's
+           * modifier from it, and `content/validate.ts` refuses a pack that
+           * names a key not on it. Left unassigned it landed in `game`
+           * (it lives under `src/game/`), and validation runs in `pregame`, so
+           * Rollup reported a `pregame -> game -> pregame` cycle.
+           *
+           * It cannot live in `src/content/` instead: `Item.ts` would then
+           * value-import the pack contract to learn what an item's own stats
+           * are, which is the dependency backwards. `shared` is what this
+           * chunk is for.
+           */
+          if (id.includes('src/game/items/itemStats')) return 'shared';
+          /**
            * Vite's own `__vitePreload` runtime, which every dynamic import in
            * the app calls.
            *

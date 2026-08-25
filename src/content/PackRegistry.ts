@@ -10,6 +10,7 @@ import type {
   MapGeometrySource,
   MapSummary,
   MonsterAbility,
+  ItemDef,
   MonsterDef,
   SpellClass,
   SpellDisplayData,
@@ -51,6 +52,19 @@ export interface QualifiedMapSummary extends Omit<MapSummary, 'id'> {
   packId: string;
 }
 
+/**
+ * An installed item: a pack's own `ItemDef` with every id it names rewritten
+ * into the qualified form, exactly like `QualifiedChampion` beside it. Two
+ * packs may each reasonably ship a `boots`, and the author of either writes
+ * only the local half.
+ */
+export interface QualifiedItem extends Omit<ItemDef, 'id' | 'passive' | 'active'> {
+  id: string;
+  packId: string;
+  passive?: string;
+  active?: string;
+}
+
 export const qualify = (packId: string, localId: string): string => `${packId}:${localId}`;
 
 export class PackRegistry {
@@ -65,6 +79,8 @@ export class PackRegistry {
   /** A monster's code half, by qualified monster id — mirrors `sources` for spells. */
   private readonly monsterAbilities = new Map<string, MonsterAbility[]>();
   private readonly championList: QualifiedChampion[] = [];
+  /** Installed items, by qualified id — the shop's whole catalogue. */
+  private readonly itemsById = new Map<string, QualifiedItem>();
   private readonly mapList: QualifiedMapSummary[] = [];
   /** A map's geometry source, by qualified id — mirrors `sources` for spells. */
   private readonly mapGeometrySources = new Map<string, MapGeometrySource>();
@@ -192,6 +208,19 @@ export class PackRegistry {
     // the bug this method exists to catch — an ability array nothing ever
     // resolves to, because `abilitiesFor` is only ever looked up by a real
     // monster's qualified id.
+    // The same pairing check as the champion loop above, one field over: an
+    // item whose passive or active names a spell this code half forgot builds
+    // an item whose whole point never happens, and the player is simply out
+    // the gold.
+    for (const entry of this.itemsById.values()) {
+      if (entry.packId !== packId) continue;
+      for (const slot of ['passive', 'active'] as const) {
+        const spellId = entry[slot];
+        if (spellId !== undefined && !qualifiedIds.has(spellId)) {
+          errors.push(`items.${entry.id}: ${slot} ${spellId} is not in this pack`);
+        }
+      }
+    }
     const monsterIds = new Set(
       this.monsterList.filter(monster => monster.packId === packId).map(monster => monster.id)
     );
@@ -268,6 +297,20 @@ export class PackRegistry {
         image: entry.image === null ? null : qualifyAsset(entry.image),
         spells: entry.spells.map(localId => qualify(packId, localId)),
         recall: entry.recall === undefined ? undefined : qualify(packId, entry.recall),
+      });
+    }
+    for (const [localId, def] of Object.entries(data.items ?? {})) {
+      const qualifiedId = qualify(packId, localId);
+      this.itemsById.set(qualifiedId, {
+        ...def,
+        packId,
+        id: qualifiedId,
+        icon: qualifyAsset(def.icon),
+        // The spell ids an item points at are qualified for the same reason a
+        // champion's `spells` are: the author writes the local half and never
+        // sees the prefix.
+        passive: def.passive === undefined ? undefined : qualify(packId, def.passive),
+        active: def.active === undefined ? undefined : qualify(packId, def.active),
       });
     }
     for (const monster of Object.values(data.monsters ?? {})) {
@@ -369,6 +412,16 @@ export class PackRegistry {
   /** The listing — every installed map's cheap half, never its geometry. */
   maps(): readonly QualifiedMapSummary[] {
     return [...this.mapList];
+  }
+
+  /** Every installed item, across every pack — what a shop lists. */
+  items(): readonly QualifiedItem[] {
+    return [...this.itemsById.values()];
+  }
+
+  /** One item by qualified id, or `null` for an id nobody declared. */
+  item(qualifiedId: string): QualifiedItem | null {
+    return this.itemsById.get(qualifiedId) ?? null;
   }
 
   hasSpell(qualifiedId: string): boolean {
@@ -577,6 +630,7 @@ export class PackRegistry {
     this.revision += 1;
     this.packs.length = 0;
     this.championList.length = 0;
+    this.itemsById.clear();
     this.monsterList.length = 0;
     this.monsterAbilities.clear();
     this.mapList.length = 0;
