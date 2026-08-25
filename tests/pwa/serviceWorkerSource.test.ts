@@ -127,6 +127,19 @@ describe('the pack route uses the shared rule', () => {
     // Request with no headers; this route matches the browser's real
     // request. Without `ignoreVary`, a pack host sending so much as
     // `Vary: Accept` makes every prefetched entry unmatchable offline.
-    expect(sw()).toMatch(/matchOptions:\s*\{\s*ignoreVary:\s*true\s*\}/);
+    expect(sw()).toMatch(/ignoreVary:\s*true/);
+  });
+
+  /**
+   * The opposite of what it looks like it should be. Ignoring the search would
+   * let a cached `pack.js` from an older build answer a request for
+   * `pack.js?b=<new>` — an old chunk graph behind a new manifest, which is the
+   * 404 this whole change exists to close. Offline does not need it:
+   * installing a pack fetches its entry through this route, and `CacheFirst`
+   * stores what it fetched, queried URL and all. Checked by running
+   * `verify-pwa-offline.mjs` with the option removed.
+   */
+  it('does not ignore the search, which would hand an old entry to a new manifest', () => {
+    expect(sw()).not.toMatch(/ignoreSearch/);
   });
 });

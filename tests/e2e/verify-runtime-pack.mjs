@@ -200,10 +200,41 @@ await guard(
     check('nothing went wrong on the page', errors.length === 0, errors.join(' | '));
 
     // -------------------------------------------------------------- Part 2
-    // The other half of the claim: a dead pack host costs the roster, never
-    // the menu. Same page, same code path, one difference — the pack does
-    // not answer.
+    // A dead pack host, twice, because pinning split this case in two.
+    //
+    // **2a: a pack that is already installed no longer cares.** Boot reads the
+    // pinned manifest out of `CacheStorage` and never asks the network, so an
+    // unreachable host costs nothing at all — not the menu, and not the
+    // roster. This check asserted the opposite until pinning landed, and the
+    // opposite was the old behaviour: every launch re-fetched the manifest and
+    // a dead host meant a pack-less game.
     await page.route('**/manifest.json', route => route.abort());
+    await page.goto(url, { waitUntil: 'load' });
+    const survivedDeadHost = await page
+      .waitForSelector('#play-btn', { timeout: 45_000 })
+      .then(() => true)
+      .catch(() => false);
+    check('a pinned pack survives a dead host', survivedDeadHost);
+    const pinnedOutcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    report.pinnedOutcomes = pinnedOutcomes;
+    check(
+      'and installs from the pin, with no network at all',
+      Array.isArray(pinnedOutcomes) && pinnedOutcomes[0]?.ok === true,
+      JSON.stringify(pinnedOutcomes)
+    );
+    check(
+      'so there is nothing to apologise for',
+      !(await page.locator('.pack-banner').isVisible())
+    );
+
+    // **2b: with no pin, the old claim stands unchanged** — a dead host costs
+    // the roster, never the menu, and the player is told. This is the first
+    // install against an unreachable host, which is the case the banner was
+    // always for.
+    await page.evaluate(async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    });
     await page.goto(url, { waitUntil: 'load' });
     const reachedMenu = await page
       .waitForSelector('#play-btn', { timeout: 45_000 })

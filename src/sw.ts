@@ -276,8 +276,28 @@ self.addEventListener('message', event => {
  * — one URL per build, so an old entry and a new manifest can no longer be
  * confused for each other.
  *
- * `matchOptions: { ignoreVary: true }` because the two sides write and read
- * with different `Request`s: `packCache.ts` calls `cache.put(urlString, …)`,
+ * **`ignoreSearch` is deliberately NOT set here**, and the reasoning is worth
+ * keeping because it looks like a bug the other way round. The prefetch walks
+ * `manifest.files` and caches the entry as the plain `pack.js` the build
+ * emitted, while the game imports `pack.js?b=<buildId>` — so the two never
+ * match and the prefetched copy of the entry is dead weight. It reads like the
+ * offline case losing the one file the whole pack hangs off.
+ *
+ * It does not, and `verify-pwa-offline.mjs` was run with the option removed to
+ * check rather than to assume: installing a pack *is* fetching its entry, that
+ * fetch goes through this very route, and `CacheFirst` stores what it fetched
+ * — under the queried URL. So the entry a later offline launch asks for is
+ * already there, addressed exactly.
+ *
+ * And setting it would reopen the bug this whole change exists to close. A
+ * browser whose `localStorage` was cleared but whose `CacheStorage` was not
+ * has no pin and a stale `pack.js`; boot fetches the current manifest, imports
+ * `pack.js?b=<new>`, and `ignoreSearch` would answer that with the *old*
+ * entry — an old chunk graph against a new manifest, which is precisely the
+ * 404 that started this. The 86 wasted bytes are the cheaper mistake.
+ *
+ * `ignoreVary: true` because the two sides write and read with different
+ * `Request`s: `packCache.ts` calls `cache.put(urlString, …)`,
  * whose implicit `Request` carries no headers, while this route matches
  * against the browser's real request, headers included. Without this, a pack
  * host that sends `Vary: Accept` (or anything else) makes every prefetched
