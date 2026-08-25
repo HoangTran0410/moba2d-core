@@ -20,13 +20,25 @@
  *   node tests/e2e/verify-icon-assets.mjs
  */
 import { startHarness } from './harness.mjs';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 /** Every glyph `tools/icons/buffs/` emits — the list the renderer walks. */
 const BUFF_NAMES = readdirSync(new URL('../../tools/icons/buffs/', import.meta.url))
   .filter(name => name.endsWith('.svg'))
   .map(name => name.slice(0, -4))
   .sort();
+
+/**
+ * The size the cursor's *source* declares, read from the SVG rather than
+ * written here. Hard-coding it would make this assertion agree with whatever
+ * the renderer happened to emit; against the authored `width` it is two
+ * independent artifacts having to match.
+ */
+const CURSOR_SIZE = Number(
+  /width="(\d+)"/.exec(
+    readFileSync(new URL('../../tools/icons/cursors/normal.svg', import.meta.url), 'utf8')
+  )?.[1]
+);
 
 const { url, page, report, check, errors, guard } = await startHarness();
 
@@ -101,8 +113,8 @@ await guard(async () => {
     report.cursor.style
   );
   check(
-    'the browser decodes the hand-written .cur at 48x48',
-    report.cursor.decoded === '48x48',
+    `the browser decodes the hand-written .cur at ${CURSOR_SIZE}x${CURSOR_SIZE}`,
+    report.cursor.decoded === `${CURSOR_SIZE}x${CURSOR_SIZE}`,
     `${report.cursor.decoded}`
   );
   check(

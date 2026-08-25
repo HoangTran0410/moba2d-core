@@ -1,20 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Basic attack">
   <title>Basic attack</title>
-    <!--
-      The blade is drawn pointing straight up and the whole sword is then tilted
-      as one group. Drawing it already-diagonal is what gave the first version
-      one fat edge and one thin one — reported as "lưỡi kiếm sao bên bự bên nhỏ".
-      Symmetry here is structural, not eyeballed.
+  <!--
+      The blade is drawn pointing straight up and the whole sword tilted as one
+      group, so both edges are the same shape by construction — drawing it
+      already-diagonal is what gave the first version one fat edge and one thin.
+
+      There is no swing arc. The arc the first two versions carried was centred
+      near the hilt, so the pommel sat on top of it and the two read as one
+      object: a sword with a hoop grown out of its handle. At 20px a lone sword
+      says "basic attack" perfectly well, and the arc only ever existed because
+      the icon this replaces had one, inside a frame we already dropped.
     -->
   <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M5 22 C5 46 16 58 40 58" fill="none" stroke-width="12"/>
-    <path d="M5 22 C5 46 16 58 40 58" fill="none" stroke="#e0b356" stroke-width="6"/>
-    <g transform="translate(37 27) rotate(45)">
-      <path d="M0 -32 L7 -22 L7 2 L-7 2 L-7 -22 Z" fill="#dff4f7"/>
-      <path d="M0 -30 L0 2" stroke="#9fb2c4" stroke-width="2.5"/>
-      <path d="M-19 2 H19 A4 4 0 0 1 19 11 H-19 A4 4 0 0 1 -19 2 Z" fill="#8a6320"/>
-      <path d="M-5 11 H5 V25 H-5 Z" fill="#9c7a52"/>
-      <circle cx="0" cy="29" r="6" fill="#e0b356"/>
+    <g transform="translate(32 32) rotate(45)">
+      <path d="M0 -34 L8 -23 L8 4 L-8 4 L-8 -23 Z" fill="#dff4f7"/>
+      <path d="M0 -31 L0 4" stroke="#9fb2c4" stroke-width="3"/>
+      <path d="M-21 4 H21 A4.5 4.5 0 0 1 21 13 H-21 A4.5 4.5 0 0 1 -21 4 Z" fill="#e0b356"/>
+      <path d="M-5.5 13 H5.5 V27 H-5.5 Z" fill="#9c7a52"/>
+      <circle cx="0" cy="30" r="6" fill="#8a6320"/>
     </g>
   </g>
 </svg>

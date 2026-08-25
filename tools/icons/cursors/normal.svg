@@ -1,13 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Pointer">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Pointer">
   <title>Pointer</title>
   <!--
-    The hotspot is the tip, and the tip is deliberately at (2,2) rather than
-    (0,0): a stroked outline needs somewhere to go, and a pointer whose point
-    is clipped by the edge of its own bitmap reads as blunt. `render-icons.mjs`
-    writes that hotspot into the .cur header.
+    32px, not 48. A CSS cursor is drawn at the file's own pixel size, so the
+    48px version was physically half again the size of every other pointer on
+    the desktop — reported as "to và thô". 32 is what the OS ships and what a
+    hand expects.
+
+    One shape, one fill, a 2px outline and nothing inside it. The inner wedge
+    the first version carried was detail nobody can resolve at this size; all
+    it did was make the silhouette read as mottled.
+
+    The hotspot is (1,1): the outline is centred on the path, so the visual
+    point of the arrow sits half a stroke outside the (2,2) vertex.
+    `render-icons.mjs` writes that pair into the .cur header.
   -->
-  <g stroke="#12171d" stroke-width="3" stroke-linejoin="round">
-    <path d="M2 2 L2 36 L11 28 L17 42 L24 39 L18 25 L31 25 Z" fill="#dfd6bc"/>
-    <path d="M6 9 L6 27 L11 23 L15 32 L18 31 L13 21 L20 21 Z" fill="#8a7a55" stroke="none"/>
-  </g>
+  <path d="M2 2 L2 23 L7.6 17.6 L11.2 26 L15.4 24.2 L11.9 16.1 L19.6 15.6 Z"
+        fill="#f2f4f7" stroke="#12171d" stroke-width="2" stroke-linejoin="round"/>
 </svg>

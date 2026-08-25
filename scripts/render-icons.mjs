@@ -35,7 +35,7 @@ const SOURCE = join(ROOT, 'tools', 'icons');
 const TARGETS = {
   buffs: { out: join('assets', 'images', 'buffs'), size: 64 },
   spells: { out: join('assets', 'images', 'spells'), size: 64 },
-  cursors: { out: join('assets', 'cursors'), size: 48, cur: true, hotspot: [2, 2] },
+  cursors: { out: join('assets', 'cursors'), size: 32, cur: true, hotspot: [1, 1] },
 };
 
 const check = process.argv.includes('--check');
