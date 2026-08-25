@@ -198,7 +198,11 @@ describe('champion and direct-subclass type boundary', () => {
     expect(attacker.score).toBe(1);
     expect(monster.targetLock).toBe(target);
     expect(turret.target).toBeNull();
-    expect(game.objectManager._objectToBeAdd[0]).toBeInstanceOf(TurretBolt);
+    // By identity, not by index. A kill now also floats the bounty it paid
+    // (`CombatText`, over the killer), so the bolt is no longer the first thing
+    // this frame queued — and "the turret fired" was never a claim about
+    // position in that array.
+    expect(game.objectManager._objectToBeAdd.some(o => o instanceof TurretBolt)).toBe(true);
     // A camp fights back against whatever hits it — a champion, a pet, a minion.
     expectTypeOf(monster.targetLock).toEqualTypeOf<AttackableUnit | null>();
     // a turret is a team building now: it shoots minions as well as champions

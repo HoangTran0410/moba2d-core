@@ -224,28 +224,31 @@
 
 /* =============== Hồi Thành =============== */
 
-/* The recall control, at the end of the cast strip and deliberately quieter
-   than everything to its left: 2em against an ability's 3em, no grey mat,
-   just an outline. It is a utility that lives on `Champion.recall` and never
-   enters `spells[]` (see `Recall.ts`), and the bar has to keep reading as
-   four abilities plus two summoners at a glance.
+/* The recall control, under the inventory and beside the gold — the fountain
+   cluster, since going home, the money and the bag are the same subject.
+
+   It used to sit at the end of the cast strip, which cost the whole bar its
+   own width plus a 10px margin for a control pressed about once a minute. Down
+   here it costs nothing: that line already existed for the gold pill and was
+   two thirds empty. Round rather than square, which is what now says it is not
+   an ability — it used to be size (2em against 3em) and there is nothing left
+   beside it to be smaller than.
 
    Start-or-cancel is `Game.recall()`'s rule, not this button's. */
 .recall-btn {
   position: relative;
-  align-self: flex-start;
-  margin-left: 10px;
+  flex: none;
   padding: 0;
   overflow: hidden;
 
-  width: 2em;
-  height: 2em;
+  width: 22px;
+  height: 22px;
 
   border: 1px solid #fff3;
-  border-radius: 6px;
+  border-radius: 50%;
   background: #0d1420cc;
   color: #cbb894;
-  font-size: 1em;
+  font-size: 0.72em;
   line-height: 1;
   cursor: pointer;
 }
@@ -281,18 +284,6 @@
   visibility: hidden;
 }
 
-.recall-btn .hotKey {
-  position: absolute;
-  bottom: -3px;
-  right: 1px;
-  z-index: 3;
-
-  color: #e8c17d;
-  font-size: 0.62em;
-  font-weight: bold;
-  text-shadow: #000 1px 0 10px;
-}
-
 /* The channel, filling from the bottom. The same clock `RecallPad`'s arc
    draws on the ground, so the strip and the world cannot disagree about how
    far along the trip is. */
@@ -316,7 +307,7 @@
   justify-content: center;
 
   color: #fff;
-  font-size: 0.85em;
+  font-size: 1.05em;
   font-weight: bold;
   text-shadow: #000 1px 0 6px;
 }
@@ -1761,6 +1752,12 @@ body.touch-ui .corner-btn {
 
 /* Third column of the bar, after the abilities and the bars — the same place
    both games this engine's players know put it. */
+.inventory-footer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .inventory {
   margin-left: 12px;
   display: flex;

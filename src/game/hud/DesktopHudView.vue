@@ -145,40 +145,6 @@ const hud = inject<HudInteractions>('hud')!;
             </div>
           </div>
         </div>
-
-        <!--
-          Hồi Thành. Outside the v-for and visibly smaller than an ability,
-          because it is not one: it lives on `Champion.recall`, not in
-          `spells[]` (see `Recall.ts`), and the bar has to keep reading as
-          four abilities plus two summoners at a glance.
-
-          `@touchend.prevent` beside `@click` is not belt-and-braces —
-          `GameScene` cancels touches on the canvas, so a thumb never
-          synthesises the click and a `@click`-only control is dead under one.
-          Clicking again cancels: `Game.recall()` owns that, not this.
-        -->
-        <button
-          v-if="state.recall"
-          class="recall-btn"
-          :class="{
-            channeling: state.recall.channeling,
-            unavailable: !state.recall.canCast,
-          }"
-          :title="state.recall.name"
-          @click="hud.recall()"
-          @touchend.prevent="hud.recall()"
-        >
-          <i class="fa-solid fa-house-chimney"></i>
-          <span class="hotKey">{{ state.recall.hotKey }}</span>
-          <div
-            v-if="state.recall.channeling"
-            class="recall-fill"
-            :style="'height:' + state.recall.progressPercent + '%'"
-          ></div>
-          <span v-if="state.recall.channeling" class="recall-count">{{
-            state.recall.secondsLeft
-          }}</span>
-        </button>
       </div>
       <div class="health-bar">
         <div class="bar">
@@ -247,16 +213,69 @@ const hud = inject<HudInteractions>('hud')!;
         </div>
       </div>
 
-      <button
-        class="gold-pill"
-        :class="{ 'at-shop': state.canShop }"
-        :title="state.canShop ? 'Mở cửa hàng' : 'Về bệ đá để mua đồ'"
-        @click="hud.openShop()"
-        @touchend.prevent="hud.openShop()"
-      >
-        <i class="fa-solid fa-coins"></i>
-        <span>{{ state.gold }}</span>
-      </button>
+      <!--
+        Hồi Thành and the gold, on one line under the inventory.
+        
+        It used to sit at the end of the ability strip, where it stretched the
+        whole bar by its own width plus a margin for a control that is pressed
+        once a minute. Here it costs nothing: the inventory column is already
+        three tiles wide and the gold pill was using a third of that line.
+        
+        The grouping is not just packing, either — going home, the gold and the
+        bag are the three things about the fountain, and they now read as one
+        cluster instead of one being marooned among the abilities.
+      -->
+      <div class="inventory-footer">
+        <!--
+          Hồi Thành. It lives on `Champion.recall`, not in `spells[]` (see
+          `Recall.ts`), and it used to sit at the end of the ability strip to
+          say so — where it also stretched the whole bar by its own width plus
+          a margin, for a control pressed about once a minute. It says the same
+          thing more cheaply from here: it is the only round control in the
+          bar, and it is nowhere near a hotkey.
+
+          `@touchend.prevent` beside `@click` is not belt-and-braces —
+          `GameScene` cancels touches on the canvas, so a thumb never
+          synthesises the click and a `@click`-only control is dead under one.
+          Clicking again cancels: `Game.recall()` owns that, not this.
+        -->
+        <button
+          v-if="state.recall"
+          class="recall-btn"
+          :class="{
+            channeling: state.recall.channeling,
+            unavailable: !state.recall.canCast,
+          }"
+          :title="`${state.recall.name} (${state.recall.hotKey})`"
+          @click="hud.recall()"
+          @touchend.prevent="hud.recall()"
+        >
+          <i class="fa-solid fa-house-chimney"></i>
+          <!-- The key moved into the tooltip when this button shrank to 22px.
+               A letter hanging off a circle that small is not legible and it
+               collided with the gold pill beside it; every other hotkey in the
+               bar sits on a 3em tile with room for one. -->
+          <div
+            v-if="state.recall.channeling"
+            class="recall-fill"
+            :style="'height:' + state.recall.progressPercent + '%'"
+          ></div>
+          <span v-if="state.recall.channeling" class="recall-count">{{
+            state.recall.secondsLeft
+          }}</span>
+        </button>
+
+        <button
+          class="gold-pill"
+          :class="{ 'at-shop': state.canShop }"
+          :title="state.canShop ? 'Mở cửa hàng' : 'Về bệ đá để mua đồ'"
+          @click="hud.openShop()"
+          @touchend.prevent="hud.openShop()"
+        >
+          <i class="fa-solid fa-coins"></i>
+          <span>{{ state.gold }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>

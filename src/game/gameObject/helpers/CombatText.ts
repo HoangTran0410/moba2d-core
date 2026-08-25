@@ -23,14 +23,31 @@ export const COMBAT_TEXT_ARC_MS = 1000;
  * What a floating number is reporting. Drives both its format and its merge
  * key — see `CombatText.show`.
  */
-export type CombatTextKind = 'damage' | 'heal' | 'shield' | 'reflect';
+export type CombatTextKind = 'damage' | 'heal' | 'shield' | 'reflect' | 'gold';
 
 const FORMAT_BY_KIND: Record<CombatTextKind, (total: number) => string> = {
   damage: total => '-' + total,
   heal: total => '+' + total,
   shield: total => String(total),
   reflect: total => '⟲' + total,
+  gold: total => '+' + total,
 };
+
+/**
+ * What a bounty looks like when it floats.
+ *
+ * The one combat text that describes the unit it is **not** sitting above:
+ * damage and heals report what happened to their owner, and this reports what
+ * their owner got out of something else dying. It goes over the earner because
+ * that is the person who needs to see it — a player watching a wave die had no
+ * way to tell a last hit from a missed one at the moment it happened, which is
+ * the whole skill a last hit is.
+ *
+ * Coin gold, and deliberately nowhere near the heal green it shares its `+`
+ * prefix with. `bounty.test.ts` measures that distance rather than asserting
+ * the literal.
+ */
+export const GOLD_TEXT_COLOR: readonly [number, number, number] = [255, 206, 92];
 
 /**
  * What colour a damage number is, by the type of damage it reports.

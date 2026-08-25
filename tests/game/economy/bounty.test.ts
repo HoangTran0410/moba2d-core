@@ -221,3 +221,85 @@ describe('passive income', () => {
     expect(() => unit.update()).not.toThrow();
   });
 });
+
+/**
+ * Seeing the money.
+ *
+ * A kill paid a bounty into a wallet and nothing on screen said so — the
+ * balance simply jumped, and a player watching a wave die had no way to tell a
+ * last hit from a missed one at the moment it happened. That is the whole
+ * skill a last hit *is*.
+ *
+ * It floats over the **earner**, not the victim, which is the opposite of
+ * every other combat text: damage and heals describe what happened to the unit
+ * they sit above, and gold describes what someone else got out of it.
+ */
+describe('the gold a kill pays is shown', () => {
+  let game: TestGame;
+  let hasPlayer = false;
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    hasPlayer = false;
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const champion = (x: number, teamId: string): Champion => {
+    const unit = new Champion({ game, position: createVector(x, 0), teamId });
+    if (!hasPlayer) {
+      game.setPlayer(unit);
+      hasPlayer = true;
+    }
+    indexObjects(game, [unit]);
+    return unit;
+  };
+
+  const goldTexts = () =>
+    [...game.objectManager.objects, ...game.objectManager._objectToBeAdd].filter(
+      (object: any) => object?.constructor?.name === 'CombatText' && object.text?.startsWith('+')
+    ) as any[];
+
+  it('floats over the killer, not the corpse', () => {
+    const killer = champion(0, 'blue');
+    const victim = champion(50, 'red');
+
+    victim.takeDamage(99_999, killer, 'TRUE');
+
+    const texts = goldTexts().filter(t => t.owner === killer);
+    expect(texts, 'nothing said where the gold went').toHaveLength(1);
+    expect(texts[0].amount).toBe(CHAMPION_BOUNTY);
+    expect(goldTexts().filter(t => t.owner === victim)).toHaveLength(0);
+  });
+
+  it('says nothing when nothing was earned', () => {
+    // A pet is worth 0, and "+0" over someone's head is a number that means
+    // "you got nothing" while looking exactly like a reward.
+    const killer = champion(0, 'blue');
+    const pet = new Pet({
+      game,
+      position: createVector(90, 0),
+      teamId: 'red',
+      ownerUnit: champion(70, 'red'),
+      lifeTimeMs: 5_000,
+    } as never);
+    indexObjects(game, [pet]);
+
+    pet.takeDamage(99_999, killer, 'TRUE');
+
+    expect(goldTexts().filter(t => t.owner === killer)).toHaveLength(0);
+  });
+
+  it('keeps its own colour, so it never reads as a heal', () => {
+    // Green already means "you got health back" on exactly this unit, in
+    // exactly this place on screen.
+    const killer = champion(0, 'blue');
+    champion(50, 'red').takeDamage(99_999, killer, 'TRUE');
+
+    const text = goldTexts().find(t => t.owner === killer)!;
+    const distanceFromHealGreen = Math.hypot(
+      ...(text.textColor as number[]).map((channel: number, i: number) => channel - [0, 255, 0][i])
+    );
+    expect(distanceFromHealGreen).toBeGreaterThan(120);
+  });
+})

@@ -7,7 +7,10 @@ import GameObject from '@/game/gameObject/GameObject';
 import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import Stats from '@/game/gameObject/Stats';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
-import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
+import CombatText, {
+  DAMAGE_TEXT_COLOR,
+  GOLD_TEXT_COLOR,
+} from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
 import type Wallet from '@/game/economy/Wallet';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
@@ -721,6 +724,13 @@ export default class AttackableUnit extends GameObject {
         // bounty paid on every one of those calls is an unbounded gold press
         // pointed at anything that keeps hitting a body.
         killer.wallet?.earn(this.goldBounty);
+        // Over the **killer**, which is the opposite of every other combat
+        // text — see `GOLD_TEXT_COLOR`. Guarded on a wallet as well as on the
+        // bounty, so a minion that last-hits another minion does not float a
+        // number for money it cannot hold.
+        if (killer.wallet && this.goldBounty > 0) {
+          CombatText.show(killer, 'gold', this.goldBounty, [...GOLD_TEXT_COLOR]);
+        }
       }
     }
     this.deathData = deathData;
