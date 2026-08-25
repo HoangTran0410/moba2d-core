@@ -48,6 +48,17 @@ export interface MonsterPresetData {
    * own doc comment.
    */
   camp: { x: number; y: number; r: number };
+  /**
+   * Where *this body* stands in the camp — `slot + member.offset`. Optional,
+   * and it defaults to `camp`, so a camp of one and every pack written before
+   * this existed are untouched.
+   *
+   * It exists because `camp` is the **slot**: one point shared by every member
+   * and held by reference, which is what `alertCamp` matches on. Using it as
+   * "where do I belong" collapsed every multi-body camp into a pile on the
+   * middle — see `campSpread.test.ts` for the three separate ways it did that.
+   */
+  home?: { x: number; y: number };
   speed: number;
   size: number;
   attackRange: number;
@@ -126,6 +137,8 @@ export default class Monster extends AttackableUnit {
   name: string;
   phase: MonsterPhase = Monster.PHASES.IDLE;
   camp: { x: number; y: number; r: number };
+  /** This body's own spot in the camp — see the preset's `home`. */
+  home: { x: number; y: number };
   attackRange: number;
   attackInterval: number;
   damage: number;
@@ -153,7 +166,7 @@ export default class Monster extends AttackableUnit {
   constructor({ game, preset = DEFAULT_PRESET }: MonsterOptions) {
     super({
       game,
-      position: createVector(preset.camp.x, preset.camp.y),
+      position: createVector(preset.home?.x ?? preset.camp.x, preset.home?.y ?? preset.camp.y),
       avatar: preset.avatar ? packAsset(preset.avatar) : undefined,
     });
 
@@ -172,6 +185,7 @@ export default class Monster extends AttackableUnit {
     this.attackRange = preset.attackRange;
     this.reviveTime = preset.reviveTime;
     this.camp = preset.camp;
+    this.home = preset.home ?? { x: preset.camp.x, y: preset.camp.y };
     this.attackInterval = preset.attackInterval ?? 1500;
     this.damage = preset.damage ?? Math.min(25, Math.max(3, Math.round(preset.health / 25)));
     this.aggroRange = preset.aggroRange ?? preset.attackRange + 120;
@@ -207,8 +221,8 @@ export default class Monster extends AttackableUnit {
     // again — so it stopped aggroing, stopped swinging, and stopped drawing the
     // swing flash that made it look alive at all.
     if (this.isImmovable) {
-      this.position.set(this.camp.x, this.camp.y);
-      this.destination.set(this.camp.x, this.camp.y);
+      this.position.set(this.home.x, this.home.y);
+      this.destination.set(this.home.x, this.home.y);
     }
 
     if (this.isDead) return;
@@ -248,9 +262,17 @@ export default class Monster extends AttackableUnit {
     // state whose only job is to hold the camp point and regen.
   }
 
-  /** Beyond the leash radius: too far from the camp point to still belong to it. */
+  /**
+   * Dragged off its post: further from **its own spot** than the camp is wide.
+   *
+   * Measured from `home`, not from `camp`. The camp point is the slot centre,
+   * and a raptor whose layout puts it 195px out from a camp of radius 100 is
+   * *born* outside it — so it walked to the middle on its first idle tick,
+   * having never been touched, and the pit rendered as a pile. `camp.r` stays
+   * the tolerance: how far a body may wander is a property of the camp.
+   */
   isOutsideCamp(): boolean {
-    return !withinRadius(this.position, this.camp, this.camp.r);
+    return !withinRadius(this.position, this.home, this.camp.r);
   }
 
   /**
@@ -379,7 +401,7 @@ export default class Monster extends AttackableUnit {
     // re-aggroing on proximity for the rest of the match while standing on its
     // own camp.
     const home = Math.max(MONSTER_HOME_TOLERANCE, this.stats.size.value / 2);
-    if (withinRadius(this.position, this.camp, home)) {
+    if (withinRadius(this.position, this.home, home)) {
       this.phase = Monster.PHASES.IDLE;
       this.stopMovement();
       return;
@@ -390,7 +412,7 @@ export default class Monster extends AttackableUnit {
     // `PathAgent.order` deliberately re-plans a BLOCKED agent rather than
     // swallowing this repeat, which is what stopped a dragged camp freezing
     // mid-jungle — see that method.
-    this.navigateTo(this.camp.x, this.camp.y);
+    this.navigateTo(this.home.x, this.home.y);
   }
 
   aggroOn(unit?: AttackableUnit) {
@@ -403,7 +425,7 @@ export default class Monster extends AttackableUnit {
   goBackToCamp() {
     this.targetLock = null;
     this.phase = Monster.PHASES.BACK_TO_CAMP;
-    this.navigateTo(this.camp.x, this.camp.y);
+    this.navigateTo(this.home.x, this.home.y);
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
@@ -541,8 +563,12 @@ export default class Monster extends AttackableUnit {
     this._attackCooldown = 0;
     this._attackFlash = 0;
     this._abilityCooldowns = this._abilityCooldowns.map(() => 0);
-    // super.respawn() drops every unit on a spawn point; a camp belongs at its camp
-    this.position.set(this.camp.x, this.camp.y);
-    this.destination.set(this.camp.x, this.camp.y);
+    // `super.respawn()` drops every unit on a spawn point; a camp belongs on
+    // its own spot — `home`, not `camp`. Using the shared camp point here is
+    // what made the pile permanent: a pit's layout survived exactly until the
+    // first time it was cleared, and every member came back standing on the
+    // same pixel.
+    this.position.set(this.home.x, this.home.y);
+    this.destination.set(this.home.x, this.home.y);
   }
 }

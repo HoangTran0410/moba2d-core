@@ -624,6 +624,12 @@ export const monsterBodyPreset = (
   name: member.name,
   avatar: member.avatar,
   camp: slot,
+  // Where this one body stands, which is a different question from where the
+  // camp is: `camp` is the slot object itself, shared by reference across
+  // every member so `alertCamp` can match on identity. `Monster` reads `home`
+  // for its spawn point, its walk home, its arrived check and its respawn —
+  // all four used to read `camp` and collapsed a pit into a pile.
+  home: { x: slot.x + member.offset.x, y: slot.y + member.offset.y },
   speed: member.speed,
   size: member.size,
   attackRange: member.attackRange,

@@ -485,11 +485,11 @@ export default class Game {
    * Every body for one slot is built from `monsterBodyPreset`, whose `camp`
    * is the slot object itself — every member of the same camp ends up
    * holding the exact same `camp` reference, which is what
-   * `Monster.alertCamp` matches on. Each body's starting `position` is then
-   * placed at `slot.{x,y} + member.offset` — a Greater Wolf and its two
-   * Wolves land where the pack's own layout says, not stacked on the slot's
-   * centre; the camp point they idle at and leash back to is `camp`
-   * (unaffected by the offset).
+   * `Monster.alertCamp` matches on. Each body's own spot — `slot.{x,y} +
+   * member.offset` — arrives as `MonsterPresetData.home`, which is what the
+   * body spawns on, walks back to, counts as arrived at and respawns on. The
+   * *leash* is still measured from `camp`, because how far a camp will chase
+   * is a property of the camp and not of one wolf.
    */
   spawnJungle() {
     for (const slot of this.neutralSlots) {
@@ -499,7 +499,6 @@ export default class Game {
       for (const member of monster.members) {
         const preset = monsterBodyPreset(monster, member, slot);
         const body = new Monster({ game: this, preset });
-        body.position.set(slot.x + member.offset.x, slot.y + member.offset.y);
         this.monsters.push(body);
         this.objectManager.addObject(body);
       }
