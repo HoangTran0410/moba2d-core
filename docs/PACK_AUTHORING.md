@@ -107,6 +107,16 @@ handed out — so each of them is now something the scaffold gets right and
   disclosure is the whole security model of the install prompt.
 - **The pack's `manifest.id` and its data half's `manifest.id` must agree.**
   Two places, one string, and core checks them against each other.
+- **`buildId` is written for you, and you must not bump anything by hand.**
+  `scripts/write-manifest.mjs` hashes the sorted list of files the build
+  emitted, so the value moves exactly when a content hash does. Core hangs it
+  off the entry URL as `pack.js?b=<buildId>`, which is what makes two builds
+  two URLs — the fix for a republished pack whose old chunk graph pointed at
+  files the deploy had already deleted, 404ing one ability into silence. It is
+  also what lets core notice that a player's installed copy is out of date and
+  offer them the update. `version` is the semver a person reads and takes no
+  part in either: it is a number a human has to remember to bump, and the riot
+  pack's stayed `1.0.0` across dozens of publishes.
 
 ### Which floor to declare
 

@@ -1,6 +1,6 @@
 # Ghim bản cài pack và cập nhật tường minh
 
-**Trạng thái:** đã duyệt thiết kế, đang triển khai
+**Trạng thái:** đã triển khai và kiểm chứng trong trình duyệt thật
 **Tiền đề:** `2026-08-24-runtime-pack-loading-design.md` (GĐ2 — nạp pack lúc chạy)
 
 ## 1. Sự cố khởi nguồn
@@ -168,7 +168,44 @@ worker và không có phần ghim. §4.2 và §4.4 vẫn chạy ở dev — và 
 thứ sửa đúng sự cố đã khởi nguồn tài liệu này. §4.3, §4.5 chỉ có tác dụng ở bản
 build.
 
-## 6. Điều phải chứng minh được
+## 6. Việc triển khai bổ sung ba điều
+
+Ghi lại vì cả ba đều trái với dự đoán khi viết thiết kế.
+
+### 6.1. Bản cài cũ tự lành, không cần bị nhắc
+
+§4.4 định gắn nhãn "có bản mới" cho mọi record không có `buildId`. Thực tế
+không cần: record không có bản ghim thì boot đi fetch, ghim lại, và ghi đúng
+`buildId` hiện hành — từ đó URL entry có tên build và lỗi 404 không tái diễn
+được nữa. Người chơi cũ được sửa trong đúng một lần khởi động, im lặng.
+`checkPackUpdates` vẫn giữ luật "không ghim mà host có" vì nó đúng ở tầng hàm;
+đường boot chỉ đơn giản không bao giờ để nó xảy ra.
+
+### 6.2. `ignoreSearch` trông như bản sửa và là lỗi
+
+Prefetch cache entry dưới tên `pack.js`; game import `pack.js?b=<buildId>`. Hai
+địa chỉ khác nhau, nên bản prefetch của entry là rác. Nhìn thì đúng là offline
+mất đúng tệp mà cả pack treo lên đó.
+
+Chạy `verify-pwa-offline.mjs` với tuỳ chọn bị gỡ cho thấy offline chưa bao giờ
+cần nó: **cài một pack chính là fetch entry của nó**, cú fetch ấy đi qua đúng
+route này, và `CacheFirst` lưu lại thứ nó vừa fetch — kèm query.
+
+Và bật nó lên sẽ mở lại đúng lỗi cũ. Một trình duyệt bị xoá `localStorage`
+nhưng còn `CacheStorage` thì không có bản ghim và có `pack.js` cũ; boot fetch
+manifest mới, import `pack.js?b=<mới>`, và `ignoreSearch` sẽ trả về entry **cũ**
+— đồ thị chunk cũ sau một manifest mới, đúng cú 404 khởi nguồn. 86 byte lãng
+phí là cái giá rẻ hơn.
+
+### 6.3. Host chết không còn là mất pack
+
+Hệ quả không định trước của §4.3, và là thứ tốt nhất trong cả thay đổi này. Boot
+đọc bản ghim và không hỏi mạng, nên một host không truy cập được **không tốn gì
+cả** — không menu, không roster. `verify-runtime-pack.mjs` trước đây khẳng định
+điều ngược lại, và điều ngược lại từng đúng. Nay nó kiểm tra cả hai ca: đã ghim
+thì sống sót, chưa ghim thì vẫn hiện banner như cũ.
+
+## 7. Điều phải chứng minh được
 
 - Manifest mới + `pack.js` cũ trong HTTP cache không còn nạp được đồ thị cũ.
 - Manifest **không** được phục vụ từ `CacheFirst`.
@@ -176,3 +213,6 @@ build.
 - 404 trên tệp manifest liệt kê đánh dấu pack là cũ; lỗi mạng thì không.
 - Một chiêu trong kit không nạp được thì hiện ra màn hình, không chỉ console.
 - Một id lạ vẫn im lặng rơi về `BasicAttack`.
+
+Tất cả đã chạy: `npm run e2e:stale` (15/15), `npm run e2e:pwa`,
+`npm run e2e:runtime-pack`, `npm run e2e:packs`, `npm run verify`.
