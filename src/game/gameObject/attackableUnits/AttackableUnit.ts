@@ -9,6 +9,7 @@ import Stats from '@/game/gameObject/Stats';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
 import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
+import type Wallet from '@/game/economy/Wallet';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import PathAgent from '@/game/nav/PathAgent';
 import { NAV_MAX_TERRAIN_RADIUS } from '@/game/nav/NavGrid';
@@ -86,6 +87,26 @@ export default class AttackableUnit extends GameObject {
    * `Pet`/`Turret` are neither.
    */
   killCredit: KillCredit = 'minion';
+
+  /**
+   * What killing this unit pays whoever did it. `0` for anything that is not
+   * worth money, which is the base case — a `Fountain`, a ward, a summoned pet.
+   *
+   * Asked of the **victim**, exactly like `killCredit` beside it, and for the
+   * same reason: an `instanceof` at the crediting site is how a `Pet` (which
+   * extends `Champion`) ends up paying out a champion bounty. That bug has
+   * already shipped here once, on the kill-count side.
+   */
+  goldBounty = 0;
+
+  /**
+   * What this unit can spend, or `null` for one that never spends anything.
+   *
+   * Null is the base case and `Champion` is what fills it in — a minion that
+   * last-hits another minion is not banking gold, and nothing at the crediting
+   * site has to know that. `Pet` nulls it again on purpose; see `Wallet`.
+   */
+  wallet: Wallet | null = null;
 
   buffs: Buff[] = [];
   _buffEffectsToEnable = 0;
@@ -639,6 +660,11 @@ export default class AttackableUnit extends GameObject {
       if (killer && killer !== this) {
         if (this.killCredit === 'champion') killer.tally.kills++;
         else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
+        // Inside the same `!isDead` guard the ledger is: `die` is reachable on
+        // a corpse (`Champion.die` runs cleanup that is safe to repeat), and a
+        // bounty paid on every one of those calls is an unbounded gold press
+        // pointed at anything that keeps hitting a body.
+        killer.wallet?.earn(this.goldBounty);
       }
     }
     this.deathData = deathData;

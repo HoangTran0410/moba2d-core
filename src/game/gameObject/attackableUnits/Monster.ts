@@ -1,5 +1,6 @@
 import { withinRadius } from '@/utils/math.utils';
 import { Circle } from '@/libs/quadtree';
+import { MONSTER_BOUNTY } from '@/game/economy/Wallet';
 import { packAsset } from '@/game/config/packAsset';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import AttackableUnit from './AttackableUnit';
@@ -110,6 +111,9 @@ const DEFAULT_PRESET: MonsterPresetData = {
  * back to full once dragged past `camp.r`.
  */
 export default class Monster extends AttackableUnit {
+  /** See `Wallet` — a camp is worth a little more than a minion and takes longer. */
+  goldBounty = MONSTER_BOUNTY;
+
   static PHASES = {
     IDLE: 'IDLE',
     ATTACK: 'ATTACK',

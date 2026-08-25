@@ -21,6 +21,7 @@ import Silence from '@/game/gameObject/buffs/Silence';
 import Slow from '@/game/gameObject/buffs/Slow';
 import Stun from '@/game/gameObject/buffs/Stun';
 import Taunt from '@/game/gameObject/buffs/Taunt';
+import Wallet, { CHAMPION_BOUNTY, STARTING_GOLD } from '@/game/economy/Wallet';
 import type Buff from '@/game/gameObject/Buff';
 import type { BuffStackId } from '@/game/gameObject/Buff';
 
@@ -183,6 +184,11 @@ export const healthTickStep = (maxHealth: number): number => {
 export default class Champion extends AttackableUnit {
   static displayZIndex = CHAMPION_Z_INDEX;
   killCredit: KillCredit = 'champion';
+
+  /** See `Wallet` — the base class has none, and this is the class that does. */
+  wallet: Wallet | null = new Wallet(STARTING_GOLD);
+
+  goldBounty = CHAMPION_BOUNTY;
 
   /**
    * Whether a `BotBrain` is driving this body. `AIChampion` overrides it to
@@ -393,6 +399,11 @@ export default class Champion extends AttackableUnit {
       item?.active?.update();
     }
     this.armPassives();
+    // Per unit of *time*, not per frame — `Wallet.accrue`'s own doc comment has
+    // the reason. Deliberately outside any `isDead` check: income is the floor
+    // under a player who is losing, and stopping it while they are dead stops
+    // it hardest exactly when it is doing its job.
+    this.wallet?.accrue(deltaTime);
   }
 
   /**

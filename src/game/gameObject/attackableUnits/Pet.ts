@@ -1,5 +1,6 @@
 import { Circle } from '@/libs/quadtree';
 import { PredefinedFilters } from '@/game/managers/ObjectManager';
+import type Wallet from '@/game/economy/Wallet';
 import Champion, { type ChampionOptions } from './Champion';
 import type { KillCredit } from '@/game/combat/MatchTally';
 import type AttackableUnit from './AttackableUnit';
@@ -73,6 +74,16 @@ export default class Pet extends Champion {
    * count, because a `Pet` *is* a `Champion` as far as `instanceof` goes.
    */
   killCredit: KillCredit = 'none';
+
+  /**
+   * Both halves of the same override, and both are needed for the same reason
+   * `killCredit` above is: a `Pet` *is* a `Champion` as far as inheritance
+   * goes, so without these lines every decoy clone would carry its own 500
+   * gold and be worth a 200-gold kill to whoever popped it.
+   */
+  wallet: Wallet | null = null;
+
+  goldBounty = 0;
 
   ownerUnit: AttackableUnit;
   lifeTimeMs: number;
