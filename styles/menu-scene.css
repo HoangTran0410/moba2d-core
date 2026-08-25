@@ -426,9 +426,23 @@
   text-align: center;
 }
 
+/* A pack that is out of date but working, versus one whose installed build is
+   gone from its host and cannot be completed. The second is the one where an
+   ability silently does nothing, so it is not the same colour as "there is
+   something newer available". */
+.pack-banner-broken {
+  border-color: #e8724b88;
+  background: rgba(30, 12, 5, 0.9);
+}
+
 .pack-banner-actions {
   display: flex;
   gap: 8px;
+}
+
+.pack-banner button[disabled] {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 44px minimum so a thumb can actually hit either one. */

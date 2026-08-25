@@ -5,6 +5,34 @@ import { loadGameScene, loadSetupScene, preloadGame } from './gamePreload';
 import MenuSceneView from './MenuScene.vue';
 
 /**
+ * Whether this page load has already asked each pack's host what it is
+ * serving. Module state, not instance state: `MenuScene` is entered on every
+ * "Quay lại" and re-asking on each one would put a network request behind a
+ * back button for no new information.
+ */
+let updatesChecked = false;
+
+/**
+ * Ask, once, after the menu is on screen.
+ *
+ * **Deliberately not on the boot path.** The pinned pack already works — that
+ * is what pinning bought — so this only decides whether to offer the player
+ * something newer, and putting it in front of the menu would trade the
+ * dead-screen risk the pinning design exists to remove for a nicety. Fire and
+ * forget: nothing here has a caller with anything to do about a failure, and
+ * an unreachable host means a player on a train, not a broken pack.
+ *
+ * Dynamically imported for the reason every other import in this file is:
+ * `runtimePacks` reaches `ContentApi` and `install.ts`, so a static import
+ * would pull the whole match into the menu's chunk.
+ */
+function checkForPackUpdates(): void {
+  if (updatesChecked) return;
+  updatesChecked = true;
+  void import('@/content/runtimePacks').then(module => module.checkPackUpdates()).catch(() => {});
+}
+
+/**
  * The lifecycle half of the main menu. The background carousel, the logo and
  * the buttons all live in `MenuScene.vue`; this owns mounting and the three
  * scene transitions the component can only ask for, not perform itself.
@@ -35,6 +63,7 @@ export default class MenuScene extends Scene {
   enter() {
     this.host.style.display = 'flex';
     void preloadGame();
+    checkForPackUpdates();
     // "Chơi" stays a single click into a match, with whatever config is
     // already persisted (defaults, if the player has never opened the setup
     // screen) — the setup screen is additive, never a gate in front of Play.

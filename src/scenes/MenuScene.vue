@@ -43,6 +43,65 @@ import {
   packInstallFailures,
   retryPackInstall,
 } from './packBanner';
+import { packHealthDismissed, packProblems } from '@/content/packHealth';
+
+/**
+ * ## The pack-health notice
+ *
+ * Separate from the install banner above it, which reports a pack that could
+ * not be installed *this boot*. This one reports a pack that installed fine
+ * and has since gone out of date — the failure the player actually met: a
+ * republished pack, a chunk graph pointing at files the host had deleted, and
+ * a champion whose ability silently did nothing.
+ *
+ * `runtimePacks` is imported **dynamically** in the handler, never at the top
+ * of this file. It reaches `ContentApi` and `install.ts`, i.e. the engine, and
+ * a static import here would pull the whole match into the menu's chunk with
+ * nothing on screen looking wrong (`scripts/check-chunks.mjs`). `packHealth`
+ * itself is dependency-free apart from `vue` for exactly this reason, so the
+ * state can be read statically while the action is fetched.
+ */
+const packProblem = computed(() => packProblems.value[0] ?? null);
+const updatingPack = ref(false);
+const packUpdateFailed = ref(false);
+
+const packProblemText = computed(() => {
+  const problem = packProblem.value;
+  if (!problem) return '';
+  const name = problem.name;
+  if (problem.kind === 'update') return `Pack "${name}" đã có bản mới.`;
+  const missing = problem.missingSpells;
+  return missing
+    ? `Pack "${name}" đã cũ — ${missing} chiêu thức không tải được, đang tạm dùng đòn đánh thường.`
+    : `Pack "${name}" đã cũ — thiếu một phần nội dung.`;
+});
+
+async function updateProblemPack(): Promise<void> {
+  const problem = packProblem.value;
+  if (!problem || updatingPack.value) return;
+  updatingPack.value = true;
+  packUpdateFailed.value = false;
+  try {
+    const { updatePack } = await import('@/content/runtimePacks');
+    if (await updatePack(problem.manifestUrl)) {
+      // A reload, not a live swap. The old build's modules have already been
+      // evaluated in this page and ES modules evaluate once, so carrying on
+      // would leave the previous classes running behind the new manifest —
+      // the exact mismatch the update exists to end.
+      location.reload();
+      return;
+    }
+    packUpdateFailed.value = true;
+  } catch {
+    packUpdateFailed.value = true;
+  } finally {
+    updatingPack.value = false;
+  }
+}
+
+function dismissPackProblem(): void {
+  packHealthDismissed.value = true;
+}
 
 const emit = defineEmits<{ play: []; openConfig: []; openAbout: []; openPacks: [] }>();
 
@@ -219,6 +278,42 @@ const updateState = computed(() => {
         @touchend.prevent="dismissPackBanner"
       >
         Bỏ qua
+      </button>
+    </div>
+  </div>
+
+  <!-- A pack that installed fine and has since gone out of date. Its own
+       banner rather than a line in the one above: that one is about this
+       boot's install, this one is about a pack the player already has, and
+       the way out of each is different. -->
+  <div
+    v-if="packProblem && !packHealthDismissed"
+    class="pack-banner"
+    :class="{ 'pack-banner-broken': packProblem.kind === 'broken' }"
+    role="alert"
+  >
+    <span>
+      {{ packProblemText }}
+      <template v-if="packUpdateFailed"> Không cập nhật được — thử lại khi có mạng. </template>
+    </span>
+    <div class="pack-banner-actions">
+      <button
+        id="pack-update"
+        type="button"
+        :disabled="updatingPack"
+        @click="updateProblemPack"
+        @touchend.prevent="updateProblemPack"
+      >
+        {{ updatingPack ? 'Đang cập nhật…' : 'Cập nhật' }}
+      </button>
+      <button
+        id="pack-update-dismiss"
+        type="button"
+        class="ghost"
+        @click="dismissPackProblem"
+        @touchend.prevent="dismissPackProblem"
+      >
+        Để sau
       </button>
     </div>
   </div>

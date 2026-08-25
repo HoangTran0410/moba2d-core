@@ -52,13 +52,16 @@ vi.mock('@/content/packCache', () => ({
   // Defaults to "nothing is pinned", which is a browser installing for the
   // first time — the state every case below was written against, and the one
   // that still exercises the network path.
+  forgetPack: vi.fn(async () => 0),
   readPinnedManifest: vi.fn(async () => null),
   pinPackManifest: vi.fn(async () => true),
   missingPackFiles: vi.fn(async () => []),
 }));
 
 import { installRuntimePacks, installPackNow, DEFAULT_PACK_URL } from '@/content/runtimePacks';
-import { pinPackManifest, readPinnedManifest } from '@/content/packCache';
+import { forgetPack, pinPackManifest, readPinnedManifest } from '@/content/packCache';
+import { checkPackUpdates, notePackSpellFailures, updatePack } from '@/content/runtimePacks';
+import { notePackProblem, packProblems, resetPackHealthForTests } from '@/content/packHealth';
 import { fetchPackManifest, loadPackFromManifest } from '@/content/packSource';
 import { installRuntimePack } from '@/content/install';
 import { contentRegistry, rebuildContentRegistry } from '@/content/registry';
@@ -608,6 +611,256 @@ describe('the pinned manifest', () => {
     await installRuntimePacks();
 
     expect(readInstalledPacks()[0].buildId).toBe('deadbeef');
+  });
+});
+
+/**
+ * Noticing that a pack has a newer build than the one pinned.
+ *
+ * There was no such check, and no way to write one: `manifest.version` was the
+ * only candidate and riot's stayed `1.0.0` across dozens of publishes. Now the
+ * pack derives a `buildId` from its own emitted file list, so the comparison
+ * is between two values that actually move.
+ *
+ * Runs after the menu is up and never blocks anything. Its failure mode is
+ * silence: a player on a train has an unreachable host, not a broken pack.
+ */
+describe('checkPackUpdates', () => {
+  const PACK_URL = 'https://packs.example/riot/manifest.json';
+  const record = (buildId?: string) => ({
+    manifestUrl: PACK_URL,
+    id: 'riot',
+    version: '1.0.0',
+    name: 'Riot',
+    ...(buildId ? { buildId } : {}),
+  });
+  const served = (buildId?: string) =>
+    vi.mocked(fetchPackManifest).mockResolvedValue({
+      ...manifest,
+      ...(buildId ? { buildId } : {}),
+    } as never);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetPackHealthForTests();
+    withStorage();
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it('says nothing when the host is serving the build that is pinned', async () => {
+    writeInstalledPacks([record('abc123')]);
+    served('abc123');
+
+    await checkPackUpdates();
+
+    expect(packProblems.value).toEqual([]);
+  });
+
+  it('reports an update when the host has moved on', async () => {
+    writeInstalledPacks([record('abc123')]);
+    served('def456');
+
+    await checkPackUpdates();
+
+    expect(packProblems.value).toMatchObject([{ id: 'riot', kind: 'update' }]);
+  });
+
+  /**
+   * A pin written before build ids existed is of unknown vintage, and it is
+   * exactly the install at risk of the dead-chunk-graph bug — its entry URL
+   * carries no build id, so nothing stops a cache serving it across a
+   * republish. Offering the update is the point.
+   */
+  it('reports an update for an install that predates build ids', async () => {
+    writeInstalledPacks([record()]);
+    served('def456');
+
+    await checkPackUpdates();
+
+    expect(packProblems.value).toMatchObject([{ kind: 'update' }]);
+  });
+
+  it('says nothing when the pack publishes no build id at all', async () => {
+    writeInstalledPacks([record()]);
+    served();
+
+    await checkPackUpdates();
+
+    expect(packProblems.value).toEqual([]);
+  });
+
+  /**
+   * The check must bypass the browser's HTTP cache as well as the worker's.
+   * riot's manifest ships `max-age=600`, so for ten minutes after a republish
+   * a plain fetch answers with the previous build's file list — a check that
+   * cannot see a change is not a check.
+   */
+  it('asks the network, not a cache', async () => {
+    writeInstalledPacks([record('abc123')]);
+    served('abc123');
+
+    await checkPackUpdates();
+
+    expect(fetchPackManifest).toHaveBeenCalledWith(PACK_URL, undefined, { bypassCache: true });
+  });
+
+  /** A player on a train has an unreachable host, not a broken pack. */
+  it('stays silent when the host cannot be reached', async () => {
+    writeInstalledPacks([record('abc123')]);
+    vi.mocked(fetchPackManifest).mockRejectedValue(new Error('offline'));
+
+    await expect(checkPackUpdates()).resolves.toBeUndefined();
+
+    expect(packProblems.value).toEqual([]);
+  });
+
+  it('checks every installed pack, not only the first', async () => {
+    writeInstalledPacks([
+      record('abc123'),
+      { manifestUrl: 'https://h/other/manifest.json', id: 'other', version: '1.0.0' },
+    ]);
+    served('def456');
+
+    await checkPackUpdates();
+
+    expect(fetchPackManifest).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * The action behind the button. Replaces the pinned snapshot with what the
+ * host is serving now.
+ *
+ * It cannot swap the pack in place: the previous build's modules have already
+ * been evaluated in this page, and ES modules evaluate once. So this prepares
+ * the ground — new pin, new record, old bytes gone — and the caller reloads.
+ * Doing it in that order matters, and the order is the test.
+ */
+describe('updatePack', () => {
+  const PACK_URL = 'https://packs.example/riot/manifest.json';
+  const PACK_BASE = 'https://packs.example/riot/';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetPackHealthForTests();
+    withStorage();
+    writeInstalledPacks([
+      { manifestUrl: PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot', buildId: 'old' },
+    ]);
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  const serving = (buildId: string) =>
+    vi.mocked(fetchPackManifest).mockResolvedValue({ ...manifest, buildId } as never);
+
+  it('pins the build the host is serving now', async () => {
+    serving('new');
+    await expect(updatePack(PACK_URL)).resolves.toBe(true);
+    expect(pinPackManifest).toHaveBeenCalledWith(
+      PACK_URL,
+      JSON.stringify({ ...manifest, buildId: 'new' })
+    );
+    expect(readInstalledPacks()[0].buildId).toBe('new');
+  });
+
+  /**
+   * The old build's bytes have to go, and this is the one place it is safe to
+   * drop them. Every name under the base is content-hashed except the entry,
+   * so the old chunks are dead weight the moment the new manifest lands — and
+   * leaving them lets the cache answer a request the new graph never makes.
+   */
+  it('drops the old build from the cache', async () => {
+    serving('new');
+    await updatePack(PACK_URL);
+    expect(forgetPack).toHaveBeenCalledWith(PACK_BASE);
+  });
+
+  it('clears the notice it was pressed from', async () => {
+    notePackProblem({ id: 'riot', name: 'Riot', manifestUrl: PACK_URL, kind: 'broken' });
+    serving('new');
+    await updatePack(PACK_URL);
+    expect(packProblems.value).toEqual([]);
+  });
+
+  /**
+   * The failure that must not happen: dropping the working copy and then
+   * failing to get a new one, which turns "there is an update" into "you now
+   * have no pack". The fetch comes first for exactly this reason.
+   */
+  it('keeps the pinned build when the host cannot be reached', async () => {
+    vi.mocked(fetchPackManifest).mockRejectedValue(new Error('offline'));
+
+    await expect(updatePack(PACK_URL)).resolves.toBe(false);
+
+    expect(forgetPack).not.toHaveBeenCalled();
+    expect(pinPackManifest).not.toHaveBeenCalled();
+    expect(readInstalledPacks()[0].buildId).toBe('old');
+  });
+
+  it('answers false for a URL that is not installed', async () => {
+    await expect(updatePack('https://h/nope/manifest.json')).resolves.toBe(false);
+    expect(fetchPackManifest).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Turning "these spell chunks never arrived" into a notice naming the pack.
+ *
+ * This is the reported bug's own path. `GameScene.startGame` loads exactly the
+ * kits a match needs and then builds the match from whatever loaded; an id
+ * that did not load falls back to `BasicAttack` in `preset.ts`, deliberately,
+ * so a stale loadout slot cannot break a match. What was missing is that a
+ * *pack* failing is not a stale slot, and the player was shown neither.
+ */
+describe('notePackSpellFailures', () => {
+  const PACK_URL = 'https://packs.example/riot/manifest.json';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetPackHealthForTests();
+    withStorage();
+    writeInstalledPacks([
+      { manifestUrl: PACK_URL, id: 'riot', version: '1.0.0', name: 'Liên Minh', buildId: 'old' },
+    ]);
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it('names the pack the failed ids belong to, and counts them', () => {
+    notePackSpellFailures(['riot:Rammus_Q', 'riot:Rammus_W']);
+    expect(packProblems.value).toMatchObject([
+      { id: 'riot', name: 'Liên Minh', kind: 'broken', missingSpells: 2 },
+    ]);
+  });
+
+  it('says nothing when nothing failed', () => {
+    notePackSpellFailures([]);
+    expect(packProblems.value).toEqual([]);
+  });
+
+  /**
+   * Core's own spells are not a pack anybody can update, so a notice offering
+   * to would be a dead end. If those fail the app itself is broken, which is
+   * the service worker's problem, not this one's.
+   */
+  it('ignores an id belonging to no installed pack', () => {
+    notePackSpellFailures(['nosuchpack:Alpha_Q']);
+    expect(packProblems.value).toEqual([]);
+  });
+
+  it('groups per pack rather than per spell', () => {
+    writeInstalledPacks([
+      { manifestUrl: PACK_URL, id: 'riot', version: '1.0.0', name: 'Liên Minh' },
+      { manifestUrl: 'https://h/other/manifest.json', id: 'other', version: '1.0.0' },
+    ]);
+    notePackSpellFailures(['riot:A_Q', 'riot:A_W', 'other:B_Q']);
+    expect(packProblems.value).toHaveLength(2);
+    expect(packProblems.value.find(p => p.id === 'riot')?.missingSpells).toBe(2);
   });
 });
 

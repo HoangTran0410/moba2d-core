@@ -12,6 +12,7 @@ import { ensurePackAsset } from '@/game/config/packAsset';
 import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
 import { renderAlpha } from '@/game/render/Interpolation';
 import { contentCatalog } from '@/content/catalog';
+import { notePackSpellFailures } from '@/content/runtimePacks';
 
 let previousTime: number;
 
@@ -248,7 +249,7 @@ export default class GameScene extends Scene {
     const mapSummary = maps.find(map => map.id === config.mapId) ?? maps[0];
     if (!mapSummary) throw new Error('GameScene.startGame: no map installed');
 
-    const [, geometry] = await Promise.all([
+    const [[failedSpellIds], geometry] = await Promise.all([
       Promise.all([
         loadSpells(kitIds, step),
         // `.catch` per image, not for the batch: a missing portrait is a
@@ -268,6 +269,19 @@ export default class GameScene extends Scene {
     if (!geometry) {
       throw new Error(`GameScene.startGame: map ${mapSummary.id} has no geometry`);
     }
+
+    // The match still starts. An ability that did not arrive falls back to the
+    // basic attack (`preset.ts`'s `classForId`) and that is the right call —
+    // refusing to play would turn a pack that is 3 spells short into no game
+    // at all, and the player may have no network to fix it with.
+    //
+    // What is new is that it no longer happens in silence. Every id here is
+    // one an installed pack *declared* and could not deliver, which is
+    // positive evidence that the pack is broken rather than the ordinary
+    // stale-slot miss the fallback was built for. This is the exact path the
+    // reported bug took: a republished pack, a dead chunk graph, and a
+    // champion whose Q did nothing with no way to find out why.
+    notePackSpellFailures(failedSpellIds);
 
     const activeMap = { ...mapSummary, ...geometry };
     this.game = new Game(activeMap, plan);

@@ -1,7 +1,9 @@
 import { buildContentApi, type ContentApi } from './ContentApi';
 import { installRuntimePack } from './install';
+import { clearPackProblem, notePackProblem } from './packHealth';
 import {
   announcePackBases,
+  forgetPack,
   missingPackFiles,
   pinPackManifest,
   readPinnedManifest,
@@ -385,11 +387,167 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
           });
         }
         publishPrefetchReports(reports);
+        // A 404 on a path this pack's own manifest listed is the one stale
+        // signal that is evidence rather than inference: the deploy keeps
+        // exactly one build, so the build this browser pinned is gone from the
+        // host and the missing part can never be fetched. `failed` alone would
+        // not do — a dropped connection means "try later" — which is why
+        // `prefetchPackFiles` counts the two apart.
+        for (const report of reports) {
+          if (report.gone === 0) continue;
+          const record = installed.find(entry => packBaseFor(entry.manifestUrl) === report.base);
+          if (!record) continue;
+          notePackProblem({
+            id: record.id,
+            name: record.name || record.id,
+            manifestUrl: record.manifestUrl,
+            kind: 'broken',
+          });
+        }
       })
       .catch(thrown => console.error('[packs] prefetch threw', thrown));
   }
 
   return outcomes;
+}
+
+/**
+ * Asks every installed pack's host whether it is still serving the build this
+ * browser pinned.
+ *
+ * **Runs after the menu is up, and blocks nothing.** The pinned pack already
+ * works; this only decides whether to offer the player something newer, so it
+ * has no business on the boot path — and putting it there would trade the
+ * dead-screen risk the whole pinning design exists to remove for a nicety.
+ *
+ * Its failure mode is silence. A host that cannot be reached is a player on a
+ * train, not a broken pack, and a notice saying otherwise would be a lie the
+ * player cannot check.
+ *
+ * ## What counts as "moved on"
+ *
+ * `buildId` against `buildId`, and nothing else. `version` cannot do this job:
+ * it is a number a human bumps and riot's stayed `1.0.0` across dozens of
+ * publishes. A record with **no** pinned build id is reported as an update
+ * when the host has one — such an install predates build ids, so its entry URL
+ * carries none, so nothing stops a cache serving it across a republish. That
+ * install is precisely the one the dead-chunk-graph bug happens to, and
+ * offering it the update is the point. When neither side has one there is
+ * nothing to compare and nothing is said.
+ */
+export async function checkPackUpdates(): Promise<void> {
+  for (const record of readInstalledPacks()) {
+    let fresh: RuntimePackManifest;
+    try {
+      fresh = await fetchPackManifest(record.manifestUrl, undefined, { bypassCache: true });
+    } catch {
+      // Unreachable, too slow, or serving something that no longer passes the
+      // manifest checks. None of that is news about the pinned copy, which is
+      // sitting in the cache working.
+      continue;
+    }
+    if (!fresh.buildId || fresh.buildId === record.buildId) continue;
+    notePackProblem({
+      id: record.id,
+      name: fresh.name || record.name || record.id,
+      manifestUrl: record.manifestUrl,
+      kind: 'update',
+    });
+  }
+}
+
+/**
+ * Reports spell ids that an installed pack declared and could not deliver.
+ *
+ * `GameScene.startGame` loads exactly the kits a match needs and then builds
+ * the match from what loaded — an id that did not load falls back to
+ * `BasicAttack` in `preset.ts`, deliberately, so a stale loadout slot cannot
+ * break a match. What was missing is that a failing *pack* is not a stale
+ * slot. `loadSpells` tells the two apart now (a rejection, not a `null`), and
+ * this is where that turns into something a player can read.
+ *
+ * Grouped per pack rather than per spell: "3 chiêu của Liên Minh không tải
+ * được" is one thing that happened, and three notices are three copies of the
+ * same news with the same single fix.
+ *
+ * An id belonging to no installed pack is dropped. Core's own spells are not a
+ * pack anybody can update, so a notice offering to would be a dead end — if
+ * those fail, the app itself is broken, which the service worker owns.
+ */
+export function notePackSpellFailures(failedIds: readonly string[]): void {
+  if (!failedIds || failedIds.length === 0) return;
+  const byId = new Map<string, InstalledPackRecord>();
+  for (const record of readInstalledPacks()) byId.set(record.id, record);
+
+  const counts = new Map<string, number>();
+  for (const qualified of failedIds) {
+    const separator = qualified.indexOf(':');
+    if (separator <= 0) continue;
+    const packId = qualified.slice(0, separator);
+    if (!byId.has(packId)) continue;
+    counts.set(packId, (counts.get(packId) ?? 0) + 1);
+  }
+
+  for (const [packId, missingSpells] of counts) {
+    const record = byId.get(packId) as InstalledPackRecord;
+    notePackProblem({
+      id: record.id,
+      name: record.name || record.id,
+      manifestUrl: record.manifestUrl,
+      kind: 'broken',
+      missingSpells,
+    });
+  }
+}
+
+/**
+ * Replaces one pack's pinned snapshot with whatever its host is serving now.
+ *
+ * **Cannot swap the pack in place.** The pinned build's modules have already
+ * been evaluated in this page and ES modules evaluate once, so a live swap
+ * would leave the old classes running behind a new manifest — the exact
+ * mismatch this whole change exists to end. This prepares the ground and
+ * answers `true`; the caller reloads.
+ *
+ * The order is the design. The fetch comes **first**, and nothing is dropped
+ * until it has succeeded, because the failure that must not happen is throwing
+ * away a working copy and then failing to get a new one — turning "there is an
+ * update" into "you now have no pack", on the tap of a button whose whole
+ * promise was the opposite. Offline, this changes nothing and says so.
+ *
+ * Then the old bytes go. Every name under a pack's base is content-hashed
+ * except the entry, so once the new manifest is pinned the old chunks are
+ * unreachable weight — and leaving them lets the cache answer a request the
+ * new graph never makes.
+ */
+export async function updatePack(manifestUrl: string): Promise<boolean> {
+  const stored = readInstalledPacks();
+  // A plain loop, not `.find`: this walk needs the index-free "is it here at
+  // all" answer and the record together, and the list is three entries long.
+  let current: InstalledPackRecord | null = null;
+  for (const record of stored) {
+    if (record.manifestUrl === manifestUrl) current = record;
+  }
+  if (!current) return false;
+
+  let fresh: RuntimePackManifest;
+  try {
+    fresh = await fetchPackManifest(manifestUrl, undefined, { bypassCache: true });
+  } catch {
+    return false;
+  }
+
+  const base = packBaseFor(manifestUrl);
+  if (base) await forgetPack(base);
+  await pinPackManifest(manifestUrl, JSON.stringify(fresh));
+
+  const next: InstalledPackRecord[] = [];
+  for (const record of stored) {
+    next.push(record.manifestUrl === manifestUrl ? recordFor(manifestUrl, fresh) : record);
+  }
+  writeInstalledPacks(next);
+  clearPackProblem(manifestUrl);
+  return true;
 }
 
 /**

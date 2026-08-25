@@ -299,7 +299,8 @@ export function checkPackManifest(
  */
 export async function fetchPackManifest(
   manifestUrl: string,
-  coreVersion: string = CORE_VERSION
+  coreVersion: string = CORE_VERSION,
+  options: { bypassCache?: boolean } = {}
 ): Promise<RuntimePackManifest> {
   const abort = new AbortController();
   const alarm = setTimeout(() => abort.abort(), PACK_LOAD_TIMEOUT_MS);
@@ -308,7 +309,18 @@ export async function fetchPackManifest(
   try {
     let response: Response;
     try {
-      response = await fetch(manifestUrl, { credentials: 'omit', signal: abort.signal });
+      response = await fetch(manifestUrl, {
+        credentials: 'omit',
+        signal: abort.signal,
+        // The update check has to see what the host is serving *now*, and the
+        // browser's own HTTP cache is as capable of hiding that as the service
+        // worker was: riot's manifest ships `cache-control: max-age=600`, so
+        // for ten minutes after a republish a plain fetch answers with the
+        // previous build's file list. `no-store` is the only mode that
+        // guarantees neither storing nor reading, which is what a check whose
+        // entire job is to notice a change requires.
+        cache: options.bypassCache ? 'no-store' : 'default',
+      });
     } catch (cause) {
       if (abort.signal.aborted) throw tooSlow();
       throw new PackLoadError(
