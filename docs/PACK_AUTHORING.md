@@ -140,11 +140,13 @@ my-pack/
 ├── package.json           # name, the @moba2d/core spec, the five scripts
 ├── tsconfig.json          # extends @moba2d/core's own strict base config
 ├── pack.ts                # the whole pack's declaration — see below
-├── packClass.ts           # the memo every class factory goes through
+├── packApi.ts             # where the engine arrives; read its header
+├── catalog.config.mjs     # this pack's layout, for the catalogue generator
 ├── assetManifest.ts       # this pack's art, under this pack's own keys
 ├── map.ts                 # the cheap summary a pregame picker lists
 ├── geometry.ts            # the real walls/lanes, fetched once a match starts
 ├── spells/
+│   ├── index.ts           # the barrel — the one place a spell registers
 │   └── Hero_Q.ts          # one file per ability, four to a champion
 ├── tests/
 │   ├── Hero_Q.test.ts     # one test per ability, driven through press()
@@ -152,6 +154,7 @@ my-pack/
 ├── runtime-entry.ts       # the single module a runtime install imports
 ├── vite.config.ts         # the published build
 ├── scripts/write-manifest.mjs    # writes dist/manifest.json
+├── generated/             # gitignored: spellCatalog.ts + spellModules.ts
 └── .github/workflows/     # publish.yml (Pages) + verify.yml (PRs)
 ```
 
@@ -168,74 +171,74 @@ export const data: ContentPackData = {
   manifest: { id: 'my-pack', version: '1.0.0', coreRange: '>=1.0.0' },
   champions: [{ id: 'hero', name: 'Hero', image: 'champ_hero', playable: true,
                 spells: ['Hero_Q', 'Hero_W', 'Hero_E', 'Hero_R'] }],
-  spellDisplay: { Hero_Q: { name: 'Hero Q', coolDownMs: Q_COOLDOWN_MS, /* ... */ } },
+  // Off `generated/spellCatalog.ts`, never off a spell module — see below.
+  spellDisplay: displayData(),
   maps: [map],
 };
 
-const code = (api: ContentApi): ContentPackCode => ({
-  spells: { Hero_Q: makeHero_Q(api), /* ... */ },
-});
+const code = (api: ContentApi): ContentPackCode => {
+  setPackApi(api);          // first, and before anything reaches a spell
+  const spells: Record<string, SpellSource> = {};
+  for (const [id, load] of Object.entries(spellModules)) {
+    spells[id] = () => load().then(module => module.default);
+  }
+  return { spells };
+};
 
 export default code;
 ```
 
-Three comment markers inside `pack.ts` — `// moba2d-pack-add spell: ... above
-this line`, one each for the import, the champion's `spells: [...]` array, and
-the code half's factory map — are the insertion points `moba2d-pack-add spell`
-writes into. They are plain, greppable strings on purpose, not a parser
-hunting for "the end of this object literal", which is the shape that breaks
-the day someone reformats a spacing the generator did not predict.
+**A spell registers in two places, and only two**: one export line in
+`spells/index.ts`, and its id in a champion's `spells: [...]`. Everything else
+— the display values, the lazy import map — the catalogue generator derives
+from the barrel, so there is nothing else to keep in step. `moba2d-pack-add
+spell` writes both, at the `// moba2d-pack-add spell: ... above this line`
+markers in each file. They are plain, greppable strings on purpose, not a
+parser hunting for "the end of this object literal", which is the shape that
+breaks the day someone reformats a spacing the generator did not predict.
 
-### Every class is a factory, and `packClass` is why that is one line
+### A spell is an ordinary class
 
-A pack may not value-import core. `Spell`, `SpellObject`,
-`MissileSpellObject` and the rest arrive on the injected `api`, so a class
-body cannot `extends Spell` — it can only be built inside a function that has
-been handed an `api`. That much is the boundary (`pack-core-boundary`, below),
-not a preference.
+A pack may not value-import core. That is physical, not stylistic: the pack is
+built with `@moba2d/core` marked `external`, published as its own `pack.js`,
+and `import()`ed cross-origin — an `import { Spell } from '@moba2d/core'`
+surviving into that file is a bare specifier nothing can resolve. The engine
+has to *arrive*.
 
-The factory also has to be memoized per `api`: the real game, an e2e script
-and a test each build their own `ContentApi`, and an unmemoized factory hands
-two callers two different classes with the same name, between which every
-`instanceof` answers false.
-
-Written out by hand that is three top-level declarations per class — a
-`__build`, a `__cache` WeakMap and a `make` that reads and writes it. The
-codemod that first moved a 237-file pack onto `api` did exactly that, 650
-times, and the result read like build output rather than like source; it was
-reported as such, and collapsing it back onto `packClass` removed some five
-thousand lines without changing a single class body. `packClass.ts` is the
-eight lines that hold the memo instead:
+`packApi.ts` is where it arrives, and it arrives before any spell module
+evaluates. So a spell is just a class:
 
 ```ts
-export default packClass(api => class Hero_Q extends api.Spell { /* ... */ });
+import { api } from '../packApi';
+
+export class Hero_Q_Object extends api.MissileSpellObject { /* ... */ }
+
+export default class Hero_Q extends api.Spell {
+  live: Hero_Q_Object | null = null;   // the class name is the type
+}
 ```
 
-It imports nothing of core but a type, so it costs the pack nothing at
-runtime and stays the pack's own to change.
+Three callers set the api, and there are only three: `pack.ts`'s code half
+(the game and a runtime install), `vitest.setup.ts` (before any test file is
+imported), and `catalog.config.mjs`'s `apiSetter` (the catalogue generator).
+Each runs before anything reaches a spell module. Miss one and `packApi.ts`'s
+proxy says so by name rather than throwing an undefined-property error on a
+line that looks fine.
 
-### Naming a type
+**The data half must never statically import a spell.** `data` is read before
+any api exists — that is the whole point of the split — so an import there
+evaluates a class too early, in a browser, after publish. The temptation is
+real: `import { Q_COOLDOWN_MS } from './spells/Hero_Q'` to fill `spellDisplay`
+without restating a number. The answer is `generated/spellCatalog.ts`: the
+generator constructs each spell once at build time and writes its cooldown out
+as a plain value, so the number still has one source and the data half still
+imports nothing. `tests/dataHalf.test.ts` enforces it.
 
-`api` hands out *constructors*. To write a field or a parameter you need the
-instance type, and both halves have a published name:
-
-```ts
-import type { AttackableUnit, Slow } from '@moba2d/core/content/types';
-import { packClass, type Instance } from '../packClass';
-
-type Thresh_Q_Object = Instance<typeof makeThresh_Q_Object>;
-```
-
-`@moba2d/core/content/types` carries the instance type of every class `api`
-gives you — the spell hierarchy, the six unit classes, all 25 buffs, the VFX
-helpers, the two Quadtree shapes. `Instance<typeof makeX>` is for the pack's
-*own* classes, which no barrel can publish because `packClass` returns a
-factory.
-
-Do not derive these by hand. `InstanceType<ContentApi['units']['AttackableUnit']>`
-is correct and it is what a pack wrote before the barrel existed — one pack
-accumulated 221 of them, 120 being that exact line — and each one is a place
-the name can go stale on its own.
+This replaces a factory-and-memo shape that one pack carried 650 times — a
+`__build`, a `WeakMap<ContentApi, …>` and a `make` per class, plus an
+`InstanceType<ReturnType<typeof makeX>>` alias to name what the factory
+eventually built. All of it existed to guarantee one class per api. An ES
+module already guarantees that: it evaluates once.
 
 ## Add another ability
 
@@ -249,9 +252,11 @@ root, from a nested directory inside it, or inside a genuinely separate pack
 repository. It writes `spells/<Champion>_<Slot>.ts` and its test from the same
 template `moba2d-pack-new` renders its own abilities from, then wires the
 import, the kit-slot roster entry, and the code-half factory into `pack.ts`.
-It does **not** write a `spellDisplay` entry (name, icon, description); that
-has no template because it is content, not mechanism, and the command says so
-in its own "Next" output.
+It writes `spells/<Champion>_<Slot>.ts` and its test, exports it from
+`spells/index.ts`, and adds its id to that champion's kit. There is no
+`spellDisplay` entry to write and no number to restate: `npm run
+catalog:generate` reads the name, description, icon, cooldown and mana off the
+class itself.
 
 Note that a **playable** champion's kit is full at four, so this command is
 for a champion you have just added, or for a slot you are replacing

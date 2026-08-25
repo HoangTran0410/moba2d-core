@@ -257,6 +257,34 @@ export async function renderSpellCatalogSource(tree = CORE_SPELL_TREE, treeRoot 
   });
 
   try {
+    // One shared, real `api` — the same object every spell in the pack would
+    // be built against at runtime.
+    const needsApi = Boolean(tree.isPackFactory || tree.apiSetter);
+    const api = needsApi
+      ? (await server.ssrLoadModule('/src/content/ContentApi.ts')).buildContentApi()
+      : null;
+
+    // **Before the barrels, not after.** A pack whose spells are declared at
+    // module scope (`class X extends api.Spell`) reads `api` the moment its
+    // module evaluates, so the setter has to have run first — loading a
+    // barrel is what evaluates them. A factory pack does not care about the
+    // order (its `api` arrives as an argument later), and core's own tree has
+    // no api at all, so doing it here is correct for all three.
+    if (tree.apiSetter) {
+      const setterModule = await server.ssrLoadModule(
+        `/@fs/${resolve(treeRoot, tree.apiSetter.path)}`
+      );
+      const setter = setterModule[tree.apiSetter.export ?? 'setPackApi'];
+      if (typeof setter !== 'function') {
+        throw new Error(
+          `${tree.apiSetter.path} exports no ` +
+            `${tree.apiSetter.export ?? 'setPackApi'} function — catalog.config.mjs's ` +
+            `apiSetter names the module that hands this pack its api.`
+        );
+      }
+      setter(api);
+    }
+
     // Content-last: an earlier barrel's id can never shadow a later one's —
     // core's own two barrels are `tree.barrels` in that order, matching
     // `renderSpellModulesSource`.
@@ -265,12 +293,6 @@ export async function renderSpellCatalogSource(tree = CORE_SPELL_TREE, treeRoot 
       const loaded = await server.ssrLoadModule(`/@fs/${resolve(treeRoot, barrel.path)}`);
       AllSpells = { ...AllSpells, ...loaded };
     }
-    // A pack barrel hands over factories; resolve each against one shared,
-    // real `api` — the same object every real spell in the pack would be
-    // built against at runtime — before `describe()` ever sees a class.
-    const api = tree.isPackFactory
-      ? (await server.ssrLoadModule('/src/content/ContentApi.ts')).buildContentApi()
-      : null;
     // Every spell's `image = api.asset('spell_x')` field initializer runs the
     // moment `describe()` constructs it, so this tree's own art has to be
     // registered with `AssetManager` first — the real game gets this from
@@ -319,7 +341,14 @@ function render(entries, tree = CORE_SPELL_TREE) {
     '// the roster without importing a spell class. See the generator for why, and',
     '// `src/game/config/spellCatalog.ts` for how match rules are reapplied on top.',
     '',
-    tree.iconKeyType ? '' : "import type { AssetKey } from './assetManifest';",
+    // `assetKeyModule` because the generated file's neighbour is not always
+    // the manifest: a pack whose art manifest is hand-written keeps it at its
+    // own root while this file lands in a gitignored `generated/`, so the
+    // sibling default resolves to nothing. Stated in `catalog.config.mjs`,
+    // where the rest of a pack's layout already is.
+    tree.iconKeyType
+      ? ''
+      : `import type { AssetKey } from '${tree.assetKeyModule ?? './assetManifest'}';`,
     '',
     'export interface GeneratedSpellDisplay {',
     '  readonly name: string;',

@@ -1,0 +1,61 @@
+import type { ContentApi } from '@moba2d/core/content/ContentApi';
+
+/**
+ * The engine, handed to this pack once and readable from module scope.
+ *
+ * A pack may not value-import core. That is not a style rule: this pack is
+ * built with `@moba2d/core` marked `external`, published as its own `pack.js`,
+ * and `import()`ed cross-origin by a browser — an `import { Spell } from
+ * '@moba2d/core'` surviving into that file is a bare specifier nothing can
+ * resolve. The engine has to *arrive*, and this module is where it arrives.
+ *
+ * It arrives before any spell module evaluates, which is what lets a spell be
+ * an ordinary class declaration:
+ *
+ *     import { api } from '../packApi';
+ *     export default class __CHAMPION___Q extends api.Spell { ... }
+ *
+ * rather than a factory that has to be called, memoized per api, and unwrapped
+ * again to name its own instance type. ES modules evaluate once, so the class
+ * above *is* one class for the life of the page — which is the property a
+ * hand-rolled `WeakMap<ContentApi, ...>` memo was there to buy.
+ *
+ * Three callers set it, and there are only three:
+ *
+ *   - `pack.ts`'s code half, for the real game and for a runtime install;
+ *   - `vitest.setup.ts`, before any test file is imported;
+ *   - `catalog.config.mjs`'s `apiSetter`, so the catalogue generator can
+ *     construct a spell to read its display fields.
+ *
+ * **The data half must never reach a spell module.** `pack.ts` reads names,
+ * icons and cooldowns out of `generated/spellCatalog.ts` — plain values — for
+ * exactly this reason: a menu screen lists a roster without loading the
+ * engine, and a static import of a spell from the data half would evaluate a
+ * class before any of the three callers above had run. `tests/dataHalf.test.ts`
+ * is what keeps that true.
+ */
+let current: ContentApi | null = null;
+
+export function setPackApi(next: ContentApi): void {
+  current = next;
+}
+
+/**
+ * A proxy rather than an exported `let`: `strict` refuses a `let` read before
+ * assignment, and the failure it produces — "cannot read properties of
+ * undefined" on a line that says `extends api.Spell` — names nothing a reader
+ * can act on. This says what actually happened.
+ */
+export const api: ContentApi = new Proxy({} as ContentApi, {
+  get(_target, key) {
+    if (!current) {
+      throw new Error(
+        'pack api read before it was set: a spell module evaluated before ' +
+          "`setPackApi` ran. Spell modules are reached through pack.ts's code half " +
+          '(the game), vitest.setup.ts (tests) or catalog.config.mjs (the ' +
+          'generator) — never a static import from the data half.'
+      );
+    }
+    return Reflect.get(current, key);
+  },
+});

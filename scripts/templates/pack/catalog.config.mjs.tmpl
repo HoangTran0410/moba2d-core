@@ -1,0 +1,35 @@
+/**
+ * What `@moba2d/core`'s catalogue generator needs to know about this pack's
+ * layout — read by `moba2d-generate-spell-catalog --root=.`, which imports
+ * this file's default export.
+ *
+ * It produces two generated files, both gitignored and both rebuilt by
+ * `npm run catalog:generate`:
+ *
+ *   generated/spellCatalog.ts — every spell's name, description, icon key,
+ *     cooldown and mana as **plain values**, so `pack.ts`'s data half can
+ *     describe the roster without importing a single spell module. That is
+ *     the whole reason this generator exists: a menu screen lists champions
+ *     without loading the engine, and a spell module cannot even evaluate
+ *     until `setPackApi` has run.
+ *
+ *   generated/spellModules.ts — `id -> () => import('../spells/X')`, so a
+ *     match downloads the kits in play rather than all of them.
+ *
+ * `apiSetter` is how the generator hands this pack its engine before loading
+ * the barrel: this pack's spells are ordinary class declarations
+ * (`class X extends api.Spell`), so they read `api` the moment their module
+ * evaluates, and loading the barrel is what evaluates them.
+ */
+export default {
+  outputPath: 'generated/spellCatalog.ts',
+  modulesOutputPath: 'generated/spellModules.ts',
+  barrels: [{ path: 'spells/index.ts', importBase: '../spells' }],
+  apiSetter: { path: 'packApi.ts', export: 'setPackApi' },
+  packId: '__PACK_ID__',
+  assetManifestOutputPath: 'assetManifest.ts',
+  // This pack's art manifest is hand-written and lives at the root, while the
+  // generated catalogue lands in `generated/` — so the `AssetKey` union it
+  // types `iconKey` against is one directory up, not a sibling.
+  assetKeyModule: '../assetManifest',
+};

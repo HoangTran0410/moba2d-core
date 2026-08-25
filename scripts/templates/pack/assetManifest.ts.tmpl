@@ -29,3 +29,13 @@ const heroPortrait =
 export const assetManifest = {
   champ_hero: { kind: 'image', url: heroPortrait, path: 'assets/champ_hero.png' },
 } as const;
+
+/**
+ * Every key above, as a type — so a mistyped `api.asset('champ_heor')` is a
+ * compile error rather than a blank square in a match.
+ *
+ * `generated/spellCatalog.ts` types each spell's `iconKey` against this, which
+ * is why `catalog.config.mjs` names this module: the generator writes that
+ * file into `generated/`, one directory below this one.
+ */
+export type AssetKey = keyof typeof assetManifest;

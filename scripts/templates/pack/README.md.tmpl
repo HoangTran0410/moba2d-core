@@ -35,16 +35,24 @@ the same way; Pages does both.
 
 ## Where things live
 
-- `pack.ts` — the whole pack's declaration: the roster, the map, and the
-  code half core's registry calls to build real spell classes.
-- `spells/` — one file per ability, four to a champion. `__CHAMPION___Q.ts`
-  is the example; read it before writing a second one. The shape (tuning as
-  exported constants, every class wrapped in `packClass`, a separate
-  spell-object class) is not decoration.
-- `packClass.ts` — the memo every class factory goes through. Its header
-  says why a pack cannot simply `class X extends Spell`.
+- `pack.ts` — the whole pack's declaration, in two halves. `data` is inert
+  (roster, map, display strings) and must be readable without an engine;
+  `code` hands this pack its `api` and then a loader per spell.
+- `spells/` — one file per ability, four to a champion, each an ordinary
+  class: `export default class __CHAMPION___Q extends api.Spell { ... }`.
+  Read `__CHAMPION___Q.ts` before writing a second one.
+- `spells/index.ts` — the barrel. Adding a spell means adding one line here
+  and one id to the champion's kit; everything else is generated.
+- `packApi.ts` — where the engine arrives. Its header is the one page worth
+  reading twice: it says why a pack cannot `import { Spell }` at all, and
+  which three callers set the api before any spell module evaluates.
 - `assetManifest.ts` — this pack's art, under this pack's own keys. Ships
   one placeholder tile; replace it with real files.
+- `generated/` — gitignored, rebuilt by `npm run catalog:generate`:
+  `spellCatalog.ts` (every spell's name, cooldown and mana as plain values,
+  read off the class at build time) and `spellModules.ts` (the lazy
+  `id -> import()` map). This is why the data half restates no number and
+  imports no spell.
 - `tests/` — one test per ability, driven through `pressSpell`, never
   through a lifecycle hook like `onSpellCast()` directly: a hook-calling
   test cannot see activation, cooldown, resource cost or targeting
@@ -55,6 +63,9 @@ the same way; Pages does both.
 - `map.ts` / `geometry.ts` — the world this pack ships. `geometry.ts` is
   fetched lazily, so a pregame picker never downloads the walls and lanes
   just to list this map's name.
+- `catalog.config.mjs` — this pack's layout, as the catalogue generator
+  needs it. `apiSetter` is the line that matters: it is how the generator
+  hands this pack its engine before loading the barrel.
 - `runtime-entry.ts` / `vite.config.ts` / `scripts/write-manifest.mjs` —
   the published build. Each carries its own header; `vite.config.ts`'s
   four settings are load-bearing and every one of them is a failure that
@@ -70,7 +81,10 @@ its four slots:
 moba2d-pack-add spell <Name> --champion <NewChampion> --slot Q
 ```
 
-which writes the spell file and its test and registers both in `pack.ts`.
+which writes the spell file and its test, exports it from `spells/index.ts`
+and adds its id to that champion's kit. There is no `spellDisplay` entry to
+write: `npm run catalog:generate` reads the name, description, icon,
+cooldown and mana off the class itself.
 A **playable** champion needs a portrait and exactly four abilities — core
 refuses to install anything else, and `tests/packInstallable.test.ts` is
 what tells you before a player would.

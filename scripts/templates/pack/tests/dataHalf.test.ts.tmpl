@@ -1,0 +1,70 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * The data half never reaches a spell module.
+ *
+ * Every class in `spells/` is an ordinary declaration against `packApi.ts`'s
+ * `api`, which means it reads that api the moment its module evaluates. Three
+ * callers set the api first — `pack.ts`'s code half, `vitest.setup.ts`, and
+ * the catalogue generator — and each of them runs before anything reaches a
+ * spell.
+ *
+ * A **static** import from the data half breaks that, and breaks it in the
+ * one place with no way back: `data` is read before any api exists, by a menu
+ * screen that has deliberately not loaded the engine. The failure is
+ * `packApi.ts`'s proxy throwing at import time, which is legible but late —
+ * it happens in a browser, after publish.
+ *
+ * The tempting version is `import { Q_COOLDOWN_MS } from './spells/__CHAMPION___Q'`
+ * to fill `spellDisplay` without restating a number. That instinct is right
+ * and the answer is `generated/spellCatalog.ts`: the generator constructs
+ * each spell once at build time and writes its cooldown out as a plain value,
+ * so the number still has exactly one source and the data half still imports
+ * nothing.
+ *
+ * Dynamic `import('../spells/X')` is fine and is how `generated/
+ * spellModules.ts` works — it happens when a match asks, long after the api
+ * is set.
+ */
+function tsFilesUnder(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (['node_modules', 'dist', 'spells', 'tests', 'generated'].includes(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...tsFilesUnder(full));
+    else if (entry.name.endsWith('.ts')) found.push(full);
+  }
+  return found;
+}
+
+const stripComments = (source: string): string =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+describe('the data half', () => {
+  it('statically imports no spell module', () => {
+    const files = tsFilesUnder(root);
+    // A walker that found nothing would pass against nothing.
+    expect(files.length).toBeGreaterThan(2);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const source = stripComments(readFileSync(file, 'utf8'));
+      for (const [, specifier] of source.matchAll(/^\s*import\s[^;]*?from\s+'([^']+)'/gm)) {
+        if (/(^|\/)spells\//.test(specifier)) {
+          offenders.push(`${relative(root, file)} -> ${specifier}`);
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      'the data half must be readable before any api exists — take the value ' +
+        'from generated/spellCatalog.ts instead'
+    ).toEqual([]);
+  });
+});

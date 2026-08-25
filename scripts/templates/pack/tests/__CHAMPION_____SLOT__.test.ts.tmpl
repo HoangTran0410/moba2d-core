@@ -7,12 +7,13 @@ import {
   type TestGame,
 } from '@moba2d/core/testing';
 import { pressSpell } from '@moba2d/core/testing/spell';
-import make__CHAMPION_____SLOT__, { __SLOT___DAMAGE } from '../spells/__CHAMPION_____SLOT__';
+import type { AttackableUnit } from '@moba2d/core/content/types';
+// The class itself, not a factory to call. `vitest.setup.ts` has already
+// handed this pack its api, which is what lets a spell module be imported
+// like any other module.
+import __CHAMPION_____SLOT__, { __SLOT___DAMAGE } from '../spells/__CHAMPION_____SLOT__';
 
-const api = buildTestApi();
-const { AttackableUnit } = api.units;
-type AttackableUnit = InstanceType<typeof api.units.AttackableUnit>;
-const __CHAMPION_____SLOT__ = make__CHAMPION_____SLOT__(api);
+const { AttackableUnit } = buildTestApi().units;
 
 /**
  * Write the player-visible script first and make these the test names:

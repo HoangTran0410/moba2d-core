@@ -3,7 +3,8 @@
  *
  * `dist/manifest.json`'s `entry` field points at the build of this file, and
  * core's `loadPackFromManifest` reads three things off the module it gets
- * back: `default` (the uninvoked code-half factory), `data` (the half it
+ * back: `default` (the uninvoked code-half factory — the call that hands this
+ * pack its api), `data` (the half it
  * validates before any of this pack's code runs) and `assetManifest`
  * (optional; core registers it under this pack's id). Anything else exported
  * here is ignored, and a missing `default` or `data` is a load error the

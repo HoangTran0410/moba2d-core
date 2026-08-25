@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "catalog:generate": "moba2d-generate-spell-catalog --tree=__PACK_ID__ --root=.",
+    "catalog:check": "moba2d-generate-spell-catalog --check --tree=__PACK_ID__ --root=.",
+    "prepare": "npm run catalog:generate",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check-seams": "moba2d-check-seams ./spells",
-    "build": "vite build && node scripts/write-manifest.mjs",
+    "build": "npm run catalog:generate && vite build && node scripts/write-manifest.mjs",
     "manifest:write": "node scripts/write-manifest.mjs",
-    "verify": "npm run typecheck && npm run check-seams && npm test && npm run build"
+    "verify": "npm run catalog:check && npm run typecheck && npm run check-seams && npm test && npm run build"
   },
   "devDependencies": {
     "@moba2d/core": "__CORE_SPEC__",

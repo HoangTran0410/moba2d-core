@@ -145,9 +145,8 @@ if (!testExisted) writeFileSync(testFile, substitute(readFileSync(testTemplatePa
 
 // ─── registration ─────────────────────────────────────────────────────────────
 
-const IMPORT_MARKER = '// moba2d-pack-add spell: new imports go above this line';
 const KIT_MARKER = '        // moba2d-pack-add spell: new slot ids go above this line';
-const CODE_MARKER = '    // moba2d-pack-add spell: new entries go above this line';
+const BARREL_MARKER = '// moba2d-pack-add spell: new barrel entries go above this line';
 
 /**
  * Inserts `line` immediately before the first (and, if this pack's own
@@ -168,15 +167,35 @@ function insertBeforeMarker(source, marker, line, already) {
   return { source: source.replace(marker, `${line}\n${marker}`), message: 'registered' };
 }
 
-let packSource = readFileSync(packFile, 'utf8');
+/**
+ * The barrel is the registration, and it is the only one a spell needs
+ * besides the champion's kit.
+ *
+ * `spells/index.ts` is what `catalog.config.mjs` points the catalogue
+ * generator at, and the generator writes both `generated/spellCatalog.ts`
+ * (the display values `pack.ts`'s data half reads) and
+ * `generated/spellModules.ts` (the `id -> () => import(...)` map the code
+ * half loads through). So one export line here reaches all three places the
+ * old scaffold made this command edit by hand — and unlike them, it cannot
+ * drift, because the generator derives the rest.
+ */
+const barrelFile = join(packRoot, 'spells/index.ts');
+let barrelSource = existsSync(barrelFile) ? readFileSync(barrelFile, 'utf8') : null;
+const barrelResult =
+  barrelSource === null
+    ? { source: null, message: 'no spells/index.ts — add the export by hand' }
+    : insertBeforeMarker(
+        barrelSource,
+        BARREL_MARKER,
+        `export { default as ${slug} } from './${slug}';`,
+        `as ${slug} }`
+      );
+if (barrelResult.source !== null) {
+  barrelSource = barrelResult.source;
+  writeFileSync(barrelFile, barrelSource);
+}
 
-const importResult = insertBeforeMarker(
-  packSource,
-  IMPORT_MARKER,
-  `import make${slug} from './spells/${slug}';`,
-  `from './spells/${slug}'`
-);
-packSource = importResult.source;
+let packSource = readFileSync(packFile, 'utf8');
 
 // The roster marker sits inside exactly one champion's `spells: [...]`
 // today, because this generator writes exactly one champion — but nothing
@@ -192,14 +211,6 @@ const kitResult = packSource.includes(championNameLine)
     };
 packSource = kitResult.source;
 
-const codeResult = insertBeforeMarker(
-  packSource,
-  CODE_MARKER,
-  `    ${slug}: make${slug}(api),`,
-  `${slug}: make${slug}(api)`
-);
-packSource = codeResult.source;
-
 writeFileSync(packFile, packSource);
 
 // ─── done ─────────────────────────────────────────────────────────────────────
@@ -211,16 +222,17 @@ console.log(`
 
     spell    spells/${slug}.ts
     test     ${testExisted ? `tests/${slug}.test.ts (kept — already existed)` : `tests/${slug}.test.ts`}
-    import   ${importResult.message}
+    barrel   ${barrelResult.message}
     roster   ${kitResult.message}
-    code     ${codeResult.message}
 
   Next:
 
     1. Write the player-visible script into the test names before touching
        the spell body — "press once and X happens" — then run it, watch it
        fail, and read the message.
-    2. Fill in spells/${slug}.ts, and add a spellDisplay entry for '${slug}'
-       to pack.ts — this command does not write one.
-    3. npm test && npm run check-seams
+    2. Fill in spells/${slug}.ts. Its name, description, icon, cooldown and
+       mana reach the picker through 'npm run catalog:generate', which reads
+       them off the class itself — there is no spellDisplay entry to write,
+       and no number to restate.
+    3. npm run verify
 `);

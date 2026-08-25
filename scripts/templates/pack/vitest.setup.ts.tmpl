@@ -9,7 +9,8 @@ import { installEngineGlobalsForTests, installPackForTests } from '@moba2d/core/
 // already touched will not take. If a test in this pack ever needs
 // `vi.mock('.../AssetManager', ...)` or similar and mysteriously sees the
 // real implementation, look here first.
-import { setActiveLanes } from '@moba2d/core/testing';
+import { buildTestApi, setActiveLanes } from '@moba2d/core/testing';
+import { setPackApi } from './packApi';
 import { data } from './pack';
 
 /**
@@ -21,6 +22,20 @@ import { data } from './pack';
  * `vi.mock(...)` calls register. See that subpath's own header.
  */
 installEngineGlobalsForTests();
+
+/**
+ * **First.** Every class in `spells/` is declared against `packApi.ts`'s
+ * `api` and reads it the moment its module evaluates — and a test file
+ * importing a spell is exactly that moment. Vitest runs this setup before it
+ * imports the test file, which is the only reason a test can `import
+ * __CHAMPION___Q from '../spells/__CHAMPION___Q'` like an ordinary module.
+ *
+ * Miss this and the failure is legible on purpose: `packApi.ts`'s proxy
+ * throws "pack api read before it was set" rather than an undefined-property
+ * error on a line that looks fine.
+ */
+setPackApi(buildTestApi());
+
 await installPackForTests({ id: data.manifest.id, assetManifest: {}, data });
 
 /**

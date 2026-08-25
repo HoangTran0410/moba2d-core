@@ -109,13 +109,21 @@ async function scaffold(dir: string, extraArgs: string[] = []) {
 async function openSlot(target: string, slot: string): Promise<void> {
   await rm(join(target, `spells/Hero_${slot}.ts`));
   await rm(join(target, `tests/Hero_${slot}.test.ts`));
-  const packPath = join(target, 'pack.ts');
-  const source = await readFile(packPath, 'utf8');
-  const dropped = source
-    .split('\n')
-    .filter(line => !new RegExp(`\\bHero_${slot}\\b`).test(line))
-    .join('\n');
-  await writeFile(packPath, dropped);
+  // Two registrations, not three: the barrel is what the catalogue generator
+  // reads, and the champion's kit is what the roster names. There is no
+  // import line and no factory map in `pack.ts` any more — the generator
+  // derives both from the barrel.
+  for (const file of ['pack.ts', 'spells/index.ts']) {
+    const path = join(target, file);
+    const source = await readFile(path, 'utf8');
+    await writeFile(
+      path,
+      source
+        .split('\n')
+        .filter(line => !new RegExp(`\\bHero_${slot}\\b`).test(line))
+        .join('\n')
+    );
+  }
 }
 
 describe('packRootFrom', () => {
@@ -244,12 +252,14 @@ describe('moba2d-pack-add spell', () => {
 
     const packAfter = await readFile(join(target, 'pack.ts'), 'utf8');
     expect(packAfter).not.toBe(packBefore);
-    expect(packAfter).toContain("import makeHero_W from './spells/Hero_W';");
     expect(packAfter).toContain("'Hero_W'");
-    expect(packAfter).toContain('Hero_W: makeHero_W(api),');
     // The original spell's own registration is undisturbed.
     expect(packAfter).toContain("'Hero_Q'");
-    expect(packAfter).toContain('Hero_Q: makeHero_Q(api),');
+
+    // The barrel is the other half, and the one the generator reads.
+    const barrel = await readFile(join(target, 'spells/index.ts'), 'utf8');
+    expect(barrel).toContain("export { default as Hero_W } from './Hero_W';");
+    expect(barrel).toContain("export { default as Hero_Q } from './Hero_Q';");
   });
 
   it('the roster entry itself is written when --champion matches an existing champion name exactly', async () => {
@@ -310,8 +320,11 @@ describe('moba2d-pack-add spell', () => {
     expect(testStat.isFile()).toBe(true);
 
     const packSource = await readFile(join(target, 'pack.ts'), 'utf8');
-    expect(packSource).toContain("import makeNotHero_W from './spells/NotHero_W';");
-    expect(packSource).toContain('NotHero_W: makeNotHero_W(api),');
+    const typoBarrel = await readFile(join(target, 'spells/index.ts'), 'utf8');
+    expect(typoBarrel).toContain("export { default as NotHero_W } from './NotHero_W';");
+    expect(packSource, 'the roster is the one thing it refuses to guess at').not.toContain(
+      "'NotHero_W'"
+    );
     // The roster array itself was never touched — no quoted 'NotHero_W'
     // entry anywhere, not just absent from the 8-space kit-array shape.
     expect(packSource).not.toContain("'NotHero_W'");
@@ -536,24 +549,31 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
  * not.
  */
 describe('the scaffolded spell reads like source, not like codemod output', () => {
-  it('wraps its classes in packClass instead of hand-rolling a memo per class', async () => {
+  it('declares plain classes against the injected api, with no factory to unwrap', async () => {
     const parent = await freshTmpDir('lol2d-pack-new-shape-factory-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
 
     const spell = await readFile(join(target, 'spells/Hero_Q.ts'), 'utf8');
-    expect(spell).toContain("import { packClass } from '../packClass';");
-    expect(spell).toMatch(/export default packClass\(/);
-    expect(spell, 'no hand-rolled build/cache pair').not.toMatch(/__build|__cache/);
-    expect(spell, 'no WeakMap per class').not.toContain('new WeakMap');
+    expect(spell).toContain("import { api } from '../packApi';");
+    expect(spell).toMatch(/^export default class Hero_Q extends api\.Spell \{/m);
+    expect(spell).toMatch(/^export class Hero_Q_Object extends api\.MissileSpellObject \{/m);
 
-    // And the helper it leans on is the pack's own, importing nothing of
+    // The three things the factory shape forced on every file, all gone: a
+    // wrapper to call, a memo to keep, and an alias to name what the factory
+    // eventually builds. Here the class name is the type.
+    expect(spell, 'no factory wrapper').not.toContain('packClass');
+    expect(spell, 'no hand-rolled memo').not.toContain('new WeakMap');
+    expect(spell, 'no unwrapping alias').not.toContain('InstanceType<ReturnType');
+    expect(spell).toContain('live: Hero_Q_Object | null = null;');
+
+    // And the api it leans on is the pack's own module, importing nothing of
     // core but a type — `pack-core-boundary` is what makes that mandatory.
-    const helper = await readFile(join(target, 'packClass.ts'), 'utf8');
-    expect(helper).toContain('export function packClass');
-    expect(helper).toMatch(/import type \{ ContentApi \}/);
-    expect(helper, 'a value import of core would not resolve outside a monorepo').not.toMatch(
+    const packApi = await readFile(join(target, 'packApi.ts'), 'utf8');
+    expect(packApi).toContain('export function setPackApi');
+    expect(packApi).toMatch(/import type \{ ContentApi \}/);
+    expect(packApi, 'a value import of core would not resolve outside a monorepo').not.toMatch(
       /^import \{/m
     );
   });
