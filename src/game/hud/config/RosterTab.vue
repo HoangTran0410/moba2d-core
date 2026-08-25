@@ -433,10 +433,23 @@ defineExpose({
               <h4 class="practice-stat-title">{{ group.title }}</h4>
               <div v-for="stat of group.rows" :key="stat.label" class="practice-stat-row">
                 <span class="practice-stat-label">
-                  <i class="fas practice-stat-icon" :class="stat.icon" aria-hidden="true"></i>
+                  <i
+                    class="fas practice-stat-icon"
+                    :class="stat.icon"
+                    :style="stat.tint ? { color: stat.tint } : undefined"
+                    aria-hidden="true"
+                  ></i>
                   {{ stat.label }}
                 </span>
-                <span class="practice-stat-value">{{ stat.value }}</span>
+                <!-- `tint` is a legend, not decoration: the two resistances
+                     wear the colour of the damage each one stops, which is the
+                     only thing on screen that says what the amber, violet and
+                     white floating numbers mean. See `StatRow.tint`. -->
+                <span
+                  class="practice-stat-value"
+                  :style="stat.tint ? { color: stat.tint } : undefined"
+                  >{{ stat.value }}</span
+                >
               </div>
             </section>
           </div>

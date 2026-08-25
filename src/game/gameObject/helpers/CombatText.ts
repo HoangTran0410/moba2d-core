@@ -1,6 +1,7 @@
 import ColorUtils from '@/utils/color.utils';
 import SpellObject from '@/game/gameObject/SpellObject';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import type { DamageType } from '@/game/combat/Mitigation';
 
 /** How long a floating number stays on screen once nothing is refreshing it. */
 export const COMBAT_TEXT_LIFETIME_MS = 1000;
@@ -29,6 +30,39 @@ const FORMAT_BY_KIND: Record<CombatTextKind, (total: number) => string> = {
   heal: total => '+' + total,
   shield: total => String(total),
   reflect: total => '⟲' + total,
+};
+
+/**
+ * What colour a damage number is, by the type of damage it reports.
+ *
+ * Damage got a type (`combat/Mitigation.ts`) and every number on screen stayed
+ * the same red, so a player who had just bought armour could not tell whether
+ * the hit that went through it was one armour was ever going to stop. Colour
+ * is the whole signal — no glyph, no suffix: these are the most numerous things
+ * on screen in a fight, and two extra characters on each of them costs more
+ * legibility than the type gains.
+ *
+ * It lives here rather than beside the arithmetic in `Mitigation.ts` because it
+ * is a rendering decision and that module is deliberately pure maths a test can
+ * drive without a canvas.
+ *
+ * **The merge key does the other half of the work.** `show` keys on
+ * `(victim, kind, colour)`, so three colours also mean a physical hit and a
+ * magic hit landing on one victim stay two numbers instead of blending into a
+ * single total that hides which was which.
+ *
+ * Chosen against what is already on screen: the heal green, and each other.
+ * `damageTextColor.test.ts` measures both distances rather than asserting the
+ * literals, because the failure worth catching is a retune that nudges two of
+ * them together.
+ */
+export const DAMAGE_TEXT_COLOR: Record<DamageType, readonly [number, number, number]> = {
+  /** Amber — steel and blood, and the one a basic attack deals. */
+  PHYSICAL: [255, 146, 62],
+  /** Violet — the one armour does nothing about. */
+  MAGIC: [176, 122, 255],
+  /** White: nothing stopped any of it. */
+  TRUE: [248, 248, 248],
 };
 
 const colorKey = (textColor: string | number[]): string =>
@@ -228,7 +262,13 @@ export default class CombatText extends SpellObject {
   draw(): void {
     push();
     const alpha = map(this.age, 0, this.lifeTime, 255, 10);
-    const strokeColor = ColorUtils.applyColorAlpha('yellow', alpha);
+    // A dark outline, not the yellow this used to draw. Every floating number
+    // was red or green then, and yellow read as a rim on both; the moment
+    // damage split into amber, violet and white (`DAMAGE_TEXT_COLOR`) the same
+    // yellow started muddying the two warm ones into each other, which is
+    // exactly the distinction it now has to keep. Near-black instead of pure
+    // black so it still reads as an outline rather than a shadow.
+    const strokeColor = ColorUtils.applyColorAlpha([16, 12, 20], alpha);
     const colorAlpha = ColorUtils.applyColorAlpha(this.textColor, alpha);
     const size = this.owner.stats.size.value;
     const zoomFactor = this.game?.camera?.constantSize?.(1) ?? 1;

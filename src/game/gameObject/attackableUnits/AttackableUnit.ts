@@ -7,7 +7,7 @@ import GameObject from '@/game/gameObject/GameObject';
 import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import Stats from '@/game/gameObject/Stats';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
-import CombatText from '@/game/gameObject/helpers/CombatText';
+import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import PathAgent from '@/game/nav/PathAgent';
@@ -577,7 +577,11 @@ export default class AttackableUnit extends GameObject {
       return;
     }
 
-    CombatText.show(this, 'damage', damage, [255, 0, 0]);
+    // Its own type's colour, not one red for all three: see `DAMAGE_TEXT_COLOR`.
+    // `CombatText.show` keys its merge on the colour too, so this is also what
+    // keeps a physical hit and a magic hit on one victim from blending into a
+    // single number that hides which was which.
+    CombatText.show(this, 'damage', damage, [...DAMAGE_TEXT_COLOR[type]]);
 
     // What actually landed, for the scoreboard: capped at the pool that was
     // there to take it, so a 200-damage execute on a 12-health minion is 12
