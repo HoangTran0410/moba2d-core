@@ -169,6 +169,22 @@ export interface ItemDef {
   passive?: string;
   /** Local spell id, bound to this item's inventory hotkey. */
   active?: string;
+  /**
+   * Local item ids this one is built out of — the recipe. Absent for a
+   * component, which is most cheap items.
+   *
+   * **`cost` stays the total**, what this costs from nothing. What the player
+   * pays when the parts are already in the bag is `cost` minus what those
+   * parts cost, worked out by `ItemShop.priceFor`, so a pack declares each
+   * price exactly once. Declaring a separate combine cost as well would be
+   * writing one fact twice, and the two drift the first time anyone retunes.
+   *
+   * The list may name the same component twice — two of one thing is an
+   * ordinary recipe — and every id must be an item in this same pack. A cycle
+   * is refused, as is a total under the sum of its parts, which would make
+   * combining pay the player.
+   */
+  buildsFrom?: string[];
 }
 
 export interface ChampionEntry {

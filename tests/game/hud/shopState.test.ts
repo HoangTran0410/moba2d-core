@@ -148,3 +148,97 @@ describe('sellRows', () => {
     ]);
   });
 });
+
+/**
+ * The recipe half of a card: what this builds out of, what it builds into, and
+ * what it costs *this* champion right now.
+ *
+ * All three are derived here rather than in the template for the reason the
+ * file header gives — but `price` has a sharper version of it. The panel
+ * repaints on the HUD's 20Hz tick, and what a combine costs changes the moment
+ * a component enters or leaves the bag. A template that subtracted the parts
+ * itself would be a second implementation of `ItemShop.priceFor`, and the two
+ * would disagree in exactly the frame a player was clicking.
+ */
+describe('a card with a recipe', () => {
+  let game: TestGame;
+  let champion: Champion;
+  const host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+
+  const SWORD = item({ id: 'ref:sword', name: 'Kiếm Dài', cost: 350 });
+  const CLOAK = item({ id: 'ref:cloak', name: 'Áo Choàng', cost: 400 });
+  const BLADE = item({
+    id: 'ref:blade',
+    name: 'Đại Kiếm',
+    cost: 1200,
+    buildsFrom: ['ref:sword', 'ref:cloak'],
+  });
+
+  const rowFor = (id: string) => shopRows(champion, host).find(row => row.id === id)!;
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    champion.wallet!.earn(10_000);
+    stock = [SWORD, CLOAK, BLADE];
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('lists its parts, in the order the pack wrote them', () => {
+    expect(rowFor('ref:blade').recipe.map(part => part.id)).toEqual(['ref:sword', 'ref:cloak']);
+  });
+
+  it('carries each part’s name, art and price, so the panel resolves nothing', () => {
+    const [sword] = rowFor('ref:blade').recipe;
+    expect(sword.name).toBe('Kiếm Dài');
+    expect(sword.cost).toBe(350);
+  });
+
+  it('is empty for a component, which is how the panel knows not to draw a tree', () => {
+    expect(rowFor('ref:sword').recipe).toEqual([]);
+  });
+
+  it('marks a part the bag already holds', () => {
+    expect(rowFor('ref:blade').recipe.every(part => part.owned)).toBe(false);
+    buyItem(champion, SWORD as never, host);
+    const [sword, cloak] = rowFor('ref:blade').recipe;
+    expect(sword.owned).toBe(true);
+    expect(cloak.owned).toBe(false);
+  });
+
+  it('marks only as many copies as the purchase would really consume', () => {
+    // Two swords held, a recipe asking for one: the second is not being
+    // consumed and a card that ticked it would be promising a refund.
+    const twin = item({ id: 'ref:twin', cost: 900, buildsFrom: ['ref:sword', 'ref:sword'] });
+    stock = [SWORD, twin];
+    buyItem(champion, SWORD as never, host);
+    const [first, second] = rowFor('ref:twin').recipe;
+    expect(first.owned).toBe(true);
+    expect(second.owned).toBe(false);
+  });
+
+  it('prices at the full cost with an empty bag', () => {
+    const row = rowFor('ref:blade');
+    expect(row.cost).toBe(1200);
+    expect(row.price).toBe(1200);
+  });
+
+  it('drops the price as the parts arrive, without touching the total', () => {
+    buyItem(champion, SWORD as never, host);
+    buyItem(champion, CLOAK as never, host);
+    const row = rowFor('ref:blade');
+    expect(row.cost, 'the total is what the item is worth, not what you owe').toBe(1200);
+    expect(row.price).toBe(450);
+  });
+
+  it('says what a component builds into, so a cheap card is worth reading', () => {
+    expect(rowFor('ref:sword').buildsInto.map(link => link.id)).toEqual(['ref:blade']);
+  });
+
+  it('leaves that empty for something nothing is built out of', () => {
+    expect(rowFor('ref:blade').buildsInto).toEqual([]);
+  });
+});

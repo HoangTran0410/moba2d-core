@@ -145,3 +145,144 @@ describe('items in the registry', () => {
     expect(install({ manifest, items: { boots: item() } }).item('ref:boots')?.packId).toBe('ref');
   });
 });
+
+/**
+ * A recipe — `buildsFrom` — and the four ways one can be nonsense.
+ *
+ * Three of them are silent at runtime and that is why they are refused here:
+ * an id naming nothing is a component the shop can never match, so the item
+ * simply always costs full price and nobody ever learns why; a cycle is an
+ * item that is its own ancestor, which no build path can ever complete; and a
+ * total under the sum of its parts makes `ItemShop.priceFor` want to return a
+ * negative, which is the shop paying the player to shop. Core floors that at
+ * zero rather than trusting this check, but a floored price is still a pack
+ * whose author wrote a number they did not mean.
+ */
+describe('validating a recipe', () => {
+  const pack = (items: Record<string, unknown>) => validatePack({ manifest, items });
+  const install = (data: unknown): PackRegistry => {
+    const registry = new PackRegistry();
+    registry.install(data as ContentPack);
+    return registry;
+  };
+
+  const parts = {
+    sword: item({ id: 'sword', name: 'Kiếm Dài', cost: 350 }),
+    cloak: item({ id: 'cloak', name: 'Áo Choàng', cost: 400 }),
+  };
+
+  it('accepts one built out of items this pack declares', () => {
+    const result = pack({
+      ...parts,
+      blade: item({ id: 'blade', cost: 1200, buildsFrom: ['sword', 'cloak'] }),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts the same component named twice', () => {
+    // Two of one thing is an ordinary recipe, and `componentSlotsFor` claims
+    // two separate held copies for it.
+    const result = pack({
+      ...parts,
+      twin: item({ id: 'twin', cost: 900, buildsFrom: ['sword', 'sword'] }),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a combine cost of exactly zero', () => {
+    // The parts add up to the total and combining is free. A real design —
+    // two components that are worth the finished item on their own — and the
+    // boundary the check below has to not cross.
+    const result = pack({
+      ...parts,
+      blade: item({ id: 'blade', cost: 750, buildsFrom: ['sword', 'cloak'] }),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses a total that is under the sum of its parts', () => {
+    const result = pack({
+      ...parts,
+      blade: item({ id: 'blade', cost: 700, buildsFrom: ['sword', 'cloak'] }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/blade/);
+  });
+
+  it('refuses an id naming nothing in this pack', () => {
+    const result = pack({ blade: item({ id: 'blade', cost: 1200, buildsFrom: ['ghost'] }) });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/ghost/);
+  });
+
+  it('refuses an item that builds out of itself', () => {
+    const result = pack({ blade: item({ id: 'blade', cost: 1200, buildsFrom: ['blade'] }) });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/blade/);
+  });
+
+  it('refuses a cycle through a third item', () => {
+    const result = pack({
+      a: item({ id: 'a', cost: 100, buildsFrom: ['b'] }),
+      b: item({ id: 'b', cost: 100, buildsFrom: ['c'] }),
+      c: item({ id: 'c', cost: 100, buildsFrom: ['a'] }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/a|b|c/);
+  });
+
+  it('refuses a recipe that is not an array', () => {
+    const result = pack({ blade: item({ id: 'blade', buildsFrom: 'sword' }) });
+    expect(result.ok).toBe(false);
+  });
+
+  it('refuses an entry that is not a string', () => {
+    const result = pack({ blade: item({ id: 'blade', buildsFrom: [7] }) });
+    expect(result.ok).toBe(false);
+  });
+
+  it('qualifies every id in it, so a held item can be matched against one', () => {
+    // The failure this catches is total and silent: an unqualified entry never
+    // equals the qualified id on a `HeldItem`, so the recipe matches nothing a
+    // player is ever carrying and the item just costs full price for ever.
+    const registry = install({
+      manifest,
+      items: {
+        ...parts,
+        blade: item({ id: 'blade', cost: 1200, buildsFrom: ['sword', 'cloak'] }),
+      },
+    });
+    expect(registry.item('ref:blade')?.buildsFrom).toEqual(['ref:sword', 'ref:cloak']);
+  });
+
+  it('leaves a component’s own recipe undefined rather than empty', () => {
+    const registry = install({ manifest, items: { boots: item() } });
+    expect(registry.item('ref:boots')?.buildsFrom).toBeUndefined();
+  });
+});
+
+/**
+ * Depth is not ours to bound — a pack may draw as long a build path as it
+ * likes — so `checkRecipes` walks with an explicit stack rather than
+ * recursing. Five hundred links is far past anything a real pack would ship
+ * and comfortably past the point where a recursive walk falls over.
+ */
+describe('a very deep build path', () => {
+  it('validates without running out of stack', () => {
+    const manifest = { id: 'ref', version: '1.0.0', coreRange: '^1' };
+    const items: Record<string, unknown> = {};
+    for (let i = 0; i < 500; i++) {
+      items[`i${i}`] = {
+        id: `i${i}`,
+        name: `Món ${i}`,
+        icon: 'item_boots',
+        // Each link is worth one more than the whole chain below it, so no
+        // step is ever under the sum of its parts.
+        cost: i + 1,
+        ...(i > 0 ? { buildsFrom: [`i${i - 1}`] } : {}),
+      };
+    }
+    const result = validatePack({ manifest, items });
+    expect(result.ok, result.ok ? '' : result.errors.slice(0, 3).join(' | ')).toBe(true);
+  });
+});

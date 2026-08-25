@@ -271,6 +271,16 @@ function checkItems(pack: Record<string, unknown>, errors: string[]): void {
   const spellsProvided = pack.spells !== undefined;
   const spells = isObject(pack.spells) ? pack.spells : {};
 
+  /**
+   * Gathered as the loop runs and checked after it, because every question
+   * worth asking about a recipe needs the *other* items to answer: does this
+   * id name anything, does the graph cycle, do the parts add up. Only entries
+   * that passed their own checks go in — an item with a broken `cost` would
+   * otherwise earn a second, more confusing error about arithmetic.
+   */
+  const costs = new Map<string, number>();
+  const recipes = new Map<string, string[]>();
+
   for (const [key, value] of Object.entries(pack.items)) {
     const path = `items.${key}`;
     if (!isObject(value)) {
@@ -288,6 +298,18 @@ function checkItems(pack: Record<string, unknown>, errors: string[]): void {
     }
     if (!isFiniteNumber(value.cost) || (value.cost as number) < 0) {
       errors.push(`${path}.cost: must be a number of 0 or more`);
+    } else {
+      costs.set(key, value.cost as number);
+    }
+
+    if (value.buildsFrom !== undefined) {
+      if (!Array.isArray(value.buildsFrom)) {
+        errors.push(`${path}.buildsFrom: must be an array of item ids`);
+      } else if (value.buildsFrom.some(entry => typeof entry !== 'string')) {
+        errors.push(`${path}.buildsFrom: every entry must be an item id`);
+      } else {
+        recipes.set(key, value.buildsFrom as string[]);
+      }
     }
     if (value.description !== undefined && typeof value.description !== 'string') {
       errors.push(`${path}.description: must be a string when present`);
@@ -319,6 +341,90 @@ function checkItems(pack: Record<string, unknown>, errors: string[]): void {
         errors.push(`${path}: ${slot} ${spellId} is not in this pack`);
       }
     }
+  }
+  checkRecipes(costs, recipes, errors);
+}
+
+/**
+ * The three questions a recipe can only be asked once every item is on the
+ * table, all of which fail *silently* at runtime if they go unasked.
+ *
+ * **An id naming nothing** is a component `ItemShop.componentSlotsFor` can
+ * never match, so the item quietly costs full price for ever and the build
+ * path the author drew does not exist.
+ *
+ * **A cycle** is an item that is its own ancestor. Nothing hangs — the shop
+ * only ever looks one level down — but no sequence of purchases can complete
+ * it, which is a build path that is unreachable rather than merely wrong.
+ *
+ * **A total under the sum of its parts** wants a negative price out of
+ * `priceFor`, which is `Wallet.spend` handing gold *out*. Core floors it at
+ * zero rather than trusting this check, but a floored price is still a number
+ * the author did not mean to write, and this is the only place that can say so.
+ */
+function checkRecipes(
+  costs: Map<string, number>,
+  recipes: Map<string, string[]>,
+  errors: string[]
+): void {
+  for (const [id, parts] of recipes) {
+    let sum = 0;
+    let priceable = true;
+    for (const part of parts) {
+      if (!costs.has(part)) {
+        errors.push(`items.${id}.buildsFrom: ${part} is not an item in this pack`);
+        priceable = false;
+        continue;
+      }
+      sum += costs.get(part) as number;
+    }
+    // Skipped when a part is missing: its price is unknown, so the sum is not
+    // a real number and reporting it would be a second error about the first.
+    if (priceable && (costs.get(id) ?? 0) < sum) {
+      errors.push(
+        `items.${id}.cost: ${costs.get(id)} is under the ${sum} its parts cost — ` +
+          '`cost` is the total, so combining would pay the player'
+      );
+    }
+  }
+
+  // Iterative walk with an explicit stack, not recursion: a deep build path is
+  // a legal pack and a pack is a stranger's JSON, so the depth is not ours to
+  // bound.
+  //
+  // The `'open'` test below is not only how a cycle is *reported* — it is the
+  // loop's termination condition. Weakening it does not produce a missed
+  // error, it produces a hang: measured, by mutating it to `'done'` and
+  // watching this file's own cycle case run the worker out of heap.
+  const state = new Map<string, 'open' | 'done'>();
+  const walk = (start: string): void => {
+    const stack: { id: string; next: number }[] = [{ id: start, next: 0 }];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const parts = recipes.get(frame.id) ?? [];
+      if (frame.next === 0) {
+        if (state.get(frame.id) === 'done') {
+          stack.pop();
+          continue;
+        }
+        state.set(frame.id, 'open');
+      }
+      if (frame.next >= parts.length) {
+        state.set(frame.id, 'done');
+        stack.pop();
+        continue;
+      }
+      const part = parts[frame.next++];
+      if (state.get(part) === 'open') {
+        errors.push(`items.${part}.buildsFrom: builds out of itself, through ${frame.id}`);
+        state.set(part, 'done');
+        continue;
+      }
+      if (state.get(part) !== 'done' && recipes.has(part)) stack.push({ id: part, next: 0 });
+    }
+  };
+  for (const id of recipes.keys()) {
+    if (!state.has(id)) walk(id);
   }
 }
 

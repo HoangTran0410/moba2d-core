@@ -1,4 +1,11 @@
-import { refusalFor, sellValueOf, type ShopHost, type ShopRefusal } from '@/game/economy/ItemShop';
+import {
+  componentSlotsFor,
+  priceFor,
+  refusalFor,
+  sellValueOf,
+  type ShopHost,
+  type ShopRefusal,
+} from '@/game/economy/ItemShop';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { packAsset } from '@/game/config/packAsset';
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
@@ -63,17 +70,59 @@ export interface StatLine {
   amount: string;
 }
 
+/**
+ * One edge of the build tree, in either direction — a part this item is made
+ * of, or a bigger item it goes into.
+ *
+ * Carries the neighbour's whole card face rather than its id, because the
+ * panel draws these as small tiles and a template that had to look each one up
+ * would be a second index over the catalogue, rebuilt on every 20Hz repaint.
+ */
+export interface RecipeLink {
+  id: string;
+  name: string;
+  /** '' when the pack named art nothing registered. */
+  image: string;
+  /** The neighbour's own total price. */
+  cost: number;
+  /**
+   * On a `recipe` entry: **this purchase would consume that copy**, not merely
+   * "one is somewhere in the bag". The distinction is real for a recipe naming
+   * one component twice while the bag holds one — ticking both would promise a
+   * discount the shop is not going to give.
+   *
+   * On a `buildsInto` entry: the champion already owns that bigger item.
+   */
+  owned: boolean;
+}
+
 export interface ShopRow {
   id: string;
   name: string;
   description: string;
   /** '' when the pack named art nothing registered — the card draws its initial instead. */
   image: string;
+  /** The **total**: what this is worth, and what it costs from an empty bag. */
   cost: number;
+  /**
+   * What it costs *this champion, right now* — `cost` less whatever of the
+   * recipe is already held. Equal to `cost` for an item with no recipe, and
+   * for one whose parts are not in the bag.
+   *
+   * Comes from `ItemShop.priceFor` and is never re-derived downstream: what a
+   * combine costs changes the moment a component enters or leaves the bag, and
+   * a template doing its own subtraction would disagree with the purchase in
+   * exactly the frame the player clicked.
+   */
+  price: number;
   /** What the stats grant, in reading order. Empty for an item that grants none. */
   stats: StatLine[];
   /** True when this item brings a key to press. */
   hasActive: boolean;
+  /** The parts, in the order the pack wrote them. Empty for a component. */
+  recipe: RecipeLink[];
+  /** The bigger items this is a part of. Empty for a finished item. */
+  buildsInto: RecipeLink[];
   /** Null when it can be bought right now. */
   refusal: ShopRefusal | null;
   /** '' when there is no refusal. See `REFUSAL_TEXT`. */
@@ -114,19 +163,68 @@ const iconPath = (def: QualifiedItem): string => {
   }
 };
 
+/** The card face of one neighbour in the build tree. */
+const linkTo = (def: QualifiedItem | undefined, owned: boolean): RecipeLink | null =>
+  def ? { id: def.id, name: def.name, image: iconPath(def), cost: def.cost, owned } : null;
+
 /** Every item on sale, cheapest first, each carrying why it cannot be bought. */
 export function shopRows(champion: Champion, host: ShopHost): ShopRow[] {
-  return shopItems()
+  const stock = shopItems();
+
+  // Built once per call, not once per card. Both directions of the tree need a
+  // lookup by id, and doing it per card is quadratic over a catalogue that
+  // repaints twenty times a second.
+  const byId = new Map<string, QualifiedItem>();
+  for (const def of stock) byId.set(def.id, def);
+
+  const parents = new Map<string, QualifiedItem[]>();
+  for (const def of stock) {
+    for (const partId of new Set(def.buildsFrom ?? [])) {
+      const list = parents.get(partId);
+      if (list) list.push(def);
+      else parents.set(partId, [def]);
+    }
+  }
+
+  const held = new Set((champion.items ?? []).map(item => item?.def.id).filter(Boolean));
+
+  return stock
     .map(def => {
       const refusal = refusalFor(champion, def, host);
+
+      // `componentSlotsFor` and not "is this id in the bag": a recipe naming
+      // one part twice against a bag holding one must tick exactly one entry,
+      // or the card promises a discount the purchase will not give. The Nth
+      // entry for a part is consumed when the bag holds at least N of it.
+      const claimed = componentSlotsFor(champion, def);
+      const claimedIds = claimed.map(slot => champion.items?.[slot]?.def.id);
+      const spent = new Map<string, number>();
+      const recipe: RecipeLink[] = [];
+      for (const partId of def.buildsFrom ?? []) {
+        const used = spent.get(partId) ?? 0;
+        const available = claimedIds.filter(id => id === partId).length;
+        spent.set(partId, used + 1);
+        const link = linkTo(byId.get(partId), used < available);
+        if (link) recipe.push(link);
+      }
+
+      const buildsInto: RecipeLink[] = [];
+      for (const parent of parents.get(def.id) ?? []) {
+        const link = linkTo(parent, held.has(parent.id));
+        if (link) buildsInto.push(link);
+      }
+
       return {
         id: def.id,
         name: def.name,
         description: def.description ?? '',
         image: iconPath(def),
         cost: def.cost,
+        price: priceFor(champion, def),
         stats: statLines(def),
         hasActive: def.active !== undefined,
+        recipe,
+        buildsInto,
         refusal,
         reason: refusal ? REFUSAL_TEXT[refusal] : '',
       };

@@ -90,6 +90,69 @@ function resolveSpellClasses(def: QualifiedItem): { passive: unknown; active: un
   return { passive, active };
 }
 
+/**
+ * Which held slots a purchase of `def` would consume, lowest first.
+ *
+ * Empty for an item with no recipe, which is most of them, and empty for one
+ * whose components are simply not in the bag — both are "this is an ordinary
+ * purchase" and both callers treat them the same way.
+ *
+ * ## Why the matching is written out rather than done with a Set
+ *
+ * A recipe may name the same component twice, and it may name one the bag
+ * holds three of. The obvious `held.filter(item => recipe.includes(item.id))`
+ * gets both wrong in opposite directions: it consumes all three spares, and it
+ * resolves both halves of a doubled recipe to whichever copy it met first —
+ * billing the player for two longswords and taking one. So each entry claims
+ * one slot, and a claimed slot is out of the running for the entries after it.
+ */
+export function componentSlotsFor(champion: Champion, def: QualifiedItem): number[] {
+  // `Array.isArray` and not a length check: `buildsFrom` reaches here from a
+  // stranger's JSON through `validate.ts`, and `tsconfig`'s non-strict half
+  // lets a non-array compile clean. See `packCache.prefetchPackFiles` for the
+  // same guard and the same reason.
+  const recipe = Array.isArray(def.buildsFrom) ? def.buildsFrom : [];
+  if (recipe.length === 0) return [];
+
+  const held = champion.items ?? [];
+  const claimed: number[] = [];
+  for (const componentId of recipe) {
+    for (let slot = 0; slot < held.length; slot++) {
+      if (claimed.includes(slot)) continue;
+      if (held[slot]?.def.id !== componentId) continue;
+      claimed.push(slot);
+      break;
+    }
+  }
+  return claimed;
+}
+
+/**
+ * What `def` costs this champion **right now** — its price less whatever of
+ * its recipe is already in the bag.
+ *
+ * `def.cost` is the total, always, and the combine cost is derived from it
+ * rather than declared beside it. A pack that wrote both would be writing one
+ * fact twice, and the two would drift the first time anyone retuned a price.
+ * The property that falls out of deriving it: buying the components and
+ * combining costs exactly what buying the finished item costs, so a recipe
+ * changes *when* gold leaves and never *how much*.
+ *
+ * The credit is read off each held item's own `cost`, not off the registry's
+ * copy of it, so a component whose price changed under a pack update still
+ * refunds what the bag says it is worth.
+ *
+ * Floored at zero. `validate.ts` refuses a pack whose total is under the sum
+ * of its parts, so a negative can only mean core and a pack disagree — and
+ * negative gold out of `Wallet.spend` is the shop paying the player to shop.
+ */
+export function priceFor(champion: Champion, def: QualifiedItem): number {
+  const held = champion.items ?? [];
+  let credit = 0;
+  for (const slot of componentSlotsFor(champion, def)) credit += held[slot]?.def.cost ?? 0;
+  return Math.max(0, def.cost - credit);
+}
+
 /** Which rule refuses this purchase, or `null` when none does. */
 export function refusalFor(
   champion: Champion,
@@ -98,8 +161,14 @@ export function refusalFor(
 ): ShopRefusal | null {
   if (champion.isDead) return 'DEAD';
   if (!atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
-  if (champion.firstEmptyItemSlot() < 0) return 'NO_SLOT';
-  if ((champion.wallet?.balance ?? 0) < def.cost) return 'TOO_EXPENSIVE';
+  // A combine frees its components' slots before it fills one, so a bag
+  // holding exactly the six pieces of a build can still finish it. Refusing
+  // that was the shop telling a player no at the one moment the inventory was
+  // doing precisely what it is for.
+  if (componentSlotsFor(champion, def).length === 0 && champion.firstEmptyItemSlot() < 0) {
+    return 'NO_SLOT';
+  }
+  if ((champion.wallet?.balance ?? 0) < priceFor(champion, def)) return 'TOO_EXPENSIVE';
   if (!resolveSpellClasses(def)) return 'NOT_LOADED';
   return null;
 }
@@ -171,9 +240,25 @@ export function buyItem(champion: Champion, def: QualifiedItem, host: ShopHost):
   const held = buildHeldItem(champion, def);
   if (!held) return false;
 
-  const slot = champion.firstEmptyItemSlot();
+  // Everything measured before anything moves — the bag is about to change
+  // underneath both of these.
+  const consumed = componentSlotsFor(champion, def);
+  const price = priceFor(champion, def);
+
+  // The upgrade goes where its parts were, not into the first free slot. A
+  // build that walks rightwards across the bar every time it combines is a bar
+  // the player has to re-read mid fight, and the muscle memory for an item's
+  // hotkey is worth more than tidy packing.
+  const slot = consumed.length > 0 ? Math.min(...consumed) : champion.firstEmptyItemSlot();
   if (slot < 0) return false;
-  if (!champion.wallet?.spend(def.cost)) return false;
+  if (!champion.wallet?.spend(price)) return false;
+
+  // Consumed, not sold: their value came off the price already, so paying for
+  // them again would be a 70% refund on top of a 100% credit. `unequipItem` is
+  // what takes their stat modifiers and their passives back off, which is the
+  // half a slot count cannot see — a combine that kept a component's armour
+  // would leave a champion permanently tougher than the bar says.
+  for (const componentSlot of consumed) champion.unequipItem(componentSlot);
 
   champion.equipItem(held, slot);
   return true;

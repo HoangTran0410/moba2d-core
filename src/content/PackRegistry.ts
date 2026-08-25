@@ -58,11 +58,12 @@ export interface QualifiedMapSummary extends Omit<MapSummary, 'id'> {
  * packs may each reasonably ship a `boots`, and the author of either writes
  * only the local half.
  */
-export interface QualifiedItem extends Omit<ItemDef, 'id' | 'passive' | 'active'> {
+export interface QualifiedItem extends Omit<ItemDef, 'id' | 'passive' | 'active' | 'buildsFrom'> {
   id: string;
   packId: string;
   passive?: string;
   active?: string;
+  buildsFrom?: string[];
 }
 
 export const qualify = (packId: string, localId: string): string => `${packId}:${localId}`;
@@ -311,6 +312,13 @@ export class PackRegistry {
         // sees the prefix.
         passive: def.passive === undefined ? undefined : qualify(packId, def.passive),
         active: def.active === undefined ? undefined : qualify(packId, def.active),
+        // And so are the recipe's, for the third time in one object literal.
+        // `ItemShop.componentSlotsFor` matches these against the qualified id
+        // on a held item, so an unqualified entry here is a recipe that
+        // silently never matches anything a player is carrying.
+        buildsFrom: Array.isArray(def.buildsFrom)
+          ? def.buildsFrom.map(localId => qualify(packId, localId))
+          : undefined,
       });
     }
     for (const monster of Object.values(data.monsters ?? {})) {
