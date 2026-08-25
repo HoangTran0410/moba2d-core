@@ -593,6 +593,39 @@ export default class Champion extends AttackableUnit {
     return item;
   }
 
+  /**
+   * Swaps two inventory slots. Answers whether anything moved.
+   *
+   * **Deliberately not `unequipItem` then `equipItem`.** That pair is the
+   * *ownership* seam: it adds and removes the `StatsModifier`, it arms and
+   * retires the passive, and it runs `removeSpell` on both of the item's
+   * spells. A move crosses none of those — the item never left the champion.
+   * Routing a move through them takes an item's armour off and puts it back
+   * on, which is at best a wasted frame and at worst a difference the champion
+   * keeps for ever, and it re-arms the passive, which is a second copy of
+   * whatever that passive grants.
+   *
+   * What genuinely changes is which key casts it, and that needs no work here:
+   * `Game.itemInputController` resolves `getSpell: slot => items[slot]?.active`
+   * live, so an active follows its slot with nothing rebound.
+   *
+   * A slot holding nothing is a legal end *and* a legal start — a thumb can
+   * begin a drag on a gap, and refusing that would make the gesture work in
+   * one direction only for no reason visible on screen. Two empty slots is the
+   * one pairing that is refused, because it is a drag that did nothing.
+   */
+  moveItem(from: number, to: number): boolean {
+    if (!this.items) return false;
+    const last = this.items.length - 1;
+    if (from < 0 || to < 0 || from > last || to > last || from === to) return false;
+    if (!this.items[from] && !this.items[to]) return false;
+
+    const moved = this.items[from];
+    this.items[from] = this.items[to];
+    this.items[to] = moved;
+    return true;
+  }
+
   /** The first empty slot, or -1. What a shop asks before it takes anyone's gold. */
   firstEmptyItemSlot(): number {
     return this.items?.findIndex(slot => slot === null) ?? -1;

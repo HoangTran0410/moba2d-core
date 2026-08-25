@@ -210,8 +210,7 @@ describe('a champion carrying items', () => {
     const item = new HeldItem(def(), new ItemPassive(champion), null);
     champion.equipItem(item, 0);
     tick();
-    champion.items[4] = champion.items[0];
-    champion.items[0] = null;
+    champion.moveItem(0, 4);
     tick(5);
     expect(ItemPassive.presses).toBe(1);
   });
@@ -256,5 +255,93 @@ describe('a champion carrying items', () => {
       champion.equipItem(new HeldItem(def({ id: `i${i}` }), null, null), i);
     }
     expect(champion.firstEmptyItemSlot()).toBe(-1);
+  });
+
+  /**
+   * Rearranging the bag, which is a hotkey change and nothing else.
+   *
+   * The whole reason it is a method rather than two array writes at the call
+   * site: `equipItem`/`unequipItem` are the *ownership* seam — they add and
+   * remove the stat modifier, they arm and retire the passive, they run
+   * `removeSpell` on both of the item's spells. A move crosses none of that.
+   * The item never left the champion, so taking its armour off and putting it
+   * back on is at best a wasted frame and at worst a rounding difference the
+   * champion keeps for ever, and re-arming its passive is a second copy of
+   * whatever that passive grants.
+   *
+   * What *does* change is which key casts it: `Game.itemInputController`
+   * resolves `getSpell: slot => player.items[slot]?.active` live, so an active
+   * follows its slot with no rebinding anywhere.
+   */
+  describe('moving an item between slots', () => {
+    const named = (id: string) => new HeldItem(def({ id }), null, null);
+    const ids = () => champion.items.map(held => held?.def.id ?? null);
+
+    it('swaps two occupied slots', () => {
+      champion.equipItem(named('a'), 0);
+      champion.equipItem(named('b'), 3);
+      expect(champion.moveItem(0, 3)).toBe(true);
+      expect(ids()[0]).toBe('b');
+      expect(ids()[3]).toBe('a');
+    });
+
+    it('moves into an empty slot and leaves the old one empty', () => {
+      champion.equipItem(named('a'), 1);
+      champion.moveItem(1, 5);
+      expect(ids()[1]).toBeNull();
+      expect(ids()[5]).toBe('a');
+    });
+
+    it('drags an empty slot onto an item, which is the same swap backwards', () => {
+      // A thumb can start a drag on a gap. Refusing it would make the gesture
+      // work in one direction only, for no reason the player can see.
+      champion.equipItem(named('a'), 2);
+      expect(champion.moveItem(4, 2)).toBe(true);
+      expect(ids()[2]).toBeNull();
+      expect(ids()[4]).toBe('a');
+    });
+
+    it('keeps every stat exactly where it was', () => {
+      // The failure this is written against: a move implemented as
+      // unequip-then-equip drifts the total, and nothing else in the engine
+      // would ever report a champion who is quietly tougher than their bag.
+      champion.equipItem(new HeldItem(def({ id: 'a', stats: { armor: 40 } }), null, null), 0);
+      champion.equipItem(new HeldItem(def({ id: 'b', stats: { armor: 10 } }), null, null), 1);
+      const before = champion.stats.armor.value;
+
+      for (let i = 0; i < 20; i++) champion.moveItem(i % 2, (i + 1) % 2);
+
+      expect(champion.stats.armor.value).toBe(before);
+    });
+
+    it('never retires either item’s spells', () => {
+      const passive = new ItemPassive(champion);
+      const active = new ItemPassive(champion);
+      const deactivated = [vi.spyOn(passive, 'deactivate'), vi.spyOn(active, 'deactivate')];
+      champion.equipItem(new HeldItem(def(), passive, active), 0);
+      tick();
+
+      champion.moveItem(0, 2);
+
+      for (const spy of deactivated) expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op onto itself', () => {
+      champion.equipItem(named('a'), 0);
+      expect(champion.moveItem(0, 0)).toBe(false);
+      expect(ids()[0]).toBe('a');
+    });
+
+    it('refuses a slot that is not one, rather than growing the bag', () => {
+      champion.equipItem(named('a'), 0);
+      expect(champion.moveItem(0, INVENTORY_SIZE)).toBe(false);
+      expect(champion.moveItem(-1, 0)).toBe(false);
+      expect(champion.items).toHaveLength(INVENTORY_SIZE);
+      expect(ids()[0]).toBe('a');
+    });
+
+    it('refuses a move where both slots are empty', () => {
+      expect(champion.moveItem(0, 1)).toBe(false);
+    });
   });
 });
