@@ -80,6 +80,7 @@
     "verify:all": "npm run verify && npm run check-seams --workspace=@moba2d/content-reference",
     "e2e": "node tests/e2e/drive-game.mjs",
     "e2e:hud": "node tests/e2e/hud-mana.mjs",
+    "e2e:shop": "node tests/e2e/drive-shop-hud.mjs",
     "e2e:attacks": "node tests/e2e/drive-basic-attacks.mjs",
     "vendor:copy": "node scripts/copy-vendor.mjs",
     "chunks:check": "node scripts/check-chunks.mjs",
