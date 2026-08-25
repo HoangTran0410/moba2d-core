@@ -9,6 +9,7 @@
  * `ContentApi` constructed — so nothing of the engine is needed here.
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -95,6 +96,24 @@ const files = emittedFiles(dist)
   .filter(name => name !== 'manifest.json')
   .sort();
 
+/**
+ * Which build this is — core's `buildId`, and the only thing that can tell a
+ * stale install from a current one.
+ *
+ * **Derived, never declared.** `version` is the obvious candidate and it does
+ * not work: it is a number a human has to remember to bump, and this pack's
+ * stayed `1.0.0` across dozens of publishes. Core's `InstalledPackRecord`
+ * carried a `version` field commented "so an update can be noticed later"
+ * that nothing could ever act on, because the value never moved.
+ *
+ * Hashed over the sorted file list rather than over `pack.js`'s bytes: the
+ * entry is an 86-byte facade that re-exports from a hashed chunk, so two
+ * genuinely different builds can emit an identical one. Every other name in
+ * `dist` carries a content hash, which makes the list itself the complete
+ * statement of what this build contains.
+ */
+const buildId = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 12);
+
 writeFileSync(
   join(dist, 'manifest.json'),
   JSON.stringify(
@@ -102,6 +121,7 @@ writeFileSync(
       id: '__PACK_ID__',
       version: pkg.version,
       coreRange,
+      buildId,
       // The name core shows wherever this pack appears — the install
       // confirmation, the installed row, and the section header over this
       // pack's champions in the picker. Core re-reads this manifest on every

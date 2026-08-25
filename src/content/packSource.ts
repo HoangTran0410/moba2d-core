@@ -49,6 +49,18 @@ export interface RuntimePackManifest {
    */
   icon?: string;
   /**
+   * Which build this manifest describes — spec §4.1 of the pinning design.
+   *
+   * Derived by the pack's own manifest generator from the sorted `files`
+   * list, so it changes exactly when a content hash does and no human has to
+   * remember to bump anything. `version` is the semver a person reads and is
+   * deliberately not this: riot's stayed `1.0.0` across dozens of publishes,
+   * which is what made a stale install undetectable.
+   *
+   * Optional. A manifest without one is loaded exactly as before.
+   */
+  buildId?: string;
+  /**
    * Every file the pack published, relative to this manifest — spec §3.1.
    * Optional: a pack without it installs and plays, and simply has nothing
    * prefetched for offline.
@@ -267,6 +279,9 @@ export async function fetchPackManifest(
     if (candidate.icon !== undefined && typeof candidate.icon !== 'string') {
       throw new PackLoadError('manifest', 'manifest.icon must be a string when present');
     }
+    if (candidate.buildId !== undefined && typeof candidate.buildId !== 'string') {
+      throw new PackLoadError('manifest', 'manifest.buildId must be a string when present');
+    }
 
     const manifest = candidate as unknown as RuntimePackManifest;
     if (!satisfiesCoreRange(manifest.coreRange, coreVersion)) {
@@ -299,6 +314,44 @@ export async function fetchPackManifest(
 }
 
 /**
+ * The entry URL with the build id hung off it as `?b=<buildId>`.
+ *
+ * **`pack.js` is the only mutable name a pack publishes.** Everything below
+ * it — `chunks/runtime-entry-<hash>.js` and the 238 spell chunks it names —
+ * is content-hashed, and the deploy keeps exactly one build. So a cache that
+ * holds `pack.js` across a republish holds a pointer graph into files the
+ * server has deleted: the chunks already cached still resolve, and the first
+ * one that was never fetched 404s. That is a race between three independently
+ * expiring cache entries, not a steady state, which is why it presented as an
+ * intermittent "the champion's Q became a basic attack".
+ *
+ * The query makes two builds two URLs, so no cache — HTTP or worker — can
+ * serve one build's entry against another's manifest. It goes on the *entry
+ * only*: relative dynamic imports inside it resolve against the pathname and
+ * drop the query, so the chunk graph is untouched and the worker does not end
+ * up caching the pack twice.
+ *
+ * Deliberately not a fix in the pack's build config. Making Rollup emit
+ * `pack-<hash>.js` would pin the name but not help: the manifest naming it is
+ * itself cacheable, and an old manifest would then name an entry the deploy
+ * has already deleted — trading a 404 on a leaf for a 404 on the root.
+ */
+function pinEntryToBuild(entryUrl: string, buildId: string | undefined): string {
+  if (!buildId) return entryUrl;
+  try {
+    const url = new URL(entryUrl);
+    url.searchParams.set('b', buildId);
+    return url.href;
+  } catch {
+    // `resolveWithin` already parsed this URL, so it cannot fail here. Guarded
+    // anyway rather than letting a hypothetical throw take out a load that
+    // would otherwise have worked: an unpinned entry is the old behaviour,
+    // which is worse than pinned and much better than refused.
+    return entryUrl;
+  }
+}
+
+/**
  * Imports the entry and checks the halves it exported.
  *
  * Only the data half goes through `validatePackData` here. The code half
@@ -321,7 +374,10 @@ export async function loadPackFromManifest(
   importModule: (url: string) => Promise<Record<string, unknown>> = url =>
     import(/* @vite-ignore */ url) as Promise<Record<string, unknown>>
 ): Promise<LoadedPack> {
-  const entryUrl = resolveWithin(manifest.entry, manifestUrl, 'entry');
+  const entryUrl = pinEntryToBuild(
+    resolveWithin(manifest.entry, manifestUrl, 'entry'),
+    manifest.buildId
+  );
 
   let module: Record<string, unknown>;
   try {

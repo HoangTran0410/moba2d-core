@@ -358,3 +358,82 @@ describe('a host that accepts the connection and then stalls', () => {
     expect(manifest.id).toBe('riot');
   });
 });
+
+/**
+ * The bug this whole block exists for: a browser held `pack.js` from an older
+ * build and asked for `chunks/Rammus_Q-BAVrwTdL.js`, a name that build's
+ * `runtime-entry` chunk contained and the republished one no longer does. The
+ * server keeps exactly one build, so the request 404'd and Rammus's Q silently
+ * became a basic attack.
+ *
+ * `pack.js` is the only mutable name a pack publishes — everything under it is
+ * content-hashed. Nothing tied the entry to the graph it names, so an HTTP or
+ * worker cache holding one and not the other produced a pointer into a build
+ * that no longer exists. Tying the entry's URL to `buildId` makes two builds
+ * two URLs, which no cache can confuse.
+ */
+describe('the entry is pinned to the build', () => {
+  const PINNED: RuntimePackManifest = {
+    id: 'riot',
+    version: '1.0.0',
+    coreRange: '>=1.0.0',
+    name: 'Riot champions',
+    entry: 'pack.js',
+    assets: 'assets/',
+    buildId: 'a1b2c3d4',
+  };
+  const MANIFEST_URL = 'https://h/p/manifest.json';
+  const validModule = () => ({
+    default: () => ({}),
+    data: { manifest: { id: 'riot', version: '1.0.0', coreRange: '>=1.0.0' } },
+  });
+
+  const entryUrlFor = async (manifest: RuntimePackManifest): Promise<string> => {
+    const importModule = vi.fn().mockResolvedValue(validModule());
+    await loadPackFromManifest(manifest, MANIFEST_URL, importModule);
+    return (importModule.mock.calls[0] as [string])[0];
+  };
+
+  it('carries the build id as a query, so two builds are two URLs', async () => {
+    expect(await entryUrlFor(PINNED)).toBe('https://h/p/pack.js?b=a1b2c3d4');
+  });
+
+  it('gives a different URL to a different build of the same entry name', async () => {
+    const next = { ...PINNED, buildId: 'ffffffff' };
+    expect(await entryUrlFor(PINNED)).not.toBe(await entryUrlFor(next));
+  });
+
+  /**
+   * Relative dynamic imports inside the entry resolve against the *path*, so
+   * the query never reaches the chunk graph. If it did, every one of the 238
+   * lazy spell imports would carry it and the worker's cache would hold two
+   * copies of the pack.
+   */
+  it('leaves the path alone, so the chunk graph below it is unchanged', async () => {
+    const url = new URL(await entryUrlFor(PINNED));
+    expect(url.pathname).toBe('/p/pack.js');
+    expect(new URL('./chunks/x.js', url).href).toBe('https://h/p/chunks/x.js');
+  });
+
+  it('adds nothing for a manifest that declares no build id', async () => {
+    const { buildId: _unused, ...plain } = PINNED;
+    expect(await entryUrlFor(plain)).toBe('https://h/p/pack.js');
+  });
+
+  it('appends to an entry that already carries a query', async () => {
+    const url = await entryUrlFor({ ...PINNED, entry: 'pack.js?v=2' });
+    expect(new URL(url).searchParams.get('v')).toBe('2');
+    expect(new URL(url).searchParams.get('b')).toBe('a1b2c3d4');
+  });
+
+  it('still refuses an off-origin entry, build id or not', async () => {
+    const importModule = vi.fn();
+    const error = await loadPackFromManifest(
+      { ...PINNED, entry: 'https://evil.example/x.js' },
+      MANIFEST_URL,
+      importModule
+    ).catch(e => e);
+    expect(error.stage).toBe('manifest');
+    expect(importModule).not.toHaveBeenCalled();
+  });
+});

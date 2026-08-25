@@ -104,6 +104,11 @@ export const loadedSpellIds = (): string[] => {
  * Fetch these ids' classes. Idempotent, deduplicated, and safe to call with
  * unknown ids (a stale `localStorage` slot naming a spell this build removed).
  *
+ * Answers the ids that **rejected** — an id an installed pack declared and
+ * could not deliver. An id no pack declares is not in it: that is the stale
+ * loadout slot this function has always been safe to call with, and it stays
+ * silent. See the `catch` below for why the distinction is the whole point.
+ *
  * `onSettled` fires once per id in `ids`, after that id is done — loaded,
  * failed, already in memory, or unknown. That "once per id, whatever happened"
  * rule is what makes it usable as a progress count: `GameScene` paints a bar
@@ -123,18 +128,30 @@ export const loadedSpellIds = (): string[] => {
 export async function loadSpells(
   ids: readonly string[],
   onSettled?: (id: string) => void
-): Promise<void> {
+): Promise<string[]> {
   const registry = contentRegistry();
   const pending: Promise<void>[] = [];
+  const failed: string[] = [];
 
   for (const id of ids) {
+    const qualified = qualifySpellId(id);
     const settled = registry
-      .loadSpellClass(qualifySpellId(id))
+      .loadSpellClass(qualified)
       .catch(error => {
         // One champion's chunk failing to arrive must not take the match with
         // it: the id stays unloaded, `spellClassOfId` keeps returning null,
         // and whatever asked for it falls back the same way it would for a
         // stale id.
+        //
+        // **But it is not the same as a stale id, and this is where the two
+        // stop being told apart.** `loadSpellClass` answers `null` for an id
+        // no pack declared and *rejects* for one a pack declared and could not
+        // deliver — so a rejection is positive evidence that an installed pack
+        // is broken, which is exactly what a republished pack's dead chunk
+        // graph produces. Collected rather than only logged: a `console.error`
+        // is not a report, and the player who met this saw a champion whose Q
+        // had silently become a basic attack.
+        failed.push(qualified);
         // eslint-disable-next-line no-console
         console.error(`spellRegistry: could not load ${id}`, error);
       })
@@ -143,6 +160,7 @@ export async function loadSpells(
   }
 
   await Promise.all(pending);
+  return failed;
 }
 
 /**
@@ -156,7 +174,13 @@ export async function loadSpells(
 export function loadRemainingSpells(): Promise<void> {
   if (everythingRequested) return Promise.resolve();
   everythingRequested = true;
-  return loadSpells(allSpellIds());
+  // The failed-id list is dropped on purpose. This is the whole catalogue
+  // warming in the background of a running match, so a flaky connection can
+  // put dozens of ids in it that nobody is waiting for and that the next
+  // match's own `loadSpells` will ask for again. The list is worth acting on
+  // where somebody is actually blocked on it — `GameScene.startGame`, for the
+  // kits this match needs.
+  return loadSpells(allSpellIds()).then(() => {});
 }
 
 /**
