@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Knocked down">
+  <title>Knocked down</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M32 50 L14 28 H24 V10 H40 V28 H50 Z" fill="#b07bd8"/>
+    <path d="M12 58 H24 M40 58 H52" stroke="#6b3f9c"/>
+  </g>
+</svg>

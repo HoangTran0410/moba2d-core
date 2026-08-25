@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Revealed">
+  <title>Revealed</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M4 34 C15 18 49 18 60 34 C49 50 15 50 4 34 Z" fill="#e0b356"/>
+    <circle cx="32" cy="34" r="8" fill="#12171d"/>
+    <path d="M32 12 V4 M12 18 L7 12 M52 18 L57 12" stroke="#e0b356" stroke-width="4"/>
+  </g>
+</svg>

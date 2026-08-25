@@ -27,10 +27,7 @@ import asset24Url from '../../assets/images/reference/vera_e.png?url';
 import asset25Url from '../../assets/images/reference/vera_q.png?url';
 import asset26Url from '../../assets/images/reference/vera_r.png?url';
 import asset27Url from '../../assets/images/reference/vera_w.png?url';
-import asset28Url from '../../assets/images/screenshots/Screenshot_1.jpg?url';
-import asset29Url from '../../assets/images/screenshots/Screenshot_3.jpg?url';
-import asset30Url from '../../assets/images/screenshots/Screenshot_4.jpg?url';
-import asset31Url from '../../assets/images/spells/basic_attack.png?url';
+import asset28Url from '../../assets/images/spells/basic_attack.png?url';
 
 export type AssetKind = 'image' | 'json' | 'audio' | 'url';
 
@@ -63,10 +60,7 @@ export const assetManifest = {
   "reference_vera_q": { kind: 'image', url: asset25Url, path: "assets/images/reference/vera_q.png" },
   "reference_vera_r": { kind: 'image', url: asset26Url, path: "assets/images/reference/vera_r.png" },
   "reference_vera_w": { kind: 'image', url: asset27Url, path: "assets/images/reference/vera_w.png" },
-  "screenshot_Screenshot_1": { kind: 'image', url: asset28Url, path: "assets/images/screenshots/Screenshot_1.jpg" },
-  "screenshot_Screenshot_3": { kind: 'image', url: asset29Url, path: "assets/images/screenshots/Screenshot_3.jpg" },
-  "screenshot_Screenshot_4": { kind: 'image', url: asset30Url, path: "assets/images/screenshots/Screenshot_4.jpg" },
-  "spell_basic_attack": { kind: 'image', url: asset31Url, path: "assets/images/spells/basic_attack.png" },
+  "spell_basic_attack": { kind: 'image', url: asset28Url, path: "assets/images/spells/basic_attack.png" },
 } as const;
 
 export type AssetKey = keyof typeof assetManifest;

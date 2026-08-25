@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Pointer">
+  <title>Pointer</title>
+  <!--
+    The hotspot is the tip, and the tip is deliberately at (2,2) rather than
+    (0,0): a stroked outline needs somewhere to go, and a pointer whose point
+    is clipped by the edge of its own bitmap reads as blunt. `render-icons.mjs`
+    writes that hotspot into the .cur header.
+  -->
+  <g stroke="#12171d" stroke-width="3" stroke-linejoin="round">
+    <path d="M2 2 L2 36 L11 28 L17 42 L24 39 L18 25 L31 25 Z" fill="#dfd6bc"/>
+    <path d="M6 9 L6 27 L11 23 L15 32 L18 31 L13 21 L20 21 Z" fill="#8a7a55" stroke="none"/>
+  </g>
+</svg>

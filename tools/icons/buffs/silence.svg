@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Silenced">
+  <title>Silenced</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 12 H52 A7 7 0 0 1 59 19 V37 A7 7 0 0 1 52 44 H30 L19 55 V44 H12 A7 7 0 0 1 5 37 V19 A7 7 0 0 1 12 12 Z" fill="#b8c0cc"/>
+    <path d="M16 42 L48 14" stroke="#12171d" stroke-width="10"/>
+    <path d="M16 42 L48 14" stroke="#e2603f" stroke-width="5"/>
+  </g>
+</svg>

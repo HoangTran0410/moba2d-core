@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="True sight">
+  <title>True sight</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M4 32 C15 15 49 15 60 32 C49 49 15 49 4 32 Z" fill="#b07bd8"/>
+    <path d="M32 16 L37 27 L48 32 L37 37 L32 48 L27 37 L16 32 L27 27 Z" fill="#12171d"/>
+    <path d="M32 22 L35 29 L42 32 L35 35 L32 42 L29 35 L22 32 L29 29 Z" fill="#eef2f6"/>
+  </g>
+</svg>

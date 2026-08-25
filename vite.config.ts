@@ -110,8 +110,12 @@ export default defineConfig({
          * they were the one visible thing an offline launch did not have. One
          * 88KB WebP replaces the lot and is cheap enough to precache, which is
          * what makes the installed app look the same with the network off.
-         * The three `Screenshot_*.jpg` still in `assets/` stay excluded — they
-         * are store art nothing in the game renders.
+         * There is no `jpg` left in `assets/` to exclude any more: the three
+         * `Screenshot_*.jpg` were store art nothing in the game rendered, and
+         * they were shipped into `dist/` on every build for years because the
+         * manifest generator walks all of `assets/`. Deleted rather than
+         * ignored — 265KB, and the honest fix for an asset with no reader is
+         * not to route around it.
          */
         globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,json,webmanifest,woff2}'],
         /**

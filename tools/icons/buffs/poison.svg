@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Poisoned">
+  <title>Poisoned</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="25" cy="40" r="15" fill="#7fc06a"/>
+    <circle cx="45" cy="24" r="10" fill="#3f7a41"/>
+    <circle cx="47" cy="46" r="6" fill="#3f7a41"/>
+  </g>
+</svg>

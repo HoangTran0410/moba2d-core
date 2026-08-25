@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Taunted">
+  <title>Taunted</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="40" cy="38" r="17" fill="#f0913c"/>
+    <circle cx="40" cy="38" r="7" fill="#e2603f"/>
+    <path d="M6 14 C6 32 14 38 22 38" fill="none" stroke-width="9"/>
+    <path d="M6 14 C6 32 14 38 22 38" fill="none" stroke="#e2603f" stroke-width="4"/>
+    <path d="M14 30 L24 38 L14 46 Z" fill="#e2603f"/>
+  </g>
+</svg>

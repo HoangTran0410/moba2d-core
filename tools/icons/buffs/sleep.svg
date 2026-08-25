@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Asleep">
+  <title>Asleep</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8 34 H32 L8 56 H32" fill="none" stroke-width="9"/>
+    <path d="M8 34 H32 L8 56 H32" fill="none" stroke="#6fa8e0" stroke-width="4"/>
+    <path d="M36 8 H56 L36 26 H56" fill="none" stroke-width="9"/>
+    <path d="M36 8 H56 L36 26 H56" fill="none" stroke="#dff4f7" stroke-width="4"/>
+  </g>
+</svg>

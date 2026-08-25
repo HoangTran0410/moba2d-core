@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Airborne">
+  <title>Airborne</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="32" cy="55" rx="13" ry="4" fill="#6b3f9c"/>
+    <path d="M32 6 L50 28 H40 V44 H24 V28 H14 Z" fill="#b07bd8"/>
+  </g>
+</svg>

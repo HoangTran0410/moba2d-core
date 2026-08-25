@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Feared">
+  <title>Feared</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M32 4 L39 18 L54 13 L49 28 L61 36 L47 41 L50 57 L36 50 L28 61 L24 46 L9 48 L16 34 L4 25 L19 21 L18 6 Z" fill="#6b3f9c"/>
+    <rect x="28" y="18" width="8" height="18" rx="4" fill="#eef2f6"/>
+    <circle cx="32" cy="43" r="4.5" fill="#eef2f6"/>
+  </g>
+</svg>

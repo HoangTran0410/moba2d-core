@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Untargetable">
+  <title>Untargetable</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="32" cy="32" r="19" fill="none" stroke-width="9"/>
+    <circle cx="32" cy="32" r="19" fill="none" stroke="#4ec3cf" stroke-width="4"/>
+    <path d="M32 4 V14 M32 50 V60 M4 32 H14 M50 32 H60" stroke="#4ec3cf" stroke-width="4"/>
+    <path d="M14 50 L50 14" stroke="#12171d" stroke-width="10"/>
+    <path d="M14 50 L50 14" stroke="#e2603f" stroke-width="5"/>
+  </g>
+</svg>

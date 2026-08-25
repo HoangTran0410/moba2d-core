@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Basic attack">
+  <title>Basic attack</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 26 C6 48 18 60 40 60" fill="none" stroke-width="12"/>
+    <path d="M6 26 C6 48 18 60 40 60" fill="none" stroke="#e0b356" stroke-width="6"/>
+    <path d="M58 4 L60 18 L30 48 L18 46 L16 34 Z" fill="#dff4f7"/>
+    <path d="M12 30 L34 52 L26 60 L4 38 Z" fill="#8a6320"/>
+    <path d="M20 38 L26 44" stroke="#12171d" stroke-width="3"/>
+  </g>
+</svg>

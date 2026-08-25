@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Hasted">
+  <title>Hasted</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 12 L30 32 L12 52" fill="none" stroke-width="10"/>
+    <path d="M12 12 L30 32 L12 52" fill="none" stroke="#e0b356" stroke-width="5"/>
+    <path d="M34 12 L52 32 L34 52" fill="none" stroke-width="10"/>
+    <path d="M34 12 L52 32 L34 52" fill="none" stroke="#8a6320" stroke-width="5"/>
+  </g>
+</svg>

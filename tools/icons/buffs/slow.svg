@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Slowed">
+  <title>Slowed</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 12 L12 32 L30 52" fill="none" stroke-width="10"/>
+    <path d="M30 12 L12 32 L30 52" fill="none" stroke="#6fa8e0" stroke-width="5"/>
+    <path d="M52 12 L34 32 L52 52" fill="none" stroke-width="10"/>
+    <path d="M52 12 L34 32 L52 52" fill="none" stroke="#dff4f7" stroke-width="5"/>
+  </g>
+</svg>

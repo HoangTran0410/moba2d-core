@@ -223,17 +223,15 @@ Contributions are welcome. What you need to know:
 
 This is a non-commercial, unofficial hobby project. It is **not affiliated with, authorised by, or endorsed by [Riot Games](https://www.riotgames.com/)**, and it generates no revenue.
 
-The engine's own code is original, and so is everything on the screens core draws for itself. The menu wordmark is type in this project's own palette, the menu background is two CSS gradients, and the mark on the loading screen, the favicons and the PWA icons are all generated from `assets/images/others/logo.svg`, which is a hexagon this repository drew. Nothing there is borrowed any more.
+The engine's own code is original, and so is every pixel it draws. The menu wordmark is type in this project's own palette, the menu background is two CSS gradients, and the mark on the loading screen, the favicons and the PWA icons are all generated from `assets/images/others/logo.svg`, which is a hexagon this repository drew.
 
-What is left is **gameplay art inherited from the project this engine grew out of**, listed here rather than left for someone to discover:
+**The gameplay art it inherited is gone too.** Twenty status-effect glyphs, the basic-attack icon and the mouse cursor came across from the project this engine grew out of and are now redrawn from source this repository owns: `tools/icons/**/*.svg`, rasterised by `node scripts/render-icons.mjs`. The three `assets/images/screenshots/*.jpg` were deleted rather than replaced — nothing in the game rendered them, and they had been shipping into every build regardless.
 
-| File                                                    | What it is                         |
-| ------------------------------------------------------- | ---------------------------------- |
-| `assets/images/buffs/stasis.png`, `buffs/invisible.png` | Riot ability icons                 |
-| `assets/images/spells/basic_attack.png`                 | a Riot-framed ability icon         |
-| `assets/images/screenshots/*.jpg`                       | screenshots showing Riot champions |
-| `assets/cursors/normal.cur`                             | the League of Legends cursor       |
+Two things about that set are worth knowing before changing it:
 
-Replacing these is open work. Champion art, ability icons and champion names for the 58-champion roster are **not** here at all: they live in the separate content pack, which is where Riot-derived material belongs — and the packs screen names that pack for what it is, because a player deciding whether to install something has to know what it contains.
+- **A buff icon is a mechanic's icon, not a pack's.** `StatusFlags` is an engine vocabulary — a stun is core's stun whoever cast it — so this set is shared and there is no override. `tests/content/buffIcons.test.ts` enforces it, after two buffs were caught pointing at content art. A pack needing a status core does not have ships its own `Buff` subclass, carrying its own art, through `ContentApi` — no new mechanism required.
+- **The SVG is the source.** Edit `tools/icons/`, re-run the renderer, commit both halves. `scripts/render-icons.mjs --check` fails when they drift, and the glyphs share one palette and one stroke convention so the set keeps looking like a set.
 
-League of Legends and all related trademarks, characters, artwork and other assets are the property of Riot Games. This project claims no ownership over that intellectual property, and asks that no one treat the files above as licensed for reuse.
+Champion art, ability icons and champion names for the 58-champion roster are **not** here at all: they live in the separate content pack, which is where Riot-derived material belongs — and the packs screen names that pack for what it is, because a player deciding whether to install something has to know what it contains.
+
+League of Legends and all related trademarks, characters, artwork and other assets are the property of Riot Games. This project claims no ownership over that intellectual property. None of it is in this repository — that is what the section above is for.
