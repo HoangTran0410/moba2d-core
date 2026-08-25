@@ -81,6 +81,7 @@
     "e2e": "node tests/e2e/drive-game.mjs",
     "e2e:hud": "node tests/e2e/hud-mana.mjs",
     "e2e:shop": "node tests/e2e/drive-shop-hud.mjs",
+    "e2e:inventory": "node tests/e2e/drive-inventory-drag.mjs /tmp/invdrag",
     "e2e:shop-touch": "node tests/e2e/drive-shop-touch.mjs",
     "e2e:camps": "node tests/e2e/verify-camp-spread.mjs",
     "e2e:attacks": "node tests/e2e/drive-basic-attacks.mjs",

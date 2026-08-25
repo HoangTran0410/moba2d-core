@@ -9,14 +9,88 @@
  * this layout; the desktop-specific behaviour in it is `mouseover`/`mouseout`
  * for the tooltip, everything else is the shared interaction layer.
  */
-import { inject } from 'vue';
+import { inject, ref } from 'vue';
 import FormatUtils from '@/utils/format.utils';
+import { InventoryDrag } from './inventoryDrag';
 import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
 
 defineProps<{ state: HudState }>();
 
 const hud = inject<HudInteractions>('hud')!;
+
+/**
+ * Rearranging the bag by dragging one slot onto another — see
+ * `inventoryDrag.ts` for why the gesture itself lives in a module and what the
+ * threshold is protecting.
+ *
+ * The state machine is plain, so `bump` is what tells Vue a highlight moved:
+ * incrementing a ref is cheaper and far less surprising than making a class
+ * with a `hypot` in it reactive, and the only thing the template reads out of
+ * it is `drag.over`.
+ */
+const drag = new InventoryDrag();
+const bump = ref(0);
+
+/**
+ * Which bag slot is under a screen point, or `null`.
+ *
+ * `elementFromPoint` rather than `@pointerenter` on each slot: a pointer that
+ * has been captured — which is every touch drag — stops firing enter and leave
+ * on anything it passes over, so the per-slot handlers would light nothing on
+ * a phone. One hit test on the point the browser already gave us answers the
+ * same question in both worlds.
+ */
+const slotAt = (x: number, y: number): number | null => {
+  const under = document.elementFromPoint(x, y)?.closest('[data-item-slot]');
+  const index = under?.getAttribute('data-item-slot');
+  return index === null || index === undefined ? null : Number(index);
+};
+
+const onSlotDown = (slot: number, event: PointerEvent): void => {
+  // Captured on the slot itself so the drag survives the pointer leaving the
+  // bar — without it a release over the canvas never reaches this component
+  // and the gesture hangs, holding a highlight for ever.
+  (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+  drag.begin(slot, event.clientX, event.clientY);
+  bump.value++;
+};
+
+const onSlotMove = (event: PointerEvent): void => {
+  if (drag.from === null) return;
+  drag.moveTo(event.clientX, event.clientY);
+  drag.hover(slotAt(event.clientX, event.clientY));
+  bump.value++;
+};
+
+/**
+ * One release, two meanings. A tap opens the shop — which is how a player
+ * reaches it from the bar at all — and a real drag moves the item.
+ * `Champion.moveItem` refuses the pairs that are not moves (two empty slots,
+ * a slot that is not one), so nothing here re-decides that.
+ */
+const onSlotUp = (event: PointerEvent): void => {
+  const gesture = drag.end(slotAt(event.clientX, event.clientY));
+  bump.value++;
+  if (gesture.kind === 'open') hud.openShop();
+  else if (gesture.kind === 'move') hud.moveItem(gesture.from, gesture.to);
+};
+
+const onSlotCancel = (): void => {
+  drag.cancel();
+  bump.value++;
+};
+
+/** The drop highlight. `bump` is read so Vue re-evaluates when the drag moves. */
+const dropTarget = (slot: number): boolean => {
+  void bump.value;
+  return drag.over === slot;
+};
+
+const lifted = (slot: number): boolean => {
+  void bump.value;
+  return drag.dragging && drag.from === slot;
+};
 </script>
 
 <template>
@@ -185,10 +259,16 @@ const hud = inject<HudInteractions>('hud')!;
       every key under the player's hand; a fixed grid is a shape they learn the
       position of.
 
-      Clicking a slot opens the shop, which is the only place an item can be
-      sold, so the row is also how a player finds it. `@touchend.prevent`
-      beside `@click` for the reason every control here needs it: `GameScene`
-      cancels touches on the page, so a thumb never synthesises the click.
+      A slot answers two gestures. **Tapping** one opens the shop — the only
+      place an item can be sold, so the row is also how a player finds it —
+      and **dragging** one onto another swaps them, which is how the player
+      decides which item sits under which key. `inventoryDrag.ts` is where a
+      tap and a drag are told apart, and why the threshold is what it is.
+
+      Pointer events rather than `@click` + `@touchend.prevent`: `dragstart`
+      never fires under a thumb, and pointer events are the one path a mouse
+      and a finger both travel. `touch-action: none` on `.item-slot` is what
+      stops the browser claiming the drag as a scroll.
     -->
     <div class="inventory">
       <div class="items">
@@ -196,13 +276,33 @@ const hud = inject<HudInteractions>('hud')!;
           v-for="(item, index) of state.items"
           :key="index"
           class="item-slot"
-          :class="{ filled: item.filled, sustaining: item.sustaining }"
-          @click="hud.openShop()"
-          @touchend.prevent="hud.openShop()"
+          :data-item-slot="index"
+          :class="{
+            filled: item.filled,
+            sustaining: item.sustaining,
+            lifted: lifted(index),
+            'drop-target': dropTarget(index),
+          }"
+          @pointerdown="onSlotDown(index, $event)"
+          @pointermove="onSlotMove($event)"
+          @pointerup="onSlotUp($event)"
+          @pointercancel="onSlotCancel()"
           @mouseover="item.filled && hud.mouseover(item, $event)"
           @mouseout="hud.mouseout(item)"
         >
-          <img v-if="item.image" crossorigin="anonymous" :src="item.image" alt="item" />
+          <!-- `draggable="false"` is load-bearing, not tidiness. An `<img>` is
+               natively draggable, so the browser starts its own HTML5 drag on
+               the icon the moment the pointer travels — and fires
+               `pointercancel` at us to say it has taken the gesture. Measured:
+               the pointer stream was `pointerdown, pointermove, pointercancel`
+               and the swap never happened. -->
+          <img
+            v-if="item.image"
+            crossorigin="anonymous"
+            draggable="false"
+            :src="item.image"
+            alt="item"
+          />
           <span v-if="item.hotKey" class="hotKey">{{ item.hotKey }}</span>
           <div v-if="item.showCoolDown">
             <div class="cooldown-overlay" :style="'height:' + item.coolDownPercent + '%'"></div>

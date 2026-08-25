@@ -1801,6 +1801,36 @@ body.touch-ui .corner-btn {
   border: 1px solid #fff2;
   border-radius: 3px;
   cursor: pointer;
+  /* The slot is dragged, so the browser must not claim the gesture first.
+     `touch-action` stops it being read as a scroll or a pan — without it the
+     pointermove stream ends the moment a finger travels far enough to look
+     like scrolling, which is a pixel or two before it looks like a drag.
+     `user-select` stops a drag across the row selecting the hotkey letters.
+     The third half of this, `draggable="false"` on the icon, has to be an
+     attribute rather than CSS — see `DesktopHudView.vue`. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.item-slot img {
+  -webkit-user-drag: none;
+}
+
+/* The slot the drag started from, while it is in flight. Dimmed rather than
+   emptied: the item has not gone anywhere yet, and a slot that blanks on
+   pickup makes a cancelled drag look like a loss. */
+.item-slot.lifted {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* Where it would land. Gold to match the bag's own accent, and a lift rather
+   than a colour change alone so it reads at a glance in a fight. */
+.item-slot.drop-target {
+  border-color: #ffd98a;
+  box-shadow: 0 0 8px #ffd98a88;
+  transform: translateY(-2px);
 }
 
 .item-slot.filled {
