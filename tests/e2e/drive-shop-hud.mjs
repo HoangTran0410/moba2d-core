@@ -149,11 +149,61 @@ await guard(async () => {
   report.bagRows = bagRows;
   check('the bag lists what is held', bagRows === 1, `${bagRows} rows`);
 
-  // Core alone installs no pack that sells anything, so the empty state is the
-  // honest thing to see here — and it must be a sentence, not a blank panel.
+  // Whatever the installed packs happen to sell — which is nothing at all if
+  // core is running alone, and that state has to read as a sentence rather
+  // than a blank panel.
+  const cards = await page.locator('.shop-card').count();
   const empty = await page.locator('.shop-stock .shop-empty').count();
-  report.emptyStockNotice = empty;
-  check('an empty shelf says so', empty === 1, `${empty} notices`);
+  report.shopCards = cards;
+  check(
+    'the shelf either has stock or says it has none',
+    cards > 0 || empty === 1,
+    `${cards} cards, ${empty} notices`
+  );
+
+  if (cards > 0) {
+    // Cheapest first, so a browse reads as a build order.
+    const costs = await page.locator('.shop-card-cost').allTextContents();
+    const numbers = costs.map(text => Number(text.replace(/[^0-9]/g, '')));
+    report.shopCosts = numbers;
+    check(
+      'stock is listed cheapest first',
+      numbers.every((cost, i) => i === 0 || cost >= numbers[i - 1]),
+      numbers.join(', ')
+    );
+
+    // A real purchase, through the real button. The gold has to come out and
+    // the item has to arrive in the bag — a card that looks affordable and a
+    // purchase that does nothing is the failure this whole panel is arranged
+    // to prevent.
+    const affordable = page.locator('.shop-card:not(.blocked)').first();
+    const affordableCount = await page.locator('.shop-card:not(.blocked)').count();
+    report.affordableCards = affordableCount;
+    check('something is affordable at the fountain', affordableCount > 0, `${affordableCount}`);
+
+    const goldBefore = await page.evaluate(
+      () => window.__lol2d.scene.oScene.game.player.wallet.balance
+    );
+    const price = Number(
+      (await affordable.locator('.shop-card-cost').textContent())?.replace(/[^0-9]/g, '')
+    );
+    await affordable.click();
+    await page.waitForTimeout(300);
+
+    const bought = await page.evaluate(() => {
+      const player = window.__lol2d.scene.oScene.game.player;
+      return {
+        gold: player.wallet.balance,
+        held: player.items.filter(Boolean).length,
+      };
+    });
+    report.purchase = { goldBefore, price, ...bought };
+    check(
+      'buying takes the price and fills a slot',
+      bought.gold <= goldBefore - price && bought.held === 2,
+      JSON.stringify(report.purchase)
+    );
+  }
 
   await page.screenshot({
     path: `${OUT}-panel.png`,
@@ -174,10 +224,23 @@ await guard(async () => {
   });
   await page.waitForTimeout(300);
   const warnedAway = await page.locator('.shop-warning').count();
+  const sellRows = await page.locator('.shop-sell').count();
   const blockedAway = await page.locator('.shop-sell.blocked').count();
+  const blockedCards = await page.locator('.shop-card.blocked').count();
+  const totalCards = await page.locator('.shop-card').count();
   report.warningAwayFromFountain = warnedAway;
+  report.awayFromFountain = { sellRows, blockedAway, blockedCards, totalCards };
   check('away from it, the panel says why', warnedAway === 1, `${warnedAway} warnings`);
-  check('and the bag refuses', blockedAway === 1, `${blockedAway} blocked`);
+  check(
+    'and every row in the bag refuses',
+    sellRows > 0 && blockedAway === sellRows,
+    `${blockedAway} of ${sellRows} blocked`
+  );
+  check(
+    'and nothing on the shelf can be bought',
+    blockedCards === totalCards,
+    `${blockedCards} of ${totalCards} blocked`
+  );
 
   // Escape closes the shop and leaves the config panel shut.
   await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
