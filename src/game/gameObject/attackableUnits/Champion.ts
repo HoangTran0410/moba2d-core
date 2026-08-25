@@ -4,6 +4,7 @@ import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
 import BasicAttackController from '@/game/combat/BasicAttackController';
 import { uuidv4 } from '@/utils/index';
+import { HeldItem, INVENTORY_SIZE, type ItemStatKey } from '@/game/items/Item';
 import AttackableUnit from './AttackableUnit';
 import type {
   AttackableUnitOptions,
@@ -253,11 +254,34 @@ export default class Champion extends AttackableUnit {
   passive: Spell | null = null;
 
   /**
-   * Whether `passive` has been armed for the life the champion is currently
-   * living. Reset by death, not by respawn, so a champion that never dies is
-   * armed once and a champion that dies twice is armed three times.
+   * What this champion is carrying. Fixed length, `null` where empty — a slot
+   * is a place, so a sparse array would make "the third slot" mean different
+   * things before and after the second one is sold.
+   *
+   * A **parallel row to `spells[]`, never part of it.** See
+   * `game/items/Item.ts` for the whole reasoning; the short version is that
+   * the kit array is the hotkey layout the loadout editor rearranges, and an
+   * item is not something a player slots into `W`.
    */
-  private _passiveArmed = false;
+  readonly items: (HeldItem | null)[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+
+  /**
+   * Which passives have been armed for the life this champion is currently
+   * living — the champion's own and every held item's, in one set because they
+   * are one mechanism.
+   *
+   * Cleared by death, not by respawn, so a champion that never dies is armed
+   * once and one that dies twice is armed three times.
+   *
+   * Keyed by the `Spell` instance rather than by slot, because a slot is not
+   * what a passive belongs to — moving an item from slot 3 to slot 5 must not
+   * re-arm it, and two items in one slot over a match are two passives.
+   * `unequipItem` takes its entry back out, which is what makes re-equipping
+   * the *same* instance arm it again: unequipping ran `removeSpell` on it, so
+   * its buffs and listeners are already gone and an item put back on with a
+   * stale "already armed" record would sit there doing nothing.
+   */
+  private readonly _armedPassives = new Set<Spell>();
 
   constructor({
     game,
@@ -342,7 +366,9 @@ export default class Champion extends AttackableUnit {
     if (this.passive?.constructor === PassiveClass) return;
     this.removeSpell(this.passive ?? undefined);
     this.passive = PassiveClass ? new PassiveClass(this) : null;
-    this._passiveArmed = false;
+    // Nothing to clear from `_armedPassives`: it is keyed by instance, and the
+    // outgoing instance is gone. The incoming one has never been armed, so the
+    // next frame arms it.
   }
 
   private applyAttackTuning(attack: ChampionAttackTuning): void {
@@ -359,7 +385,14 @@ export default class Champion extends AttackableUnit {
     // champions built with Object.create never run a field initializer.
     this.recall?.update();
     this.passive?.update();
-    this.armPassive();
+    // `?? []` for the same reason the `?.` above exists: a prototype-only
+    // champion built with `Object.create` never ran a field initializer, so
+    // `items` is `undefined` rather than empty.
+    for (const item of this.items ?? []) {
+      item?.passive?.update();
+      item?.active?.update();
+    }
+    this.armPassives();
   }
 
   /**
@@ -382,17 +415,21 @@ export default class Champion extends AttackableUnit {
    * else — one that refuses its own cast stays visibly unarmed rather than
    * half-running.
    */
-  private armPassive(): void {
-    const passive = this.passive;
-    if (!passive) return;
+  private armPassives(): void {
     if (this.isDead) {
-      this._passiveArmed = false;
+      this._armedPassives?.clear();
       return;
     }
-    if (this._passiveArmed) return;
+    this.armPassive(this.passive);
+    for (const item of this.items ?? []) this.armPassive(item?.passive ?? null);
+  }
+
+  /** One passive, armed if it is not already armed for this life. */
+  private armPassive(passive: Spell | null): void {
+    if (!passive || this._armedPassives?.has(passive)) return;
 
     const here = Object.freeze({ x: this.position.x, y: this.position.y });
-    this._passiveArmed = true;
+    this._armedPassives?.add(passive);
     passive.press(
       Object.freeze({
         spellId: passive.id,
@@ -415,6 +452,10 @@ export default class Champion extends AttackableUnit {
     this.spells.forEach(spell => spell.drawVfx());
     this.recall?.drawVfx();
     this.passive?.drawVfx();
+    for (const item of this.items ?? []) {
+      item?.passive?.drawVfx();
+      item?.active?.drawVfx();
+    }
   }
 
   /**
@@ -468,6 +509,11 @@ export default class Champion extends AttackableUnit {
     // A passive left behind keeps its buffs and its event listeners after the
     // champion carrying it is gone — the same leak `recall` is retired to avoid.
     this.removeSpell(this.passive ?? undefined);
+    // Items go the same way, and through `unequipItem` rather than by clearing
+    // the array: the stat grant has to come back off too, and a champion
+    // removed mid-match with a live modifier still on their `Stats` is a leak
+    // nothing else would ever notice.
+    for (let slot = 0; slot < (this.items?.length ?? 0); slot++) this.unequipItem(slot);
   }
 
   /**
@@ -490,6 +536,55 @@ export default class Champion extends AttackableUnit {
   private removeSpell(spell?: Spell) {
     spell?.deactivate();
     spell?.onRemoved?.();
+  }
+
+  /**
+   * Puts an item in a slot, taking whatever was there out first.
+   *
+   * `passive` and `active` arrive as already-constructed spells rather than as
+   * classes, because resolving a *local pack id* to a class is `preset.ts`'s
+   * job and nothing in this file may reach the content registry — the same
+   * split that keeps `applyPreset` taking classes and not ids.
+   *
+   * Returns the item that was displaced, or null. A caller putting an item
+   * into an occupied slot has to decide what happens to the old one (sold,
+   * dropped, destroyed), and returning it is how this stays out of that
+   * decision.
+   */
+  equipItem(item: HeldItem, slot: number): HeldItem | null {
+    if (!this.items || slot < 0 || slot >= this.items.length) return null;
+    const displaced = this.unequipItem(slot);
+    this.items[slot] = item;
+    this.stats.addModifier(item.modifier);
+    // Not armed here. `armPassives` runs on the next frame and arms it then,
+    // which is the same path a champion's own passive takes — and the same
+    // path a respawn takes. One arming rule, one place.
+    return displaced;
+  }
+
+  /**
+   * Takes the item in a slot back off, and everything it granted with it.
+   *
+   * The stat modifier, both spells and the armed-passive record all have to go
+   * together. Dropping any one of them is a champion who sold an item and kept
+   * its armour, or kept its on-hit listener firing off an item they no longer
+   * own — and neither shows up anywhere except as a number that will not add
+   * up much later.
+   */
+  unequipItem(slot: number): HeldItem | null {
+    const item = this.items?.[slot];
+    if (!item) return null;
+    this.items[slot] = null;
+    this.stats.removeModifier(item.modifier);
+    if (item.passive) this._armedPassives?.delete(item.passive);
+    this.removeSpell(item.passive ?? undefined);
+    this.removeSpell(item.active ?? undefined);
+    return item;
+  }
+
+  /** The first empty slot, or -1. What a shop asks before it takes anyone's gold. */
+  firstEmptyItemSlot(): number {
+    return this.items?.findIndex(slot => slot === null) ?? -1;
   }
 
   /** A champion fights through its standing order, so a taunt writes that. */

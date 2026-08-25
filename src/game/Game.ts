@@ -1,5 +1,5 @@
 import type { ActiveMap, NeutralSlot, SpawnSlot, StructureSlot } from '@/content/ContentPack';
-import { HotKeys, SpellHotKeys } from './constants';
+import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
 import Champion from './gameObject/attackableUnits/Champion';
@@ -164,6 +164,14 @@ export default class Game {
   inGameHUD!: InGameHUD;
   player!: Champion;
   spellInputController!: SpellInputController;
+  /**
+   * The inventory's own input, a second instance of the same controller. See
+   * `ItemHotKeys` for why the row is parallel to the kit rather than part of
+   * it; the consequence here is that an item active gets press, hold-and-
+   * release and charging for free, and that neither controller can see the
+   * other's slots.
+   */
+  itemInputController!: SpellInputController;
   minionSpawner!: MinionSpawner;
   touchControls!: TouchControls;
   minimap!: Minimap;
@@ -337,6 +345,20 @@ export default class Game {
         // decides which, and every spell downstream sees an ordinary context.
         const aim = this.touchAim.get(slot) ?? this.worldMouse;
         return this.createSpellContext(spell, this.player, aim);
+      },
+    });
+
+    this.itemInputController = new SpellInputController({
+      keyBindings: ItemHotKeys,
+      getSpell: slot => this.player.items[slot]?.active ?? undefined,
+      createContext: (_spell, slot) => {
+        const spell = this.player.items[slot]?.active;
+        if (!spell) return undefined;
+        // No `touchAim` lookup: that map is keyed by *kit* slot, and reading it
+        // here would have item slot 2 aim at whatever the thumb last did to the
+        // champion's W. Item actives are mouse- and key-aimed until the touch
+        // layer grows a row of its own.
+        return this.createSpellContext(spell, this.player, this.worldMouse);
       },
     });
 
@@ -548,6 +570,7 @@ export default class Game {
     // trails the drag by a frame.
     this.touchControls.update();
     this.spellInputController.update(deltaTime);
+    this.itemInputController.update(deltaTime);
   }
 
   update() {
@@ -1090,9 +1113,11 @@ export default class Game {
     // B: go home. Not one of SpellHotKeys' letters, so it never steals a cast.
     if (keyCode === HotKeys.B && !repeated) this.recall();
     this.spellInputController.keyDown(keyCode, repeated);
+    this.itemInputController.keyDown(keyCode, repeated);
   }
 
   keyReleased(keyCode: number) {
     this.spellInputController.keyUp(keyCode);
+    this.itemInputController.keyUp(keyCode);
   }
 }

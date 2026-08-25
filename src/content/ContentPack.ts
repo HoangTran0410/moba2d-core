@@ -136,6 +136,41 @@ export function isSpellLoader(source: SpellSource): source is SpellLoader {
   return (source as unknown as Record<symbol, unknown>)[SPELL_LOADER_MARK] === true;
 }
 
+/**
+ * An item, as a pack declares it.
+ *
+ * Three optional grants and none of them is a new mechanism: `stats` is a
+ * `StatsModifier`, `passive` is a spell armed once per life exactly like
+ * `ChampionEntry.passive`, and `active` is a spell bound to a key exactly like
+ * a kit slot. See `game/items/Item.ts` for why an item is a *parallel* row
+ * rather than a longer kit.
+ *
+ * An item with none of the three is legal and inert — a component a bigger
+ * item is built out of is exactly that, and refusing it here would mean a pack
+ * could not express a build path.
+ */
+export interface ItemDef {
+  /** A bare identifier, local to this pack. */
+  id: string;
+  name: string;
+  /** Pack-relative asset key. Required: an item with no icon is unbuyable in a shop. */
+  icon: string;
+  /** What it costs. `0` is legal — a starting item, or a quest reward. */
+  cost: number;
+  /** One line, player-facing. What holding it does. */
+  description?: string;
+  /**
+   * Flat bonuses while held. Keys are `ItemStatKey` — an allow-list, not every
+   * field on `StatsModifier`; see that constant's own doc comment for why
+   * `health` and `size` are deliberately not on it.
+   */
+  stats?: Record<string, number>;
+  /** Local spell id, armed once per life while this is held. */
+  passive?: string;
+  /** Local spell id, bound to this item's inventory hotkey. */
+  active?: string;
+}
+
 export interface ChampionEntry {
   id: string;
   name: string;
@@ -416,6 +451,12 @@ export interface ContentPackData {
   champions?: ChampionEntry[];
   /** Keyed by *local* spell id — the same keys as `ContentPackCode.spells`. */
   spellDisplay?: Record<string, SpellDisplayData>;
+  /**
+   * Keyed by *local* item id. Absent for a pack that ships no items, which is
+   * every pack that existed before items did — the field is optional for the
+   * same reason `maps` is.
+   */
+  items?: Record<string, ItemDef>;
   monsters?: Record<string, MonsterDef>;
   maps?: MapDefinition[];
 }
