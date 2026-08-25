@@ -245,7 +245,11 @@ function buildSpells(player: any): SpellDisplay[] {
         // lockout, which is what every cooldown but the swing timer is.
         lockedOut: currentCooldown > 0 && spell?.cooldownLocksOut !== false,
         small: isInternalSpell || isSummonerSpell,
-        canCast: player.canCast && !player.isDead,
+        // Per spell, not per champion: a spell that declines the crowd-control
+        // rule (`Spell.castableWhileControlled` — a cleanse) is pressable while
+        // its owner is stunned, and greying it out then would be the bar lying
+        // about the one moment it matters.
+        canCast: (player.canCast || spell?.castableWhileControlled === true) && !player.isDead,
         hotKey,
         stackCount,
         manaCost,
@@ -320,7 +324,10 @@ function buildItems(player: any): ItemSlotDisplay[] {
       coolDownPercent: coolDown > 0 ? Math.min((currentCooldown / coolDown) * 100, 100) : 0,
       coolDownText: Math.ceil(currentCooldown / 1000),
       showCoolDown: currentCooldown > 0,
-      canCast: !!active && !!player.canCast && !player.isDead,
+      canCast:
+        !!active &&
+        (!!player.canCast || active?.castableWhileControlled === true) &&
+        !player.isDead,
       sustaining: active?.isSustaining === true,
     });
   }

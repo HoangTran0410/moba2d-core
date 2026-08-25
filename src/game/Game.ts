@@ -920,7 +920,13 @@ export default class Game {
       // charge would be lying about why it cannot be pressed.
       manaCost: spell.effectiveManaCost,
       affordable: this.player.stats.mana.value >= spell.effectiveManaCost,
-      castable: this.player.canCast && !this.player.isDead && !spell.disabled,
+      // `castableWhileControlled` on purpose: a cleanse is pressable while its
+      // owner is stunned, and a button greyed out then would be lying at the
+      // one moment the item exists for.
+      castable:
+        (this.player.canCast || spell.castableWhileControlled) &&
+        !this.player.isDead &&
+        !spell.disabled,
       charging: spell.state === 'CHARGING',
       channeling: spell.state === 'CHANNELING',
       // `channelProgress` is `Recall`'s own; a spell without one is not

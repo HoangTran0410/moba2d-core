@@ -197,6 +197,34 @@ export default class Spell {
   }
 
   /**
+   * Whether this spell may be pressed while its caster is crowd-controlled.
+   *
+   * **False for every ability, and that is not negotiable for them.** Every
+   * gate below reads `owner.canCast`, which `Stats.updateActionState` clears
+   * for Stunned, Silenced, Charmed, Feared, Taunted and Suppressed — a stun
+   * that did not stop casting would not be a stun.
+   *
+   * It exists for the one shape that is the exact opposite: an effect whose
+   * *purpose* is getting out of crowd control. A Quicksilver-style cleanse
+   * that refuses while you are stunned is an item that does nothing on the
+   * only occasion anybody buys it, and there is no way for a pack to express
+   * that without core saying it may.
+   *
+   * It buys past crowd control **and nothing else** — death, cooldown, mana,
+   * health cost and `checkCastCondition` all still apply. This is not "this
+   * spell ignores the rules"; it is one rule, named, that a spell can decline.
+   */
+  castableWhileControlled = false;
+
+  /**
+   * The caster can act, or this spell is one of the few allowed to act anyway.
+   * See `castableWhileControlled`.
+   */
+  protected get casterMayCast(): boolean {
+    return this.owner.canCast || this.castableWhileControlled;
+  }
+
+  /**
    * Off cooldown, paid for, and nothing about the caster in the way — "press
    * this key right now and something happens".
    *
@@ -212,7 +240,7 @@ export default class Spell {
       this.state === SpellState.READY &&
       !!this.owner &&
       !this.owner.isDead &&
-      this.owner.canCast &&
+      this.casterMayCast &&
       this.canAffordMana(this.manaCost) &&
       this.owner.stats.health.value >= this.healthCost
     );
@@ -301,7 +329,7 @@ export default class Spell {
     if (
       this.disabled ||
       this.owner.isDead ||
-      !this.owner.canCast ||
+      !this.casterMayCast ||
       !this.canAffordMana(this.manaCost) ||
       this.owner.stats.health.value < this.healthCost ||
       !this.checkCastCondition()
