@@ -420,6 +420,35 @@ await guard(async () => {
   check('so does the sell button', blockedSell === 1, `${blockedSell} blocked`);
   check('and the reason is the shop’s own sentence', why === 'Phải đứng ở bệ đá', `"${why}"`);
 
+  // ------------------------------------------- a corpse cannot sell either
+  //
+  // The case that was invisible while the Bán button gated on `canShop`
+  // alone: standing on your own platform satisfies that rule and being dead
+  // still refuses the sale, so the button looked enabled and did nothing.
+  // `sellRefusalFor` is the seam that answers both, and `SellRow` carries its
+  // sentence the way `ShopRow` carries `refusalFor`'s.
+  await page.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    game.player.position.set(game.player.position.x - 4_000, game.player.position.y);
+  });
+  await page.waitForTimeout(300);
+  const homeAgain = await page.locator('.shop-warning').count();
+  const sellableAgain = await page.locator('.shop-sell.blocked').count();
+  check('back on the platform the warning clears', homeAgain === 0, `${homeAgain} warnings`);
+  check('and the sell button comes back', sellableAgain === 0, `${sellableAgain} blocked`);
+
+  await page.evaluate(() => window.__lol2d.scene.oScene.game.player.takeDamage(99_999));
+  await page.waitForTimeout(300);
+  const deadAtFountain = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.isDead === true
+  );
+  const deadBlockedSell = await page.locator('.shop-sell.blocked').count();
+  const deadReason = (await page.locator('.shop-sell-why').first().textContent())?.trim();
+  report.dead = { deadAtFountain, deadBlockedSell, deadReason };
+  check('the champion is really dead', deadAtFountain, `isDead=${deadAtFountain}`);
+  check('a corpse’s sell button refuses', deadBlockedSell === 1, `${deadBlockedSell} blocked`);
+  check('and says which rule refused it', deadReason === 'Đang chết', `"${deadReason}"`);
+
   // Escape closes the shop and leaves the config panel shut.
   await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
   await page.waitForTimeout(300);

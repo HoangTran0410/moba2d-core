@@ -28,25 +28,22 @@
  * cost. Selecting and transacting are now different gestures: a tile opens
  * this pane, and only the labelled button here moves anything.
  *
- * ## It still decides nothing
+ * ## It decides nothing, on either half
  *
  * `row.refusal` is the shop's own answer and `row.reason` is its sentence;
- * this file reads both and computes neither. The one gate written here is the
- * sell button's, which reads `canShop` — the same `ItemShop.atOwnFountain`
- * call `sellItem` itself re-checks, arriving through `HudState`. `ItemShop`
- * exports no `sellRefusalFor` to read instead; if it grows one, this is its
- * caller.
+ * this file reads both and computes neither. The sell button was the one
+ * exception for a while — it gated on `canShop`, which is one of the two rules
+ * `sellItem` applies, so a dead champion standing on their own platform saw a
+ * Bán button that looked enabled and did nothing. That is the same "the button
+ * says yes and the purchase says no" failure the buy side was built against,
+ * reproduced on the other half of the same panel, and it happened precisely
+ * because only one half had a seam to ask. `ItemShop.sellRefusalFor` is now
+ * that seam, and `SellRow` carries its answer and its sentence exactly the way
+ * `ShopRow` carries `refusalFor`'s.
  */
 import { computed } from 'vue';
 import ShopRecipeTree from './ShopRecipeTree.vue';
-import {
-  REFUSAL_TEXT,
-  bagSlotOf,
-  priceLabel,
-  recipeTree,
-  type SellRow,
-  type ShopRow,
-} from './shopState';
+import { bagSlotOf, priceLabel, recipeTree, type SellRow, type ShopRow } from './shopState';
 
 const props = defineProps<{
   /** The item being shown, or null when nothing has been picked yet. */
@@ -54,8 +51,6 @@ const props = defineProps<{
   /** The whole shelf — the build tree is a join of rows onto rows. */
   rows: ShopRow[];
   bag: SellRow[];
-  /** Standing at their own fountain. The sell button's one gate. */
-  canShop: boolean;
 }>();
 
 defineEmits<{ pick: [id: string]; back: []; buy: [id: string]; sell: [slot: number] }>();
@@ -107,14 +102,14 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
         <template v-if="held">
           <button
             class="shop-sell"
-            :class="{ blocked: !canShop }"
+            :class="{ blocked: held.refusal !== null }"
             @click="$emit('sell', held.slot)"
             @touchend.prevent="$emit('sell', held.slot)"
           >
             <span class="shop-sell-label">Bán</span>
             <span class="shop-sell-price"><i class="fa-solid fa-coins"></i>+{{ held.refund }}</span>
           </button>
-          <p v-if="!canShop" class="shop-buy-why">{{ REFUSAL_TEXT.NOT_AT_FOUNTAIN }}</p>
+          <p v-if="held.reason" class="shop-sell-why">{{ held.reason }}</p>
         </template>
 
         <ul v-if="row.stats.length" class="shop-detail-stats">

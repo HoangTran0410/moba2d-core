@@ -32,7 +32,7 @@ const h = await startHarness({
   touch: true,
   deviceScaleFactor: 3,
 });
-const { page, check, report, guard, tap } = h;
+const { page, check, report, guard, tap, touchStart, touchMove, touchEnd } = h;
 
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
@@ -205,59 +205,179 @@ await guard(async () => {
 
   await page.screenshot({ path: `${OUT}-phone.png` });
 
+  // ------------------------------------------ dragging one slot onto another
+  //
+  // The reason this panel has a drag at all. The bar answers "which item sits
+  // under which key" too, but only with a pointer: on a phone the item buttons
+  // are drawn on the *canvas* by `TouchControls.drawItemButtons`, where a drag
+  // already means "aim this item's spell" — the gesture is taken. So this
+  // strip is the only place a phone player can rearrange a bag, which makes a
+  // mouse-only proof of it worth nothing.
+  //
+  // Three things only a real browser under a real finger has, and all three
+  // are what this section is for: pointer capture, which silently stops
+  // `pointerenter` firing on anything the drag crosses; `touch-action`,
+  // without which the browser claims the gesture as a scroll before the
+  // second `pointermove`; and `elementFromPoint`, which is how the drop target
+  // is found at all.
+
+  // Back to the grid first, so a stray `'open'` out of the drag is visible as
+  // the pane appearing rather than hidden by a pane that was already there.
+  const backAgain = await page.locator('.shop-detail-back').boundingBox();
+  await tap(backAgain.x + backAgain.width / 2, backAgain.y + backAgain.height / 2, 80);
+  await page.waitForTimeout(300);
+
+  // A second item, carrying a real active, in a slot that is not next to its
+  // destination: a swap between neighbours would look right even if the drop
+  // target were computed as "the slot the press started on, plus one".
+  await page.evaluate(async () => {
+    const { HeldItem } = await import('/src/game/items/Item.ts');
+    const { packAsset } = await import('/src/game/config/packAsset.ts');
+    const game = window.__lol2d.scene.oScene.game;
+    // The champion's own W, worn as an item active: a real `Spell` with a real
+    // icon, so the button has something to draw and something to press.
+    const kitSpell = game.player.spells[2];
+    const def = { id: 'probe:active', name: 'Gươm Thử', icon: 'spell_basic_attack', cost: 0 };
+    const active = new kitSpell.constructor(game.player);
+    game.player.equipItem(new HeldItem(def, null, active, packAsset(def.icon)), 1);
+  });
+  await page.waitForTimeout(300);
+
+  const centreOf = async slot => {
+    const box = await page.locator(`[data-shop-slot="${slot}"]`).boundingBox();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2, w: box.width, h: box.height };
+  };
+  const source = await centreOf(1);
+  const target = await centreOf(4);
+  report.slotBox = { w: Math.round(source.w), h: Math.round(source.h) };
+  check(
+    'a bag slot is a real target for a thumb',
+    source.w >= 34 && source.h >= 34,
+    JSON.stringify(report.slotBox)
+  );
+
+  await touchStart([{ x: source.x, y: source.y }]);
+  // Stepped, not teleported. One jump leaves the browser with a single
+  // `pointermove`, and what happens to the stream *in between* is this
+  // feature's whole failure mode.
+  for (let step = 1; step <= 8; step++) {
+    await touchMove([
+      {
+        x: source.x + ((target.x - source.x) * step) / 8,
+        y: source.y + ((target.y - source.y) * step) / 8,
+      },
+    ]);
+    await page.waitForTimeout(20);
+  }
+
+  const dropTargets = await page.locator('.shop-bag-slot.shop-drop-target').count();
+  const liftedSlots = await page.locator('.shop-bag-slot.shop-lifted').count();
+  const targetLit = await page.locator('[data-shop-slot="4"].shop-drop-target').count();
+  report.midDrag = { dropTargets, liftedSlots, targetLit };
+  check('the slot under the finger highlights mid-drag', targetLit === 1, `${dropTargets} lit`);
+  check('and the one it came from shows as lifted', liftedSlots === 1, `${liftedSlots} lifted`);
+
+  await touchEnd();
+  await page.waitForTimeout(300);
+
+  const afterDrag = await page.evaluate(() =>
+    window.__lol2d.scene.oScene.game.player.items.map(held => held?.def.id ?? null)
+  );
+  report.afterDrag = afterDrag;
+  check(
+    'the item lands in the slot it was dropped on',
+    afterDrag[4] === 'probe:active' && afterDrag[1] === null,
+    afterDrag.join(',')
+  );
+  // A swap with an empty slot must leave everything else where it was.
+  check('and nothing else moves', afterDrag[0] !== null, afterDrag.join(','));
+
+  const paneAfterDrag = await page.locator('.shop-detail').isVisible();
+  const cleared = await page.locator('.shop-drop-target, .shop-lifted').count();
+  check('a drag is not a tap, so no pane opened', paneAfterDrag === false, `pane=${paneAfterDrag}`);
+  check('and the highlight clears on release', cleared === 0, `${cleared} still marked`);
+
+  // The other half of the same threshold: a press that never travels still
+  // means "show me this one", which is how a phone reaches an item's detail —
+  // and its Bán button, the only way to sell at all — from the bag.
+  //
+  // Slot 0 and not the slot just dragged into: slot 0 holds something the
+  // player *bought*, and the pane is a view of a shelf row. `probe:active` was
+  // equipped straight onto the champion by the block above, so it is in the
+  // bag and on no shelf, and there is no row for a pane to show. Nothing a
+  // content pack can do reaches that state — an item enters a bag only through
+  // `buyItem`, and an installed registry only ever grows — but a driver that
+  // fabricates one has to tap the realistic slot.
+  const bought0 = await centreOf(0);
+  await tap(bought0.x, bought0.y, 80);
+  await page.waitForTimeout(350);
+  const tappedName = (await page.locator('.shop-detail-head h4').textContent())?.trim();
+  const sellShown = await page.locator('.shop-sell').count();
+  report.tapAfterDrag = { tappedName, sellShown };
+  check(
+    'a tap on a slot still opens its detail',
+    tappedName === PROBE_ITEMS.cloak.name,
+    `"${tappedName}"`
+  );
+  check('with the button that sells it', sellShown === 1, `${sellShown} sell buttons`);
+
   // ------------------------------------------------ the item actives' grid
   //
   // The whole point of an active item is that it is an extra spell, and on a
   // phone it was bound to the digits 1-6 — keys a thumb does not have. So the
   // grid has to draw, and a tap on it has to reach the *inventory's* input
   // controller and not the kit's.
+  //
+  // And this is where the drag above has to pay: the item was dragged into
+  // slot 4, so slot 4's button is the one that must fire it. Moving an item is
+  // only worth anything if its key moves with it — "gán slot cho user dễ bấm
+  // kích hoạt item" is the ask, and this is the sentence that answers it.
   await page.evaluate(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeShop());
   await page.waitForTimeout(300);
 
-  const drawn = await page.evaluate(async () => {
-    const { HeldItem } = await import('/src/game/items/Item.ts');
-    const { packAsset } = await import('/src/game/config/packAsset.ts');
+  const drawn = await page.evaluate(() => {
     const game = window.__lol2d.scene.oScene.game;
-    const kitSpell = game.player.spells[2];
-    const def = { id: 'probe:blade', name: 'Gươm Thử', icon: 'spell_basic_attack', cost: 0 };
-    // The champion's own W, worn as an item active: a real `Spell` with a real
-    // icon, so the button has something to draw and something to press.
-    const active = new kitSpell.constructor(game.player);
-    game.player.equipItem(new HeldItem(def, null, active, packAsset(def.icon)), 0);
-
     const controls = game.touchControls;
     const layout = controls.currentLayout;
+    const at = slot => ({
+      x: Math.round(layout.items[slot].x),
+      y: Math.round(layout.items[slot].y),
+    });
     return {
       positions: layout.items.length,
-      slot0: {
-        x: Math.round(layout.items[0].x),
-        y: Math.round(layout.items[0].y),
-        r: Math.round(layout.items[0].radius),
-      },
-      viewForFilled: !!controls.host?.spellView?.(0, 'item'),
+      moved: at(4),
+      vacated: at(1),
+      viewForMoved: !!controls.host?.spellView?.(4, 'item'),
+      viewForVacated: !!controls.host?.spellView?.(1, 'item'),
     };
   });
   report.itemPositions = drawn.positions;
-  report.itemSlot0 = drawn.slot0;
+  report.itemButtons = { moved: drawn.moved, vacated: drawn.vacated };
   check('six item positions exist', drawn.positions === 6, `${drawn.positions}`);
+  check('the button the item moved to draws it', drawn.viewForMoved, 'no view for slot 4');
+  check('and the one it left is empty', !drawn.viewForVacated, 'slot 1 still draws something');
 
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}-items.png` });
 
-  // A real touch on slot 0 must reach the item controller. The kit spell in
+  // A real touch on slot 4 must reach the item controller. The kit spell in
   // slot 2 is the *same class*, so pressing the wrong row would look identical
   // in a screenshot — this checks the instance the item is holding.
   const before = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.items[0].active.state
+    () => window.__lol2d.scene.oScene.game.player.items[4].active.state
   );
-  await tap(drawn.slot0.x, drawn.slot0.y, 80);
+  await tap(drawn.moved.x, drawn.moved.y, 80);
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({
-    item: window.__lol2d.scene.oScene.game.player.items[0].active.state,
+    item: window.__lol2d.scene.oScene.game.player.items[4].active.state,
     kit: window.__lol2d.scene.oScene.game.player.spells[2].state,
   }));
   report.itemPress = { before, after };
-  check('a tap fires the item’s own spell', after.item !== before, `${before} -> ${after.item}`);
+  check(
+    'the active answers its new slot’s button',
+    after.item !== before,
+    `${before} -> ${after.item}`
+  );
   check(
     'and leaves the kit slot of the same index alone',
     after.kit === 'READY',

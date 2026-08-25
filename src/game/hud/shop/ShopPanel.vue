@@ -33,6 +33,31 @@
  * `has-detail` class on this element is the whole switch; see `styles/shop.css`
  * for the media query that decides which layout is in force.
  *
+ * ## The bag strip is the only place a phone can rearrange a bag
+ *
+ * Dragging one bag slot onto another swaps them, which is how a player chooses
+ * which item sits under which key. The bar answers that too — but only with a
+ * mouse: on a phone the item buttons are drawn on the *canvas* by
+ * `TouchControls.drawItemButtons`, where a drag already means "aim this item's
+ * spell", so the gesture is taken and the bar's version is unreachable. This
+ * strip is therefore not a convenience, it is the mobile half of a feature
+ * that would otherwise only work with a pointer.
+ *
+ * `InventoryDrag` (`../inventoryDrag.ts`) is the gesture, shared with the bar
+ * rather than re-thresholded here — telling a drag from a tap is the whole
+ * problem and having two answers to it is how the two surfaces come apart.
+ * Pointer events rather than this file's usual `@click` + `@touchend.prevent`
+ * for the same reason the bar uses them: `dragstart` never fires under a
+ * thumb, and a pointer is the one stream a mouse and a finger both travel.
+ * `touch-action: none` on the slot and `draggable="false"` on its icon are the
+ * two lines without which the browser claims the gesture first.
+ *
+ * A tap on a slot opens that item's detail pane — `'open'` from `end()`, which
+ * on the bar means "open the shop" and here means "the shop is already open,
+ * show me this one". Moving is deliberately **not** gated on the fountain
+ * (`hud.moveItem`), so a player can rearrange mid-fight while buying and
+ * selling stay where they belong.
+ *
  * ## It does not pause, and that is the design
  *
  * Every other panel in this HUD pauses the game. This one must not: pausing at
@@ -70,6 +95,7 @@ import { computed, inject, ref } from 'vue';
 import ShopDetail from './ShopDetail.vue';
 import ShopItemTile from './ShopItemTile.vue';
 import { heldItemIds, shopSections, type SellRow } from './shopState';
+import { InventoryDrag } from '../inventoryDrag';
 import type { HudInteractions } from '../hudInteractions';
 import type { HudState } from '../hudState';
 
@@ -120,6 +146,85 @@ const slots = computed(() => {
 
 const pick = (id: string) => {
   pickedId.value = id;
+};
+
+/**
+ * The bag strip's drag, shared with the bar's (`inventoryDrag.ts`).
+ *
+ * The state machine is plain, so `bump` is what tells Vue a highlight moved:
+ * incrementing a ref is cheaper and far less surprising than making a class
+ * with a `hypot` in it reactive.
+ */
+const drag = new InventoryDrag();
+const bump = ref(0);
+
+/**
+ * Which bag slot is under a screen point, or `null`.
+ *
+ * `elementFromPoint` rather than `@pointerenter` per slot: a captured pointer
+ * — which is every touch drag — stops firing enter and leave on anything it
+ * passes over, so per-slot handlers would light nothing on a phone.
+ *
+ * `data-shop-slot` and not the bar's `data-item-slot`: the bar is on screen
+ * underneath this panel on a desktop, and a hit test that could answer with
+ * one of *its* slots would let a drag inside the panel drop an item onto a
+ * target the player cannot see.
+ */
+const slotAt = (x: number, y: number): number | null => {
+  const under = document.elementFromPoint(x, y)?.closest('[data-shop-slot]');
+  const index = under?.getAttribute('data-shop-slot');
+  return index === null || index === undefined ? null : Number(index);
+};
+
+const onSlotDown = (slot: number, event: PointerEvent): void => {
+  // Captured on the slot itself, so a release outside the strip still reaches
+  // this component — without it the gesture hangs, holding a highlight for ever.
+  (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+  drag.begin(slot, event.clientX, event.clientY);
+  bump.value++;
+};
+
+const onSlotMove = (event: PointerEvent): void => {
+  if (drag.from === null) return;
+  drag.moveTo(event.clientX, event.clientY);
+  drag.hover(slotAt(event.clientX, event.clientY));
+  bump.value++;
+};
+
+/**
+ * One release, two meanings. A tap shows that slot's item in the pane; a real
+ * drag swaps the two slots. `Champion.moveItem` refuses the pairs that are not
+ * moves, so nothing here re-decides that.
+ *
+ * The starting slot is read *before* `end()`, which resets it: the bar's
+ * `'open'` needs no slot because it opens the shop, and this one needs to know
+ * which item was tapped.
+ */
+const onSlotUp = (event: PointerEvent): void => {
+  const from = drag.from;
+  const gesture = drag.end(slotAt(event.clientX, event.clientY));
+  bump.value++;
+  if (gesture.kind === 'move') hud.moveItem(gesture.from, gesture.to);
+  else if (gesture.kind === 'open' && from !== null) {
+    const row = slots.value[from];
+    if (row) pick(row.id);
+  }
+};
+
+const onSlotCancel = (): void => {
+  drag.cancel();
+  bump.value++;
+};
+
+/** The drop highlight. `bump` is read so Vue re-evaluates when the drag moves. */
+const dropTarget = (slot: number): boolean => {
+  void bump.value;
+  return drag.over === slot;
+};
+
+const lifted = (slot: number): boolean => {
+  void bump.value;
+  return drag.dragging && drag.from === slot;
 };
 </script>
 
@@ -172,7 +277,6 @@ const pick = (id: string) => {
         :row="picked"
         :rows="stock"
         :bag="bag"
-        :can-shop="state.canShop"
         @pick="pick"
         @back="pickedId = null"
         @buy="id => hud.buy(id)"
@@ -181,27 +285,51 @@ const pick = (id: string) => {
     </div>
 
     <!-- The bag, as the six slots it actually is rather than as a second list
-         of cards. An empty slot is drawn, not omitted: "how much room is left"
-         is the question that decides whether the next purchase is even
-         possible, and `NO_SLOT` is a refusal a player should see coming. -->
+         of cards. An empty slot is drawn, not omitted, and it takes the same
+         handlers as a filled one: "how much room is left" is the question that
+         decides whether the next purchase is possible at all, and an empty
+         slot is also the commonest place to *drop* something.
+
+         One element type for both, and pointer events on every slot, because
+         the gesture is a drag — see this file's header for why that cannot be
+         `@click` + `@touchend.prevent` here alone. -->
     <footer class="shop-bag">
       <span class="shop-bag-label">Túi đồ</span>
       <div class="shop-bag-slots">
-        <template v-for="(row, slot) of slots" :key="slot">
-          <button
-            v-if="row"
-            class="shop-bag-slot filled"
-            :class="{ picked: row.id === pickedId }"
-            :title="row.name"
-            @click="pick(row.id)"
-            @touchend.prevent="pick(row.id)"
-          >
-            <img v-if="row.image" crossorigin="anonymous" :src="row.image" :alt="row.name" />
+        <div
+          v-for="(row, slot) of slots"
+          :key="slot"
+          class="shop-bag-slot"
+          :data-shop-slot="slot"
+          :class="{
+            filled: row !== null,
+            empty: row === null,
+            picked: row !== null && row.id === pickedId,
+            'shop-lifted': lifted(slot),
+            'shop-drop-target': dropTarget(slot),
+          }"
+          :title="row ? row.name : ''"
+          @pointerdown="onSlotDown(slot, $event)"
+          @pointermove="onSlotMove($event)"
+          @pointerup="onSlotUp($event)"
+          @pointercancel="onSlotCancel()"
+        >
+          <template v-if="row">
+            <!-- `draggable="false"` is load-bearing, not tidiness: an `<img>`
+                 is natively draggable, so Chrome starts its own HTML5 drag the
+                 moment the pointer travels and fires `pointercancel` at us to
+                 say it has taken the gesture. -->
+            <img
+              v-if="row.image"
+              crossorigin="anonymous"
+              draggable="false"
+              :src="row.image"
+              :alt="row.name"
+            />
             <span v-else class="shop-bag-blank">{{ row.name.slice(0, 1) }}</span>
             <span class="shop-bag-refund">+{{ row.refund }}</span>
-          </button>
-          <span v-else class="shop-bag-slot empty"></span>
-        </template>
+          </template>
+        </div>
       </div>
     </footer>
   </div>

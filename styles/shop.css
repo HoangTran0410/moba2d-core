@@ -370,9 +370,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Why the button above it will refuse. `row.reason` and `REFUSAL_TEXT` — the
-   shop's own sentence, never one written here. */
-.shop-buy-why {
+/* Why the button above it will refuse. `row.reason` on the buy side and
+   `SellRow.reason` on the sell side — the shop's own sentence in both cases,
+   from `refusalFor` and `sellRefusalFor`, never one written here. Two class
+   names for one rule because a dead champion has a reason under *both*
+   buttons, and a driver reading "the reason" has to be able to say which. */
+.shop-buy-why,
+.shop-sell-why {
   margin: 3px 0 0;
   font-size: 0.72em;
   color: #ff9e9e;
@@ -605,7 +609,15 @@
   gap: 5px;
 }
 
+/* Every slot is draggable, filled or not, so every slot carries the three
+   lines that stop the browser claiming the gesture first: `touch-action` (or
+   a finger's travel is read as a scroll a pixel or two before it is read as a
+   drag), `user-select` (or a drag across the strip selects the refund
+   figures), and `-webkit-user-drag` on the icon below. The fourth line of the
+   same rule is `draggable="false"`, which has to be an attribute — see
+   `ShopPanel.vue`. */
 .shop-bag-slot {
+  box-sizing: border-box;
   width: 44px;
   height: 44px;
   border-radius: 5px;
@@ -619,6 +631,9 @@
   background: #161b22;
   color: inherit;
   font: inherit;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* An empty slot is drawn, never omitted: "how much room is left" is what
@@ -648,6 +663,31 @@
   width: 26px;
   height: 26px;
   border-radius: 3px;
+}
+
+.shop-bag-slot img {
+  -webkit-user-drag: none;
+}
+
+/* The slot the drag started from, while it is in flight. Dimmed rather than
+   emptied: the item has not gone anywhere yet, and a slot that blanks on
+   pickup makes a cancelled drag look like a loss.
+
+   Prefixed rather than reusing the bar's `lifted` / `drop-target`. The two
+   strips are on screen together on a desktop and a selector naming the bare
+   class would light both — and a driver locating one would find two. */
+.shop-bag-slot.shop-lifted {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* Where it would land. Teal, matching this panel's own "you are looking at
+   this" accent rather than the bar's gold, and a lift as well as a colour so
+   it reads at a glance under a thumb that is covering half of it. */
+.shop-bag-slot.shop-drop-target {
+  border-color: var(--hextech-teal, #08abac);
+  box-shadow: 0 0 8px #08abac88;
+  transform: translateY(-2px);
 }
 
 .shop-bag-blank {
