@@ -125,6 +125,90 @@ export function announcePackBases(
   }
 }
 
+/**
+ * How far one pack's prefetch has got — the only thing in the app that can
+ * say "a download is running right now".
+ *
+ * `done` counts files **settled**, not files saved: added, already present,
+ * and failed all advance it. A bar that stops two files short of its end
+ * because a host 404'd twice is the same illegible state one screen down from
+ * the one this record exists to fix, and `PrefetchReport` already carries the
+ * breakdown for anyone who needs it.
+ */
+export interface PackPrefetchProgress {
+  base: string;
+  /** How many files this run was asked for — the denominator. */
+  total: number;
+  /** How many of them have settled, whatever the outcome. */
+  done: number;
+  /** Whether files are still settling. False the moment the run returns. */
+  active: boolean;
+}
+
+/**
+ * **Why an observable record and not a poll.**
+ *
+ * A prefetch started on one screen has to be legible from another, and the
+ * two candidates were: poll `packCacheUsage`/`missingPackFiles` on a timer
+ * while a pack looks incomplete, or have the prefetch itself say what it is
+ * doing. This is the second.
+ *
+ * The poll loses twice. It is expensive in exactly the window where it runs —
+ * `packCacheUsage` walks the *whole* shared pack cache and reads a header off
+ * every entry, per pack, several times a second, competing with the download
+ * for the same `CacheStorage` — and it can only ever *infer* the answer: a
+ * number that moved means "downloading", a number that did not means either
+ * "finished", "stalled" or "the poll landed between two files", and nothing
+ * can tell those apart without a timeout that is wrong on some connection.
+ *
+ * The stated objection to a record is the reload, and it answers itself. The
+ * prefetch lives in the page's JS heap; so does this map. A reload destroys
+ * both together, so there is no state where bytes are arriving and nothing
+ * knows it — and the boot path restarts the prefetch for every installed pack
+ * (`runtimePacks.ts`), which rebuilds the record. What genuinely cannot
+ * survive a reload is the *denominator* for a pack whose prefetch is not
+ * running at all, and that is persisted separately, as
+ * `InstalledPackRecord.fileCount`.
+ *
+ * Module state, deliberately outliving any one call: the screen that reads it
+ * is mounted long after the boot that wrote it.
+ */
+const prefetchProgress = new Map<string, PackPrefetchProgress>();
+const progressListeners = new Set<() => void>();
+
+/** What `base`'s prefetch is doing, or `null` if none has ever run this session. */
+export function packPrefetchProgress(base: string): PackPrefetchProgress | null {
+  const found = prefetchProgress.get(base);
+  // A copy, not the live object: a Vue component holding the record itself
+  // would be handed mutations it can never see, since nothing here is
+  // reactive.
+  return found ? { ...found } : null;
+}
+
+/**
+ * Calls `listener` whenever any pack's progress moves. Returns the unsubscribe.
+ *
+ * No argument: a listener that wants numbers asks `packPrefetchProgress` for
+ * the base it cares about. Four concurrent workers over 592 files is ~600
+ * calls spread across the whole download, and the one listener there is
+ * writes a ref that Vue coalesces into one render per tick anyway.
+ */
+export function onPackPrefetchProgress(listener: () => void): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
+
+/** Never lets a listener's throw reach the prefetch — this module does not throw. */
+function announceProgress(): void {
+  for (const listener of progressListeners) {
+    try {
+      listener();
+    } catch {
+      // A broken subscriber costs its own update, not the download.
+    }
+  }
+}
+
 /** `caches.open(PACK_CACHE_NAME)`, or null wherever `CacheStorage` is not a thing. */
 async function openPackCache(): Promise<Cache | null> {
   try {
@@ -167,10 +251,30 @@ export async function prefetchPackFiles(
     failed: 0,
     gone: 0,
   };
+  // Opened before the first `await`, so a screen that mounts one tick later
+  // already sees a run in progress rather than "measuring". A second run for
+  // the same base replaces the first's record rather than merging with it:
+  // the boot path starts one run per pack and `installPackNow` starts one
+  // more only for a pack that was not installed, so two live runs over one
+  // base is not a state either caller can produce.
+  const live: PackPrefetchProgress = { base, total: list.length, done: 0, active: true };
+  prefetchProgress.set(base, live);
+  announceProgress();
+  const settled = (): void => {
+    live.done++;
+    announceProgress();
+  };
+  const finish = (): PrefetchReport => {
+    live.done = live.total;
+    live.active = false;
+    announceProgress();
+    return report;
+  };
+
   const cache = await openPackCache();
   if (!cache || !isValidPackBase(base)) {
     report.failed = list.length;
-    return report;
+    return finish();
   }
 
   let next = 0;
@@ -180,47 +284,54 @@ export async function prefetchPackFiles(
       if (index >= list.length) return;
       const relative = list[index];
 
-      let url: string;
+      // `try`/`finally` around the whole body rather than a `settled()` beside
+      // each of the six ways one file can end: `continue` runs the `finally`,
+      // so the count cannot drift by someone adding a seventh exit later.
       try {
-        url = new URL(relative, base).href;
-      } catch {
-        report.failed++;
-        continue;
-      }
-      // A manifest is a stranger's file, and `new URL('../../x', base)` is a
-      // perfectly ordinary resolve. The base is what the worker will later
-      // serve from cache without asking anything else, so nothing outside it
-      // is allowed in.
-      if (!url.startsWith(base)) {
-        report.failed++;
-        continue;
-      }
-
-      try {
-        if (await cache.match(url)) {
-          report.skipped++;
-          continue;
-        }
-        const response = await fetch(url, { credentials: 'omit' });
-        // `response.type === 'opaque'` cannot actually happen on this path:
-        // the fetch above is default `mode: 'cors'`, so a host with no
-        // `access-control-allow-origin` fails the fetch itself rather than
-        // answering with an opaque response, and an opaque response's own
-        // `status` is 0, which already makes `ok` false — so `!response.ok`
-        // alone already covers it. Kept as a second, free guard in case this
-        // fetch ever gains `mode: 'no-cors'`, not because it fires today.
-        if (!response.ok || response.type === 'opaque') {
+        let url: string;
+        try {
+          url = new URL(relative, base).href;
+        } catch {
           report.failed++;
-          // Only a 404. A 500 is a host having a bad day and a 0 is an opaque
-          // response, and reading either as "this build is gone" would send a
-          // player to a re-install that fixes nothing.
-          if (response.status === 404) report.gone++;
           continue;
         }
-        await cache.put(url, response);
-        report.added++;
-      } catch {
-        report.failed++;
+        // A manifest is a stranger's file, and `new URL('../../x', base)` is a
+        // perfectly ordinary resolve. The base is what the worker will later
+        // serve from cache without asking anything else, so nothing outside it
+        // is allowed in.
+        if (!url.startsWith(base)) {
+          report.failed++;
+          continue;
+        }
+
+        try {
+          if (await cache.match(url)) {
+            report.skipped++;
+            continue;
+          }
+          const response = await fetch(url, { credentials: 'omit' });
+          // `response.type === 'opaque'` cannot actually happen on this path:
+          // the fetch above is default `mode: 'cors'`, so a host with no
+          // `access-control-allow-origin` fails the fetch itself rather than
+          // answering with an opaque response, and an opaque response's own
+          // `status` is 0, which already makes `ok` false — so `!response.ok`
+          // alone already covers it. Kept as a second, free guard in case this
+          // fetch ever gains `mode: 'no-cors'`, not because it fires today.
+          if (!response.ok || response.type === 'opaque') {
+            report.failed++;
+            // Only a 404. A 500 is a host having a bad day and a 0 is an opaque
+            // response, and reading either as "this build is gone" would send a
+            // player to a re-install that fixes nothing.
+            if (response.status === 404) report.gone++;
+            continue;
+          }
+          await cache.put(url, response);
+          report.added++;
+        } catch {
+          report.failed++;
+        }
+      } finally {
+        settled();
       }
     }
   };
@@ -232,7 +343,7 @@ export async function prefetchPackFiles(
   // contract hold structurally instead of by the loop body happening not to
   // have a gap today.
   await Promise.allSettled(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
-  return report;
+  return finish();
 }
 
 /**
@@ -270,6 +381,11 @@ export async function packCacheUsage(base: string): Promise<{ entries: number; b
 
 /** Drops every cached byte of one pack. Returns how many entries went. */
 export async function forgetPack(base: string): Promise<number> {
+  // The bytes and the story about the bytes go together. Removal reloads the
+  // page today (`PacksScene.vue`), so this is belt rather than braces — but a
+  // record left behind would describe a pack that no longer exists, and the
+  // next thing to call this without reloading would inherit that silently.
+  if (prefetchProgress.delete(base)) announceProgress();
   const cache = await openPackCache();
   if (!cache || !base) return 0;
   let removed = 0;

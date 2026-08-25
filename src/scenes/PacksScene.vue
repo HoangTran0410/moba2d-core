@@ -54,9 +54,16 @@ import {
   writeInstalledPacks,
   type InstalledPackRecord,
 } from '@/content/installedPackStore';
-import { packBaseFor, packCacheUsage, forgetPack } from '@/content/packCache';
+import {
+  packBaseFor,
+  packCacheUsage,
+  packPrefetchProgress,
+  onPackPrefetchProgress,
+  forgetPack,
+} from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
 import { packStageLabel } from './packStageLabel';
+import { packUsage, type PackUsage, type PackUsageStage } from './packs/packUsage';
 import { SUGGESTED_PACKS, type SuggestedPack } from './packs/suggestedPacks';
 import { packMonogram } from './packs/packMonogram';
 
@@ -83,9 +90,16 @@ interface PackRow {
    * which is what an offline visit to a pack that never cached its icon does.
    */
   icon?: string;
-  /** `-1` until `packCacheUsage` answers — see `usageLabel`. */
+  /** `-1` until `packCacheUsage` answers — see `packs/packUsage.ts`. */
   entries: number;
   bytes: number;
+  /**
+   * How many files the manifest declared, as remembered at install time. The
+   * denominator of the download — see `InstalledPackRecord.fileCount` for why
+   * it is persisted rather than derived, and `packs/packUsage.ts` for what a
+   * row says without one.
+   */
+  fileCount?: number;
 }
 
 const rows = ref<PackRow[]>([]);
@@ -146,29 +160,92 @@ const onShelfIconError = (pack: SuggestedPack): void => {
 };
 
 /**
- * What this browser has cached of a pack, in a sentence rather than in two
- * numbers that can both legitimately be zero.
+ * Bumped whenever any pack's prefetch moves, so the rows re-render.
  *
- * `entries` starts at `-1`, not `0`: the count arrives from `packCacheUsage`
- * one round trip after the row is drawn, so a row that has not been measured
- * yet and a row with genuinely nothing cached are different facts and used to
- * render identically — as `0 tệp · ~0.0 MB`, which reads as a broken row
- * rather than as "not saved yet". The second state is real and reachable
- * today: a pack whose manifest declares no `files` installs and plays and
- * prefetches nothing (see `packSource.ts`), so this is what the shipped
- * default pack currently shows.
- *
- * `content-length` is a floor, not an exact size — see `packCache.ts` — hence
- * the `~`, and KB below a megabyte so a small pack does not round to nothing.
+ * `packPrefetchProgress` is a plain module map and nothing about it is
+ * reactive — deliberately, since it is written from the boot path by code
+ * that must not know a UI framework exists. One counter is the whole bridge:
+ * the subscription in `onMounted` increments it, and `usageByUrl` reads it,
+ * which is what makes the read a dependency of the render.
  */
-const usageLabel = (row: PackRow): string => {
-  if (row.entries < 0) return 'Đang xem dung lượng đã lưu…';
-  if (row.entries === 0) return 'Chưa lưu để chơi offline';
-  const size =
-    row.bytes < 1024 * 1024
-      ? `${Math.max(1, Math.round(row.bytes / 1024))} KB`
-      : `${(row.bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${row.entries} tệp · ~${size}`;
+const progressTick = ref(0);
+
+/**
+ * Every row's sentence, recomputed as a batch.
+ *
+ * A `computed` rather than a method called from the template: the template
+ * asks for the same row's usage several times (the label, the bar's width,
+ * its aria values), and a computed means the arithmetic happens once per
+ * change instead of once per binding.
+ */
+const usageByUrl = computed<Record<string, PackUsage>>(() => {
+  void progressTick.value;
+  const map: Record<string, PackUsage> = {};
+  for (const row of rows.value) {
+    map[row.manifestUrl] = packUsage({
+      entries: row.entries,
+      bytes: row.bytes,
+      fileCount: row.fileCount,
+      progress: packPrefetchProgress(row.base),
+    });
+  }
+  return map;
+});
+
+const usageOf = (row: PackRow): PackUsage =>
+  usageByUrl.value[row.manifestUrl] ??
+  packUsage({ entries: row.entries, bytes: row.bytes, fileCount: row.fileCount });
+
+/**
+ * One glyph per state, so the answer is legible before the sentence is read —
+ * which on a phone, at 0.82em, is most of the point.
+ *
+ * Not a control: no `@touchend` twin is needed anywhere in this block because
+ * nothing in it is pressable. That is deliberate rather than an omission —
+ * `GameScene`'s page-wide `preventDefault()` (CLAUDE.md) makes every new tap
+ * target a two-handler affair, and a download's progress is something to read,
+ * not something to press.
+ */
+const USAGE_ICON: Record<PackUsageStage, string> = {
+  measuring: 'fas fa-hourglass-half',
+  downloading: 'fas fa-cloud-arrow-down',
+  ready: 'fas fa-circle-check',
+  empty: 'fas fa-minus',
+  partial: 'fas fa-circle-pause',
+  unknown: 'fas fa-database',
+};
+
+/** The fill's width. `-1` (no denominator) never reaches here — see the `v-if`. */
+const barWidth = (row: PackRow): string => `${Math.round(Math.max(0, usageOf(row).ratio) * 100)}%`;
+
+/** Whether this row has a fraction worth drawing as a bar at all. */
+const showBar = (row: PackRow): boolean => {
+  const usage = usageOf(row);
+  // Not on `ready` and not on `empty`: a full bar and an empty one both say
+  // "still going" at a glance, which is the opposite of what those two mean.
+  // The check on `ratio` is what keeps a pre-`fileCount` record out.
+  return usage.ratio >= 0 && usage.stage !== 'ready' && usage.stage !== 'empty';
+};
+
+/**
+ * Re-reads what the cache holds for one row.
+ *
+ * Per row, not awaited as a batch before the list ever renders: `packCacheUsage`
+ * walks the whole shared pack cache once per call, and one slow or huge pack
+ * must not hold every other row's numbers off the screen. That expense is also
+ * why this is called twice per row at most — once on mount and once when a
+ * download stops — and never on a timer. The number that moves while bytes are
+ * arriving is the file counter, which costs nothing because the prefetch
+ * reports it itself.
+ */
+const measureUsage = (manifestUrl: string, base: string): void => {
+  void packCacheUsage(base).then(usage => {
+    const current = rows.value.find(candidate => candidate.manifestUrl === manifestUrl);
+    if (current) {
+      current.entries = usage.entries;
+      current.bytes = usage.bytes;
+    }
+  });
 };
 
 const removeLabel = (row: PackRow): string => {
@@ -216,25 +293,37 @@ for (const record of readInstalledPacks()) {
     icon: record.icon,
     entries: -1,
     bytes: 0,
+    fileCount: record.fileCount,
   });
 }
 rows.value = initialRows;
 tab.value = initialRows.length > 0 ? 'installed' : 'browse';
 
+/** Bases whose finished download has already had its bytes re-measured. */
+const remeasured = new Set<string>();
+let stopProgress: (() => void) | null = null;
+
 onMounted(() => {
-  // Fetched per row, not awaited as a batch before the list ever renders:
-  // `packCacheUsage` walks the whole shared pack cache once per call, and
-  // one slow or huge pack must not hold every other row's numbers off the
-  // screen.
-  for (const row of initialRows) {
-    void packCacheUsage(row.base).then(usage => {
-      const current = rows.value.find(candidate => candidate.manifestUrl === row.manifestUrl);
-      if (current) {
-        current.entries = usage.entries;
-        current.bytes = usage.bytes;
-      }
-    });
-  }
+  for (const row of initialRows) measureUsage(row.manifestUrl, row.base);
+
+  // **This is how a download started on another screen becomes visible here.**
+  // The prefetch is fired and forgotten from `runtimePacks.ts` during the
+  // loading screen, minutes before this component exists, so there is no
+  // promise left to await — but the record it writes is still in memory, and
+  // this subscription is what turns each step of it into a render. See
+  // `packCache.ts`'s own comment for why that beats polling the cache.
+  stopProgress = onPackPrefetchProgress(() => {
+    progressTick.value++;
+    // The byte figure is the expensive half and it only changes meaningfully
+    // when a run ends, so it is re-read exactly once per finished download
+    // rather than on every step.
+    for (const row of rows.value) {
+      const progress = packPrefetchProgress(row.base);
+      if (!progress || progress.active || remeasured.has(row.base)) continue;
+      remeasured.add(row.base);
+      measureUsage(row.manifestUrl, row.base);
+    }
+  });
 });
 
 const confirmingUrl = ref<string | null>(null);
@@ -420,19 +509,19 @@ const confirmInstall = async (): Promise<void> => {
         icon: outcome.icon,
         entries: -1,
         bytes: 0,
+        // The denominator, read off the manifest this screen already fetched
+        // rather than waiting for the next boot to load it back out of the
+        // store. `installPackNow` has just started the prefetch, so the row
+        // this player is about to look at is the one with a live download
+        // behind it — and it is the one the whole bug was reported against.
+        fileCount: Array.isArray(manifest.files) ? manifest.files.length : 0,
       };
       rows.value = [...rows.value, newRow];
       // Straight to the list, so the answer to "did that work" is the pack
       // itself sitting there rather than a badge changing on the card behind
       // the dialog that just closed.
       tab.value = 'installed';
-      void packCacheUsage(base).then(usage => {
-        const current = rows.value.find(candidate => candidate.manifestUrl === manifestUrl);
-        if (current) {
-          current.entries = usage.entries;
-          current.bytes = usage.bytes;
-        }
-      });
+      measureUsage(manifestUrl, base);
     }
     url.value = '';
     pendingManifest.value = null;
@@ -546,6 +635,10 @@ const nothingInstalled = computed(() => rows.value.length === 0);
 onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer);
   copyTimer = null;
+  // The download outlives this screen — leaving the subscription behind would
+  // hold an unmounted component's ref alive for the rest of the session.
+  stopProgress?.();
+  stopProgress = null;
 });
 </script>
 
@@ -636,7 +729,31 @@ onBeforeUnmount(() => {
                     <span class="packs-version">v{{ row.version }}</span>
                   </div>
                   <p class="packs-origin packs-selectable">{{ row.origin }}</p>
-                  <p class="packs-usage">{{ usageLabel(row) }}</p>
+
+                  <!-- What this browser has of the pack, and — the part that
+                       was missing entirely — whether more of it is arriving
+                       right now. One line and, only while there is a fraction
+                       worth drawing, one 5px bar under it: the card is already
+                       dense, and a second sentence would cost more than it
+                       explains. Nothing here is pressable, so nothing here
+                       needs the `@touchend` twin every control on this screen
+                       carries. -->
+                  <p class="packs-usage" :class="`is-${usageOf(row).stage}`">
+                    <i :class="USAGE_ICON[usageOf(row).stage]" aria-hidden="true"></i>
+                    <span>{{ usageOf(row).label }}</span>
+                  </p>
+                  <div
+                    v-if="showBar(row)"
+                    class="packs-progress"
+                    :class="{ live: usageOf(row).stage === 'downloading' }"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    :aria-valuemax="usageOf(row).total"
+                    :aria-valuenow="usageOf(row).done"
+                    :aria-label="usageOf(row).label"
+                  >
+                    <span class="packs-progress-fill" :style="{ width: barWidth(row) }"></span>
+                  </div>
                 </div>
               </div>
 

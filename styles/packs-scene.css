@@ -564,10 +564,111 @@
   word-break: break-all;
 }
 
+/* ----------------------------------------------------- Saved / downloading
+
+   The line used to be one sentence in one colour, and it could only ever
+   report what was in the cache at the instant it measured — so a pack whose
+   4.7MB was still arriving in the background looked like a pack that was
+   83 files big. The glyph and the colour carry the state, the sentence
+   carries the numbers, and the bar carries the fraction; see
+   `scenes/packs/packUsage.ts` for the six states and their copy.
+
+   Nothing in this block is interactive, which is why no rule here reserves a
+   44px tap target the way `.packs-remove` and `.packs-empty-cta` do. */
+
 .packs-usage {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
   margin: 0;
   font-size: 0.82em;
   color: var(--hextech-muted);
+}
+
+/* `flex: none` so a wrapped sentence does not squeeze the glyph, and a fixed
+   width so the four states line up their text at the same x. */
+.packs-usage > i {
+  flex: none;
+  width: 1em;
+  text-align: center;
+}
+
+/* Teal is this screen's "live" colour — the same one the origin line uses for
+   the fact the whole screen exists to state. */
+.packs-usage.is-downloading {
+  color: var(--hextech-teal);
+}
+
+.packs-usage.is-ready {
+  color: var(--hextech-gold);
+}
+
+.packs-usage.is-downloading > i {
+  animation: packs-usage-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes packs-usage-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.packs-progress {
+  position: relative;
+  height: 5px;
+  margin-top: 0.15rem;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  overflow: hidden;
+}
+
+.packs-progress-fill {
+  display: block;
+  height: 100%;
+  /* Muted by default, because an idle bar is a *stopped* download and must not
+     read as a healthy one. */
+  background: var(--hextech-muted);
+  transition: width 0.25s linear;
+}
+
+.packs-progress.live .packs-progress-fill {
+  background: var(--hextech-teal);
+}
+
+/* The one thing a determinate bar cannot say on its own: that it is moving at
+   all. A file that takes ten seconds leaves the fill perfectly still, which is
+   indistinguishable from the interrupted state one class up. */
+.packs-progress.live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 18%), transparent);
+  transform: translateX(-100%);
+  animation: packs-progress-sheen 1.6s linear infinite;
+}
+
+@keyframes packs-progress-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A progress bar is exactly the kind of endlessly-looping motion this setting
+   exists to stop. The colour and the numbers still say everything the
+   animation said. */
+@media (prefers-reduced-motion: reduce) {
+  .packs-usage.is-downloading > i,
+  .packs-progress.live::after {
+    animation: none;
+  }
+
+  .packs-progress.live::after {
+    content: none;
+  }
 }
 
 /* Same "arm, then confirm" visual language as `.practice-exit.confirming`

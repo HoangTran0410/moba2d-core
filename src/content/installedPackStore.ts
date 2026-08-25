@@ -45,6 +45,29 @@ export interface InstalledPackRecord {
    */
   name?: string;
   /**
+   * How many files this pack's manifest declared — the **denominator** for
+   * "how much of it is saved", and the one part of that answer that has to
+   * survive a reload.
+   *
+   * The live half is `packPrefetchProgress` (`packCache.ts`): a record written
+   * by the prefetch itself, which dies with the page exactly as the download
+   * does, so nothing is ever downloading unwatched. What it cannot answer is a
+   * pack whose prefetch is *not* running — an install that failed on this
+   * boot, or one interrupted before it finished — and the packs screen builds
+   * every row out of this store alone, never re-fetching a manifest just to
+   * list what is installed (the same reason `name` and `icon` are here).
+   * Without the count stored beside them, such a row is back to the bare
+   * `83 tệp` that made a player read a download in progress as a total.
+   *
+   * `0` is a real answer and not the same as absent: a manifest with no
+   * `files` saves nothing and the row can say so, while a record written
+   * before this field existed has `undefined` and falls back to the old
+   * count-only line. One small integer per pack, well inside this store's
+   * "a few hundred bytes" contract — the *list* of file names would not be,
+   * which is why `missingPackFiles` derives that from the cache instead.
+   */
+  fileCount?: number;
+  /**
    * The pack's own mark, absolute, already checked to be on the manifest's
    * origin (`resolvePackIcon`). Optional — most packs declare none, and the
    * packs screen draws a monogram instead. Stored rather than re-derived
@@ -94,6 +117,12 @@ export function readInstalledPacks(): InstalledPackRecord[] {
       if (typeof entry.buildId === 'string' && entry.buildId.length > 0)
         record.buildId = entry.buildId;
       if (typeof entry.name === 'string' && entry.name.length > 0) record.name = entry.name;
+      // A whole, non-negative count or nothing. `Number.isInteger` is what
+      // refuses `Infinity` and `1.5`, both of which `typeof … === 'number'`
+      // waves through and both of which a hand-edited store can hold; a
+      // fraction of a file would then be drawn as a progress bar.
+      if (Number.isInteger(entry.fileCount) && entry.fileCount >= 0)
+        record.fileCount = entry.fileCount;
       if (typeof entry.icon === 'string' && entry.icon.length > 0) record.icon = entry.icon;
       out.push(record);
     }

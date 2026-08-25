@@ -136,7 +136,11 @@ describe('installRuntimePacks', () => {
     // named it, and derives its monogram from that, so a record without it
     // would show a machine id in both places.
     expect(readInstalledPacks()).toEqual([
-      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot' },
+      // `fileCount: 0` is this manifest declaring no `files` — the record
+      // says "this pack saves nothing offline" rather than saying nothing,
+      // which is what the packs screen needs to tell that state from an
+      // unfinished download. See `InstalledPackRecord.fileCount`.
+      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot', fileCount: 0 },
     ]);
     // The offer is spent only once it has actually been taken — see
     // `runtimePacks.ts`'s own header.
@@ -219,7 +223,7 @@ describe('installRuntimePacks', () => {
     // and installs for real once the compile-in step is gone.
     expect(hasSeededDefaultPack()).toBe(true);
     expect(readInstalledPacks()).toEqual([
-      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot' },
+      { manifestUrl: DEFAULT_PACK_URL, id: 'riot', version: '1.0.0', name: 'Riot', fileCount: 0 },
     ]);
   });
 
@@ -918,7 +922,7 @@ describe('installPackNow', () => {
 
     expect(readInstalledPacks()).toEqual([
       { manifestUrl: 'https://other/manifest.json', id: 'other', version: '1.0.0' },
-      { manifestUrl: packUrl, id: 'riot', version: '2.0.0', name: 'Riot' },
+      { manifestUrl: packUrl, id: 'riot', version: '2.0.0', name: 'Riot', fileCount: 0 },
     ]);
   });
 

@@ -7,6 +7,8 @@ import {
   packCacheUsage,
   prefetchPackFiles,
   missingPackFiles,
+  onPackPrefetchProgress,
+  packPrefetchProgress,
   pinPackManifest,
   readPinnedManifest,
 } from '@/content/packCache';
@@ -370,5 +372,81 @@ describe('prefetch tells a 404 from a network failure', () => {
     const report = await prefetchPackFiles(BASE, ['a.js']);
     expect(report.gone).toBe(0);
     expect(report.failed).toBe(1);
+  });
+});
+
+/**
+ * A download nobody can see is the bug this covers.
+ *
+ * `prefetchPackFiles` used to report only at the end, as a `PrefetchReport` —
+ * so a screen drawn while 4.7MB was still arriving had no way to say so, and
+ * the packs screen showed whatever happened to be in the cache at the instant
+ * it measured, with no denominator. The live record is the fix, and these
+ * tests pin the two facts a UI actually reads off it: `active` is true only
+ * while files are still settling, and `done` never stops short of `total`.
+ *
+ * Each case uses a base of its own — the registry is module state on purpose
+ * (see `packCache.ts`), so it deliberately outlives one call.
+ */
+describe('prefetch progress', () => {
+  it('has nothing to say about a base no prefetch ever touched', () => {
+    expect(packPrefetchProgress('https://packs.example/never/')).toBeNull();
+  });
+
+  it('reports the run as active with a rising count, then finished', async () => {
+    const base = 'https://packs.example/rising/';
+    const seen: { done: number; total: number; active: boolean }[] = [];
+    const stop = onPackPrefetchProgress(() => {
+      const now = packPrefetchProgress(base);
+      if (now) seen.push({ done: now.done, total: now.total, active: now.active });
+    });
+
+    await prefetchPackFiles(base, ['a.js', 'b.js', 'c.js']);
+    stop();
+
+    const midRun = seen.find(entry => entry.active && entry.done > 0 && entry.done < entry.total);
+    expect(midRun, 'no listener call ever saw a run in progress').toBeTruthy();
+
+    const finished = packPrefetchProgress(base);
+    expect(finished?.total).toBe(3);
+    expect(finished?.done).toBe(3);
+    expect(finished?.active).toBe(false);
+  });
+
+  it('finishes the record even when every file fails', async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const base = 'https://packs.example/dead/';
+    await prefetchPackFiles(base, ['a.js', 'b.js']);
+    const finished = packPrefetchProgress(base);
+    // The count is "files settled", not "files saved" — a stalled bar that
+    // never reaches its end is the same illegible state, one screen down.
+    expect(finished).toEqual({ base, total: 2, done: 2, active: false });
+  });
+
+  it('finishes the record when there is no CacheStorage to write to', async () => {
+    delete (globalThis as Record<string, unknown>).caches;
+    const base = 'https://packs.example/nocache/';
+    await prefetchPackFiles(base, ['a.js']);
+    expect(packPrefetchProgress(base)?.active).toBe(false);
+  });
+
+  it('unsubscribing actually stops the calls', async () => {
+    let calls = 0;
+    const stop = onPackPrefetchProgress(() => {
+      calls++;
+    });
+    stop();
+    await prefetchPackFiles('https://packs.example/quiet/', ['a.js']);
+    expect(calls).toBe(0);
+  });
+
+  it('forgetting a pack forgets its progress too', async () => {
+    const base = 'https://packs.example/removed/';
+    await prefetchPackFiles(base, ['a.js']);
+    expect(packPrefetchProgress(base)).not.toBeNull();
+    await forgetPack(base);
+    expect(packPrefetchProgress(base)).toBeNull();
   });
 });

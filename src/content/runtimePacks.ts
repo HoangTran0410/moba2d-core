@@ -168,6 +168,13 @@ function recordFor(manifestUrl: string, manifest: RuntimePackManifest): Installe
     // manifest writer from its own file list, so it moves on its own.
     buildId: manifest.buildId,
     name: manifest.name,
+    // The denominator the packs screen shows a download against — see
+    // `InstalledPackRecord.fileCount`. `Array.isArray` rather than
+    // `manifest.files?.length ?? 0`, for the reason `packSource.ts` gives at
+    // its own `files` check: this came out of a stranger's JSON and may be
+    // any shape at all. A manifest that declares none stores `0`, which is
+    // the truth — that pack saves nothing for offline.
+    fileCount: Array.isArray(manifest.files) ? manifest.files.length : 0,
     icon: resolvePackIcon(manifest, manifestUrl),
   };
 }

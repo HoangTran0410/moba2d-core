@@ -62,6 +62,48 @@ describe('installedPackStore', () => {
     ]);
   });
 
+  /**
+   * The denominator, and the only part of it that has to survive a reload.
+   *
+   * The live prefetch record (`packCache.ts`) dies with the page — which is
+   * correct, because the download dies with it too — but the packs screen
+   * builds its rows out of this store alone and never re-fetches a manifest to
+   * list what is installed. Without the count stored beside the name and the
+   * icon, a row whose prefetch is not running this session can only show a
+   * bare numerator, which is the bug this whole change is about.
+   */
+  it('round-trips the declared file count', () => {
+    withStorage();
+    const records = [
+      { manifestUrl: 'https://h/p/manifest.json', id: 'riot', version: '1.0.0', fileCount: 592 },
+    ];
+    writeInstalledPacks(records);
+    expect(readInstalledPacks()).toEqual(records);
+  });
+
+  it('keeps a declared count of zero, which is not the same as no count at all', () => {
+    // A manifest with an empty `files` list saves nothing and can say so; a
+    // record written before this field existed cannot, and must fall back.
+    withStorage();
+    writeInstalledPacks([
+      { manifestUrl: 'https://h/p/manifest.json', id: 'p', version: '1.0.0', fileCount: 0 },
+    ]);
+    expect(readInstalledPacks()[0].fileCount).toBe(0);
+  });
+
+  it('drops a file count that is not a sane number', () => {
+    const map = withStorage();
+    // `1e999` is valid JSON and parses to Infinity — the one bad number
+    // that survives `JSON.parse` and would survive a bare `typeof` check.
+    for (const bad of ['"592"', '-1', 'null', '1e999', '1.5', 'true']) {
+      map.set(
+        PACK_STORE_KEY,
+        `[{"manifestUrl":"https://h/p/manifest.json","id":"p","version":"1.0.0","fileCount":${bad}}]`
+      );
+      expect(readInstalledPacks()[0].fileCount, `accepted ${bad}`).toBeUndefined();
+    }
+  });
+
   it('answers an empty list for a stored blob that is not even JSON', () => {
     const map = withStorage();
     map.set(PACK_STORE_KEY, '{not json');
