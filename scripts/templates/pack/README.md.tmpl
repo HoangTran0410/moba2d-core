@@ -43,16 +43,34 @@ the same way; Pages does both.
   Read `__CHAMPION___Q.ts` before writing a second one.
 - `spells/index.ts` — the barrel. Adding a spell means adding one line here
   and one id to the champion's kit; everything else is generated.
+- `AGENTS.md` — **read this before changing anything.** Recipes for adding,
+  editing and removing an ability, a champion or a piece of art, each as a
+  literal sequence of commands, plus the traps that cost real time and are
+  invisible from the file you are editing. Written for a person or an agent
+  with no prior context.
 - `packApi.ts` — where the engine arrives. Its header is the one page worth
   reading twice: it says why a pack cannot `import { Spell }` at all, and
   which three callers set the api before any spell module evaluates.
-- `assetManifest.ts` — this pack's art, under this pack's own keys. Ships
-  one placeholder tile; replace it with real files.
-- `generated/` — gitignored, rebuilt by `npm run catalog:generate`:
+- `assets/` — this pack's art. Drop a file in, run `npm run assets:generate`,
+  and its key exists as a type. Ships one placeholder tile
+  (`assets/champ_hero.png`) so the art path works before you have drawn
+  anything; replace it.
+- `tests/` — one per ability, plus `packInstallable` (core's own validator
+  says yes to this pack) and `build` (what `dist/` actually emitted).
+  **`npm run check-seams` scans `./spells`, and that is not an oversight**:
+  the pack-core boundary is checked across the whole package either way — the
+  run reports "scanned N file(s) of @moba2d/content-__PACK_ID__" — while the
+  per-tree rules it adds for `./tests` are about production code. `mana-spend`
+  bans touching `stats.mana` outside `Spell.spendMana()`, which is exactly
+  what a fixture building a champion has to do. Pointing it at `./tests` buys
+  nothing and costs a debt file.
+- `generated/` — gitignored, rebuilt by `prepare` after every install:
+  `assetManifest.ts` (every file under `assets/`, keyed and typed),
   `spellCatalog.ts` (every spell's name, cooldown and mana as plain values,
   read off the class at build time) and `spellModules.ts` (the lazy
   `id -> import()` map). This is why the data half restates no number and
-  imports no spell.
+  imports no spell. **Never edit a file in here** — the next generate
+  overwrites it, and `verify` fails when the two disagree.
 - `tests/` — one test per ability, driven through `pressSpell`, never
   through a lifecycle hook like `onSpellCast()` directly: a hook-calling
   test cannot see activation, cooldown, resource cost or targeting

@@ -72,7 +72,13 @@ async function walk(dir: string, base = dir): Promise<string[]> {
  * per slot rather than shipping a pack that cannot be published.
  */
 function outputPathsFor(templateRelPath: string): string[] {
-  const withoutExt = templateRelPath.slice(0, -'.tmpl'.length).replaceAll('__CHAMPION__', 'Hero');
+  let withoutExt = templateRelPath.slice(0, -'.tmpl'.length).replaceAll('__CHAMPION__', 'Hero');
+  // `x.png.b64.tmpl` -> `x.png`, base64-decoded on write. Every other template
+  // is text and read as UTF-8, which is right — a template nothing can grep is
+  // a template nobody maintains — but a pack needs one real image file to have
+  // a working art path at all, and a placeholder living as a data URI inside a
+  // hand-written manifest gave a scaffolded pack no route to a *generated* one.
+  if (withoutExt.endsWith('.b64')) withoutExt = withoutExt.slice(0, -'.b64'.length);
   const segments = withoutExt.split('/');
   if (segments[segments.length - 1] === 'gitignore') segments[segments.length - 1] = '.gitignore';
   // `github/` -> `.github/`, the same reason `gitignore` has no leading dot

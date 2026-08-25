@@ -64,8 +64,10 @@ export const data: ContentPackData = {
     {
       id: '__CHAMPION__'.toLowerCase(),
       name: '__CHAMPION__',
-      // A key in this pack's own `assetManifest.ts`, never one of core's —
-      // see that file, and the `pack-asset-key` seam. A `playable` champion
+      // A key in this pack's own `generated/assetManifest.ts`, never one of
+      // core's — see the `pack-asset-key` seam. The key is the file's path
+      // under `assets/` with the extension dropped, so `assets/champ_hero.png`
+      // is `champ_hero` and stays `champ_hero` when the build re-encodes it. A `playable` champion
       // must have one; only a non-playable roster row (a shelf, a summoner
       // spell list) may leave it `null`.
       image: 'champ_hero',

@@ -11,9 +11,9 @@
  * player meets as "pack không tải được".
  *
  * It re-exports rather than declaring: core's build-time path reads
- * `<pkg>/pack` and `<pkg>/assetManifest` separately, and keeping this file a
+ * `<pkg>/pack` and `<pkg>/generated/assetManifest` separately, and keeping this file a
  * pure re-export is what stops the two paths from drifting into two
  * different packs.
  */
 export { default, data } from './pack';
-export { assetManifest } from './assetManifest';
+export { assetManifest } from './generated/assetManifest';

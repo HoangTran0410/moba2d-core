@@ -8,7 +8,7 @@
  * exists as plain ESM. Only the *data* half is read — inert data, no
  * `ContentApi` constructed — so nothing of the engine is needed here.
  */
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -66,6 +66,22 @@ if (floor && have) {
     );
   }
 }
+
+/**
+ * This pack's own mark, if it has one.
+ *
+ * `public/` is copied verbatim into `dist/` by Vite, so the name is stable and
+ * unhashed and core can resolve it against this manifest. Emitted only when
+ * the file is actually there: core draws a monogram from the pack's name when
+ * a manifest declares no icon, and a monogram beats every scaffolded pack
+ * shipping the same placeholder tile as its logo.
+ *
+ * Core shows it beside an **installed** pack only, never on the install
+ * confirmation — artwork a stranger chose, sitting inside a permission
+ * prompt, is decoration bought to earn trust the origin line exists to
+ * withhold.
+ */
+const icon = existsSync(join(dist, 'icon.png')) ? 'icon.png' : undefined;
 
 const { data } = await import(pathToFileURL(join(dist, 'pack.js')).href);
 const championCount = data.champions.filter(champion => champion.playable).length;
@@ -135,6 +151,9 @@ writeFileSync(
       entry: 'pack.js',
       assets: 'assets/',
       champions: championCount,
+      // `undefined` here and `JSON.stringify` drops the key entirely, which is
+      // what core's own defensive read of an absent icon expects.
+      icon,
       files,
     },
     null,

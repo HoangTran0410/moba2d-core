@@ -27,9 +27,9 @@ export default {
   barrels: [{ path: 'spells/index.ts', importBase: '../spells' }],
   apiSetter: { path: 'packApi.ts', export: 'setPackApi' },
   packId: '__PACK_ID__',
-  assetManifestOutputPath: 'assetManifest.ts',
+  assetManifestOutputPath: 'generated/assetManifest.ts',
   // This pack's art manifest is hand-written and lives at the root, while the
   // generated catalogue lands in `generated/` — so the `AssetKey` union it
   // types `iconKey` against is one directory up, not a sibling.
-  assetKeyModule: '../assetManifest',
+  assetKeyModule: './assetManifest',
 };

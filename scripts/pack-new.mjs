@@ -209,6 +209,22 @@ function writeTemplate(file, rel, slot) {
     outRel = segments.join(sep);
   }
 
+  // `x.png.b64.tmpl` -> `x.png`, base64-decoded. Every other template is
+  // text, and this loop reads them as UTF-8 — which is right, because a
+  // template nothing can grep is a template nobody maintains. But a pack
+  // needs at least one real image file to have a working art path at all
+  // (core refuses a playable champion with no portrait), and a scaffold that
+  // shipped its placeholder as a data URI inside a hand-written
+  // `assetManifest.ts` had no path from there to a *generated* one: the
+  // generator walks `assets/`, and there was nothing in it.
+  if (outRel.endsWith('.b64')) {
+    outRel = outRel.slice(0, -'.b64'.length);
+    const outPath = join(targetPath, outRel);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, Buffer.from(readFileSync(file, 'utf8').trim(), 'base64'));
+    return 1;
+  }
+
   const outPath = join(targetPath, outRel);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, substitute(readFileSync(file, 'utf8'), slot));

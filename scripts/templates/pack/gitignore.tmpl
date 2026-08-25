@@ -1,6 +1,11 @@
 node_modules
 dist
 
+# Written by `npm run assets:generate` and `npm run catalog:generate`, both of
+# which `prepare` runs after every install. Committing them means reviewing a
+# diff nobody wrote and resolving conflicts in it.
+generated/
+
 # No lockfile. @moba2d/core is a git dependency, and a committed lockfile
 # pins it to one commit — this pack would then keep building against a core
 # that has moved on, until someone remembers to reinstall. CI installs fresh

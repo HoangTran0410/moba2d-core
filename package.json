@@ -19,13 +19,16 @@
     "./testing/spells": "./src/testing/spellRegistry.ts",
     "./testing/vitest": "./src/testing/vitest.mjs",
     "./testing/setup": "./src/testing/setup.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./pack-assets": "./scripts/generate-assets.mjs",
+    "./pack-webp": "./scripts/pack-webp.mjs"
   },
   "bin": {
     "moba2d-check-seams": "./scripts/check-seams.mjs",
     "moba2d-generate-spell-catalog": "./scripts/generate-spell-catalog.mjs",
     "moba2d-pack-new": "./scripts/pack-new.mjs",
-    "moba2d-pack-add": "./scripts/pack-add.mjs"
+    "moba2d-pack-add": "./scripts/pack-add.mjs",
+    "moba2d-generate-assets": "./scripts/pack-assets.mjs"
   },
   "files": [
     "assets/cursors",
@@ -34,6 +37,9 @@
     "public",
     "scripts/check-seams.mjs",
     "scripts/generate-spell-catalog.mjs",
+    "scripts/pack-webp.mjs",
+    "scripts/pack-assets.mjs",
+    "scripts/generate-assets.mjs",
     "scripts/installed-packs.mjs",
     "scripts/pack-new.mjs",
     "scripts/pack-add.mjs",

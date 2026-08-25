@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the thirteen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the fifteen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -139,6 +139,14 @@ describe('package.json public surface', () => {
         './testing/spells',
         './testing/vitest',
         './testing/setup',
+        // The two build helpers a pack's own tooling runs, added when the
+        // scaffold gained an art path it could actually grow: `pack-assets` is
+        // the asset-manifest generator behind `moba2d-generate-assets` (a pack
+        // test imports `assetKeyForPath` from it), and `pack-webp` is the Vite
+        // plugin that re-encodes art on the way into `dist/`. Neither is ever
+        // part of a published `pack.js`.
+        './pack-assets',
+        './pack-webp',
         './package.json',
       ].sort()
     );
@@ -162,7 +170,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly four bins: moba2d-check-seams, moba2d-generate-spell-catalog, moba2d-pack-new and moba2d-pack-add', () => {
+  it('declares exactly five bins, the four below plus moba2d-generate-assets', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -182,6 +190,15 @@ describe('package.json public surface', () => {
       'moba2d-generate-spell-catalog': './scripts/generate-spell-catalog.mjs',
       'moba2d-pack-new': './scripts/pack-new.mjs',
       'moba2d-pack-add': './scripts/pack-add.mjs',
+      // Five, not four. The scaffold's `assetManifest.ts` told an author, in
+      // its own header, that "core's own `scripts/generate-assets.mjs` is the
+      // worked example" for a pack with more than a handful of images — and
+      // that file was absent from `files`, so it was in no pack's
+      // `node_modules` and the sentence pointed at nothing the reader could
+      // open. A scaffolded pack shipped one placeholder tile and no way up
+      // from it; the largest pack there is solved that by copying the whole
+      // generator.
+      'moba2d-generate-assets': './scripts/pack-assets.mjs',
     });
     for (const target of Object.values(bin!)) {
       expect(existsSync(join(repoRoot, target)), `${target} does not exist on disk`).toBe(true);

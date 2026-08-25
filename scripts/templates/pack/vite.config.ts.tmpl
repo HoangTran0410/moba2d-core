@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
+// @ts-expect-error — a plain .mjs build helper with no types of its own.
+import { webpAssets } from '@moba2d/core/pack-webp';
 
 /**
  * The runtime-install build: `runtime-entry.ts` in, `dist/pack.js` plus its
@@ -39,6 +41,13 @@ import { resolve } from 'node:path';
  * not a config problem to work around here.
  */
 export default defineConfig({
+  // Raster art is re-encoded to WebP on the way into `dist/` — measured at
+  // 70% smaller on the largest pack there is, with no code change anywhere:
+  // an asset key strips the extension, so `champ_hero` is `champ_hero`
+  // whether the file is a PNG or a WebP. The files under `assets/` are left
+  // exactly as they are; see the plugin's own header for why that matters if
+  // this pack ever imports art from somewhere that has to be cited.
+  plugins: [webpAssets()],
   base: '',
   build: {
     target: 'esnext',

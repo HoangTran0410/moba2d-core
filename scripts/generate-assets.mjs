@@ -180,6 +180,25 @@ export const CORE_ASSET_TREE = {
 };
 
 /**
+ * A content pack's layout, which is not core's: `assets/` beside the pack's
+ * `package.json`, and the manifest under `generated/` with everything else
+ * that is written rather than authored.
+ *
+ * Exported because a pack has more than one caller for it — the
+ * `moba2d-generate-assets` bin, and any of the pack's own tooling that
+ * rewrites the manifest as a side effect of importing art. `generate(root)`
+ * and `renderAssetManifestSource(root)` both default to `CORE_ASSET_TREE`
+ * above, so a pack that forgets to pass this writes core's manifest path
+ * instead of its own — silently, since both calls succeed.
+ */
+export const PACK_ASSET_TREE = {
+  assetsDir: 'assets',
+  outputPath: 'generated/assetManifest.ts',
+  keyPrefix: '',
+  regenerateCommand: 'npm run assets:generate',
+};
+
+/**
  * How far a tree's generated file must walk back to the repository root
  * that every manifest entry's `path` is written relative to — `../../` for
  * `src/generated/` (two segments down), `../../../` for the one-segment-

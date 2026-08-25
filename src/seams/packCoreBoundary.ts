@@ -151,6 +151,17 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     naming it is a spell that cannot run, caught by the pack's own
  *     runtime the first time that code path executes, not a hole in what
  *     ships.
+ *   - `/pack-webp` and `/pack-assets` — the two build helpers a pack's own
+ *     tooling runs: a Vite plugin that re-encodes art on the way into
+ *     `dist/`, and the asset-manifest generator (a bin, but a pack test may
+ *     import `assetKeyForPath` from it to check its own keys). Same shape as
+ *     `/testing/vitest` above and admitted for the same reason: a pack's
+ *     `vite.config.ts` is read by Vite and is never part of `pack.js`, so a
+ *     value import there cannot become the bare unresolvable specifier this
+ *     seam exists to prevent. The scaffold added these the day this set did
+ *     — the template's `vite.config.ts` imports `webpAssets`, and a
+ *     scaffolded pack failed its own `check-seams` on the first run, which is
+ *     the seam working rather than a reason to weaken it.
  */
 const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing`,
@@ -159,6 +170,8 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/vitest`,
   `${CORE_PACKAGE}/testing/setup`,
   `${CORE_PACKAGE}/seams`,
+  `${CORE_PACKAGE}/pack-webp`,
+  `${CORE_PACKAGE}/pack-assets`,
 ]);
 
 /** Whether a relative specifier resolves outside the package being scanned. */
