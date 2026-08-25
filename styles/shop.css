@@ -11,42 +11,60 @@
    The corner button that *opens* it (`.shop-btn`) deliberately stays in
    `hud.css`: it is HUD chrome living in the corner cluster with the settings
    and recall buttons, and it is on screen when this panel is not.
+
+   ## The layout, and the one media query that switches it
+
+   Two columns: a scrolling grid of icon tiles, and a detail pane. The game is
+   landscape on every device it ships to (`OrientationHint.vue`), so the split
+   is never about portrait — it is about how much of the world the panel may
+   cover.
+
+   With room, both columns are on screen at once and the pane shows a
+   placeholder until a tile is picked. Below `COMPACT` (a short viewport, which
+   is every phone held sideways, or a genuinely narrow window) the panel
+   narrows — it must keep the champion and the fountain visible, because the
+   rule it enforces is about where the player is *standing*, and a sheet that
+   hides that is a sheet that hides the rule — and the two columns take turns
+   instead: the grid fills the panel, `.has-detail` swaps the pane in over it,
+   and `.shop-detail-back` (which exists only in this mode) swaps back.
+
+   Everything below is written wide-first; the compact block at the bottom of
+   the file is the only place that overrides it.
    =================================================================== */
 
 /* Over the match and *not* over a pause — see `ShopPanel.vue`. Right-hand side
-   rather than centred, because the panel has to leave the champion and the
-   fountain visible: the rule it enforces is about where the player is
-   standing, and a modal that hides that is a modal that hides the rule. */
+   rather than centred, for the same "leave the fountain visible" reason. */
 .shop-panel {
   position: fixed;
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(78vh, 720px);
+  width: min(620px, calc(100vw - 24px));
+  max-height: min(76vh, 640px);
   display: flex;
   flex-direction: column;
   background: #0d1117f2;
-  border: 2px solid #c8a15e66;
+  border: 2px solid var(--hextech-gold-dim, #785a28);
   border-radius: 8px;
   box-shadow: 0 8px 40px #000a;
   z-index: 120;
-  color: #e6e6e6;
+  color: var(--hextech-text, #f0e6d2);
 }
 
 .shop-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid #fff1;
+  flex: none;
 }
 
 .shop-header h3 {
   margin: 0;
   flex: 1;
-  font-size: 1.05em;
-  color: #e8c17d;
+  font-size: 1em;
+  color: var(--hextech-gold, #c8aa6e);
 }
 
 .shop-gold {
@@ -59,8 +77,8 @@
 }
 
 .shop-close {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 4px;
   border: 1px solid #fff2;
   background: #1b2029;
@@ -73,40 +91,68 @@
 }
 
 /* The one sentence the grid cannot say for itself: away from the platform
-   every card is greyed, which reads as "everything is too expensive". */
+   every tile is greyed, which reads as "everything is too expensive". */
 .shop-warning {
   margin: 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: #2a1a08;
   color: #ffcf8a;
-  font-size: 0.82em;
+  font-size: 0.78em;
   border-bottom: 1px solid #fff1;
+  flex: none;
 }
 
-.shop-body {
+.shop-main {
   flex: 1;
   min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* ------------------------------------------------------------------ shelf */
+
+/* The one scroll region on the left. `touch-action: pan-y` is load-bearing on
+   a phone for the reason `.practice-tab-body` documents at length in
+   `hud.css`: `GameScene` cancels every touch on the page, so this scrolls
+   only because the property says it may. `overscroll-behavior` stops a
+   flick at the end of the list handing the overscroll to the page under it. */
+.shop-shelf {
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
-  /* Load-bearing on a phone: `GameScene` cancels touches on the page, so the
-     browser scrolls this only because the property says it may. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
-.shop-stock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.shop-section + .shop-section {
+  margin-top: 10px;
 }
 
-.shop-card {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 7px 8px;
+.shop-section h4 {
+  margin: 0 0 5px;
+  font-size: 0.72em;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--hextech-muted, #a09b8c);
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 5px;
+}
+
+/* ------------------------------------------------------------------- tile */
+
+.shop-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 2px 4px;
   border-radius: 5px;
   border: 1px solid #fff2;
   background: #161b22;
@@ -115,33 +161,34 @@
   cursor: pointer;
 }
 
-.shop-card:hover {
-  border-color: #e3c078;
+.shop-tile:hover {
+  border-color: var(--hextech-gold, #c8aa6e);
   background: #1d232c;
 }
 
-/* Refused, with the reason printed inside it. Never "hidden" — an item a
+/* The tile the pane is showing. A ring rather than a fill, so the art still
+   reads — this is the one tile a player is looking straight at. */
+.shop-tile.picked {
+  border-color: var(--hextech-teal, #08abac);
+  box-shadow: 0 0 0 1px var(--hextech-teal, #08abac) inset;
+  background: #10222a;
+}
+
+/* Refused, with the reason waiting in the pane. Never *hidden* — an item a
    player cannot afford yet is the thing they are saving for. */
-.shop-card.blocked {
-  opacity: 0.5;
-  cursor: not-allowed;
+.shop-tile.blocked {
+  opacity: 0.45;
 }
 
-.shop-card-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shop-card-top img,
-.shop-card-blank {
-  width: 34px;
-  height: 34px;
+.shop-tile img,
+.shop-tile-blank {
+  width: 38px;
+  height: 38px;
   border-radius: 4px;
   flex: none;
 }
 
-.shop-card-blank {
+.shop-tile-blank {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -150,120 +197,548 @@
   font-weight: bold;
 }
 
-.shop-card-name {
-  flex: 1;
+.shop-tile-price {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 0.72em;
+  color: #ffe2a3;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
-.shop-card-active {
-  align-self: flex-start;
+/* Parts already in the bag, so this costs less than it is worth. Green says
+   "cheaper than the sticker" without a sentence; the struck-through total
+   beside it says how much cheaper. */
+.shop-tile-price.discounted {
+  color: #8fe0a8;
+  font-weight: bold;
+}
+
+.shop-tile-price s {
+  color: #7c8798;
+  font-weight: normal;
+  font-size: 0.85em;
+}
+
+.shop-tile-flag,
+.shop-tile-tick {
+  position: absolute;
+  top: 3px;
+  font-size: 0.6em;
+}
+
+/* An active is a key to press — a mechanic, not a stat, and the one property
+   worth knowing before opening anything. */
+.shop-tile-flag {
+  right: 4px;
+  color: #ffd166;
+}
+
+.shop-tile-tick {
+  left: 4px;
+  color: #4bd086;
+}
+
+/* ------------------------------------------------------------------ detail */
+
+.shop-detail {
+  flex: none;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid #fff1;
+  background: #0b0f15;
+}
+
+/* Compact only — see this file's header. On a wide screen the grid never went
+   anywhere, so there is nothing to go back to. */
+.shop-detail-back {
+  display: none;
+}
+
+.shop-detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 8px;
+}
+
+.shop-detail-placeholder {
+  margin: auto;
+  padding: 12px;
+  text-align: center;
+  font-size: 0.78em;
+  color: #7c8798;
+}
+
+.shop-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shop-detail-head img,
+.shop-detail-blank {
+  width: 42px;
+  height: 42px;
+  border-radius: 5px;
+  flex: none;
+}
+
+.shop-detail-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a3140;
+  color: #9fb0c8;
+  font-weight: bold;
+}
+
+.shop-detail-head h4 {
+  margin: 0;
+  font-size: 0.95em;
+  color: var(--hextech-gold, #c8aa6e);
+}
+
+.shop-detail-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
   padding: 0 5px;
   border-radius: 7px;
   background: #06280f;
   border: 1px solid #4bd086;
   color: #b6ffd4;
-  font-size: 0.68em;
+  font-size: 0.66em;
 }
 
-.shop-card-cost {
+/* The two transactions. Big, labelled and unmistakably each other's opposite:
+   gold buys, teal-grey sells. Nothing else in this pane is a button of this
+   size, because nothing else spends or earns. */
+.shop-buy,
+.shop-sell {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: #ffe2a3;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  margin-top: 6px;
+  border-radius: 5px;
+  font: inherit;
   font-weight: bold;
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.shop-card-stats {
-  margin: 5px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px 10px;
-  font-size: 0.8em;
+.shop-buy {
+  border: 1px solid var(--hextech-gold, #c8aa6e);
+  background: #2c2418;
+  color: #ffe2a3;
+}
+
+.shop-buy:hover {
+  background: #3b3020;
+}
+
+.shop-sell {
+  border: 1px solid #4a5768;
+  background: #1a2029;
   color: #b9c4d2;
 }
 
-.shop-card-stats .amount {
+.shop-sell:hover {
+  background: #232b36;
+}
+
+.shop-sell-price {
+  color: #8fe0a8;
+}
+
+.shop-buy-price,
+.shop-sell-price {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Why the button above it will refuse. `row.reason` and `REFUSAL_TEXT` — the
+   shop's own sentence, never one written here. */
+.shop-buy-why {
+  margin: 3px 0 0;
+  font-size: 0.72em;
+  color: #ff9e9e;
+}
+
+/* Printed only when `price` and `cost` differ, which is the whole of what
+   "ghép đồ" does to a number a player is watching. */
+.shop-buy-total {
+  margin: 3px 0 0;
+  font-size: 0.72em;
+  color: #8fe0a8;
+}
+
+.shop-detail-stats {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78em;
+  color: #b9c4d2;
+}
+
+.shop-detail-stats .amount {
   color: #8fe0a8;
   font-weight: bold;
   font-variant-numeric: tabular-nums;
 }
 
-.shop-card-text {
-  margin: 5px 0 0;
-  font-size: 0.78em;
+.shop-detail-text {
+  margin: 8px 0 0;
+  font-size: 0.75em;
+  line-height: 1.4;
   color: #97a3b3;
 }
 
-.shop-card-reason {
-  margin: 4px 0 0;
-  font-size: 0.75em;
-  color: #ff9e9e;
+.shop-detail-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #fff1;
 }
 
-.shop-bag {
-  border-top: 1px solid #fff1;
-  padding-top: 8px;
+.shop-detail-section h5 {
+  margin: 0 0 5px;
+  font-size: 0.7em;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--hextech-muted, #a09b8c);
+}
+
+/* --------------------------------------------------------------- the tree */
+
+/* Indentation with a rule down the left, rather than Wild Rift's pyramid of
+   icons: the pyramid needs horizontal room a 232px pane has not got, and it
+   gets narrower per level exactly as the names get longer. */
+.shop-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
-.shop-bag h4 {
-  margin: 0 0 2px;
-  font-size: 0.9em;
-  color: #e8c17d;
+.shop-tree .shop-tree {
+  margin: 3px 0 0 9px;
+  padding-left: 7px;
+  border-left: 1px solid #3c4453;
 }
 
-.shop-sell {
+.shop-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 5px;
+  border-radius: 4px;
+  border: 1px solid #fff1;
+  background: #161b22;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shop-tree-node:hover {
+  border-color: var(--hextech-gold, #c8aa6e);
+}
+
+/* Already in the bag — and on a recipe row that means "this purchase would
+   consume that copy", not "one is somewhere about". See `RecipeLink.owned`. */
+.shop-tree-node.held {
+  border-color: #4bd08655;
+  background: #10231a;
+}
+
+.shop-tree-node img,
+.shop-tree-blank {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.shop-tree-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a3140;
+  color: #9fb0c8;
+  font-size: 0.7em;
+  font-weight: bold;
+}
+
+.shop-tree-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-tree-cost {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72em;
+  color: #ffe2a3;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-tree-tick {
+  font-size: 0.65em;
+  color: #4bd086;
+}
+
+/* ------------------------------------------------------------ builds into */
+
+.shop-into {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.shop-into-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  border: 1px solid #fff1;
+  background: #161b22;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shop-into-chip:hover {
+  border-color: var(--hextech-gold, #c8aa6e);
+}
+
+.shop-into-chip.held {
+  border-color: #4bd08655;
+  background: #10231a;
+}
+
+.shop-into-chip img,
+.shop-into-blank {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.shop-into-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a3140;
+  color: #9fb0c8;
+  font-size: 0.7em;
+  font-weight: bold;
+}
+
+.shop-into-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-into-cost {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72em;
+  color: #ffe2a3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- the bag */
+
+/* Six slots along the bottom, in the order the inventory is really in, rather
+   than a second list of cards. It stays outside `.shop-main`, so it is on
+   screen in the compact layout whether the grid or the pane has the space. */
+.shop-bag {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
+  padding: 6px 8px;
+  border-top: 1px solid #fff1;
+  background: #10151c;
+}
+
+.shop-bag-label {
+  font-size: 0.7em;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--hextech-muted, #a09b8c);
+}
+
+.shop-bag-slots {
+  display: flex;
+  gap: 5px;
+}
+
+.shop-bag-slot {
+  width: 44px;
+  height: 44px;
   border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
   border: 1px solid #fff2;
   background: #161b22;
   color: inherit;
   font: inherit;
+}
+
+/* An empty slot is drawn, never omitted: "how much room is left" is what
+   decides whether the next purchase is even possible, and `NO_SLOT` is a
+   refusal a player should be able to see coming. */
+.shop-bag-slot.empty {
+  border-style: dashed;
+  border-color: #ffffff14;
+  background: #0d1117;
+}
+
+.shop-bag-slot.filled {
   cursor: pointer;
 }
 
-.shop-sell:hover {
-  border-color: #e3c078;
+.shop-bag-slot.filled:hover {
+  border-color: var(--hextech-gold, #c8aa6e);
 }
 
-.shop-sell.blocked {
-  opacity: 0.5;
-  cursor: not-allowed;
+.shop-bag-slot.picked {
+  border-color: var(--hextech-teal, #08abac);
+  background: #10222a;
 }
 
-.shop-sell img {
+.shop-bag-slot img,
+.shop-bag-blank {
   width: 26px;
   height: 26px;
   border-radius: 3px;
 }
 
-.shop-sell-name {
-  flex: 1;
-  text-align: left;
-  font-size: 0.85em;
-}
-
-.shop-sell-refund {
+.shop-bag-blank {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: #ffe2a3;
-  font-size: 0.85em;
+  justify-content: center;
+  background: #2a3140;
+  color: #9fb0c8;
+  font-size: 0.7em;
+  font-weight: bold;
+}
+
+.shop-bag-refund {
+  font-size: 0.58em;
+  color: #8fe0a8;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .shop-empty {
   margin: 0;
   font-size: 0.8em;
   color: #7c8798;
+}
+
+/* =====================================================================
+   COMPACT — a phone held sideways, or a window that is genuinely small.
+
+   The height clause is the one that fires on a phone: landscape is wide and
+   short (844x390 on the iPhone this is tested at), so a `max-width` rule
+   alone would never see it. The width clause is for a narrow desktop window,
+   where the two columns would each be too thin to read.
+
+   In this mode the grid and the pane take turns rather than sitting side by
+   side, switched by `.has-detail` on the panel.
+   ===================================================================== */
+@media (max-width: 700px), (max-height: 560px) {
+  .shop-panel {
+    right: 8px;
+    width: min(392px, calc(100vw - 16px));
+    max-height: min(88vh, 460px);
+  }
+
+  .shop-grid {
+    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+  }
+
+  /* Full width when it is in force, and absent when it is not. */
+  .shop-detail {
+    display: none;
+    width: auto;
+    flex: 1;
+    border-left: none;
+  }
+
+  .shop-panel.has-detail .shop-shelf {
+    display: none;
+  }
+
+  .shop-panel.has-detail .shop-detail {
+    display: flex;
+  }
+
+  /* The way back to the grid. A real target, not a chevron on its own: it is
+     the only exit from the pane on this layout. */
+  .shop-detail-back {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    width: 100%;
+    min-height: 34px;
+    padding: 4px 10px;
+    border: none;
+    border-bottom: 1px solid #fff1;
+    background: #161b22;
+    color: var(--hextech-muted, #a09b8c);
+    font: inherit;
+    font-size: 0.8em;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .shop-bag-slot {
+    width: 40px;
+    height: 40px;
+  }
+
+  .shop-bag-slot img,
+  .shop-bag-blank {
+    width: 22px;
+    height: 22px;
+  }
 }

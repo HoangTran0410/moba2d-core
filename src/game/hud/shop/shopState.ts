@@ -266,3 +266,168 @@ export function sellRows(champion: Champion): SellRow[] {
   }
   return rows;
 }
+
+/* ------------------------------------------------------------------------ *
+ * What the grid-and-detail panel reads.
+ *
+ * `ShopPanel.vue` draws a sweep of icon tiles with a detail pane beside it, so
+ * between them they ask four questions the old full-width card never had to:
+ * which section of the shelf is this in, which of the two prices does the tile
+ * print, is this already in the bag, and what does the build tree under it
+ * look like. Each one is a `v-if` waiting to happen, and a `v-if` in this
+ * panel is exactly the failure the file header names.
+ *
+ * None of them answers "can this be bought" — `ShopRow.refusal` is still the
+ * only answer to that, and it still comes from `ItemShop.refusalFor`.
+ * ------------------------------------------------------------------------ */
+
+/** The two shelves a player browses by. */
+export type ShopSectionKey = 'basic' | 'combined';
+
+export interface ShopSection {
+  key: ShopSectionKey;
+  title: string;
+  rows: ShopRow[];
+}
+
+/**
+ * Section headings. Written out here beside `STAT_LABEL` and `REFUSAL_TEXT`
+ * rather than in the template, for the same reason those are: every string a
+ * player reads in this panel is Vietnamese and lives in one file.
+ */
+const SECTION_TITLE: Record<ShopSectionKey, string> = {
+  basic: 'Trang bị cơ bản',
+  combined: 'Trang bị ghép',
+};
+
+/**
+ * The shelf, split in two: bought whole, or combined out of parts.
+ *
+ * The only grouping the data actually supports — a pack declares no category —
+ * and it happens to be the one worth having, because it is the same line
+ * `buildsFrom` draws. Components are what a player buys on the first trip
+ * back; combines are what they are saving for. A flat list of fourteen icons
+ * says neither.
+ *
+ * Order inside a section is whatever `shopRows` chose (cheapest first), never
+ * re-sorted: that ordering is what makes a browse read as a build order.
+ */
+export function shopSections(rows: readonly ShopRow[]): ShopSection[] {
+  const basic: ShopRow[] = [];
+  const combined: ShopRow[] = [];
+  for (const row of rows) (row.recipe.length === 0 ? basic : combined).push(row);
+
+  const sections: ShopSection[] = [];
+  // An empty section is a heading over nothing, which reads as a shelf that
+  // failed to load rather than as a shelf with nothing of that kind on it.
+  if (basic.length) sections.push({ key: 'basic', title: SECTION_TITLE.basic, rows: basic });
+  if (combined.length) {
+    sections.push({ key: 'combined', title: SECTION_TITLE.combined, rows: combined });
+  }
+  return sections;
+}
+
+/** The two numbers a tile and a detail pane print, already formatted. */
+export interface PriceLabel {
+  /** What this champion pays right now. */
+  pay: string;
+  /** What it is worth from an empty bag. */
+  total: string;
+  /** `cost - price`, as a number, for the "đã có … trong túi" line. */
+  saved: number;
+  /** The two differ, so both are worth printing. */
+  discounted: boolean;
+}
+
+/**
+ * `price` is what a player pays and `cost` is what the item is worth, and the
+ * moment a component lands in the bag those stop being the same number. A
+ * panel that printed only the first would show a price that dropped for no
+ * visible reason; one that printed only the second would lie about the
+ * purchase. So both, and the comparison that decides whether the second is
+ * worth the space, are answered once, here — never as `v-if="row.price <
+ * row.cost"` in a template.
+ */
+export function priceLabel(row: ShopRow): PriceLabel {
+  return {
+    pay: String(row.price),
+    total: String(row.cost),
+    saved: row.cost - row.price,
+    discounted: row.price < row.cost,
+  };
+}
+
+/**
+ * Every item id the bag is holding, for the tick a shelf tile wears.
+ *
+ * Deliberately *not* a count and not a slot: the tile only says "you have one
+ * of these", and which one it is, is `bagSlotOf`'s question.
+ */
+export function heldItemIds(bag: readonly SellRow[]): Set<string> {
+  return new Set(bag.map(row => row.id));
+}
+
+/**
+ * The bag row holding `id`, or null — what the detail pane's Bán button needs.
+ *
+ * Lowest slot when two copies are held. Arbitrary, but not ambiguous:
+ * `sellItem` takes a slot number and "one of them" has to resolve to a slot
+ * that is really there.
+ */
+export function bagSlotOf(bag: readonly SellRow[], id: string): SellRow | null {
+  let found: SellRow | null = null;
+  for (const row of bag) {
+    if (row.id !== id) continue;
+    if (found === null || row.slot < found.slot) found = row;
+  }
+  return found;
+}
+
+/** One node of the build tree: a part, and the parts it is made of. */
+export interface RecipeNode {
+  link: RecipeLink;
+  parts: RecipeNode[];
+}
+
+/**
+ * How many levels of parts the pane draws. Three is what Wild Rift's own tree
+ * shows and about what fits: past that the indentation is wider than a phone.
+ */
+export const RECIPE_TREE_DEPTH = 3;
+
+/**
+ * The build tree under one item — its parts, and their parts.
+ *
+ * `ShopRow.recipe` is one level deep by construction, which is enough to say
+ * "this is made of these two" and not enough to say what those two are made
+ * of. The second level is where a build order lives, and it is a lookup rather
+ * than new data: every part is itself a row on the shelf, carrying its own
+ * recipe and its own `owned` marks. So this joins rows to rows and invents
+ * nothing.
+ *
+ * Each node's `owned` is that node's own row's answer — "buying *this* would
+ * consume that copy" — and not the root's, because that is the question the
+ * player is asking when reading one branch of a tree.
+ *
+ * Two guards, both because this walks a stranger's content twenty times a
+ * second and a hang here is the whole HUD, not one card: a depth cap, and a
+ * path set so a cycle stops instead of recursing. `validate.ts` refuses a
+ * cyclic pack, which is why this is a guard and not a feature.
+ */
+export function recipeTree(
+  rows: readonly ShopRow[],
+  id: string,
+  depth: number = RECIPE_TREE_DEPTH
+): RecipeNode[] {
+  const byId = new Map<string, ShopRow>();
+  for (const row of rows) byId.set(row.id, row);
+
+  const walk = (rowId: string, left: number, path: Set<string>): RecipeNode[] => {
+    const row = byId.get(rowId);
+    if (!row || left <= 0 || path.has(rowId)) return [];
+    const deeper = new Set(path).add(rowId);
+    return row.recipe.map(link => ({ link, parts: walk(link.id, left - 1, deeper) }));
+  };
+
+  return walk(id, depth, new Set());
+}

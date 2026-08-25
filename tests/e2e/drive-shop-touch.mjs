@@ -12,9 +12,17 @@
  * trailing `click` and a `@click`-only control is dead under a thumb while
  * being perfect under a mouse. That failure has shipped here three times.
  *
+ * It is also the only place the panel's **compact layout** exists. A phone is
+ * landscape and short (844x390), so the grid and the detail pane cannot both
+ * hold their full size — they take turns instead, switched by a media query on
+ * viewport height that a desktop run never crosses. Which half is on screen,
+ * and whether there is a way back from the other, is therefore invisible to
+ * every other test in this repository.
+ *
  *   node tests/e2e/drive-shop-touch.mjs /tmp/shoptouch
  */
 import { startHarness, PHONE_VIEWPORT } from './harness.mjs';
+import { PROBE_ITEMS, seedShopProbePack } from './shopProbePack.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/shoptouch';
 const h = await startHarness({
@@ -79,6 +87,121 @@ await guard(async () => {
     panelBox && panelBox.y >= 0 && panelBox.y + panelBox.height <= PHONE_VIEWPORT.height + 1,
     JSON.stringify(report.panelBox)
   );
+
+  // ------------------------------------------------ the compact layout
+  //
+  // Core sells nothing on its own, so the shelf is seeded the way a runtime
+  // pack install seeds it. See `shopProbePack.mjs`.
+  await seedShopProbePack(page);
+  await page.waitForTimeout(350);
+
+  const shelfAlone = await page.locator('.shop-shelf').isVisible();
+  const paneAtRest = await page.locator('.shop-detail').isVisible();
+  report.compactAtRest = { shelfAlone, paneAtRest };
+  check(
+    'the grid has the whole panel to itself',
+    shelfAlone && !paneAtRest,
+    `shelf=${shelfAlone} pane=${paneAtRest}`
+  );
+
+  const tile = page.locator(`.shop-tile[title="${PROBE_ITEMS.cloak.name}"]`);
+  await tile.scrollIntoViewIfNeeded();
+  const tileBox = await tile.boundingBox();
+  report.tileBox = tileBox && { w: Math.round(tileBox.width), h: Math.round(tileBox.height) };
+  check(
+    'a tile is a real target for a thumb',
+    tileBox && tileBox.width >= 34 && tileBox.height >= 34,
+    JSON.stringify(report.tileBox)
+  );
+
+  await tap(tileBox.x + tileBox.width / 2, tileBox.y + tileBox.height / 2, 80);
+  await page.waitForTimeout(400);
+
+  const shelfAfter = await page.locator('.shop-shelf').isVisible();
+  const paneAfter = await page.locator('.shop-detail').isVisible();
+  const paneName = (await page.locator('.shop-detail-head h4').textContent())?.trim();
+  report.compactPicked = { shelfAfter, paneAfter, paneName };
+  check(
+    'a tap swaps the pane in over the grid',
+    paneAfter && !shelfAfter,
+    `shelf=${shelfAfter} pane=${paneAfter}`
+  );
+  check(
+    'and the pane is the item that was tapped',
+    paneName === PROBE_ITEMS.cloak.name,
+    `"${paneName}"`
+  );
+
+  // The pane is the taller half — a panel that fitted with the grid showing
+  // and overflowed with the pane showing is a phone bug nobody would see from
+  // a desktop run.
+  const openBox = await page.locator('.shop-panel').boundingBox();
+  report.panelBoxWithPane = openBox && {
+    w: Math.round(openBox.width),
+    h: Math.round(openBox.height),
+  };
+  check(
+    'the panel still fits with the pane open',
+    openBox && openBox.y >= 0 && openBox.y + openBox.height <= PHONE_VIEWPORT.height + 1,
+    JSON.stringify(report.panelBoxWithPane)
+  );
+
+  // The only exit from the pane on this layout. Without it the grid is gone
+  // for good and the panel is a dead end.
+  const backBox = await page.locator('.shop-detail-back').boundingBox();
+  report.backBox = backBox && { w: Math.round(backBox.width), h: Math.round(backBox.height) };
+  check(
+    'the way back is thumb-sized',
+    backBox && backBox.height >= 30,
+    JSON.stringify(report.backBox)
+  );
+
+  await tap(backBox.x + backBox.width / 2, backBox.y + backBox.height / 2, 80);
+  await page.waitForTimeout(400);
+  const shelfBack = await page.locator('.shop-shelf').isVisible();
+  const paneBack = await page.locator('.shop-detail').isVisible();
+  check('and it puts the grid back', shelfBack && !paneBack, `shelf=${shelfBack} pane=${paneBack}`);
+
+  // ------------------------------------------------ buying under a thumb
+  await tile.scrollIntoViewIfNeeded();
+  const tileAgain = await tile.boundingBox();
+  await tap(tileAgain.x + tileAgain.width / 2, tileAgain.y + tileAgain.height / 2, 80);
+  await page.waitForTimeout(400);
+
+  const buyBox = await page.locator('.shop-buy').boundingBox();
+  report.buyBox = buyBox && { w: Math.round(buyBox.width), h: Math.round(buyBox.height) };
+  check(
+    'the buy button is thumb-sized',
+    buyBox && buyBox.height >= 36,
+    JSON.stringify(report.buyBox)
+  );
+
+  const heldBefore = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.items.filter(Boolean).length
+  );
+  await tap(buyBox.x + buyBox.width / 2, buyBox.y + buyBox.height / 2, 80);
+  await page.waitForTimeout(400);
+  const bought = await page.evaluate(() => {
+    const player = window.__lol2d.scene.oScene.game.player;
+    return {
+      held: player.items.filter(Boolean).length,
+      name: player.items.find(Boolean)?.def.name,
+    };
+  });
+  report.touchPurchase = { heldBefore, ...bought };
+  check(
+    'a tap on it really buys',
+    bought.held === heldBefore + 1 && bought.name === PROBE_ITEMS.cloak.name,
+    JSON.stringify(report.touchPurchase)
+  );
+
+  // The bag strip lives outside the half that swaps, so it is on screen
+  // whichever of the two has the space.
+  const bagSlots = await page.locator('.shop-bag-slot').count();
+  const bagFilled = await page.locator('.shop-bag-slot.filled').count();
+  report.bag = { bagSlots, bagFilled };
+  check('the bag strip stays on screen either way', bagSlots === 6, `${bagSlots} slots`);
+  check('and shows what was just bought', bagFilled === 1, `${bagFilled} filled`);
 
   await page.screenshot({ path: `${OUT}-phone.png` });
 

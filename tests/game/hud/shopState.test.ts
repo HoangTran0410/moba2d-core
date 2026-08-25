@@ -1,7 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '@/testing';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
-import { REFUSAL_TEXT, sellRows, shopRows } from '@/game/hud/shop/shopState';
+import {
+  REFUSAL_TEXT,
+  bagSlotOf,
+  heldItemIds,
+  priceLabel,
+  recipeTree,
+  sellRows,
+  shopRows,
+  shopSections,
+  type RecipeLink,
+  type ShopRow,
+} from '@/game/hud/shop/shopState';
 import { buyItem } from '@/game/economy/ItemShop';
 import { PackRegistry } from '@/content/PackRegistry';
 import { resetContentRegistryForTests } from '@/content/registry';
@@ -275,5 +286,195 @@ describe('sellRows', () => {
     const [row] = sellRows(champion);
     expect(row.cost).toBe(350);
     expect(row.refund).toBe(245); // 350 * 0.7
+  });
+});
+
+/**
+ * The derivations the redesigned panel reads, and the reason they live here
+ * rather than in the template.
+ *
+ * The grid is a sweep of icon tiles and the detail pane carries everything a
+ * tile no longer does, so between them they ask four questions the old
+ * full-width card never had to: which shelf section is this in, which of the
+ * two prices does the tile print, is this already in the bag, and what does
+ * the build tree under it look like. Every one of those is a `v-if` waiting
+ * to happen, and a `v-if` in this panel is the failure the file header names
+ * — a second implementation of the shop's rules, disagreeing with `ItemShop`
+ * on the frame the player clicked. None of them decides *whether* anything
+ * can be bought: `row.refusal` is still the only answer to that, and it still
+ * comes from `ItemShop.refusalFor`.
+ */
+const shelfRow = (over: Partial<ShopRow> = {}): ShopRow => ({
+  id: 'ref:x',
+  name: 'X',
+  description: '',
+  image: '',
+  cost: 100,
+  price: 100,
+  stats: [],
+  hasActive: false,
+  recipe: [],
+  buildsInto: [],
+  refusal: null,
+  reason: '',
+  ...over,
+});
+
+const link = (id: string, owned = false): RecipeLink => ({
+  id,
+  name: id,
+  image: '',
+  cost: 100,
+  owned,
+});
+
+describe('shopSections', () => {
+  it('splits the shelf into what is bought whole and what is combined', () => {
+    const sections = shopSections([
+      shelfRow({ id: 'ref:sword' }),
+      shelfRow({ id: 'ref:blade', recipe: [link('ref:sword')] }),
+    ]);
+    expect(sections.map(section => section.key)).toEqual(['basic', 'combined']);
+    expect(sections.map(section => section.rows.map(row => row.id))).toEqual([
+      ['ref:sword'],
+      ['ref:blade'],
+    ]);
+  });
+
+  it('leaves the order shopRows chose alone inside a section', () => {
+    // Cheapest-first is what makes a browse read as a build order, and a
+    // section that re-sorted would quietly throw that away.
+    const sections = shopSections([
+      shelfRow({ id: 'ref:a', cost: 200 }),
+      shelfRow({ id: 'ref:b', cost: 900 }),
+    ]);
+    expect(sections[0].rows.map(row => row.cost)).toEqual([200, 900]);
+  });
+
+  it('drops a section nothing is in, rather than printing an empty heading', () => {
+    const sections = shopSections([shelfRow({ id: 'ref:sword' })]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].key).toBe('basic');
+  });
+
+  it('names every section it can emit, so no heading renders as undefined', () => {
+    const sections = shopSections([
+      shelfRow({ id: 'ref:sword' }),
+      shelfRow({ id: 'ref:blade', recipe: [link('ref:sword')] }),
+    ]);
+    for (const section of sections) expect(section.title.length).toBeGreaterThan(0);
+  });
+
+  it('is empty for an empty shelf', () => {
+    expect(shopSections([])).toEqual([]);
+  });
+});
+
+describe('priceLabel', () => {
+  it('prints one number when the bag holds none of the parts', () => {
+    expect(priceLabel(shelfRow({ cost: 1200, price: 1200 }))).toEqual({
+      pay: '1200',
+      total: '1200',
+      saved: 0,
+      discounted: false,
+    });
+  });
+
+  it('prints both numbers and the difference once a part is held', () => {
+    // Without the difference on screen, a player carrying two components sees
+    // the price drop and cannot tell why — the one thing `price` vs `cost`
+    // exists to make legible.
+    expect(priceLabel(shelfRow({ cost: 1200, price: 450 }))).toEqual({
+      pay: '450',
+      total: '1200',
+      saved: 750,
+      discounted: true,
+    });
+  });
+});
+
+describe('heldItemIds', () => {
+  it('names every id the bag is holding', () => {
+    const ids = heldItemIds([
+      { slot: 0, id: 'ref:sword', name: 'Kiếm', image: '', cost: 350, refund: 245 },
+      { slot: 2, id: 'ref:cloak', name: 'Áo', image: '', cost: 400, refund: 280 },
+    ]);
+    expect([...ids].sort()).toEqual(['ref:cloak', 'ref:sword']);
+  });
+
+  it('is empty for an empty bag', () => {
+    expect(heldItemIds([]).size).toBe(0);
+  });
+});
+
+describe('bagSlotOf', () => {
+  const bag = [
+    { slot: 1, id: 'ref:sword', name: 'Kiếm', image: '', cost: 350, refund: 245 },
+    { slot: 3, id: 'ref:sword', name: 'Kiếm', image: '', cost: 350, refund: 245 },
+  ];
+
+  it('finds the slot an item is sitting in, so the detail can sell it', () => {
+    expect(bagSlotOf(bag, 'ref:sword')?.slot).toBe(1);
+  });
+
+  it('answers the lowest slot when two copies are held', () => {
+    // `sellItem` takes a slot, and selling "one of them" has to mean a slot
+    // that is really there — picking the first is arbitrary but it is not
+    // ambiguous.
+    expect(bagSlotOf([bag[1], bag[0]], 'ref:sword')?.slot).toBe(1);
+  });
+
+  it('answers null for something the bag does not hold', () => {
+    expect(bagSlotOf(bag, 'ref:cloak')).toBeNull();
+  });
+});
+
+describe('recipeTree', () => {
+  const rows = [
+    shelfRow({ id: 'ref:sword', cost: 350 }),
+    shelfRow({ id: 'ref:cloak', cost: 400 }),
+    shelfRow({
+      id: 'ref:blade',
+      cost: 1200,
+      recipe: [link('ref:sword', true), link('ref:cloak')],
+    }),
+    shelfRow({ id: 'ref:crown', cost: 2600, recipe: [link('ref:blade'), link('ref:sword')] }),
+  ];
+
+  it('nests a part that is itself built out of parts', () => {
+    const tree = recipeTree(rows, 'ref:crown');
+    expect(tree.map(node => node.link.id)).toEqual(['ref:blade', 'ref:sword']);
+    expect(tree[0].parts.map(node => node.link.id)).toEqual(['ref:sword', 'ref:cloak']);
+    expect(tree[1].parts).toEqual([]);
+  });
+
+  it('carries each level’s owned mark from that level’s own row', () => {
+    // The tick under `ref:blade` means "buying the blade would consume it",
+    // which is the blade's question and not the crown's.
+    expect(recipeTree(rows, 'ref:crown')[0].parts[0].link.owned).toBe(true);
+  });
+
+  it('is empty for a component, which is how the pane knows not to draw a tree', () => {
+    expect(recipeTree(rows, 'ref:sword')).toEqual([]);
+  });
+
+  it('is empty for an id the shelf does not carry', () => {
+    expect(recipeTree(rows, 'ref:nothing')).toEqual([]);
+  });
+
+  it('stops rather than looping for ever if a pack ships a cycle', () => {
+    // `validate.ts` refuses one, but this walk runs twenty times a second over
+    // a stranger's content and a hang here is the whole HUD.
+    const looped = [
+      shelfRow({ id: 'ref:a', recipe: [link('ref:b')] }),
+      shelfRow({ id: 'ref:b', recipe: [link('ref:a')] }),
+    ];
+    // It draws what the pack says as far as the loop closes and then stops:
+    // the second time the walk meets an id it is already inside, that branch
+    // ends. What it must never do is come back.
+    const tree = recipeTree(looped, 'ref:a');
+    expect(tree[0].link.id).toBe('ref:b');
+    expect(tree[0].parts[0].link.id).toBe('ref:a');
+    expect(tree[0].parts[0].parts).toEqual([]);
   });
 });

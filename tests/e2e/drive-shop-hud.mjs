@@ -1,16 +1,25 @@
 /**
  * The four HUD additions, in a real browser: the inventory row, the gold pill,
- * the passive badge, the toggle badge — plus the shop panel opening over a
- * running match.
+ * the passive badge, the toggle badge — and then the shop panel itself, over a
+ * running match, at a desktop viewport.
  *
  * None of this is reachable from Vitest. A Vue template that names a field the
  * state does not carry renders nothing and throws nothing; a p5 global
  * shadowed by a local fails only on a frame that may not be the one you are
- * looking at. Both have shipped here.
+ * looking at. Both have shipped here. And the shop's redesign turns on two
+ * questions no unit test can even ask: whether several tiles end up on the
+ * same row (a grid, rather than the column of full-width cards this replaces)
+ * and whether a tile carries prose (it must not — that is the whole trade the
+ * detail pane exists to make).
+ *
+ * Core sells nothing on its own, so the shelf is seeded through the same
+ * `PackRegistry.installData` door a runtime pack install uses — see
+ * `shopProbePack.mjs`, which explains why each of its five items is there.
  *
  *   node drive-shop-hud.mjs /tmp/shop
  */
 import { startHarness } from './harness.mjs';
+import { PROBE_COSTS, PROBE_ITEMS, seedShopProbePack } from './shopProbePack.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/shop';
 
@@ -135,6 +144,18 @@ await guard(async () => {
   });
 
   // ------------------------------------------------------------ the shop
+  //
+  // The panel is a grid of icon tiles with a detail pane beside it, and none
+  // of that is reachable from Vitest: a Vue template naming a field the state
+  // does not carry renders nothing and throws nothing, and whether two tiles
+  // end up on the same row is a question only a real layout engine answers.
+  //
+  // The probe HeldItem above goes back out first. It was equipped straight
+  // onto the champion rather than bought, so it is in the bag and *not* on the
+  // shelf — which is a state the panel handles (the pane says nothing is
+  // picked) but a poor thing to run every later check through.
+  await page.evaluate(() => window.__lol2d.scene.oScene.game.player.unequipItem(0));
+  await seedShopProbePack(page);
   await page.evaluate(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.openShop());
   await page.waitForTimeout(400);
 
@@ -145,102 +166,259 @@ await guard(async () => {
   const paused = await page.evaluate(() => window.__lol2d.scene.oScene.game.paused === true);
   check('and does not pause the match', paused === false, `paused=${paused}`);
 
-  const bagRows = await page.locator('.shop-sell').count();
-  report.bagRows = bagRows;
-  check('the bag lists what is held', bagRows === 1, `${bagRows} rows`);
+  // ----------------------------------------------------------- the grid
+  //
+  // "At least" and not a total: the probe shelf is *added to* whatever pack
+  // this browser has installed, which on a machine that has fetched the
+  // default pack is fourteen more items. See `shopProbePack.mjs`.
+  const tiles = await page.locator('.shop-tile').count();
+  report.tiles = tiles;
+  check('every item on the shelf is a tile', tiles >= PROBE_COSTS.length, `${tiles} tiles`);
 
-  // Whatever the installed packs happen to sell — which is nothing at all if
-  // core is running alone, and that state has to read as a sentence rather
-  // than a blank panel.
-  const cards = await page.locator('.shop-card').count();
-  const empty = await page.locator('.shop-stock .shop-empty').count();
-  report.shopCards = cards;
+  const headings = await page.locator('.shop-section h4').allTextContents();
+  report.sections = headings;
   check(
-    'the shelf either has stock or says it has none',
-    cards > 0 || empty === 1,
-    `${cards} cards, ${empty} notices`
+    'components and combines are two named shelves',
+    headings.length === 2,
+    headings.join(' / ')
   );
 
-  if (cards > 0) {
-    // Cheapest first, so a browse reads as a build order.
-    const costs = await page.locator('.shop-card-cost').allTextContents();
-    const numbers = costs.map(text => Number(text.replace(/[^0-9]/g, '')));
-    report.shopCosts = numbers;
-    check(
-      'stock is listed cheapest first',
-      numbers.every((cost, i) => i === 0 || cost >= numbers[i - 1]),
-      numbers.join(', ')
-    );
+  // The claim the whole redesign rests on. A column of full-width cards passes
+  // every other check on this page and fails this one.
+  const boxes = await page.locator('.shop-tile').evaluateAll(nodes =>
+    nodes.map(node => {
+      const rect = node.getBoundingClientRect();
+      return { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width) };
+    })
+  );
+  const perRow = boxes.filter(box => box.y === boxes[0].y).length;
+  report.tilesInTopRow = perRow;
+  report.tileWidth = boxes[0]?.w;
+  check('the shelf is a grid, not a column', perRow >= 3, `${perRow} tiles share the top row`);
+  check('and a tile is icon-sized', boxes[0].w <= 110, `${boxes[0].w}px wide`);
 
-    // A real purchase, through the real button. The gold has to come out and
-    // the item has to arrive in the bag — a card that looks affordable and a
-    // purchase that does nothing is the failure this whole panel is arranged
-    // to prevent.
-    const affordable = page.locator('.shop-card:not(.blocked)').first();
-    const affordableCount = await page.locator('.shop-card:not(.blocked)').count();
-    report.affordableCards = affordableCount;
-    check('something is affordable at the fountain', affordableCount > 0, `${affordableCount}`);
+  // Cheapest first, so a browse reads as a build order. Asked *within* a
+  // section: the two shelves are ordered independently, so a combine costing
+  // 900 sitting after a component costing 1400 is correct and a check over the
+  // whole grid would call it a regression.
+  const numbersIn = async selector => {
+    const texts = await page.locator(selector).allTextContents();
+    return texts.map(text => Number(text.replace(/[^0-9]/g, '')));
+  };
+  const basicPrices = await numbersIn('.shop-section:first-child .shop-tile-price');
+  const combinePrices = await numbersIn('.shop-section:last-child .shop-tile-price');
+  report.shelfPrices = { basicPrices, combinePrices };
+  const ascending = list => list.every((cost, i) => i === 0 || cost >= list[i - 1]);
+  check(
+    'each shelf is listed cheapest first',
+    ascending(basicPrices) && ascending(combinePrices),
+    `${basicPrices.join(',')} | ${combinePrices.join(',')}`
+  );
 
-    const goldBefore = await page.evaluate(
-      () => window.__lol2d.scene.oScene.game.player.wallet.balance
-    );
-    const price = Number(
-      (await affordable.locator('.shop-card-cost').textContent())?.replace(/[^0-9]/g, '')
-    );
-    await affordable.click();
-    await page.waitForTimeout(300);
+  // A tile carries a price and nothing else — no name, no stat list, no
+  // description, no refusal sentence. That is what makes a shelf of them
+  // scannable, and it is the exact text the old card stacked vertically.
+  const tileText = (
+    await page.locator(`.shop-tile[title="${PROBE_ITEMS.sword.name}"]`).innerText()
+  ).replace(/\s/g, '');
+  report.probeTileText = tileText;
+  check(
+    'a tile prints its price and no prose',
+    tileText === String(PROBE_ITEMS.sword.cost),
+    `tile read "${tileText}"`
+  );
 
-    const bought = await page.evaluate(() => {
-      const player = window.__lol2d.scene.oScene.game.player;
-      return {
-        gold: player.wallet.balance,
-        held: player.items.filter(Boolean).length,
-      };
-    });
-    report.purchase = { goldBefore, price, ...bought };
-    check(
-      'buying takes the price and fills a slot',
-      bought.gold <= goldBefore - price && bought.held === 2,
-      JSON.stringify(report.purchase)
-    );
-  }
+  // ------------------------------------------------- picking is not buying
+  await page.locator(`.shop-tile[title="${PROBE_ITEMS.wand.name}"]`).click();
+  await page.waitForTimeout(250);
+
+  const pickedName = (await page.locator('.shop-detail-head h4').textContent())?.trim();
+  const pickedTiles = await page.locator('.shop-tile.picked').count();
+  // Gold accrues by the second, so a balance comparison here would be timing
+  // the boot rather than watching for a purchase. The bag is the honest
+  // question: browsing must put nothing in it.
+  const heldAfterPick = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.items.filter(Boolean).length
+  );
+  report.picked = { pickedName, pickedTiles, heldAfterPick };
+  check(
+    'a tile opens the detail pane',
+    pickedName === PROBE_ITEMS.wand.name,
+    `pane says "${pickedName}"`
+  );
+  check('and marks itself as the one being read', pickedTiles === 1, `${pickedTiles} marked`);
+  // The old panel bought on a click anywhere on a card. Browsing must be free.
+  check('and buys nothing', heldAfterPick === 0, `${heldAfterPick} items held`);
+
+  // Everything the tile stopped carrying has to be *somewhere*.
+  const paneText = await page.locator('.shop-detail-scroll').innerText();
+  const statLines = await page.locator('.shop-detail-stats li').count();
+  report.paneStats = statLines;
+  check('the pane carries the description', paneText.includes('cầm cự'), paneText.slice(0, 60));
+  check('and the stats', statLines === 1, `${statLines} stat lines`);
+
+  // A component is worth reading precisely because of what it becomes.
+  const intoChips = await page.locator('.shop-into-chip').allTextContents();
+  report.buildsInto = intoChips.map(text => text.trim());
+  check(
+    'a component says what it builds into',
+    intoChips.length === 1 && intoChips[0].includes(PROBE_ITEMS.crown.name),
+    intoChips.join(' / ')
+  );
+
+  // ------------------------------------------------------- the build tree
+  await page.locator(`.shop-tile[title="${PROBE_ITEMS.crown.name}"]`).click();
+  await page.waitForTimeout(250);
+
+  const treeNodes = await page.locator('.shop-tree-node').count();
+  const nested = await page.locator('.shop-tree .shop-tree').count();
+  const treeNames = await page.locator('.shop-tree-name').allTextContents();
+  report.tree = { treeNodes, nested, treeNames };
+  // Crown is blade + wand, and blade is sword + cloak. A one-level pane would
+  // draw two nodes and no nesting, which is the state this replaces.
+  check('the tree reaches past the first level', treeNodes === 4, `${treeNodes} nodes`);
+  check('and draws the second level nested', nested === 1, `${nested} nested lists`);
+  check(
+    'naming each part',
+    treeNames.join(',') ===
+      [
+        PROBE_ITEMS.blade.name,
+        PROBE_ITEMS.sword.name,
+        PROBE_ITEMS.cloak.name,
+        PROBE_ITEMS.wand.name,
+      ].join(','),
+    treeNames.join(' / ')
+  );
+
+  // ---------------------------------------------------- buying is a button
+  await page.locator(`.shop-tile[title="${PROBE_ITEMS.sword.name}"]`).click();
+  await page.waitForTimeout(200);
+  const goldBeforeBuy = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.wallet.balance
+  );
+  await page.locator('.shop-buy').click();
+  await page.waitForTimeout(300);
+
+  const afterBuy = await page.evaluate(() => {
+    const player = window.__lol2d.scene.oScene.game.player;
+    return { gold: player.wallet.balance, held: player.items.filter(Boolean).length };
+  });
+  // A window rather than an equality, for the same reason the gold pill above
+  // is checked against a range: income accrues by the second, so the balance
+  // after a purchase is the price taken out *and* whatever the click cost in
+  // wall time put back. It must never be more than the price, and it must be
+  // recognisably the price rather than nothing.
+  const spent = goldBeforeBuy - afterBuy.gold;
+  report.purchase = { goldBeforeBuy, spent, ...afterBuy };
+  check(
+    'the buy button takes the price and fills a slot',
+    spent <= PROBE_ITEMS.sword.cost && spent > PROBE_ITEMS.sword.cost - 20 && afterBuy.held === 1,
+    JSON.stringify(report.purchase)
+  );
+
+  // ------------------------------------------------------- price vs cost
+  await page.locator(`.shop-tile[title="${PROBE_ITEMS.cloak.name}"]`).click();
+  await page.waitForTimeout(200);
+  await page.locator('.shop-buy').click();
+  await page.waitForTimeout(300);
+
+  await page.locator(`.shop-tile[title="${PROBE_ITEMS.blade.name}"]`).click();
+  await page.waitForTimeout(250);
+
+  const combinePrice = Number(
+    (await page.locator('.shop-buy-price').textContent())?.replace(/[^0-9]/g, '')
+  );
+  const combineTotal = (await page.locator('.shop-buy-total').textContent())?.trim();
+  const discountedTiles = await page.locator('.shop-tile-price.discounted').count();
+  const heldParts = await page.locator('.shop-tree-node.held').count();
+  const owed = PROBE_ITEMS.blade.cost - PROBE_ITEMS.sword.cost - PROBE_ITEMS.cloak.cost;
+  report.combine = { combinePrice, combineTotal, discountedTiles, heldParts };
+  check(
+    'a combine bills only what is missing',
+    combinePrice === owed,
+    `asks ${combinePrice}, owes ${owed}`
+  );
+  // Without this line a player watching the number drop cannot tell why.
+  check(
+    'and says where the rest of the price went',
+    (combineTotal ?? '').includes(String(PROBE_ITEMS.blade.cost)),
+    `"${combineTotal}"`
+  );
+  check('the tile says so too', discountedTiles >= 1, `${discountedTiles} discounted tiles`);
+  check('and the tree ticks the parts already held', heldParts === 2, `${heldParts} ticked`);
+
+  // ------------------------------------------------------------- the bag
+  const bagSlots = await page.locator('.shop-bag-slot').count();
+  const bagFilled = await page.locator('.shop-bag-slot.filled').count();
+  report.bag = { bagSlots, bagFilled };
+  // Empty slots are drawn on purpose: `NO_SLOT` is a refusal worth seeing coming.
+  check('the bag is the six slots it really is', bagSlots === 6, `${bagSlots} slots`);
+  check('two of them full', bagFilled === 2, `${bagFilled} filled`);
+
+  await page.locator('.shop-bag-slot.filled').first().click();
+  await page.waitForTimeout(250);
+  const bagPickName = (await page.locator('.shop-detail-head h4').textContent())?.trim();
+  const sellButtons = await page.locator('.shop-sell').count();
+  check(
+    'a bag slot opens the same pane a tile does',
+    bagPickName === PROBE_ITEMS.sword.name,
+    `pane says "${bagPickName}"`
+  );
+  check('and that pane grows a sell button', sellButtons === 1, `${sellButtons} sell buttons`);
+
+  const goldBeforeSell = await page.evaluate(
+    () => window.__lol2d.scene.oScene.game.player.wallet.balance
+  );
+  await page.locator('.shop-sell').click();
+  await page.waitForTimeout(300);
+  const afterSell = await page.evaluate(() => {
+    const player = window.__lol2d.scene.oScene.game.player;
+    return { gold: player.wallet.balance, held: player.items.filter(Boolean).length };
+  });
+  report.sale = { goldBeforeSell, ...afterSell };
+  check(
+    'selling pays back and empties the slot',
+    afterSell.gold > goldBeforeSell && afterSell.held === 1,
+    JSON.stringify(report.sale)
+  );
 
   await page.screenshot({
     path: `${OUT}-panel.png`,
-    clip: { x: 840, y: 100, width: 440, height: 700 },
+    clip: { x: 640, y: 110, width: 640, height: 680 },
   });
 
   // Standing on the platform, so there is nothing to warn about yet.
   const warnedAtFountain = await page.locator('.shop-warning').count();
   check('no warning at the fountain', warnedAtFountain === 0, `${warnedAtFountain} warnings`);
-  const sellableHere = await page.locator('.shop-sell.blocked').count();
-  check('the bag is sellable here', sellableHere === 0, `${sellableHere} blocked`);
+  const blockedHere = await page.locator('.shop-tile.blocked').count();
+  check('and nothing on the shelf refuses', blockedHere === 0, `${blockedHere} blocked`);
 
   // Walk off it, and the panel has to say *why* everything just greyed out —
   // an all-grey shelf with no sentence reads as "everything is too expensive".
+  await page.locator(`.shop-tile[title^="${PROBE_ITEMS.cloak.name}"]`).click();
+  await page.waitForTimeout(200);
   await page.evaluate(() => {
     const game = window.__lol2d.scene.oScene.game;
     game.player.position.set(game.player.position.x + 4000, game.player.position.y);
   });
   await page.waitForTimeout(300);
+
   const warnedAway = await page.locator('.shop-warning').count();
-  const sellRows = await page.locator('.shop-sell').count();
-  const blockedAway = await page.locator('.shop-sell.blocked').count();
-  const blockedCards = await page.locator('.shop-card.blocked').count();
-  const totalCards = await page.locator('.shop-card').count();
-  report.warningAwayFromFountain = warnedAway;
-  report.awayFromFountain = { sellRows, blockedAway, blockedCards, totalCards };
+  const blockedAway = await page.locator('.shop-tile.blocked').count();
+  const totalTiles = await page.locator('.shop-tile').count();
+  const blockedBuy = await page.locator('.shop-buy.blocked').count();
+  const blockedSell = await page.locator('.shop-sell.blocked').count();
+  const why = (await page.locator('.shop-buy-why').first().textContent())?.trim();
+  report.awayFromFountain = { warnedAway, blockedAway, totalTiles, blockedBuy, blockedSell, why };
   check('away from it, the panel says why', warnedAway === 1, `${warnedAway} warnings`);
   check(
-    'and every row in the bag refuses',
-    sellRows > 0 && blockedAway === sellRows,
-    `${blockedAway} of ${sellRows} blocked`
-  );
-  check(
     'and nothing on the shelf can be bought',
-    blockedCards === totalCards,
-    `${blockedCards} of ${totalCards} blocked`
+    blockedAway === totalTiles,
+    `${blockedAway} of ${totalTiles}`
   );
+  check('the buy button refuses with it', blockedBuy === 1, `${blockedBuy} blocked`);
+  check('so does the sell button', blockedSell === 1, `${blockedSell} blocked`);
+  check('and the reason is the shop’s own sentence', why === 'Phải đứng ở bệ đá', `"${why}"`);
 
   // Escape closes the shop and leaves the config panel shut.
   await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
