@@ -242,3 +242,38 @@ describe('a card with a recipe', () => {
     expect(rowFor('ref:blade').buildsInto).toEqual([]);
   });
 });
+
+/**
+ * The bag rows. Thin, but they carry the item's **id** as well as its slot,
+ * because the redesigned panel lets a bag tile open the same detail view a
+ * shelf tile opens — and a slot number cannot find a card.
+ */
+describe('sellRows', () => {
+  let game: TestGame;
+  let champion: Champion;
+  const host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    champion.wallet!.earn(10_000);
+    stock = [item({ id: 'ref:sword', name: 'Kiếm Dài', cost: 350 })];
+    buyItem(champion, stock[0], host);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('names the item it is, not only the slot it is in', () => {
+    const [row] = sellRows(champion);
+    expect(row.id).toBe('ref:sword');
+    expect(row.slot).toBe(0);
+  });
+
+  it('carries the total beside the refund, so the price of the mistake is legible', () => {
+    const [row] = sellRows(champion);
+    expect(row.cost).toBe(350);
+    expect(row.refund).toBe(245); // 350 * 0.7
+  });
+});

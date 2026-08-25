@@ -72,9 +72,19 @@ export function atOwnFountain(champion: Champion, host: ShopHost): boolean {
   return false;
 }
 
-/** What this item pays back when sold. Whole coins, floored — see `Wallet`. */
+/**
+ * What this item pays back when sold. Whole coins, rounded down — see
+ * `Wallet` for why every gold figure the player sees is an integer.
+ *
+ * The snap is not decoration. `350 * 0.7` is `244.99999999999997` in IEEE754,
+ * so a bare `Math.floor` pays **244** for an item whose refund is exactly 245
+ * — a number that is off by one from the one a player works out on paper, on
+ * an arbitrary-looking subset of prices. Found by writing the expected value
+ * out by hand in `shopState.test.ts` instead of calling this function to
+ * check itself.
+ */
 export function sellValueOf(def: QualifiedItem): number {
-  return Math.floor(def.cost * SELL_REFUND_FRACTION);
+  return Math.floor(Math.round(def.cost * SELL_REFUND_FRACTION * 1e4) / 1e4);
 }
 
 /**

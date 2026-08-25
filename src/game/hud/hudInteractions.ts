@@ -203,6 +203,15 @@ export interface HudInteractions {
   buy(itemId: string): void;
   /** Sell whatever is in `slot`. Same seam, same re-check. */
   sell(slot: number): void;
+  /**
+   * Rearrange the bag — a swap, and a hotkey change with it.
+   *
+   * Deliberately **not** gated on the fountain the way buying and selling are.
+   * Nothing enters or leaves the champion, no gold moves, and the whole point
+   * of the gesture is putting the item you are about to need under the key you
+   * can reach; refusing it mid-fight would refuse it exactly when it matters.
+   */
+  moveItem(from: number, to: number): void;
   mouseover(spellProxy: any, event: any): void;
   mouseout(spellProxy: any): void;
   showSpellInfo(spellProxy: any, element: any): void;
@@ -345,6 +354,10 @@ export function createHudInteractions(game: Game): HudInteractions {
     sell(slot: number): void {
       const player = game.player;
       if (player) sellItem(player, slot, game);
+    },
+
+    moveItem(from: number, to: number): void {
+      game.player?.moveItem(from, to);
     },
 
     openSpellPicker(): void {

@@ -234,8 +234,16 @@ export function shopRows(champion: Champion, host: ShopHost): ShopRow[] {
 
 export interface SellRow {
   slot: number;
+  /**
+   * The qualified item id. Carried as well as the slot because a bag tile
+   * opens the same detail view a shelf tile does, and a slot number cannot
+   * find a card.
+   */
+  id: string;
   name: string;
   image: string;
+  /** Its own total, so the panel can show what selling costs as well as what it pays. */
+  cost: number;
   /** What selling it pays. See `SELL_REFUND_FRACTION` for why it is not the price. */
   refund: number;
 }
@@ -249,8 +257,10 @@ export function sellRows(champion: Champion): SellRow[] {
     if (!item) continue;
     rows.push({
       slot,
+      id: item.def.id,
       name: item.def.name,
       image: item.icon?.path ?? '',
+      cost: item.def.cost,
       refund: sellValueOf(item.def as QualifiedItem),
     });
   }
