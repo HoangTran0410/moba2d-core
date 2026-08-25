@@ -1,6 +1,6 @@
 {
   "name": "@moba2d/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "workspaces": [
     ".",
@@ -54,6 +54,7 @@
     "assets:check": "node scripts/generate-assets.mjs --check",
     "catalog:generate": "node scripts/generate-spell-catalog.mjs",
     "catalog:check": "node scripts/generate-spell-catalog.mjs --check",
+    "contract:bump": "node scripts/bump-api-contract.mjs",
     "pack:new": "node scripts/pack-new.mjs",
     "alias:migrate": "node scripts/migrate-to-alias.mjs",
     "predev": "npm run packs:generate && npm run assets:generate && npm run catalog:generate && npm run vendor:copy",

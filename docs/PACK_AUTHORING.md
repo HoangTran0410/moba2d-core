@@ -98,7 +98,8 @@ handed out — so each of them is now something the scaffold gets right and
   ordinary npm way to write it — is not a loose range, it is a pack that
   refuses to install with a message that reads like a real version conflict.
   It is stated twice, in `pack.ts` and in `scripts/write-manifest.mjs`; raise
-  both together.
+  both together. `npm run build` refuses a range it cannot parse, and refuses
+  a floor above the core the pack was built against.
 - **A manifest needs `id`, `version`, `coreRange`, `name`, `entry` and
   `assets`,** and `entry` and `assets` must resolve onto the manifest's own
   origin. A pack may be served from anywhere, but it may not point execution
@@ -106,6 +107,31 @@ handed out — so each of them is now something the scaffold gets right and
   disclosure is the whole security model of the install prompt.
 - **The pack's `manifest.id` and its data half's `manifest.id` must agree.**
   Two places, one string, and core checks them against each other.
+
+### Which floor to declare
+
+The minor in `>=1.<n>.0` is core's **contract number**: the version of
+`ContentApi`'s shape. Core moves it with `npm run contract:bump`, which
+records the API surface and raises core's minor in one step, and a test fails
+if the surface changes without it — because the number used to be a promise
+that could not fail. Core's `package.json` read `1.0.0` from its first commit
+until the API had 278 members, and every pack declared `>=1.0.0` against it.
+
+For a pack the rule is short:
+
+- **Leave it at `>=1.0.0` unless you have a reason.** A floor raised for no
+  reason only narrows who can play.
+- **Raise it when you start using something a newer contract added**, so a
+  player on an older core is told the pack is too new instead of meeting a
+  missing member mid-match.
+- **Raise it only after a core carrying that contract is deployed.** The pack
+  is the half that is already published: a floor the live core cannot meet is
+  refused on every player's machine at once, and the fix has to travel through
+  core's deploy before yours can land.
+
+What a floor cannot say is the other direction — an old pack running on a
+*newer* core that removed something. Nothing checks that; core's side of the
+bargain is not removing members.
 
 ## Where things live
 

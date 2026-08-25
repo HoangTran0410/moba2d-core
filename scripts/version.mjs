@@ -1,12 +1,18 @@
 /**
  * The build's version: the moment its commit was made, as `2026.8.17.15.0`.
  *
- * `package.json`'s `1.0.0` never moved, which made the stamp on the menu
- * useless for the one thing a version is shown for — an installed PWA serves
- * whatever it cached until told otherwise, so two players on the same URL can
- * be on different builds, and "v1.0.0" cannot tell them apart. A commit clock
- * can: a player reads it off the menu, and it is the same number the log is
- * ordered by.
+ * `package.json`'s version never moved for the whole of this project's first
+ * life, which made the stamp on the menu useless for the one thing a version
+ * is shown for — an installed PWA serves whatever it cached until told
+ * otherwise, so two players on the same URL can be on different builds, and
+ * "v1.0.0" cannot tell them apart. A commit clock can: a player reads it off
+ * the menu, and it is the same number the log is ordered by.
+ *
+ * It moves now — its minor is the `ContentApi` contract number
+ * (`npm run contract:bump`) — and that changes nothing here. A contract number
+ * answers "is this core new enough for that pack"; it is deliberately the same
+ * across every build that did not change the API's shape, which is most of
+ * them, so it still cannot tell two builds apart.
  *
  * Not written back into `package.json`. Five dot-separated parts is not
  * semver, and npm refuses to install a package whose own version it cannot
