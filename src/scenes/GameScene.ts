@@ -10,7 +10,6 @@ import MenuScene from './MenuScene';
 import DomUtils from '@/utils/dom.utils';
 import AssetManager from '@/managers/AssetManager';
 import { ensurePackAsset } from '@/game/config/packAsset';
-import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
 import { renderAlpha } from '@/game/render/Interpolation';
 import { contentCatalog } from '@/content/catalog';
 import { resolveMapId } from '@/content/defaultMap';
@@ -30,9 +29,6 @@ let previousTime: number;
  * numbers. `frameRate()` and the browser's own profiler cover the same ground
  * without shipping anything.
  */
-
-/** One wheel notch, as a step on the manual zoom factor. */
-const ZOOM_WHEEL_STEP = 0.1;
 
 /**
  * Art that is on screen the moment a match opens, for *this* match.
@@ -470,18 +466,14 @@ export default class GameScene extends Scene {
   }
 
   /**
-   * `SceneManager` has always routed this; nothing ever overrode it, which is
-   * why `Camera.zoomBy` sat uncalled. One notch is 10% of the manual range.
-   *
-   * Adjusts the *factor*, not the scale, so the choice survives a resize —
-   * see `Camera.setZoomFactor`.
+   * **There is deliberately no `mouseWheel` here.** p5 wires its callbacks on
+   * `window`, not on the canvas, so a wheel notch arrived whether the cursor
+   * was over the world or over a panel layered on top of it — scrolling the
+   * shop's stock list zoomed the map out from under the player at the same
+   * time, and every panel with a scrollable body had that bug the moment the
+   * handler existed. Zoom lives on the Cài đặt tab's slider, which persists,
+   * is reachable mid-match, and works under a thumb. `wheelZoom.test.ts`.
    */
-  mouseWheel(event?: WheelEvent): void {
-    const delta = event?.deltaY ?? 0;
-    if (!delta || !this.game) return;
-    this.game.camera.zoomBy(delta < 0 ? ZOOM_WHEEL_STEP : -ZOOM_WHEEL_STEP);
-    setZoomFactorPreference(this.game.camera.zoomFactor);
-  }
 
   /**
    * The minimap's half of the click routing; the right-button move order still
