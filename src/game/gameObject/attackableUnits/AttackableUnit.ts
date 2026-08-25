@@ -6,6 +6,7 @@ import StatusFlags from '@/game/enums/StatusFlags';
 import GameObject from '@/game/gameObject/GameObject';
 import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import Stats from '@/game/gameObject/Stats';
+import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
 import CombatText from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
@@ -511,7 +512,18 @@ export default class AttackableUnit extends GameObject {
     );
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit): void {
+  /**
+   * `type` is optional and defaults to `MAGIC` — see `combat/Mitigation.ts` for
+   * why that default is the only one that could have been chosen. Every
+   * ability in every published pack calls this with two arguments, and every
+   * unit starts at zero of both resistances, so adding the parameter moved no
+   * number in the game on the day it landed.
+   */
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type: DamageType = DEFAULT_DAMAGE_TYPE
+  ): void {
     if (this.isDead) return;
 
     // Whole points, in and out. Damage is built from lerps, percentages and
@@ -521,6 +533,20 @@ export default class AttackableUnit extends GameObject {
     // shields also deal in whole points, and again after, because a partial
     // absorb reintroduces a fraction.
     damage = Math.round(damage);
+    if (damage <= 0) return;
+
+    // **Resistance first, shields second, and the order is the rule.** Armour
+    // is a property of the body being hit, so it makes the hit *smaller*; a
+    // shield is a pool standing in front of the body, which eats a hit whose
+    // size is already settled. Doing it the other way round has a shield
+    // absorb the raw number and then mitigate the remainder, which prices a
+    // shield differently depending on the victim's armour for no reason a
+    // player could ever recover.
+    //
+    // It also settles what `swung` below means: a reflect answers the hit that
+    // arrived, and 40 stopped to 20 by armour genuinely *was* a 20, whereas 40
+    // eaten by a shield was still a 40.
+    damage = Math.round(effectiveDamage(damage, type, this));
     if (damage <= 0) return;
 
     // What was aimed at this unit, before anything ate it. Retaliation is
