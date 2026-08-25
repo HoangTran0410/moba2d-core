@@ -905,6 +905,8 @@ export default class Game {
       // `channelProgress` is `Recall`'s own; a spell without one is not
       // channelling anything a button would draw a clock for.
       channelProgress: (spell as Spell & { channelProgress?: number }).channelProgress ?? 0,
+      sustaining: spell.isSustaining,
+      toggle: spell.isToggle,
     };
   }
 

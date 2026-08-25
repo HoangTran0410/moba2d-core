@@ -589,3 +589,111 @@ describe('SpellRuntime', () => {
     expect(events).toContain('cancel:OUT_OF_RESOURCE');
   });
 });
+
+/**
+ * "Is this ability running right now?" — the question the HUD had no way to
+ * ask.
+ *
+ * A toggle that is on, an active window that is open and a channel under way
+ * are three spellings of one fact, and none of them is `currentCooldown > 0`:
+ * a spell can be running *and* already counting its cooldown (`startAt:
+ * 'start'`), or waiting with nothing running at all. Before this the bar drew
+ * only the second, so Pudge's W looked identical on and off — the toggle key
+ * was the only thing in the game whose state was invisible.
+ *
+ * `sustain` rather than `active`, deliberately: `SpellState.ACTIVE` and
+ * `castSpec.active` already both mean the narrower thing, and a third
+ * `isActive` that quietly also counted channels would be the kind of name
+ * that reads correct and is not.
+ */
+describe('the sustain — whether the ability is running', () => {
+  it('is false while a spell sits ready, and false again once it is spent', () => {
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(spec({ castTimeMs: 100 }), delegate);
+
+    expect(runtime.isSustaining).toBe(false);
+    runtime.press(context);
+    // CASTING is a windup, not a sustain: nothing is on yet.
+    expect(runtime.isSustaining).toBe(false);
+    runtime.update(100);
+    expect(runtime.state).toBe('COOLDOWN');
+    expect(runtime.isSustaining).toBe(false);
+  });
+
+  it('is true for a toggle that is on, and false the moment it is turned off', () => {
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(spec({ activation: 'TOGGLE', active: {} }), delegate);
+
+    runtime.press(context);
+    expect(runtime.state).toBe('ACTIVE');
+    expect(runtime.isSustaining).toBe(true);
+
+    runtime.press(context);
+    expect(runtime.isSustaining, 'a toggle still read as on after being switched off').toBe(false);
+  });
+
+  it('reports no duration for a toggle the player ends themselves', () => {
+    // The honest answer for an open-ended toggle is "no clock", not a made-up
+    // one — a bar filling toward an end that does not exist is worse than no
+    // bar. 0 is that answer, and `sustainRemainingMs` agrees rather than
+    // counting down from nothing.
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(spec({ activation: 'TOGGLE', active: {} }), delegate);
+
+    runtime.press(context);
+    runtime.update(3_000);
+
+    expect(runtime.sustainDurationMs).toBe(0);
+    expect(runtime.sustainRemainingMs).toBe(0);
+  });
+
+  it('counts down a bounded active window', () => {
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(
+      spec({ activation: 'RECAST', active: { maxDurationMs: 5_000 } }),
+      delegate
+    );
+
+    runtime.press(context);
+    expect(runtime.sustainDurationMs).toBe(5_000);
+    expect(runtime.sustainRemainingMs).toBe(5_000);
+
+    runtime.update(2_000);
+    expect(runtime.sustainRemainingMs).toBe(3_000);
+
+    runtime.update(3_000);
+    expect(runtime.state, 'the window should have closed itself').toBe('COOLDOWN');
+    expect(runtime.isSustaining).toBe(false);
+    expect(runtime.sustainRemainingMs).toBe(0);
+  });
+
+  it('counts down a channel too, off the channel’s own length', () => {
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(
+      spec({ channel: { durationMs: 4_000, tickEveryMs: 1_000 } }),
+      delegate
+    );
+
+    runtime.press(context);
+    expect(runtime.state).toBe('CHANNELING');
+    expect(runtime.isSustaining).toBe(true);
+    expect(runtime.sustainDurationMs).toBe(4_000);
+
+    runtime.update(1_500);
+    expect(runtime.sustainRemainingMs).toBe(2_500);
+  });
+
+  it('never reports a negative remainder', () => {
+    // `elapsedMs` is advanced by whatever the frame handed it, so a long frame
+    // can overshoot the end of the window before the state transition on the
+    // same tick is read.
+    const { delegate } = fakeDelegate();
+    const runtime = new SpellRuntime(
+      spec({ activation: 'RECAST', active: { maxDurationMs: 100 } }),
+      delegate
+    );
+    runtime.press(context);
+    runtime.update(10_000);
+    expect(runtime.sustainRemainingMs).toBeGreaterThanOrEqual(0);
+  });
+});

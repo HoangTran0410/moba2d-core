@@ -149,6 +149,66 @@
   color: #ff9e9e;
 }
 
+/* =============== Whether an ability is on =============== */
+
+/* The cooldown wedge was the only spell state the bar ever drew, and a toggle
+   spends almost none of its life in one — so Pudge's W looked identical while
+   it was burning its owner's health and while it was off. These three rules
+   are that missing state: a lit tile, a badge that names it, and a strip that
+   drains for a window with a declared end.
+
+   Deliberately not another grey filter: every other "something is wrong with
+   this slot" signal here (locked out, unaffordable, dead) desaturates the
+   icon, and "this is working right now" has to be the opposite of that. */
+.spells .spell.sustaining {
+  background: #7fd7a4;
+  box-shadow: 0 0 8px 1px #4bd08688;
+}
+
+/* Top-right — the one corner `.stacks` (top-left), `.mana-cost` (bottom-left)
+   and `.hotKey` (bottom-right) all leave free. */
+.spell .toggle-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  font-size: 0.7em;
+  font-weight: bold;
+  line-height: 15px;
+  text-align: center;
+  z-index: 12;
+}
+
+.spell .toggle-badge.on {
+  background: #06280fdd;
+  border: 1px solid #4bd086;
+  color: #b6ffd4;
+}
+
+/* The half that makes the badge worth having in the first place: a toggle
+   that is off has to say so, or "off" and "not a toggle" read the same. Quiet
+   enough to ignore, present enough to answer the question. */
+.spell .toggle-badge.off {
+  background: #14161acc;
+  border: 1px solid #5c626c;
+  color: #8f96a3;
+}
+
+/* Drains right-to-left along the top edge for a window with a declared end.
+   Above the icon rather than over it: the artwork is how a player finds the
+   slot, and a second overlay on top of the cooldown wedge would fight it. */
+.spell .sustain-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: #4bd086;
+  box-shadow: 0 0 4px #4bd086;
+  z-index: 11;
+}
+
 .spell .hotKey {
   position: absolute;
   bottom: -5px;

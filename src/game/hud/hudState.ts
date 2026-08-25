@@ -54,6 +54,21 @@ export interface SpellDisplay {
   manaCost: number;
   /** False once the pool has dropped below manaCost, which greys the icon. */
   affordable: boolean;
+  /**
+   * The ability is running right now — a toggle that is on, an active window
+   * open, a channel under way. See `Spell.isSustaining`.
+   *
+   * Deliberately not the same question as `showCoolDown`: a spell whose
+   * cooldown starts at `'start'` is running and counting down at once, and
+   * before this existed a toggle drew exactly the same icon on and off.
+   */
+  sustaining: boolean;
+  /** Pressing the key again turns it off. Drives an on/off badge, not a clock. */
+  toggle: boolean;
+  /** 0..100 of the sustain left. **0 when it has no declared end**, not 100. */
+  sustainPercent: number;
+  /** Whole seconds left; 0 when it has no declared end. */
+  sustainSecondsLeft: number;
 }
 
 export interface BuffDisplay {
@@ -152,6 +167,12 @@ function buildSpells(player: any): SpellDisplay[] {
       const coolDown = spell?.effectiveCoolDownMs ?? spell?.coolDown ?? 0;
       const manaCost = spell?.effectiveManaCost ?? spell?.manaCost ?? 0;
 
+      // `=== true` rather than a truthy read: an ownerless catalogue instance
+      // and a spell from a pack built against an older core both answer
+      // `undefined` here, and neither may make the bar throw or glow.
+      const sustaining = spell?.isSustaining === true;
+      const sustainDurationMs = sustaining ? (spell?.sustainDurationMs ?? 0) : 0;
+
       return {
         instance: spell,
         image: image?.path,
@@ -173,6 +194,19 @@ function buildSpells(player: any): SpellDisplay[] {
         stackCount,
         manaCost,
         affordable: (mana?.value ?? 0) >= manaCost,
+        sustaining,
+        toggle: spell?.isToggle === true,
+        // A duration of 0 means "no declared end" (`SpellRuntime.sustainDurationMs`),
+        // so the percentage is 0 rather than a bar filling toward nothing.
+        sustainPercent:
+          sustainDurationMs > 0
+            ? Math.min(
+                100,
+                Math.max(0, ((spell?.sustainRemainingMs ?? 0) / sustainDurationMs) * 100)
+              )
+            : 0,
+        sustainSecondsLeft:
+          sustainDurationMs > 0 ? Math.ceil((spell?.sustainRemainingMs ?? 0) / 1000) : 0,
       };
     });
 }

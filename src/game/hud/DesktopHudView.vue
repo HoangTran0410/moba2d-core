@@ -65,7 +65,7 @@ const hud = inject<HudInteractions>('hud')!;
         <div
           v-for="(spell, index) of state.spells"
           :key="index"
-          :class="spell.small ? 'spell small' : 'spell'"
+          :class="[spell.small ? 'spell small' : 'spell', { sustaining: spell.sustaining }]"
           @click="hud.openPlayerLoadout(index)"
           @touchend.prevent="hud.openPlayerLoadout(index)"
           @mouseover="hud.mouseover(spell, $event)"
@@ -81,6 +81,32 @@ const hud = inject<HudInteractions>('hud')!;
                 : ''
             "
           />
+
+          <!--
+            Whether the ability is *on*, which the bar never said. A toggle
+            carries its badge in both states — "TẮT" is the half that tells a
+            player the key is a switch at all, and an indicator that only
+            appears when lit leaves "off" and "not a toggle" looking the same.
+            A bounded window (a recast stage, a timed stance) counts its
+            seconds down instead, and drains the strip along the top edge:
+            top-right is the one corner the stack badge, the mana pill and the
+            hotkey all leave free.
+          -->
+          <span
+            v-if="spell.toggle"
+            :class="spell.sustaining ? 'toggle-badge on' : 'toggle-badge off'"
+            >{{ spell.sustaining ? 'BẬT' : 'TẮT' }}</span
+          >
+          <span
+            v-else-if="spell.sustaining && spell.sustainSecondsLeft > 0"
+            class="toggle-badge on"
+            >{{ spell.sustainSecondsLeft }}</span
+          >
+          <div
+            v-if="spell.sustaining && spell.sustainPercent > 0"
+            class="sustain-bar"
+            :style="'width:' + spell.sustainPercent + '%'"
+          ></div>
 
           <span v-if="spell.hotKey" class="hotKey">{{ spell.hotKey }}</span>
           <span v-if="spell.stackCount !== undefined" class="stacks">{{ spell.stackCount }}</span>

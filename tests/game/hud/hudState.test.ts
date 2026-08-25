@@ -316,3 +316,58 @@ describe('computeHudState — the recall control', () => {
     expect(computeHudState({ player } as any)!.recall!.canCast).toBe(false);
   });
 });
+
+/**
+ * Whether an ability is *on* — the one thing about a spell the bar never said.
+ *
+ * Reported from a real match: Pudge's W is a toggle and its icon looked
+ * identical whether the meat hook's rot was burning the player's own health or
+ * not. The cooldown wedge is the only state the bar drew, and a toggle spends
+ * almost none of its life in it.
+ */
+describe('a spell that is running', () => {
+  it('says nothing at all for an ordinary spell sitting ready', () => {
+    const state = computeHudState({ player: fakePlayer() } as any)!;
+    expect(state.spells[0].sustaining).toBe(false);
+    expect(state.spells[0].toggle).toBe(false);
+  });
+
+  it('marks a toggle that is on, and calls it a toggle', () => {
+    const player = fakePlayer({
+      spells: [fakeSpell({ isSustaining: true, isToggle: true, sustainDurationMs: 0 })],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustaining).toBe(true);
+    expect(state.spells[0].toggle).toBe(true);
+  });
+
+  it('leaves an open-ended toggle without a clock rather than inventing one', () => {
+    // 0 duration is "no declared end" — the badge says on, and no bar drains.
+    const player = fakePlayer({
+      spells: [fakeSpell({ isSustaining: true, isToggle: true, sustainDurationMs: 0 })],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustainPercent).toBe(0);
+    expect(state.spells[0].sustainSecondsLeft).toBe(0);
+  });
+
+  it('drains a bounded window as a percentage of its own length', () => {
+    const player = fakePlayer({
+      spells: [
+        fakeSpell({ isSustaining: true, sustainDurationMs: 5_000, sustainRemainingMs: 2_000 }),
+      ],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustainPercent).toBe(40);
+    expect(state.spells[0].sustainSecondsLeft).toBe(2);
+  });
+
+  it('survives a spell that has never heard of any of it', () => {
+    // `pregameCatalog` builds ownerless instances, and a pack written against
+    // an older core has no such getters at all. Neither may make the bar throw.
+    const player = fakePlayer({ spells: [{ image: { path: 'x.png' } }] });
+    const state = computeHudState({ player } as any)!;
+    expect(state.spells[0].sustaining).toBe(false);
+    expect(state.spells[0].sustainPercent).toBe(0);
+  });
+});
