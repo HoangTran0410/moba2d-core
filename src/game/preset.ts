@@ -616,6 +616,35 @@ export const monsterFillingSlot = (slot: NeutralSlot): QualifiedMonster | null =
  * specific to that monster, though — a second pack's monster with its own kit needs no
  * change here to pick this up.
  */
+/**
+ * A body's home: its slot, plus its offset turned by the slot's own
+ * `rotationDeg`.
+ *
+ * The rotation is in screen space, where y grows downward, so a positive angle
+ * reads clockwise on screen — which is what a map author sees. See
+ * `NeutralSlot.rotationDeg` for why a map needs to say this at all.
+ *
+ * A non-number is treated as no rotation rather than propagated: `NaN` here is
+ * a monster at `NaN`, which is a body nothing can path to and a health bar
+ * drawn nowhere.
+ */
+const rotatedHome = (
+  offset: { x: number; y: number },
+  slot: NeutralSlot
+): { x: number; y: number } => {
+  const degrees = slot.rotationDeg;
+  if (!Number.isFinite(degrees) || degrees === 0) {
+    return { x: slot.x + offset.x, y: slot.y + offset.y };
+  }
+  const radians = ((degrees as number) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return {
+    x: slot.x + offset.x * cos - offset.y * sin,
+    y: slot.y + offset.x * sin + offset.y * cos,
+  };
+};
+
 export const monsterBodyPreset = (
   monster: QualifiedMonster,
   member: MonsterBody,
@@ -629,7 +658,7 @@ export const monsterBodyPreset = (
   // every member so `alertCamp` can match on identity. `Monster` reads `home`
   // for its spawn point, its walk home, its arrived check and its respawn —
   // all four used to read `camp` and collapsed a pit into a pile.
-  home: { x: slot.x + member.offset.x, y: slot.y + member.offset.y },
+  home: rotatedHome(member.offset, slot),
   speed: member.speed,
   size: member.size,
   attackRange: member.attackRange,

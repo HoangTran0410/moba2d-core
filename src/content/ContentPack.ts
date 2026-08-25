@@ -360,6 +360,27 @@ export interface NeutralSlot {
   x: number;
   y: number;
   r: number;
+  /**
+   * Degrees to turn this camp's internal layout by — every `MonsterBody.offset`
+   * is rotated about the slot before it becomes a body's home. Absent means 0,
+   * which is every camp of one and every slot a layout was drawn for directly.
+   *
+   * It exists because a map's symmetry meets a shared `MonsterDef`. Summoner's
+   * Rift's two halves are 180° *rotations* of each other, not copies, and one
+   * `members` array serves both of a camp's slots — so the pit whose layout the
+   * offsets were not drawn from had its bodies pointing the wrong way, and
+   * stood them in a wall. Measured: on the red side two of two wolves and three
+   * of three raptors were on unwalkable ground, and every one of them became
+   * walkable once its offset was negated.
+   *
+   * Core cannot work that out for itself — "my two halves are rotations of each
+   * other" is a fact about a map — so the map states it here.
+   *
+   * A rotation and not a `mirrored` boolean on purpose: a mirror is the wrong
+   * transform. Reflecting a layout swaps its handedness, so a pit laid out
+   * clockwise would come back anticlockwise.
+   */
+  rotationDeg?: number;
 }
 
 export interface LaneDefinition {

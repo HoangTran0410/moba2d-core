@@ -87,5 +87,25 @@ await guard(async () => {
   report.worstAfterRespawn = worstAfter;
   check('and no camp piles up after it respawns', worstAfter > 75, `closest pair: ${worstAfter}px`);
 
+  // The other half of "the layout is right": a body standing where the map
+  // cannot be walked is a body in a wall. Reported from a real match for the
+  // red-side raptor pit, and the same defect was in the red wolf pit unnoticed.
+  // `isWalkable` is the navigation grid's own answer, so this asks the same
+  // question the game asks when anything tries to path there.
+  const stuck = await page.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    const grid = game.navigation.grid ?? game.navigation.navGrid;
+    if (!grid?.isWalkable) return null;
+    return game.monsters
+      .filter(m => !grid.isWalkable(m.home.x, m.home.y, 30))
+      .map(m => `${m.name} @ ${Math.round(m.home.x)},${Math.round(m.home.y)}`);
+  });
+  report.bodiesInsideTerrain = stuck?.length ?? 'no grid';
+  check(
+    'no camp body stands in a wall',
+    stuck !== null && stuck.length === 0,
+    (stuck ?? []).join(', ')
+  );
+
   check('no runtime errors', h.errors.length === 0, h.errors.slice(0, 3).join(' | '));
 });
