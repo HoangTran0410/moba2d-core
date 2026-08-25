@@ -13,6 +13,7 @@ import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
 import { renderAlpha } from '@/game/render/Interpolation';
 import { contentCatalog } from '@/content/catalog';
 import { notePackSpellFailures } from '@/content/runtimePacks';
+import { hideMatchStartFailure, showMatchStartFailure } from './matchStartFailure';
 
 let previousTime: number;
 
@@ -190,7 +191,7 @@ export default class GameScene extends Scene {
     document.addEventListener('visibilitychange', this._handleVisibilityChange);
     window.addEventListener('blur', this._handleWindowBlur);
 
-    void this.startGame();
+    void this.beginMatch();
   }
 
   /**
@@ -225,6 +226,37 @@ export default class GameScene extends Scene {
    * back out of a slow connection — so `exited` is checked before touching
    * anything.
    */
+  /**
+   * `startGame` with somewhere for its failures to go.
+   *
+   * `enter` used to call `void this.startGame()`, and `void` on a promise that
+   * can reject is the whole bug: the throw became an unhandled rejection, the
+   * scene kept painting `drawKitLoading()` because `this.game` was still null,
+   * and the player sat in front of "Đang vào trận…" for ever with nothing to
+   * read and nothing to press. `tests/e2e/verify-pack-failure-paths.mjs`
+   * reproduces it by dropping one pack chunk and finds an empty DOM behind a
+   * frozen bar.
+   *
+   * Retry re-runs the whole of `startGame`, which is safe because it reads its
+   * config fresh and `PackRegistry.loadMapGeometry` no longer memoises a
+   * rejected load — that fix is what makes this button able to work at all.
+   */
+  private async beginMatch(): Promise<void> {
+    hideMatchStartFailure();
+    try {
+      await this.startGame();
+    } catch (error) {
+      // A scene on its way out is not a failure to report: `stopGame` sets
+      // `_exited`, and a kit load that lands afterwards is expected to be
+      // dropped in silence.
+      if (this._exited) return;
+      showMatchStartFailure(error instanceof Error ? error : new Error(String(error)), {
+        onRetry: () => void this.beginMatch(),
+        onMenu: () => this.sceneManager.showScene(MenuScene),
+      });
+    }
+  }
+
   async startGame() {
     this._exited = false;
 
@@ -318,6 +350,9 @@ export default class GameScene extends Scene {
 
   stopGame() {
     this._exited = true;
+    // The failure screen belongs to this scene's attempt to start, so it must
+    // not outlive it — a leftover overlay would sit on top of the menu.
+    hideMatchStartFailure();
     const resumeP5ForNextScene = !!this.game?.paused && !document.hidden;
     if (this._animationFrameId !== null) {
       clearTimeout(this._animationFrameId);

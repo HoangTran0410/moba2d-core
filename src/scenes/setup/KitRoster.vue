@@ -268,7 +268,7 @@ watch(
          (`grid-column: 1 / -1`). -->
     <template v-for="{ shelf, heading } in rosterRows" :key="shelf.name">
     <h4 v-if="heading" class="kit-pack-heading">
-      <img v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
+      <img crossorigin="anonymous" v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
         alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
         @error="onPackIconError(heading.pack)" />
       <span class="kit-pack-heading-name">{{ heading.pack.name }}</span>
@@ -295,7 +295,7 @@ watch(
         :title="shelf === openShelf ? `Đóng ${shelf.name}` : `Xem bộ chiêu ${shelf.name}`"
         :aria-expanded="shelf === openShelf" @click="emit('toggleShelf', shelf)">
         <div class="catalog-avatar-wrap">
-          <img v-if="shelf.avatar" class="catalog-group-avatar" :src="packAsset(shelf.avatar).url"
+          <img crossorigin="anonymous" v-if="shelf.avatar" class="catalog-group-avatar" :src="packAsset(shelf.avatar).url"
             :alt="shelf.name" loading="lazy" decoding="async" />
           <span v-if="isSelectedShelf(shelf) && shelf !== openShelf" class="kit-tile-badge" title="Đang chọn tướng này">
             <i class="fas fa-check" aria-hidden="true"></i>
@@ -314,7 +314,7 @@ watch(
         <!-- <i v-if="shelf !== openShelf" class="fas fa-chevron-down kit-shelf-chevron" aria-hidden="true"></i> -->
       </button>
       <div v-else class="kit-shelf-heading">
-        <img v-if="shelf.avatar" class="catalog-group-avatar" :src="packAsset(shelf.avatar).url"
+        <img crossorigin="anonymous" v-if="shelf.avatar" class="catalog-group-avatar" :src="packAsset(shelf.avatar).url"
           :alt="shelf.name" loading="lazy" decoding="async" />
         <span class="kit-shelf-name">{{ shelf.name }}</span>
       </div>

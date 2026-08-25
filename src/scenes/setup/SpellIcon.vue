@@ -16,6 +16,7 @@ defineProps<{
 
 <template>
   <img
+    crossorigin="anonymous"
     v-if="display"
     :src="display.iconUrl ?? AssetManager.placeholder(display.name).url"
     :alt="display.name"

@@ -36,7 +36,7 @@ const hud = inject<HudInteractions>('hud')!;
   >
     <div class="header">
       <div>
-        <img :src="hud.spellHover.image" alt="spell" />
+        <img crossorigin="anonymous" :src="hud.spellHover.image" alt="spell" />
         <h4>{{ hud.spellHover.name }}</h4>
       </div>
       <div class="costs">
@@ -52,6 +52,7 @@ const hud = inject<HudInteractions>('hud')!;
   <div v-if="state.avatar" class="bottom-HUD">
     <div class="champion-avatar">
       <img
+        crossorigin="anonymous"
         :src="state.avatar"
         alt="champion-avatar"
         :style="state.isDead ? 'filter: grayscale(100%)' : ''"
@@ -71,6 +72,7 @@ const hud = inject<HudInteractions>('hud')!;
           @mouseout="hud.mouseout(spell)"
         >
           <img
+            crossorigin="anonymous"
             :src="spell.image"
             alt="spell"
             :style="
@@ -158,12 +160,11 @@ const hud = inject<HudInteractions>('hud')!;
       </div>
       <div class="buffs">
         <div v-for="(buff, index) of state.buffs" :key="index" class="buff">
-          <img :src="buff.image" alt="buff" />
+          <img crossorigin="anonymous" :src="buff.image" alt="buff" />
           <span>{{ buff.timeLeftText }}</span>
           <span v-if="buff.stacks > 1" class="stacks">{{ buff.stacks }}</span>
         </div>
       </div>
     </div>
   </div>
-
 </template>

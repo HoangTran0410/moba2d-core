@@ -59,7 +59,7 @@ defineExpose({
      where it was means the rendered DOM is identical to the hand-built one, so
      no stylesheet had to move with this conversion. -->
 <template>
-  <img id="loading-logo" class="logo" :src="logo" alt="" />
+  <img crossorigin="anonymous" id="loading-logo" class="logo" :src="logo" alt="" />
   <div class="progress" v-show="showProgress">
     <div class="progress-bar" :style="{ width: progress + '%' }"></div>
   </div>

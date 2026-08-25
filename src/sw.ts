@@ -311,6 +311,22 @@ registerRoute(
   new CacheFirst({
     cacheName: PACK_CACHE_NAME,
     matchOptions: { ignoreVary: true },
-    plugins: [new CacheableResponsePlugin({ statuses: [0, 200] })],
+    /**
+     * `200` alone. Status `0` is an **opaque** response — what a `no-cors`
+     * request gets back — and storing one here is a trap with a long fuse:
+     * `CacheFirst` would hand that same opaque body to the next reader, and
+     * every real consumer of a pack file asks in `cors` mode (p5's `loadImage`
+     * opens with a `cors` fetch, `import()` requires CORS, and `packCache`'s
+     * prefetch is a plain `fetch`). Handing an opaque response to a `cors`
+     * request fails it — so one stray `no-cors` request would poison that URL
+     * for the life of the cache, which no reload clears.
+     *
+     * The stray request is gone too (`AssetManager.decodeImageElement` and
+     * every `<img>` that can show pack art now set `crossorigin`), and this is
+     * the half that keeps it gone: with `0` accepted, the next one silently
+     * rebuilds the bug; with it refused, the worst case is a file that is
+     * fetched again rather than one that can never be read.
+     */
+    plugins: [new CacheableResponsePlugin({ statuses: [200] })],
   })
 );

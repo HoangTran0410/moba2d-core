@@ -186,10 +186,33 @@ function probeLost(): boolean {
   }
 }
 
-/** Decodes a URL into something `drawImage` accepts. Same origin, so no CORS. */
+/**
+ * Decodes a URL into something `drawImage` accepts.
+ *
+ * `crossOrigin` is set, and it is not optional any more. This comment used to
+ * read "same origin, so no CORS", which was true while every asset was bundled
+ * into core and stopped being true the day a pack started serving art from its
+ * own host. A bare `new Image()` is a **`no-cors`** request; p5's `loadImage`
+ * opens with `fetch(path, { mode: 'cors' })` to sniff the content type, and
+ * every `<img>` on the HUD and the roster asks for the same files again.
+ * Chrome keeps one HTTP cache entry per URL regardless of mode, so whichever
+ * request lands first decides whether the others may read it — and a `no-cors`
+ * entry has no `Access-Control-Allow-Origin` recorded on it, so the next
+ * `cors` reader is refused against a host that demonstrably sends the header.
+ * That was the reported console error, and `verify-pack-failure-paths.mjs`
+ * measured seven pack images being fetched both ways in one match.
+ *
+ * A pack host that does not send the header loses nothing here: its manifest
+ * `fetch` and its `import()`ed chunks both already require CORS, so a pack
+ * served without it has never been able to load at all.
+ *
+ * It also un-taints the canvas this is decoded into, which is what makes the
+ * purge probe below able to read a pixel back.
+ */
 function decodeImageElement(url: string): Promise<CanvasImageSource> {
   return new Promise((resolve, reject) => {
     const element = new Image();
+    element.crossOrigin = 'anonymous';
     element.onload = () => resolve(element);
     element.onerror = () => reject(new Error(`Failed to decode ${url}`));
     element.src = url;

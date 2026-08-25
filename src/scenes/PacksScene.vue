@@ -612,6 +612,7 @@ onBeforeUnmount(() => {
                    installed gets the monogram — see `packs/packMonogram.ts`. -->
               <div class="packs-row-main">
                 <img
+                  crossorigin="anonymous"
                   v-if="row.icon"
                   class="packs-avatar packs-avatar-img"
                   :src="row.icon"
@@ -717,6 +718,7 @@ onBeforeUnmount(() => {
                        the entry declares none, or when the image will not
                        load. -->
                   <img
+                    crossorigin="anonymous"
                     v-if="shelfIcon(pack)"
                     class="packs-avatar packs-avatar-img"
                     :src="shelfIcon(pack)"

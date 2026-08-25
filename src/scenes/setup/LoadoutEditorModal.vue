@@ -79,7 +79,12 @@ import {
   spellDisplayOf,
   type SpellCatalogEntry,
 } from '@/game/config/spellCatalog';
-import { getPregameCatalog, matchesQuery, type KitShelf } from './pregameCatalog';
+import {
+  getPregameCatalog,
+  matchesQuery,
+  resolveCatalogEntry,
+  type KitShelf,
+} from './pregameCatalog';
 import KitRoster from './KitRoster.vue';
 import SpellDetailPane from './SpellDetailPane.vue';
 import SpellIcon from './SpellIcon.vue';
@@ -100,7 +105,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ change: [ChampionLoadout]; close: [] }>();
 
-const { champions, summoners, catalogById, kitShelves, packLabels } = getPregameCatalog();
+const { champions, summoners, kitShelves, packLabels } = getPregameCatalog();
 
 /** A, Q, W, E, R, D, F — same order and source as the real in-game hotkeys. */
 const SLOT_LABELS = SpellHotKeys.map(code => String.fromCharCode(code));
@@ -115,8 +120,13 @@ const draft = ref<ChampionLoadout>({
 /** Which slot the next roster tap fills. Q unless the caller named one — the first slot anyone changes. */
 const activeSlot = ref(props.initialSlot ?? 1);
 
-const entryById = (id: string): SpellCatalogEntry | null =>
-  id === 'random' ? null : (catalogById.get(id) ?? null);
+/**
+ * `resolveCatalogEntry`, not `catalogById.get`. The map holds the bundled
+ * pack's bare ids alone, so looking a runtime pack's qualified id up in it
+ * misses — and a miss reads as `'random'` here, which is what put dice glyphs
+ * over a kit the player had just picked. See that function's own comment.
+ */
+const entryById = (id: string): SpellCatalogEntry | null => resolveCatalogEntry(id);
 
 /**
  * The seven slots a loadout resolves to, as catalogue entries — `null` where
@@ -141,7 +151,7 @@ const resolveSlots = (loadout: ChampionLoadout): (SpellCatalogEntry | null)[] =>
   if (!champion) return [entryById(BASIC_ATTACK_ID), null, null, null, null, ...tail];
   return [
     entryById(BASIC_ATTACK_ID),
-    ...champion.spells.map(spell => catalogById.get(spell.id) ?? null),
+    ...champion.spells.map(spell => entryById(spell.id)),
     ...tail,
   ];
 };

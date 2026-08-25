@@ -248,6 +248,54 @@ describe('PackRegistry', () => {
     await expect(registry.loadMapGeometry('broken:arena')).rejects.toThrow(/lava/);
   });
 
+  /**
+   * A dropped request must not brick the map for the life of the page.
+   *
+   * `loadMapGeometry` memoises the in-flight promise so two callers share one
+   * fetch, and deletes the entry when it settles — but only on the success
+   * path. A rejected promise therefore stayed in `mapGeometryInFlight` for
+   * ever, and every later attempt was handed the same rejection without the
+   * loader being called again. Nothing could clear it: not going back to the
+   * menu, not pressing Chơi again, not the retry button the failure screen
+   * grew alongside this fix. Only a reload.
+   *
+   * That is one dropped chunk turning into a dead session, which is the
+   * reported phone symptom — press Chơi, watch "Đang vào trận…" for ever —
+   * and it is why this had to be fixed before the retry existed, or the retry
+   * would have been a button that cannot work.
+   */
+  it('retries a map geometry loader that failed, rather than replaying the rejection', async () => {
+    let calls = 0;
+    registry.install(
+      pack('flaky', {
+        maps: [
+          {
+            id: 'arena',
+            name: 'Arena',
+            size: 4000,
+            factions: [{ id: 'solo' }],
+            geometry: () => {
+              calls += 1;
+              return calls === 1
+                ? Promise.reject(new Error('Failed to fetch dynamically imported module'))
+                : Promise.resolve({
+                    terrain: { wall: [], bush: [], water: [] },
+                    slots: { spawn: [], minion: [], structure: [], neutral: [] },
+                  });
+            },
+          },
+        ],
+      } as never)
+    );
+
+    await expect(registry.loadMapGeometry('flaky:arena')).rejects.toThrow(/dynamically imported/);
+    expect(calls).toBe(1);
+
+    const second = await registry.loadMapGeometry('flaky:arena');
+    expect(calls, 'the loader was never called again — the rejection was replayed').toBe(2);
+    expect(second?.terrain.wall).toEqual([]);
+  });
+
   it('does not call a map geometry loader at install time', () => {
     let calls = 0;
     registry.install(

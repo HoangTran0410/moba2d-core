@@ -485,12 +485,31 @@ export class PackRegistry {
     const pending = this.mapGeometryInFlight.get(qualifiedId);
     if (pending) return pending;
 
-    const run = source().then(geometry => {
-      this.validateMapGeometry(qualifiedId, geometry);
-      this.resolvedMapGeometry.set(qualifiedId, geometry);
-      this.mapGeometryInFlight.delete(qualifiedId);
-      return geometry;
-    });
+    /**
+     * `finally`, not a delete inside the `then`.
+     *
+     * The in-flight entry exists so two callers share one import; it has to
+     * go when the import *settles*, either way. Deleting it only on success
+     * left a rejected promise memoised for the life of the page, and every
+     * later call was handed that same rejection without the loader running
+     * again — one dropped chunk, and the map could never load until a reload.
+     * `GameScene`'s failure screen offers a retry now, and a retry that
+     * replays a cached rejection is a button that cannot work.
+     *
+     * A validation failure is cleared too, and re-running it is cheap: the
+     * module itself is already in the module cache, so a second attempt at a
+     * genuinely malformed map costs one deterministic re-check rather than a
+     * second download.
+     */
+    const run = source()
+      .then(geometry => {
+        this.validateMapGeometry(qualifiedId, geometry);
+        this.resolvedMapGeometry.set(qualifiedId, geometry);
+        return geometry;
+      })
+      .finally(() => {
+        this.mapGeometryInFlight.delete(qualifiedId);
+      });
     this.mapGeometryInFlight.set(qualifiedId, run);
     return run;
   }

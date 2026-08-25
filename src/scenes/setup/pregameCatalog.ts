@@ -228,6 +228,51 @@ export interface PregameCatalog {
   packLabels: Map<string, PackLabel>;
 }
 
+/**
+ * The slot-id sentinel for "let the match roll this one" (`SlotChoice`).
+ * Not an id any pack can provide, so it resolves to no entry by definition.
+ */
+const RANDOM_SLOT_ID = 'random';
+
+/**
+ * A stored slot id resolved to its catalogue entry, or `null` where there is
+ * nothing to draw.
+ *
+ * **Two id shapes arrive here and only one of them is in `catalogById`.**
+ * `SelectableChampionSpell.id` is the bundled pack's *bare* id for a bundled
+ * champion (`'Vera_Q'`) and another pack's *registry-qualified* id for one of
+ * its champions (`'somepack:Vera_Q'`) — its own doc comment says so, and a
+ * custom slot stores whichever of the two the player picked. `catalogById` is
+ * populated from `listSpellCatalog()`, which is the bundled pack alone, so a
+ * bare `.get()` answers `undefined` for every runtime pack's spell.
+ *
+ * That miss is indistinguishable from `'random'` to a caller that treats
+ * `null` as "nothing picked", and the loadout editor did: press "Dùng cả bộ"
+ * on a pack champion and the slot bar drew six dice over a kit the player had
+ * just chosen, while Xác nhận built the right champion anyway —
+ * `getChampionPresetFromLoadout` resolves by name and slot *position* and
+ * never reads this map. The screen and the match disagreed, and the screen was
+ * the wrong one.
+ *
+ * The lookup is written here rather than at the call site because the shelf
+ * builder in `getPregameCatalog` below already needed exactly this pair and
+ * had it inline. Two copies of a crossing is how the second one came to be
+ * missing half of it.
+ */
+export const resolveCatalogEntry = (id: string): SpellCatalogEntry | null => {
+  if (id === RANDOM_SLOT_ID) return null;
+  const { catalogById } = getPregameCatalog();
+  // Qualified-bundled (`'reference:Vera_Q'`) first, then bare-bundled, then
+  // any other pack's. `bareCatalogId` answers `null` for a foreign pack's id
+  // on purpose, which is what makes the third branch the one that runs for it.
+  const bare = bareCatalogId(id);
+  const entry =
+    (bare === null ? undefined : catalogById.get(bare)) ??
+    catalogById.get(id) ??
+    packSpellCatalogEntry(id);
+  return entry ?? null;
+};
+
 let cached: PregameCatalog | null = null;
 
 /**

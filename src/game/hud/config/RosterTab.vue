@@ -340,7 +340,7 @@ defineExpose({
               :class="{ 'is-empty': !row.avatarUrl }"
               aria-hidden="true"
             >
-              <img v-if="row.avatarUrl" :src="row.avatarUrl" alt="" />
+              <img crossorigin="anonymous" v-if="row.avatarUrl" :src="row.avatarUrl" alt="" />
               <i v-else class="fas fa-random"></i>
             </span>
 
@@ -368,7 +368,7 @@ defineExpose({
                   :title="ability.describable ? 'Xem mô tả chiêu' : ability.letter"
                   @click="ability.describable && openPreview(row, ability.letter)"
                 >
-                  <img v-if="ability.url" :src="ability.url" alt="" />
+                  <img crossorigin="anonymous" v-if="ability.url" :src="ability.url" alt="" />
                   <span v-else class="practice-roster-spell-empty">{{ ability.letter }}</span>
                 </button>
               </span>
