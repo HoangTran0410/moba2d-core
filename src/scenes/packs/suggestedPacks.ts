@@ -82,6 +82,15 @@ export const SUGGESTED_PACKS: SuggestedPack[] = [
     repoUrl: 'https://github.com/moba2d-packs/lol',
     icon: 'https://moba2d-packs.github.io/lol/icon.png',
   },
+  {
+    id: 'dota',
+    name: 'Dota 2',
+    description:
+      'Bốn tướng Dota 2 đủ 4 chiêu: Pudge, Lina, Juggernaut, Crystal Maiden. Chưa có bản đồ riêng — chơi trên bản đồ đang cài. Bản fan-made, không liên kết với Valve.',
+    manifestUrl: 'https://moba2d-packs.github.io/dota/manifest.json',
+    repoUrl: 'https://github.com/moba2d-packs/dota',
+    icon: 'https://moba2d-packs.github.io/dota/icon.png',
+  },
 ];
 
 /**
