@@ -50,6 +50,32 @@ export const DISPLACEMENT_GRACE_FRAMES = 2;
  */
 export const RECENT_ATTACKER_MS = 1500;
 
+/**
+ * The status flags that count as crowd control — what a cleanse takes off.
+ *
+ * A mask rather than a list of buff classes, so a pack's own stun is cleansed
+ * without core having ever heard of it. The definition lives here because it
+ * is already core's: `Stats.updateActionState` derives `CAN_MOVE`/`CAN_CAST`
+ * from these same bits every frame, and a pack computing its own answer would
+ * be a second one.
+ *
+ * `Invulnerable`, `Stealthed`, `Ghosted` and `Targetable` are deliberately
+ * out: they are not things done *to* you, and a cleanse that stripped them
+ * would be a dispel wearing a smaller name. So is `Slow`, which is not a
+ * status flag at all — it is a stat modifier, and it stays.
+ */
+export const CROWD_CONTROL_FLAGS =
+  StatusFlags.Disarmed |
+  StatusFlags.Charmed |
+  StatusFlags.Taunted |
+  StatusFlags.Feared |
+  StatusFlags.Grounded |
+  StatusFlags.NearSighted |
+  StatusFlags.Rooted |
+  StatusFlags.Silenced |
+  StatusFlags.Stunned |
+  StatusFlags.Suppressed;
+
 export default class AttackableUnit extends GameObject {
   declare game: GameObjectRuntimeContext;
 
@@ -649,6 +675,36 @@ export default class AttackableUnit extends GameObject {
       if (buff.toRemove) continue;
       buff.onDamageTaken(swung, landed, attacker);
     }
+  }
+
+  /**
+   * Drops every crowd-control effect **somebody else** put on this unit, and
+   * answers how many it took.
+   *
+   * The mechanic a Quicksilver-style item is, and the one an ally-cast cleanse
+   * will be. It lives here rather than in whichever pack wants it first
+   * because the definition of "this buff is crowd control" is core's — see
+   * `CROWD_CONTROL_FLAGS`.
+   *
+   * **Only what someone else did to you.** `Stasis` locks a champion down with
+   * the same `Stunned` bit a real stun uses, but it is self-cast and it is a
+   * way *out* of a fight: one item cancelling another is a bug with two
+   * buttons. The unit's own buffs are left alone, which is also the rule the
+   * health bar's CC line already follows.
+   *
+   * Iterated over a copy, for the same reason `reactToDamage` is: deactivating
+   * a buff calls out to listeners that must not mutate `buffs` under the loop.
+   */
+  cleanse(): number {
+    let removed = 0;
+    for (const buff of [...this.buffs]) {
+      if (buff.toRemove) continue;
+      if (buff.sourceUnit === this) continue;
+      if ((buff.statusFlagsToEnable & CROWD_CONTROL_FLAGS) === 0) continue;
+      buff.deactivateBuff();
+      removed += 1;
+    }
+    return removed;
   }
 
   die(deathData: UnitDeathData): void {
