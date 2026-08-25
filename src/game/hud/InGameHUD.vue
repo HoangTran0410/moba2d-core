@@ -122,6 +122,28 @@ defineExpose({
     <i class="fa-solid fa-wand-magic-sparkles"></i>
   </button>
 
+  <!--
+    The way into the shop **in touch mode only**, and the reason it exists at
+    all: every other door is desktop-only. The gold pill and the six inventory
+    tiles live in `DesktopHudView`, which a phone does not render, and `P` is
+    not a key a thumb can press — so without this button the shop was
+    unreachable on the device this game is most played on.
+
+    Under the practice-panel button rather than beside it: they are both
+    top-right corner controls, and the panel is the one a player reaches for
+    more often. Hidden behind either modal for the same reason that one is.
+  -->
+  <button
+    v-if="hud.touchUi && !hud.showSpellsPicker && !hud.showShop"
+    class="corner-btn shop-btn"
+    :class="{ 'at-shop': state?.canShop }"
+    @click="hud.openShop()"
+    @touchend.prevent="hud.openShop()"
+    title="Cửa hàng"
+  >
+    <i class="fa-solid fa-coins"></i>
+  </button>
+
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
 

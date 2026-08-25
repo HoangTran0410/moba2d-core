@@ -2152,3 +2152,21 @@ body.touch-ui .corner-btn {
   color: #ddd;
   font-size: 0.78em;
 }
+
+/* The touch HUD's only way into the shop — see `InGameHUD.vue`. Sits under the
+   practice-panel button, and brightens at the fountain exactly like the
+   desktop gold pill does, so the rule reads the same in both layouts. */
+.shop-btn {
+  top: 52px;
+  color: #8d7a4d;
+}
+
+.shop-btn.at-shop {
+  color: #ffe2a3;
+  border-color: #e3c07899;
+  box-shadow: 0 0 8px #e3c07844;
+}
+
+.shop-btn:hover {
+  color: #ffe2a3;
+}
