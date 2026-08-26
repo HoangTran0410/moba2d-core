@@ -63,6 +63,20 @@ const reachesGame = (specifier: string): boolean =>
 const reachesRuntimePacks = (specifier: string): boolean =>
   specifier === '@/content/runtimePacks' || specifier.endsWith('/content/runtimePacks');
 
+/**
+ * `@/content/install` is the bundled-pack loader: it evaluates every pack's
+ * code half against a real `ContentApi`, so reaching it statically puts the
+ * whole match in this screen's chunk exactly as `runtimePacks` would.
+ *
+ * The screen has a real reason to want it — the list of packs that came with
+ * the build (`scenes/packs/bundledPacks.ts`) is derived from
+ * `BUNDLED_PACK_DATA` — which is precisely why this is asserted rather than
+ * assumed: the tempting edit is a one-line static import at the top of
+ * `PacksScene.vue`, and nothing else in the suite would notice.
+ */
+const reachesInstall = (specifier: string): boolean =>
+  specifier === '@/content/install' || specifier.endsWith('/content/install');
+
 describe('the packs screen boots without the game', () => {
   it('finds the files it claims to check', () => {
     const files = packsFiles();
@@ -97,6 +111,19 @@ describe('the packs screen boots without the game', () => {
       const source = stripComments(readFileSync(join(SRC, file), 'utf8'));
       for (const specifier of staticImports(source)) {
         if (reachesRuntimePacks(specifier)) offenders.push(`${file} -> ${specifier}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('no packs-screen module statically imports the bundled-pack loader', () => {
+    const offenders: string[] = [];
+
+    for (const file of packsFiles()) {
+      const source = stripComments(readFileSync(join(SRC, file), 'utf8'));
+      for (const specifier of staticImports(source)) {
+        if (reachesInstall(specifier)) offenders.push(`${file} -> ${specifier}`);
       }
     }
 

@@ -170,7 +170,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly five bins, the four below plus moba2d-generate-assets', () => {
+  it('declares exactly six bins, the five below plus moba2d-pack-serve', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -199,6 +199,13 @@ describe('package.json public surface', () => {
       // from it; the largest pack there is solved that by copying the whole
       // generator.
       'moba2d-generate-assets': './scripts/pack-assets.mjs',
+      // Six, not five. A pack author does not have a checkout of core to run
+      // the game from — they scaffold a repository and install their build
+      // into a *hosted* copy by pasting a localhost URL. The thing standing
+      // between the two is a static server with four exact headers, and
+      // getting one wrong reads as an unexplained CORS error. So core ships
+      // the server, the same way it ships the scaffolder.
+      'moba2d-pack-serve': './scripts/pack-serve.mjs',
     });
     for (const target of Object.values(bin!)) {
       expect(existsSync(join(repoRoot, target)), `${target} does not exist on disk`).toBe(true);

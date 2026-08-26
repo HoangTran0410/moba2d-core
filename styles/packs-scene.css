@@ -554,6 +554,38 @@
   color: var(--hextech-muted);
 }
 
+/* Content compiled into the build. Same quiet treatment as `.packs-dev`, and
+   for the same reason: it says what kind of row this is, and there is nothing
+   the player is being asked to do about it. */
+.packs-builtin {
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.36rem;
+  border-radius: 3px;
+  border: 1px solid var(--hextech-muted);
+  color: var(--hextech-muted);
+}
+
+/* No remove button on these rows, so the card has nothing to sit opposite —
+   let the text take the full width rather than leaving a gap where a control
+   would have been. */
+.packs-row.is-builtin .packs-row-main {
+  width: 100%;
+}
+
+/* A pack served from loopback. Deliberately quiet — this is a fact about the
+   row, not a warning about it. */
+.packs-dev {
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.36rem;
+  border-radius: 3px;
+  border: 1px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+}
+
 /* The one line this screen exists for. `break-all`, never `text-overflow:
    ellipsis` and never a truncating substring in the script — an elided
    origin is the one thing this screen may not present. */

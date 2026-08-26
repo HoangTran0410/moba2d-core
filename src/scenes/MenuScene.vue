@@ -69,6 +69,8 @@ const packProblemText = computed(() => {
   const problem = packProblem.value;
   if (!problem) return '';
   const name = problem.name;
+  if (problem.kind === 'dev-changed')
+    return `Pack "${name}" vừa được build lại — tải lại trang để chạy bản mới.`;
   if (problem.kind === 'update') return `Pack "${name}" đã có bản mới.`;
   const missing = problem.missingSpells;
   return missing
@@ -79,6 +81,14 @@ const packProblemText = computed(() => {
 async function updateProblemPack(): Promise<void> {
   const problem = packProblem.value;
   if (!problem || updatingPack.value) return;
+  // A dev pack has nothing to fetch and nothing to replace: boot never pinned
+  // it (`devPack.ts`), so the newest build is already what the next load
+  // reads. Going through `updatePack` here would be worse than pointless — it
+  // pins unconditionally, putting back the very pin the dev rule refuses.
+  if (problem.kind === 'dev-changed') {
+    location.reload();
+    return;
+  }
   updatingPack.value = true;
   packUpdateFailed.value = false;
   try {
@@ -325,7 +335,13 @@ const updateState = computed(() => {
         @click="updateProblemPack"
         @touchend.prevent="updateProblemPack"
       >
-        {{ updatingPack ? 'Đang cập nhật…' : 'Cập nhật' }}
+        {{
+          packProblem.kind === 'dev-changed'
+            ? 'Tải lại'
+            : updatingPack
+              ? 'Đang cập nhật…'
+              : 'Cập nhật'
+        }}
       </button>
       <button
         id="pack-update-dismiss"

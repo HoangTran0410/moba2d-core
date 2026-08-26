@@ -67,6 +67,49 @@ Any static host works as well as Pages. Core needs exactly two things from
 one: `access-control-allow-origin: *`, because it fetches the manifest and
 `import()`s the entry cross-origin, and a JavaScript MIME type for `.js`.
 
+## Seeing your changes in a real game
+
+You do not need a copy of core to play your pack. Core is already running
+somewhere — moba2d.pages.dev, your own Pages deploy — and a pack is installed
+by URL, so the fastest loop is to serve your own `dist/` and paste that
+address into the game.
+
+```sh
+npm run build      # writes dist/ and dist/manifest.json
+npm run serve      # -> http://localhost:5174/manifest.json
+```
+
+Then in the game: **Packs → Thêm bằng URL**, paste the printed URL, install.
+After that the loop is `npm run build` and the game offers you a reload on its
+own — it polls your manifest and notices the new build.
+
+`npm run serve` is `moba2d-pack-serve`, one of core's bins, so it is there
+without anything to set up. It sends the four headers this exact situation
+needs: `access-control-allow-origin: *` and a JavaScript MIME type (the two
+any host must send, above), `access-control-allow-private-network: true` for
+the preflight Chrome sends when a public page asks something on your local
+network, and `cache-control: no-store` so your own browser cannot answer a
+read you made *because* you rebuilt. `--port` and `--dir` are there if you
+need them.
+
+**Core treats a pack served from `localhost` as a pack under development.** It
+does not pin its manifest and does not let the service worker cache it, so
+every reload reads what you are actually serving — the opposite of what it
+does for a published pack, and the reason a rebuild shows up at all. The
+packs screen marks such a row `dev`. Nothing about this applies to a pack
+served from anywhere else.
+
+Two things to know before you blame your pack:
+
+- **Safari refuses `http://localhost` from an `https://` page.** Chrome and
+  Firefox allow it (loopback counts as a trustworthy origin); Safari does not.
+  Use one of those, or put a tunnel in front of the port — `cloudflared tunnel
+  --url http://localhost:5174` gives you an `https` address that works
+  everywhere, and is also how you hand your pack to someone else for five
+  minutes without publishing it.
+- **A dev pack has no offline copy, on purpose.** That is the trade for seeing
+  your rebuilds. Publish it and it caches like any other pack.
+
 ### Developing beside a local core
 
 `--core` writes a different dependency spec into the scaffolded
@@ -79,6 +122,44 @@ node /path/to/moba2d-core/scripts/pack-new.mjs my-pack \
 
 Anything npm understands is accepted verbatim — a `file:` path, a fork, a
 branch, a tarball. The default is `github:HoangTran0410/moba2d-core#main`.
+
+If you have both repositories checked out side by side, core can link them for
+you instead — run this **in core**:
+
+```sh
+npm run pack:link -- ../my-pack     # both directions
+npm run dev                         # your pack, from source, with HMR
+npm run pack:unlink -- --all        # before committing core
+```
+
+This is the fastest loop there is — no build step, no reinstall, edit a spell
+and the page updates — but it is available only when both halves are on the
+same disk, and it does not exercise the manifest, the CORS or the
+cross-origin `import()` that a real install goes through. Build and serve
+once before you publish.
+
+It links **both** directions, because both are broken by default: core finds
+packs by reading `node_modules/@moba2d/`, where a sibling directory does not
+appear; and a scaffolded pack's own `@moba2d/core` is a copy npm fetched from
+GitHub, so without the second link your pack's tests run against the published
+core rather than the one you are editing. The npm copy is moved aside, not
+deleted, so unlinking restores it with no network.
+
+While a pack is linked, core's `src/generated/installedPacks.ts` names it —
+that is a tracked file, so unlink before committing core. An `npm install` can
+also drop the symlink; re-running `pack:link` is the fix.
+
+Core's own suite also expects a core-only checkout: with a pack linked,
+`BUNDLED_PACK_ID` is your pack rather than `reference`, two packs are installed
+where one was, and the shop stocks your items — four test files check exactly
+those things and go red. That is them working, not breaking. Unlink before
+running core's `npm test`.
+
+`npm run verify` stops you first: its opening step is `links:check`, which
+fails while anything is linked and names it. That is deliberate — `packs:check`
+cannot catch a forgotten link, because while the link is there the barrel and
+the filesystem genuinely agree, and the disagreement only appears on the next
+person's machine after they pull it.
 
 ## What core refuses, and when you find out
 

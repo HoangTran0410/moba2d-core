@@ -3,6 +3,7 @@ import { Scene } from '@/managers/SceneManager';
 import LoadingSceneView from './LoadingScene.vue';
 import type MenuScene from './MenuScene';
 import { installRuntimePacks, type PackInstallOutcome } from '@/content/runtimePacks';
+import { startDevPackWatch } from '@/content/devPackWatch';
 import { publishPackInstallOutcomes } from './packBanner';
 
 /** What `LoadingScene.vue` exposes back to the scene driving it. */
@@ -85,6 +86,12 @@ export default class LoadingScene extends Scene {
       ];
     }
     publishPackInstallOutcomes(outcomes);
+
+    // Started here rather than from the menu, which mounts and unmounts on
+    // every entry — a watch begun there would stack one interval per visit.
+    // Costs nothing unless a pack is being served from the player's own
+    // machine, in which case it sets no timer at all; see its own header.
+    startDevPackWatch();
 
     // Used to await `AssetManager.ensure('json_summoner_map')` here first —
     // the map's own terrain/turret/fountain data, read synchronously by

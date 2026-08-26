@@ -15,6 +15,24 @@ npm run verify
 order. It is **this pack's own gate**: `npm install` never runs it for you,
 and core's own `verify` never reaches into a pack it does not own.
 
+## Play it before you publish it
+
+You do not need a copy of core. Serve your own build and install it into a
+game that is already running somewhere:
+
+```
+npm run build
+npm run serve      # -> http://localhost:5174/manifest.json
+```
+
+Paste that URL into the game's **Packs → Thêm bằng URL**. From then on
+`npm run build` is the whole loop — core notices the new build and offers you
+a reload, because a pack served from `localhost` is never pinned or cached.
+
+Safari blocks `http://localhost` from an `https://` page; use Chrome or
+Firefox, or put a tunnel in front of the port. `docs/PACK_AUTHORING.md` in
+`@moba2d/core` has the long form.
+
 ## Publish it
 
 `npm run build` writes `dist/`, and `dist/manifest.json` is the whole pack

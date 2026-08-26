@@ -1,4 +1,5 @@
 import { buildContentApi, type ContentApi } from './ContentApi';
+import { isDevPackUrl } from './devPack';
 import { installRuntimePack } from './install';
 import { clearPackProblem, notePackProblem } from './packHealth';
 import {
@@ -271,6 +272,18 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   const registerForCaching = (manifestUrl: string, manifest: RuntimePackManifest): void => {
     const base = packBaseFor(manifestUrl);
     if (!base) return;
+    // A dev pack is the one pack that must never be cached: its author is
+    // rebuilding it, and the route's prefix match would freeze it at whatever
+    // build installed first — this function's own comment below, read the
+    // other way round. `forgetPack` is for the author who installed a
+    // localhost pack before this rule existed and whose worker is still
+    // holding that base; nothing else would ever tell it to let go. Not
+    // awaited, for the reason the prefetch below is not: no boot may wait on
+    // a cache.
+    if (isDevPackUrl(manifestUrl)) {
+      void forgetPack(base).catch(() => {});
+      return;
+    }
     bases.push(base);
     // The worker must be told to leave this URL alone, or the route's prefix
     // match claims it and the pack is frozen at whatever build installed
@@ -294,13 +307,28 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
     return manifest;
   };
 
+  /**
+   * The same fetch for a pack its author is still writing: no pin read on the
+   * way in, no pin written on the way out, and the HTTP cache bypassed.
+   *
+   * The pin exists so a published pack boots with no request at all. Applied
+   * to a pack being served out of somebody's `dist/`, that property is the bug
+   * — the author rebuilds, reloads, and is handed the manifest they had
+   * before. `bypassCache` is the same `no-store` the update check uses and for
+   * the same reason: this read's entire job is to notice a change.
+   */
+  const freshFromHost = (url: string): Promise<RuntimePackManifest> =>
+    fetchPackManifest(url, undefined, { bypassCache: true });
+
   for (const manifestUrl of wanted) {
     try {
       // The pin first, the network second. A pinned pack boots with no request
       // at all, which is what makes it immune to the server moving underneath
       // it — and is also the offline story, now that the manifest is out of
       // the worker's cache-first route.
-      const manifest = (await readPinnedPackManifest(manifestUrl)) ?? (await fetched(manifestUrl));
+      const manifest = isDevPackUrl(manifestUrl)
+        ? await freshFromHost(manifestUrl)
+        : ((await readPinnedPackManifest(manifestUrl)) ?? (await fetched(manifestUrl)));
       // Ahead of `loadPackFromManifest`, so a pack core already has is not
       // re-downloaded, and ahead of any asset registration — see this
       // file's own header.
@@ -450,6 +478,11 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
  */
 export async function checkPackUpdates(): Promise<void> {
   for (const record of readInstalledPacks()) {
+    // A dev pack moves on every rebuild and has no pin to update — and the
+    // button this notice puts up calls `updatePack`, which pins
+    // unconditionally, putting back the very pin boot refused to write.
+    // `devPackWatch.ts` is what tells its author a rebuild has landed.
+    if (isDevPackUrl(record.manifestUrl)) continue;
     let fresh: RuntimePackManifest;
     try {
       fresh = await fetchPackManifest(record.manifestUrl, undefined, { bypassCache: true });

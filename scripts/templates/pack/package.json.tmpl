@@ -15,6 +15,7 @@
     "test": "vitest run",
     "build": "npm run assets:generate && npm run catalog:generate && vite build && node scripts/write-manifest.mjs",
     "manifest:write": "node scripts/write-manifest.mjs",
+    "serve": "moba2d-pack-serve",
     "verify": "npm run assets:check && npm run catalog:check && npm run typecheck && npm run check-unused && npm run check-seams && npm run build && npm test"
   },
   "devDependencies": {

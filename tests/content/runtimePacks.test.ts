@@ -981,3 +981,107 @@ describe('installPackNow', () => {
     expect(hasSeededDefaultPack()).toBe(false);
   });
 });
+
+/**
+ * A pack served from the author's own machine.
+ *
+ * Everything core does to keep a *published* pack working while its host moves
+ * underneath it — pinning the manifest, letting the worker answer from cache —
+ * is what stops a pack author from ever seeing the build they just made. The
+ * rule is one predicate (`isDevPackUrl`) gating decisions boot already makes,
+ * and the last case here is the one that matters most: a published pack must
+ * come out of this untouched.
+ */
+describe('a dev pack served from loopback', () => {
+  const DEV_URL = 'http://localhost:5174/manifest.json';
+  const DEV_BASE = 'http://localhost:5174/';
+  const PUBLISHED_URL = 'https://packs.example/riot/manifest.json';
+
+  const devManifest = {
+    id: 'my-pack',
+    version: '1.0.0',
+    coreRange: '*',
+    name: 'My Pack',
+    entry: 'pack.js',
+    assets: 'assets/',
+    buildId: 'aaaa',
+    files: ['pack.js'],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(rebuildContentRegistry).mockReturnValue({ hasPack: () => false } as never);
+    vi.mocked(readPinnedManifest).mockResolvedValue(null);
+    vi.mocked(prefetchPackFiles).mockResolvedValue({ ...EMPTY_REPORT });
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: devManifest } as never);
+    vi.mocked(fetchPackManifest).mockResolvedValue(devManifest as never);
+    withStorage();
+    resetPackHealthForTests();
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  it('ignores a pin it already has, and writes none — a rebuild is the point', async () => {
+    writeInstalledPacks([{ manifestUrl: DEV_URL, id: 'my-pack', version: '1.0.0' }]);
+    // Deliberately a *valid* pin. Boot's ordinary path would take it and never
+    // reach the network, which is exactly the state that makes an author think
+    // their build did not land.
+    vi.mocked(readPinnedManifest).mockResolvedValue(JSON.stringify(devManifest));
+
+    await installRuntimePacks();
+
+    expect(fetchPackManifest).toHaveBeenCalledWith(DEV_URL, undefined, { bypassCache: true });
+    expect(pinPackManifest).not.toHaveBeenCalled();
+  });
+
+  it('never announces its base, so the worker cannot freeze it at one build', async () => {
+    writeInstalledPacks([{ manifestUrl: DEV_URL, id: 'my-pack', version: '1.0.0' }]);
+
+    await installRuntimePacks();
+
+    expect(announcePackBases).toHaveBeenCalledWith([], []);
+    expect(prefetchPackFiles).not.toHaveBeenCalled();
+  });
+
+  it('releases a base the worker was already holding from an earlier install', async () => {
+    // The author who most needs this rule is the one who already installed a
+    // localhost pack before it existed: their worker is still holding that
+    // base, and nothing else would ever tell it to let go.
+    writeInstalledPacks([{ manifestUrl: DEV_URL, id: 'my-pack', version: '1.0.0' }]);
+
+    await installRuntimePacks();
+
+    expect(forgetPack).toHaveBeenCalledWith(DEV_BASE);
+  });
+
+  it('is left alone by the update check, which has no pin to update', async () => {
+    // `updatePack` pins unconditionally, so an "update" notice on a dev pack
+    // offers a button that would put back the pin boot just refused.
+    writeInstalledPacks([
+      { manifestUrl: DEV_URL, id: 'my-pack', version: '1.0.0', buildId: 'aaaa' },
+    ]);
+    vi.mocked(fetchPackManifest).mockResolvedValue({ ...devManifest, buildId: 'bbbb' } as never);
+
+    await checkPackUpdates();
+
+    expect(packProblems.value).toEqual([]);
+  });
+
+  it('leaves a published pack pinned, cached and checked exactly as before', async () => {
+    const published = { ...devManifest, id: 'riot', name: 'Riot', buildId: 'cccc' };
+    writeInstalledPacks([{ manifestUrl: PUBLISHED_URL, id: 'riot', version: '1.0.0' }]);
+    vi.mocked(fetchPackManifest).mockResolvedValue(published as never);
+    vi.mocked(loadPackFromManifest).mockResolvedValue({ manifest: published } as never);
+
+    await installRuntimePacks();
+
+    expect(fetchPackManifest).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(pinPackManifest).toHaveBeenCalledWith(PUBLISHED_URL, JSON.stringify(published));
+    expect(announcePackBases).toHaveBeenCalledWith(
+      ['https://packs.example/riot/'],
+      [PUBLISHED_URL]
+    );
+    expect(forgetPack).not.toHaveBeenCalled();
+  });
+});

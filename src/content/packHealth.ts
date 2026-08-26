@@ -36,6 +36,13 @@ export type PackProblemKind =
    */
   | 'update'
   /**
+   * A pack served from the author's own machine has been rebuilt since this
+   * page loaded. Not a fault and not an offer to update — there is no pin to
+   * replace (see `devPack.ts`), only a page holding the previous build. The
+   * action is a reload, and `devPackWatch.ts` is what notices.
+   */
+  | 'dev-changed'
+  /**
    * The installed build is *gone from the host* and this copy is incomplete,
    * so the missing part can never be fetched. Proven, not guessed: either a
    * file the manifest listed came back 404, or a spell this match needed

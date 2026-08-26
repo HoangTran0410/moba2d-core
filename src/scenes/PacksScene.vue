@@ -62,6 +62,8 @@ import {
   forgetPack,
 } from '@/content/packCache';
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
+import { isDevPackUrl } from '@/content/devPack';
+import { bundledPackRows, type BundledPackRow } from './packs/bundledPacks';
 import { packStageLabel } from './packStageLabel';
 import { packUsage, type PackUsage, type PackUsageStage } from './packs/packUsage';
 import { SUGGESTED_PACKS, type SuggestedPack } from './packs/suggestedPacks';
@@ -306,6 +308,14 @@ let stopProgress: (() => void) | null = null;
 onMounted(() => {
   for (const row of initialRows) measureUsage(row.manifestUrl, row.base);
 
+  // See `bundled`'s own comment for why this is an `import()` and not an
+  // import.
+  void import('@/content/install')
+    .then(({ BUNDLED_PACK_DATA }) => {
+      bundled.value = bundledPackRows(BUNDLED_PACK_DATA);
+    })
+    .catch(() => {});
+
   // **This is how a download started on another screen becomes visible here.**
   // The prefetch is fired and forgotten from `runtimePacks.ts` during the
   // loading screen, minutes before this component exists, so there is no
@@ -325,6 +335,24 @@ onMounted(() => {
     }
   });
 });
+
+/** Whether this row is a pack its author is serving from their own machine. */
+const isDev = (row: PackRow): boolean => isDevPackUrl(row.manifestUrl);
+
+/**
+ * The packs compiled into this build.
+ *
+ * Filled from a **dynamic** `import()`, never a static one: `@/content/install`
+ * is the engine's own loader, and `scripts/check-chunks.mjs`'s `PacksScene`
+ * rule plus `tests/scenes/packsBootPath.test.ts` are what keep the whole match
+ * out of the chunk a player downloads to read this list. Same sanctioned
+ * crossing the install button already makes.
+ *
+ * Failure is silence and an empty list. Nothing on this screen acts on these
+ * rows — they are a statement of fact, and a build whose own loader will not
+ * import has louder problems than a missing row.
+ */
+const bundled = ref<BundledPackRow[]>([]);
 
 const confirmingUrl = ref<string | null>(null);
 const removingUrl = ref<string | null>(null);
@@ -632,6 +660,9 @@ const copyUrl = async (value: string): Promise<void> => {
  */
 const nothingInstalled = computed(() => rows.value.length === 0);
 
+/** How many packs the "Đã cài" tab actually shows — built-in ones included. */
+const listedCount = computed(() => rows.value.length + bundled.value.length);
+
 onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer);
   copyTimer = null;
@@ -677,7 +708,10 @@ onBeforeUnmount(() => {
         >
           <i class="fas fa-box-open" aria-hidden="true"></i>
           <span>Đã cài</span>
-          <span v-if="rows.length" class="packs-tab-count">{{ rows.length }}</span>
+          <!-- Everything the tab lists, not only the packs added by URL: the
+               badge read "1" over three visible rows the moment the built-in
+               packs joined the list. -->
+          <span v-if="listedCount" class="packs-tab-count">{{ listedCount }}</span>
         </button>
         <button
           type="button"
@@ -697,6 +731,45 @@ onBeforeUnmount(() => {
       <div class="packs-body">
         <!-- ------------------------------------------------------- Đã cài -->
         <template v-if="tab === 'installed'">
+          <!-- Content that came with the build, listed first and listed
+               differently. This screen answers "what content do I have", and
+               for years it answered "what did I install by URL" — so a player
+               with a compiled-in roster of dozens of champions read "Chưa cài
+               pack nào" on the screen whose whole job is to tell them
+               otherwise. These rows carry no remove button and no download
+               meter because neither is a thing that can happen to them: they
+               ship inside the app. -->
+          <ul v-if="bundled.length" class="packs-list packs-list-builtin">
+            <li v-for="row in bundled" :key="row.id" class="packs-row is-builtin">
+              <div class="packs-row-main">
+                <span
+                  class="packs-avatar"
+                  :style="{
+                    background: monogramFor(row.id, row.id).background,
+                    color: monogramFor(row.id, row.id).foreground,
+                  }"
+                  aria-hidden="true"
+                  >{{ monogramFor(row.id, row.id).text }}</span
+                >
+                <div class="packs-row-text">
+                  <div class="packs-row-head">
+                    <span class="packs-id">{{ row.id }}</span>
+                    <span class="packs-version">v{{ row.version }}</span>
+                    <span class="packs-builtin">có sẵn</span>
+                  </div>
+                  <p class="packs-usage is-builtin">
+                    <i class="fas fa-box-archive" aria-hidden="true"></i>
+                    <span>
+                      Đi kèm bản game này<template v-if="row.champions">
+                        — {{ row.champions }} tướng</template
+                      >. Không gỡ được.
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </li>
+          </ul>
+
           <ul v-if="rows.length" class="packs-list">
             <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
               <!-- The pack's own mark, and only here: this pack is installed,
@@ -727,6 +800,14 @@ onBeforeUnmount(() => {
                   <div class="packs-row-head">
                     <span class="packs-id">{{ row.name }}</span>
                     <span class="packs-version">v{{ row.version }}</span>
+                    <!-- A pack being served from the player's own machine is
+                         not the same kind of thing as one installed from a
+                         host, and the difference is visible in this screen's
+                         own terms: it is never saved for offline. Said on the
+                         row rather than only in `devPack.ts`, so nobody reads
+                         the empty usage line below as a download that
+                         failed. -->
+                    <span v-if="isDev(row)" class="packs-dev">dev</span>
                   </div>
                   <p class="packs-origin packs-selectable">{{ row.origin }}</p>
 
@@ -738,7 +819,11 @@ onBeforeUnmount(() => {
                        explains. Nothing here is pressable, so nothing here
                        needs the `@touchend` twin every control on this screen
                        carries. -->
-                  <p class="packs-usage" :class="`is-${usageOf(row).stage}`">
+                  <p v-if="isDev(row)" class="packs-usage is-dev">
+                    <i class="fas fa-hammer" aria-hidden="true"></i>
+                    <span>Đọc lại từ máy bạn mỗi lần tải trang — không lưu offline.</span>
+                  </p>
+                  <p v-else class="packs-usage" :class="`is-${usageOf(row).stage}`">
                     <i :class="USAGE_ICON[usageOf(row).stage]" aria-hidden="true"></i>
                     <span>{{ usageOf(row).label }}</span>
                   </p>
@@ -772,7 +857,11 @@ onBeforeUnmount(() => {
           </ul>
 
           <div v-else class="packs-empty">
-            <p>Chưa cài pack nào — game đang chạy với đúng một tướng mặc định.</p>
+            <!-- Only ever about packs added *by URL*: the list above is never
+                 empty, so the old copy ("Chưa cài pack nào — game đang chạy
+                 với đúng một tướng mặc định") described a state this build
+                 cannot be in. -->
+            <p>Chưa cài thêm pack nào từ URL — game đang chạy với nội dung đi kèm ở trên.</p>
             <button
               type="button"
               class="packs-empty-cta"
