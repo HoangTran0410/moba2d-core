@@ -41,9 +41,37 @@
  * `sharp` is imported dynamically and is the *pack's* dependency, not core's:
  * a native module has no business in the engine's install, and a build without
  * it still produces a correct pack, just a heavier one.
+ *
+ * **Which is why it is resolved from the pack and not from here.** A bare
+ * `await import('sharp')` resolves from *this file's* real path, so the
+ * sentence above was a statement of intent that the code contradicted the
+ * moment core arrived through a symlink — which is exactly what
+ * `npm run pack:link` creates. The lookup moved into core's `node_modules`,
+ * found nothing, and the build shipped every PNG un-encoded behind a warning
+ * in a wall of build output: measured on the lol pack, 2.3MB of art where
+ * 0.87MB was expected. `sharpEntryFrom` anchors the search on the pack root
+ * instead, which is what the sentence meant all along.
  */
 import { stat } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
+import { createRequire } from 'node:module';
+import { basename, extname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+/**
+ * The pack's own `sharp`, as an absolute path — or `null` when it has none.
+ *
+ * `createRequire` anchored on the pack's `package.json` walks that package's
+ * `node_modules` first and up from there, which is the resolution a
+ * dependency of the pack is supposed to get. Exported so the property can be
+ * tested without building a pack.
+ */
+export function sharpEntryFrom(packRoot) {
+  try {
+    return createRequire(pathToFileURL(join(packRoot, 'package.json')).href).resolve('sharp');
+  } catch {
+    return null;
+  }
+}
 
 /** Only formats where a lossy re-encode is the right trade. */
 const CONVERTIBLE = new Set(['.png', '.jpg', '.jpeg']);
@@ -66,7 +94,10 @@ export function webpAssets({ quality = 80 } = {}) {
 
     async buildStart() {
       try {
-        ({ default: sharp } = await import('sharp'));
+        // `process.cwd()` is the pack root: this plugin only ever runs inside
+        // a pack's own `vite build`.
+        const entry = sharpEntryFrom(process.cwd());
+        ({ default: sharp } = await import(entry ? pathToFileURL(entry).href : 'sharp'));
         enabled = true;
       } catch {
         // A build without `sharp` still produces a correct pack, just a
