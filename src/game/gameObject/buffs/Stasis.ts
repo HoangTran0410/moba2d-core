@@ -20,8 +20,16 @@ export default class Stasis extends Buff {
 
   // Stunned is what actually locks movement and casting: Stats.updateActionState
   // derives CAN_MOVE/CAN_CAST from the CC flags and never reads StatusFlags.CanMove,
-  // so clearing that bit alone would do nothing.
-  statusFlagsToEnable = StatusFlags.Stunned;
+  // so clearing that bit alone would do nothing. Stunned is also what cancels
+  // whatever the unit was casting or channelling — Spell.observeInterrupts reads
+  // the flag every frame and hands the runtime a 'STUN'.
+  //
+  // Immovable, because a statue cannot be knocked around: without it a hostile
+  // dash or shove still dragged the "frozen" body across the ground. And
+  // PhasesUnits, because a statue is not a wall either — `collidesWithUnits`
+  // reads the flag, so bodies walk through the hourglass instead of piling up
+  // against a champion nothing can interact with.
+  statusFlagsToEnable = StatusFlags.Stunned | StatusFlags.Immovable | StatusFlags.PhasesUnits;
   statusFlagsToDisable = StatusFlags.Targetable;
 
   onActivate(): void {
