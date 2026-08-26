@@ -572,16 +572,32 @@ export default class AttackableUnit extends GameObject {
   }
 
   /**
+   * The rolling ledger behind the death recap: what has hurt this unit in the
+   * last few seconds, each entry the *landed* number with who and, when the
+   * caller says so, what. Pruned as it is written, snapshotted by `die()`
+   * into `deathRecap`, and never read by gameplay — display only.
+   */
+  recentDamageLog: DamageLogEntry[] = [];
+  /** The last death's summary, for the HUD. Survives until the next death. */
+  deathRecap: DeathRecap | null = null;
+  private _deathSeq = 0;
+
+  /**
    * `type` is optional and defaults to `MAGIC` — see `combat/Mitigation.ts` for
    * why that default is the only one that could have been chosen. Every
    * ability in every published pack calls this with two arguments, and every
    * unit starts at zero of both resistances, so adding the parameter moved no
    * number in the game on the day it landed.
+   *
+   * `source` is display only — the ability's own name, for the death recap. A
+   * caller that omits it (every spell today) still lands in the recap under
+   * its attacker and damage type; core's own basic attack names itself.
    */
   takeDamage(
     damage: number,
     attacker?: AttackableUnit,
-    type: DamageType = DEFAULT_DAMAGE_TYPE
+    type: DamageType = DEFAULT_DAMAGE_TYPE,
+    source?: string
   ): void {
     if (this.isDead) return;
 
@@ -649,6 +665,7 @@ export default class AttackableUnit extends GameObject {
     const landed = Math.min(damage, Math.max(0, this.stats.health.baseValue));
     this.tally.damageTaken += landed;
     if (attacker && attacker !== this) attacker.tally.damageDealt += landed;
+    if (landed > 0 && attacker !== this) this.recordDamageForRecap(landed, type, attacker, source);
 
     this.stats.health.baseValue -= damage;
 
@@ -670,6 +687,29 @@ export default class AttackableUnit extends GameObject {
 
     if (this.stats.health.baseValue <= 0) {
       this.die({ attacker, reviveAfter: this.reviveTime });
+    }
+  }
+
+  /** One recap entry, and the prune in the same breath — see `recentDamageLog`. */
+  private recordDamageForRecap(
+    landed: number,
+    type: DamageType,
+    attacker?: AttackableUnit,
+    source?: string
+  ): void {
+    const atMs = this.game?.matchTimeMs ?? 0;
+    this.recentDamageLog.push({
+      atMs,
+      amount: landed,
+      type,
+      attackerName: unitDisplayName(attacker),
+      attackerId: attacker?.id ?? 'unknown',
+      source,
+    });
+    const cutoff = atMs - DEATH_RECAP_WINDOW_MS;
+    const log = this.recentDamageLog;
+    while (log.length > DEATH_RECAP_MAX_ENTRIES || (log.length && log[0].atMs < cutoff)) {
+      log.shift();
     }
   }
 
@@ -724,6 +764,16 @@ export default class AttackableUnit extends GameObject {
     // to repeat — so the ledger is only touched on the transition.
     if (!this.isDead) {
       this.tally.deaths++;
+      // The recap is the ledger as it stood at the killing blow (which
+      // `takeDamage` has already written). Snapshot on the transition only, or
+      // a stray second `die` would publish an empty recap over the real one.
+      this._deathSeq += 1;
+      this.deathRecap = {
+        seq: this._deathSeq,
+        killerName: unitDisplayName(deathData.attacker),
+        entries: this.recentDamageLog.slice(),
+      };
+      this.recentDamageLog.length = 0;
       const killer = deathData.attacker;
       if (killer && killer !== this) {
         if (this.killCredit === 'champion') killer.tally.kills++;
@@ -1019,3 +1069,32 @@ export default class AttackableUnit extends GameObject {
     return this.teamId === this.game.player.teamId;
   }
 }
+
+/** How far back the death recap reaches. The source game shows about this much. */
+export const DEATH_RECAP_WINDOW_MS = 12_000;
+/** A hard cap so a tick aura cannot grow the ledger without bound. */
+export const DEATH_RECAP_MAX_ENTRIES = 60;
+
+/** One landed hit, as the death recap will retell it. */
+export interface DamageLogEntry {
+  atMs: number;
+  amount: number;
+  type: DamageType;
+  attackerName: string;
+  attackerId: string;
+  /** The ability's own name, when the damage call named one. */
+  source?: string;
+}
+
+/** What `die()` publishes for the HUD. */
+export interface DeathRecap {
+  /** Bumped per death, so the HUD can re-show a dismissed panel. */
+  seq: number;
+  killerName: string;
+  entries: DamageLogEntry[];
+}
+
+/** Every concrete unit type carries `name`; the base class does not declare
+ *  it, so this reads it structurally and says "unknown" honestly otherwise. */
+const unitDisplayName = (unit?: unknown): string =>
+  (unit as { name?: string } | undefined)?.name ?? 'Không rõ';

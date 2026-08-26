@@ -120,7 +120,7 @@ export function landBasicAttack(
   // `combat/Mitigation.ts`'s header on why the default runs that way round.
   // `landBasicAttack` is the sole place a swing becomes damage, so this single
   // line is what makes armour mean anything at all.
-  victim.takeDamage(total, attacker, 'PHYSICAL');
+  victim.takeDamage(total, attacker, 'PHYSICAL', 'Đánh thường');
   if (crit) showCritSpark(attacker, victim);
   // After the swing's own damage, before the observation event: an on-hit
   // effect is part of the attack (League's order too), so anything watching

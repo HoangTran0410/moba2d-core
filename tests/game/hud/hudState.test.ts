@@ -40,6 +40,41 @@ const fakePlayer = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('computeHudState', () => {
+  it('groups the death recap by attacker, heaviest first, with per-source lines', () => {
+    const player = fakePlayer({
+      isDead: true,
+      deathRecap: {
+        seq: 3,
+        killerName: 'Ahri',
+        entries: [
+          { atMs: 0, amount: 20, type: 'MAGIC', attackerName: 'Ahri', attackerId: 'a', source: 'Quả Cầu' },
+          { atMs: 1, amount: 15, type: 'MAGIC', attackerName: 'Ahri', attackerId: 'a', source: 'Quả Cầu' },
+          { atMs: 2, amount: 8, type: 'PHYSICAL', attackerName: 'Ahri', attackerId: 'a', source: 'Đánh thường' },
+          { atMs: 3, amount: 60, type: 'TRUE', attackerName: 'Trụ', attackerId: 't' },
+        ],
+      },
+    });
+    const state = computeHudState({ player } as any)!;
+    const recap = state.deathRecap!;
+
+    expect(recap.killer).toBe('Ahri');
+    expect(recap.seq).toBe(3);
+    expect(recap.total).toBe(103);
+    expect(recap.rows.map(r => r.attacker)).toEqual(['Trụ', 'Ahri']);
+    const ahri = recap.rows[1];
+    expect(ahri.sources[0]).toMatchObject({ label: 'Quả Cầu', amount: 35, hits: 2, type: 'MAGIC' });
+    // an unnamed hit falls back to its damage type's own label
+    expect(recap.rows[0].sources[0].label).toBe('Sát thương chuẩn');
+  });
+
+  it('shows no recap while alive, even with an old one recorded', () => {
+    const player = fakePlayer({
+      isDead: false,
+      deathRecap: { seq: 1, killerName: 'X', entries: [] },
+    });
+    expect(computeHudState({ player } as any)!.deathRecap).toBeNull();
+  });
+
   it('is null with no player yet', () => {
     expect(computeHudState({ player: null } as any)).toBeNull();
     expect(computeHudState(null)).toBeNull();

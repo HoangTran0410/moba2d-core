@@ -42,6 +42,7 @@ import { markRaw, onUnmounted, provide, ref, shallowRef } from 'vue';
 import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
 import { vTap } from './tapGuard';
+import DeathRecapPanel from './DeathRecapPanel.vue';
 import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
@@ -157,6 +158,11 @@ defineExpose({
     </button>
   </div>
 
+  <!-- One recap for both views — see its own header. -->
+  <DeathRecapPanel
+    v-if="state && state.isDead && state.deathRecap"
+    :recap="state.deathRecap"
+  />
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
 

@@ -81,6 +81,37 @@ export interface BuffDisplay {
   stacks: number;
 }
 
+/** One source line inside a death-recap attacker row. */
+export interface DeathRecapSourceRow {
+  /** The ability's own name when the damage named one, else the type's label. */
+  label: string;
+  amount: number;
+  hits: number;
+  /** 'PHYSICAL' | 'MAGIC' | 'TRUE' — the panel colours the number with it. */
+  type: string;
+}
+
+/** One attacker in the death recap, heaviest first. */
+export interface DeathRecapRow {
+  attacker: string;
+  total: number;
+  sources: DeathRecapSourceRow[];
+}
+
+/**
+ * The death recap: who killed the player and what the last seconds of damage
+ * were made of, the way the source game retells a death. Built off
+ * `AttackableUnit.deathRecap`, which `die()` snapshots from the rolling
+ * damage ledger. `seq` bumps per death so the HUD can re-show a dismissed
+ * panel on the next one.
+ */
+export interface DeathRecapDisplay {
+  seq: number;
+  killer: string;
+  total: number;
+  rows: DeathRecapRow[];
+}
+
 export interface StatsDisplay {
   health: number;
   maxHealth: number;
@@ -162,6 +193,8 @@ export interface HudState {
   buffs: BuffDisplay[];
   /** Null for a unit with no recall at all — a headless test, mostly. */
   recall: RecallDisplay | null;
+  /** Null while alive (or before the first death). See `DeathRecapDisplay`. */
+  deathRecap: DeathRecapDisplay | null;
   /** Whole coins. 0 for a unit with no wallet — a minion, a pet, a test double. */
   gold: number;
   /** Always `INVENTORY_SIZE` entries. See `ItemSlotDisplay`. */
@@ -420,6 +453,63 @@ function buildRecall(player: any): RecallDisplay | null {
   };
 }
 
+/** The type labels the recap falls back to when no ability named itself. */
+const DAMAGE_TYPE_LABEL: Record<string, string> = {
+  PHYSICAL: 'Sát thương vật lý',
+  MAGIC: 'Sát thương phép',
+  TRUE: 'Sát thương chuẩn',
+};
+
+/**
+ * Groups the death ledger for the panel: one row per attacker, heaviest
+ * first; inside a row, one line per named source (or per damage type when
+ * nothing named itself), heaviest first.
+ */
+function buildDeathRecap(player: any): DeathRecapDisplay | null {
+  if (!player.isDead || !player.deathRecap) return null;
+  const recap = player.deathRecap;
+
+  const rows = new Map<string, DeathRecapRow & { lines: Map<string, DeathRecapSourceRow> }>();
+  let total = 0;
+  for (const entry of recap.entries as {
+    amount: number;
+    type: string;
+    attackerName: string;
+    attackerId: string;
+    source?: string;
+  }[]) {
+    total += entry.amount;
+    let row = rows.get(entry.attackerId);
+    if (!row) {
+      row = { attacker: entry.attackerName, total: 0, sources: [], lines: new Map() };
+      rows.set(entry.attackerId, row);
+    }
+    row.total += entry.amount;
+    const label = entry.source ?? DAMAGE_TYPE_LABEL[entry.type] ?? entry.type;
+    const key = `${label}:${entry.type}`;
+    const line = row.lines.get(key);
+    if (line) {
+      line.amount += entry.amount;
+      line.hits += 1;
+    } else {
+      row.lines.set(key, { label, amount: entry.amount, hits: 1, type: entry.type });
+    }
+  }
+
+  return {
+    seq: recap.seq,
+    killer: recap.killerName,
+    total,
+    rows: [...rows.values()]
+      .map(row => ({
+        attacker: row.attacker,
+        total: row.total,
+        sources: [...row.lines.values()].sort((a, b) => b.amount - a.amount),
+      }))
+      .sort((a, b) => b.total - a.total),
+  };
+}
+
 /** Reads `game.player` and returns everything the HUD displays. Null while there is no player yet. */
 export function computeHudState(game: Game | undefined | null): HudState | null {
   const player = (game as any)?.player;
@@ -435,6 +525,7 @@ export function computeHudState(game: Game | undefined | null): HudState | null 
     spells: buildSpells(player),
     buffs: buildBuffs(player),
     recall: buildRecall(player),
+    deathRecap: buildDeathRecap(player),
     gold: player.wallet?.balance ?? 0,
     items: buildItems(player),
     passive: buildPassive(player),
