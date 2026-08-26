@@ -82,6 +82,7 @@
     "typecheck:sw": "tsc -p tsconfig.sw.json",
     "format": "prettier --write \"src/**/*.{ts,vue}\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue}\" \"tests/**/*.ts\"",
+    "hooks:install": "git config core.hooksPath scripts/git-hooks",
     "verify": "npm run links:check && npm run packs:check && npm run assets:check && npm run catalog:check && npm run typecheck && npm run typecheck:core && npm run typecheck:sw && npm run test:all && npm run build && npm run chunks:check && npm run check-seams",
     "verify:all": "npm run verify && npm run check-seams --workspace=@moba2d/content-reference",
     "e2e": "node tests/e2e/drive-game.mjs",
