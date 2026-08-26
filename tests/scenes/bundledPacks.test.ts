@@ -5,22 +5,10 @@ vi.mock('@/managers/AssetManager', () => ({
 }));
 
 import { bundledPackRows } from '@/scenes/packs/bundledPacks';
-import { BUNDLED_PACK_DATA } from '@/content/install';
-import type { ContentPackData } from '@/content/ContentPack';
+import type { PackContents } from '@/scenes/packs/packContents';
+import { BUNDLED_PACK_SUMMARIES } from '@/content/install';
 
-const champion = (id: string, playable: boolean) => ({
-  id,
-  name: id,
-  image: null,
-  spells: [],
-  playable,
-});
-
-const pack = (id: string, version: string, champions: unknown[] = []): ContentPackData =>
-  ({
-    manifest: { id, version, coreRange: '*' },
-    champions,
-  }) as unknown as ContentPackData;
+const counts = (entries: Record<string, PackContents>) => new Map(Object.entries(entries));
 
 /**
  * What the packs screen says about content that came with the game.
@@ -33,58 +21,67 @@ const pack = (id: string, version: string, champions: unknown[] = []): ContentPa
  */
 describe('bundledPackRows', () => {
   it('names every pack that came with the build, in install order', () => {
-    const rows = bundledPackRows([pack('lol', '1.0.0'), pack('reference', '1.2.0')]);
+    const rows = bundledPackRows(
+      [
+        { id: 'lol', version: '1.0.0', linked: false },
+        { id: 'reference', version: '1.2.0', linked: false },
+      ],
+      counts({})
+    );
 
     expect(rows.map(row => row.id)).toEqual(['lol', 'reference']);
     expect(rows[1].version).toBe('1.2.0');
   });
 
-  it('counts only champions the pregame screen would actually offer', () => {
-    // A roster row is not the same thing as a champion: a pack's own shelves
-    // — the bare basic attack, the summoner-spell group — are rows with
-    // `playable: false`, and counting them tells a player they have more
-    // champions than the game will let them pick.
-    const rows = bundledPackRows([
-      pack('lol', '1.0.0', [
-        champion('Yasuo', true),
-        champion('Ahri', true),
-        champion('Đánh Thường', false),
-      ]),
-    ]);
+  it('carries each pack its own share of the registry', () => {
+    const rows = bundledPackRows(
+      [
+        { id: 'lol', version: '1.0.0', linked: false },
+        { id: 'reference', version: '1.0.0', linked: false },
+      ],
+      counts({
+        lol: { champions: 58, maps: 1, items: 42 },
+        reference: { champions: 1, maps: 1, items: 0 },
+      })
+    );
 
-    expect(rows[0].champions).toBe(2);
+    expect(rows[0].contents).toBe('58 tướng · 1 map · 42 trang bị');
+    expect(rows[1].contents).toBe('1 tướng · 1 map');
   });
 
-  it('survives a pack that ships no roster at all', () => {
-    const rows = bundledPackRows([pack('maps-only', '1.0.0')]);
+  it('marks a linked pack, because it is not the same thing as a shipped one', () => {
+    // A player looking at a roster nobody else's copy of the game has should
+    // be able to see why from the screen that lists it.
+    const rows = bundledPackRows(
+      [
+        { id: 'lol', version: '1.0.0', linked: true },
+        { id: 'reference', version: '1.0.0', linked: false },
+      ],
+      counts({})
+    );
 
-    expect(rows[0].champions).toBe(0);
+    expect(rows.map(row => row.linked)).toEqual([true, false]);
   });
 
   /**
    * The same derivation over what this build actually bundles.
    *
-   * Everything above runs on hand-written objects, which proves the counting
-   * rule and proves nothing about whether `BUNDLED_PACK_DATA` has the shape
-   * the rule reads — a renamed `manifest.version`, a roster moved off
-   * `champions`, and every case above stays green while the screen renders
+   * Everything above runs on hand-written objects, which proves the joining
+   * and proves nothing about whether `BUNDLED_PACK_SUMMARIES` has the shape
+   * the rule reads — a renamed `version`, a summary list that forgot the
+   * reference pack, and every case above stays green while the screen renders
    * `vundefined`. Asserted without naming a pack, so it holds in a core-only
    * checkout and in one with packs linked or compiled in alike.
    */
   it("reads this build's own bundled packs, whatever they are", () => {
-    const rows = bundledPackRows(BUNDLED_PACK_DATA);
+    const rows = bundledPackRows(BUNDLED_PACK_SUMMARIES, counts({}));
 
     // The reference pack is never absent — `install.ts` imports it plainly.
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(row.id, 'a bundled pack with no id').toBeTruthy();
       expect(row.version, `${row.id} has no version to show`).toMatch(/^\d+\.\d+\.\d+/);
-      expect(Number.isInteger(row.champions), `${row.id} champion count is not a number`).toBe(
-        true
-      );
+      expect(typeof row.linked, `${row.id} has no linked answer`).toBe('boolean');
     }
-    // And at least one of them actually offers a champion, or the screen's
-    // whole claim ("game đang chạy với nội dung đi kèm ở trên") is empty.
-    expect(rows.some(row => row.champions > 0)).toBe(true);
   });
 });

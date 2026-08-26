@@ -21,6 +21,16 @@ export interface InstalledPack {
   readonly data: ContentPackData;
   readonly code: ContentPackFactory;
   readonly assetManifest: PackAssetManifest;
+  /**
+   * True for a pack `npm run pack:link` put here from a directory outside this
+   * checkout, and absent for every pack npm installed.
+   *
+   * A working state, not a shipped one: the packs screen says so on the row,
+   * because a player looking at a roster nobody else has should be able to see
+   * why. Never true in a published build — nothing links a pack into a
+   * tarball.
+   */
+  readonly linked?: boolean;
 }
 
 /**

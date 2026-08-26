@@ -554,6 +554,39 @@
   color: var(--hextech-muted);
 }
 
+/* What a pack contributed — champions, maps, items. Same shape as
+   `.packs-usage` beside it, one notch quieter: this line is a fact about the
+   pack, that one is a fact about this browser. */
+.packs-contents {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.82em;
+  color: var(--hextech-text);
+}
+
+/* A pack linked from outside the checkout. The one row on this screen that is
+   a developer's state rather than a player's, so it is the one badge that
+   earns the accent colour. */
+.packs-linked {
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.36rem;
+  border-radius: 3px;
+  border: 1px solid var(--hextech-gold);
+  color: var(--hextech-gold);
+}
+
+.packs-usage.is-linked code {
+  font-size: 0.95em;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  user-select: text;
+}
+
 /* Content compiled into the build. Same quiet treatment as `.packs-dev`, and
    for the same reason: it says what kind of row this is, and there is nothing
    the player is being asked to do about it. */

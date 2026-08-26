@@ -1,4 +1,5 @@
-import type { ContentPackData } from '@/content/ContentPack';
+import type { BundledPackSummary } from '@/content/install';
+import { describeContents, type PackContents } from './packContents';
 
 /**
  * The packs that came with the build, as the packs screen lists them.
@@ -14,31 +15,33 @@ import type { ContentPackData } from '@/content/ContentPack';
  *
  * ## Why a plain function over data
  *
- * `PacksScene` may not statically import `@/content/install` — that module is
- * the engine's own loader, and `scripts/check-chunks.mjs`'s `PacksScene` rule
- * plus `tests/scenes/packsBootPath.test.ts` exist to keep the whole match out
- * of the chunk a player downloads to read a list. The screen reaches it
- * through a dynamic `import()` at mount, the same sanctioned crossing the
- * install button already uses, and hands the data here. So this file takes
- * `ContentPackData[]` as an argument and imports nothing but a type.
+ * `PacksScene` may not statically import `@/content/install` or
+ * `@/content/registry` — both are the engine, and `scripts/check-chunks.mjs`'s
+ * `PacksScene` rule plus `tests/scenes/packsBootPath.test.ts` exist to keep
+ * the whole match out of the chunk a player downloads to read a list. The
+ * screen reaches them through a dynamic `import()` at mount, the same
+ * sanctioned crossing the install button already uses, and hands the results
+ * here.
  */
 export interface BundledPackRow {
   /** The pack's own id — `'lol'`, `'reference'`. Its display name too: a
    *  bundled pack's `PackManifest` carries no separate name field. */
   readonly id: string;
   readonly version: string;
-  /** How many champions the pregame screen would actually offer. */
-  readonly champions: number;
+  /** `'58 tướng · 1 map · 42 trang bị'`, or `''` for a pack that adds none. */
+  readonly contents: string;
+  /** Linked from outside this checkout by `npm run pack:link`. */
+  readonly linked: boolean;
 }
 
-export function bundledPackRows(packs: readonly ContentPackData[]): BundledPackRow[] {
-  return packs.map(pack => ({
-    id: pack.manifest.id,
-    version: pack.manifest.version,
-    // `playable`, not `champions.length`: a pack's shelves — the bare basic
-    // attack, the summoner-spell group — are roster rows too, and counting
-    // them promises champions the player cannot pick. `data.ts`'s own
-    // `championEntries()` computes the field for exactly this distinction.
-    champions: (pack.champions ?? []).filter(entry => entry.playable).length,
+export function bundledPackRows(
+  summaries: readonly BundledPackSummary[],
+  contents: ReadonlyMap<string, PackContents>
+): BundledPackRow[] {
+  return summaries.map(summary => ({
+    id: summary.id,
+    version: summary.version,
+    contents: describeContents(contents.get(summary.id)),
+    linked: summary.linked,
   }));
 }

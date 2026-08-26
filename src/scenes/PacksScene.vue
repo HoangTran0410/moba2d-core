@@ -64,6 +64,7 @@ import {
 import type { PackLoadError, RuntimePackManifest } from '@/content/packSource';
 import { isDevPackUrl } from '@/content/devPack';
 import { bundledPackRows, type BundledPackRow } from './packs/bundledPacks';
+import { contentsByPack, describeContents, type PackContents } from './packs/packContents';
 import { packStageLabel } from './packStageLabel';
 import { packUsage, type PackUsage, type PackUsageStage } from './packs/packUsage';
 import { SUGGESTED_PACKS, type SuggestedPack } from './packs/suggestedPacks';
@@ -308,11 +309,11 @@ let stopProgress: (() => void) | null = null;
 onMounted(() => {
   for (const row of initialRows) measureUsage(row.manifestUrl, row.base);
 
-  // See `bundled`'s own comment for why this is an `import()` and not an
-  // import.
-  void import('@/content/install')
-    .then(({ BUNDLED_PACK_DATA }) => {
-      bundled.value = bundledPackRows(BUNDLED_PACK_DATA);
+  // See `bundled`'s own comment for why these are `import()`s and not imports.
+  void Promise.all([import('@/content/install'), import('@/content/registry')])
+    .then(([{ BUNDLED_PACK_SUMMARIES }, { contentRegistry }]) => {
+      contents.value = contentsByPack(contentRegistry());
+      bundled.value = bundledPackRows(BUNDLED_PACK_SUMMARIES, contents.value);
     })
     .catch(() => {});
 
@@ -353,6 +354,19 @@ const isDev = (row: PackRow): boolean => isDevPackUrl(row.manifestUrl);
  * import has louder problems than a missing row.
  */
 const bundled = ref<BundledPackRow[]>([]);
+
+/**
+ * How much content each installed pack contributes, keyed by pack id.
+ *
+ * One registry pass answers this for *both* kinds of row: a pack installed by
+ * URL is in the same registry as a compiled-in one by the time this screen
+ * exists, and its manifest could only ever have declared a champion count
+ * anyway. See `packs/packContents.ts`.
+ */
+const contents = ref<ReadonlyMap<string, PackContents>>(new Map());
+
+/** `'58 tướng · 1 map · 42 trang bị'` for a row, or `''` to draw no line. */
+const contentsOf = (packId: string): string => describeContents(contents.value.get(packId));
 
 const confirmingUrl = ref<string | null>(null);
 const removingUrl = ref<string | null>(null);
@@ -739,7 +753,19 @@ onBeforeUnmount(() => {
                otherwise. These rows carry no remove button and no download
                meter because neither is a thing that can happen to them: they
                ship inside the app. -->
-          <ul v-if="bundled.length" class="packs-list packs-list-builtin">
+          <!-- **One list, two kinds of row.** Built-in packs were briefly a
+               second `<ul>` of their own, which put no space at all between
+               the two groups while `.packs-list`'s own `gap` spaced every row
+               inside them — the seam was visible and meant nothing. They are
+               different rows, not different lists. -->
+          <ul v-if="bundled.length || rows.length" class="packs-list">
+            <!-- Content that came with the build, first. This screen answers
+                 "what content do I have", and for years it answered "what did
+                 I install by URL" — so a player with a compiled-in roster of
+                 dozens of champions read "Chưa cài pack nào" on the screen
+                 whose whole job is to tell them otherwise. These rows carry no
+                 remove button and no download meter because neither is a thing
+                 that can happen to them: they ship inside the app. -->
             <li v-for="row in bundled" :key="row.id" class="packs-row is-builtin">
               <div class="packs-row-main">
                 <span
@@ -755,22 +781,37 @@ onBeforeUnmount(() => {
                   <div class="packs-row-head">
                     <span class="packs-id">{{ row.id }}</span>
                     <span class="packs-version">v{{ row.version }}</span>
-                    <span class="packs-builtin">có sẵn</span>
+                    <!-- Deliberately not "có sẵn": this screen already has a
+                         **Pack có sẵn** section (the shelf, one tab over) that
+                         means something else entirely. -->
+                    <span v-if="row.linked" class="packs-linked">được link</span>
+                    <span v-else class="packs-builtin">tích hợp</span>
                   </div>
-                  <p class="packs-usage is-builtin">
-                    <i class="fas fa-box-archive" aria-hidden="true"></i>
+                  <p v-if="contentsOf(row.id)" class="packs-contents">
+                    <i class="fas fa-layer-group" aria-hidden="true"></i>
+                    <span>{{ contentsOf(row.id) }}</span>
+                  </p>
+                  <!-- A linked pack is somebody's working state, not part of
+                       this build: it is on this machine only, it cannot be
+                       committed, and the roster it adds is one nobody else's
+                       copy of the game has. Saying which command undoes it is
+                       the whole point — this row only ever appears in a
+                       checkout where that command exists. -->
+                  <p v-if="row.linked" class="packs-usage is-linked">
+                    <i class="fas fa-link" aria-hidden="true"></i>
                     <span>
-                      Đi kèm bản game này<template v-if="row.champions">
-                        — {{ row.champions }} tướng</template
-                      >. Không gỡ được.
+                      Link từ máy này, không thuộc bản game. Gỡ bằng
+                      <code>npm run pack:unlink -- --all</code> trong core.
                     </span>
+                  </p>
+                  <p v-else class="packs-usage is-builtin">
+                    <i class="fas fa-box-archive" aria-hidden="true"></i>
+                    <span>Đi kèm bản game này. Không gỡ được.</span>
                   </p>
                 </div>
               </div>
             </li>
-          </ul>
 
-          <ul v-if="rows.length" class="packs-list">
             <li v-for="row in rows" :key="row.manifestUrl" class="packs-row">
               <!-- The pack's own mark, and only here: this pack is installed,
                    so its code is already running with the page's authority and
@@ -810,6 +851,16 @@ onBeforeUnmount(() => {
                     <span v-if="isDev(row)" class="packs-dev">dev</span>
                   </div>
                   <p class="packs-origin packs-selectable">{{ row.origin }}</p>
+
+                  <!-- The same line the built-in rows carry, from the same
+                       registry pass: what this pack actually added. A pack's
+                       own manifest could only ever have declared a champion
+                       count, so deriving it per row-kind would have made the
+                       URL-installed rows permanently poorer for no reason. -->
+                  <p v-if="contentsOf(row.id)" class="packs-contents">
+                    <i class="fas fa-layer-group" aria-hidden="true"></i>
+                    <span>{{ contentsOf(row.id) }}</span>
+                  </p>
 
                   <!-- What this browser has of the pack, and — the part that
                        was missing entirely — whether more of it is arriving

@@ -170,6 +170,36 @@ const packsInInstallOrder: BundledPack[] = [
  */
 export const BUNDLED_PACK_ID: string = packsInInstallOrder[0].id;
 
+/** One pack that came with this build, as a screen lists it. */
+export interface BundledPackSummary {
+  readonly id: string;
+  readonly version: string;
+  /**
+   * True for a pack `npm run pack:link` put into this checkout from outside
+   * it — see `@/generated/installedPacks`'s own `linked`. Always false in a
+   * published build, and the packs screen says so on the row because a player
+   * looking at a roster nobody else's copy has should be able to see why.
+   */
+  readonly linked: boolean;
+}
+
+/**
+ * The packs compiled into this build, for a screen that lists them.
+ *
+ * Derived here rather than in the screen because the two facts it joins live
+ * on different sides: `packsInInstallOrder` knows the reference pack (which
+ * the generated barrel deliberately never names — it is core's own content,
+ * imported plainly), and the barrel knows which entries are linked (which
+ * nothing at runtime can tell). Joined on the pack id, which both carry.
+ */
+export const BUNDLED_PACK_SUMMARIES: readonly BundledPackSummary[] = packsInInstallOrder.map(
+  pack => ({
+    id: pack.id,
+    version: pack.data.manifest.version,
+    linked: installedPacks.some(entry => entry.id === pack.id && entry.linked === true),
+  })
+);
+
 // Assignable both ways, checked by the compiler and costing nothing at
 // runtime. `ChampionAttack` (`./ContentPack`) is declared in the contract
 // rather than imported from the engine so the contract file reads on its
