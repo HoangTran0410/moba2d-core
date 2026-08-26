@@ -30,7 +30,7 @@ export interface GeneratedSpellDisplay {
 export const spellCatalog = {
   "BasicAttack": {
     name: "Đánh Thường (Basic Attack)",
-    description: "Đánh <span class=\"buff\">kẻ địch gần con trỏ nhất</span> trong vòng <span>250</span> đơn vị. Không có ai ở đó thì đánh kẻ gần mình nhất trong <span class=\"buff\">tầm với</span>, để vừa chạy vừa bắn. Tướng tự đuổi và đánh liên tục tới khi mục tiêu chết hoặc bạn ra lệnh khác. Nhịp đánh và sát thương lấy từ chỉ số của tướng.",
+    description: "Đánh <span class=\"buff\">kẻ địch gần con trỏ nhất</span> trong vòng <span>250</span> đơn vị. Không có ai ở đó thì đánh kẻ gần mình nhất trong <span class=\"buff\">tầm với</span>, để vừa chạy vừa bắn. Bấm vào <span class=\"buff\">đất trống</span> thì tướng đi tới đó và tự khai hỏa vào kẻ địch đầu tiên gặp trên đường (attack-move). Tướng tự đuổi và đánh liên tục tới khi mục tiêu chết hoặc bạn ra lệnh khác. Nhịp đánh và sát thương lấy từ chỉ số của tướng.",
     iconKey: "spell_basic_attack",
     coolDownMs: 909.090909090909,
     manaCost: 0,
