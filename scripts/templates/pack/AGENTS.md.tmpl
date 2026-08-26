@@ -136,3 +136,49 @@ the same stem are a duplicate-key error.
 `assetsInlineLimit: 0` on purpose: `pack.js` is downloaded before the menu can
 draw, and inlined art puts every champion's portrait in it to play a match
 that needs four.
+
+**Label your damage.** `takeDamage(amount, this.owner, 'MAGIC', 'Tên Chiêu')`
+— the third argument is the damage type (`'PHYSICAL' | 'MAGIC' | 'TRUE'`), the
+fourth the player-facing source label. Core's death-recap modal groups what
+killed a player by that label; damage dealt without one shows up as
+"Không rõ". A test spying on `takeDamage` should match the trailing arguments
+with `expect.any(String)` (or `.slice(0, 2)` the call), not restate them.
+
+**A re-applied Slow must `RENEW_EXISTING`.** `Slow`'s default add type stacks
+(ten deep), so a zone or aura that re-applies its slow every tick turns "40%
+slow" into a standstill. The aura pattern is one slow whose clock is rewound:
+
+```ts
+const slow = new Slow(400, this.owner, enemy);
+slow.percent = 0.4;
+slow.buffAddType = api.enums.BuffAddType.RENEW_EXISTING;
+enemy.addBuff(slow);
+```
+
+**A bookkeeping buff hides itself.** An item passive or an internal state
+tracker sets `buff.hudVisible = false`, or every purchase adds a row to the
+player's buff bar. `duration = 0` means permanent and draws no countdown;
+a permanent buff with a nonzero duration draws a negative one.
+
+**`interrupts:` — only `SpellForm.CHANNELED` breaks on the caster's own
+movement.** `AIMED`, `HELD` and `TETHERED` all survive moving and Flash and
+break only on death, stun or silence — that is what keeps cast-then-Flash
+combos playable. Reserve `CHANNELED` for a true channel (a Recall-like),
+because it also breaks on displacement.
+
+**"Player is not available in this test context" is usually not the error.**
+Vitest's failure printer walks the test game object and trips its throwing
+`player` getter while serialising an ordinary assertion diff. The real
+failure is the assertion above it — read the whole message before touching
+the fixture.
+
+**`npm install` (and any `bun install`) stomps a dev link.** While this pack
+is linked to a local core checkout (`npm run pack:link` from core), an install
+here silently replaces the symlink with the registry copy and every new-API
+line stops compiling. `scripts/check-core-link.mjs` (first step of `verify`,
+warn-only on `postinstall`) is what tells you; `npm run pack:link` from core
+is the repair.
+
+**Install the git hooks once per clone:** `npm run hooks:install`. The
+pre-push hook runs `npm run verify`; `git push --no-verify` or
+`MOBA2D_SKIP_VERIFY=1 git push` skips it once, deliberately.

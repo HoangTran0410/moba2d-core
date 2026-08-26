@@ -30,6 +30,17 @@ export interface MonsterAbility {
    */
   range?: number;
   cast(monster: Monster, target: Champion): void;
+  /**
+   * The camp's death, reported to the ability — once per life, on the
+   * transition, and only when something actually dealt it (`die` without an
+   * attacker stays silent). This is the whole seam a reward camp needs: a
+   * camp whose meaning is what slaying it grants — a mana blessing, an
+   * on-hit brand, a boss paying its team-wide reward — states that grant
+   * here, beside the kit it casts while alive, instead of core growing a
+   * separate reward table. Runs after `AttackableUnit.die` has settled the
+   * ledger, so the killer's bounty gold is already in their wallet.
+   */
+  onKilled?(monster: Monster, killer: AttackableUnit): void;
 }
 
 export interface MonsterPresetData {
@@ -550,7 +561,14 @@ export default class Monster extends AttackableUnit {
   }
 
   die(deathData: UnitDeathData) {
+    // Latched before `super.die` flips it: `die` is reachable on a corpse, and
+    // a reward paid on every one of those calls is the same unbounded press
+    // `AttackableUnit.die` guards its bounty against.
+    const firstDeath = !this.isDead;
     super.die(deathData);
+    if (firstDeath && deathData.attacker) {
+      for (const ability of this.abilities) ability.onKilled?.(this, deathData.attacker);
+    }
     this.targetLock = null;
     this.phase = Monster.PHASES.IDLE;
     this.stopMovement();

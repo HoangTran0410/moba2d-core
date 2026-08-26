@@ -173,3 +173,65 @@ describe('a camp casts the abilities its preset declares', () => {
     expect(champion.stats.health.value).toBe(health - camp.damage);
   });
 });
+
+describe('a camp reports its own death to the abilities that listen', () => {
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    game.setPlayer(new Champion({ game, teamId: 'player-uuid' }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** `cast` is required on the type; a reward-only ability just never fires it. */
+  const listener = () => {
+    const kills: { monster: Monster; killer: unknown }[] = [];
+    const ability: MonsterAbility = {
+      name: 'Reward',
+      cooldownMs: 60_000,
+      cast: () => undefined,
+      onKilled: (monster, killer) => void kills.push({ monster, killer }),
+    };
+    return { ability, kills };
+  };
+
+  it('hands each listening ability the camp and its killer, exactly once', () => {
+    const first = listener();
+    const second = listener();
+    const { camp, champion } = engaged([first.ability, second.ability]);
+
+    camp.takeDamage(camp.stats.health.value + 1, champion);
+
+    expect(first.kills).toEqual([{ monster: camp, killer: champion }]);
+    expect(second.kills).toEqual([{ monster: camp, killer: champion }]);
+  });
+
+  it('stays quiet on a second die() reaching the corpse', () => {
+    const { ability, kills } = listener();
+    const { camp, champion } = engaged([ability]);
+
+    camp.takeDamage(camp.stats.health.value + 1, champion);
+    camp.die({ attacker: champion, reviveAfter: 100 });
+
+    expect(kills).toHaveLength(1);
+  });
+
+  it('reports nothing for a death nobody dealt', () => {
+    const { ability, kills } = listener();
+    const { camp } = engaged([ability]);
+
+    camp.die({ reviveAfter: 100 });
+
+    expect(kills).toHaveLength(0);
+  });
+
+  it('fires again after the camp revives and is slain again', () => {
+    const { ability, kills } = listener();
+    const { camp, champion } = engaged([ability]);
+
+    camp.takeDamage(camp.stats.health.value + 1, champion);
+    camp.respawn();
+    camp.takeDamage(camp.stats.health.value + 1, champion);
+
+    expect(kills).toHaveLength(2);
+  });
+});
