@@ -700,7 +700,9 @@ export default class AttackableUnit extends GameObject {
     const atMs = this.game?.matchTimeMs ?? 0;
     this.recentDamageLog.push({
       atMs,
-      amount: landed,
+      // `landed` is capped at the health pool, and regen leaves the pool
+      // fractional — un-rounded, the recap printed 43.999999999999996.
+      amount: Math.round(landed),
       type,
       attackerName: unitDisplayName(attacker),
       attackerId: attacker?.id ?? 'unknown',

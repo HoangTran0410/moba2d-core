@@ -485,7 +485,13 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
       rows.set(entry.attackerId, row);
     }
     row.total += entry.amount;
-    const label = entry.source ?? DAMAGE_TYPE_LABEL[entry.type] ?? entry.type;
+    // Spell names carry their code name as a parenthetical — 'Quả Cầu Ma
+    // Thuật (Ahri_Q)' — which is documentation, not something to retell a
+    // death with.
+    const label = (entry.source ?? DAMAGE_TYPE_LABEL[entry.type] ?? entry.type).replace(
+      /\s*\([^)]*\)\s*$/,
+      ''
+    );
     const key = `${label}:${entry.type}`;
     const line = row.lines.get(key);
     if (line) {

@@ -20,7 +20,9 @@ describe('the death-recap ledger', () => {
     game = createGame() as TestGame & { matchTimeMs?: number };
     game.matchTimeMs = 0;
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   const duo = () => {
     const victim = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
