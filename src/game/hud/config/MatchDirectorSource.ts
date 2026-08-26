@@ -51,6 +51,7 @@ import {
   type StatGroup,
 } from '../practice/participantStats';
 import { grantItem } from '@/game/economy/ItemShop';
+import { INVENTORY_SIZE } from '@/game/items/Item';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { contentCatalog } from '@/content/catalog';
 import type { SpellDisplay } from '@/game/config/spellCatalog';
@@ -59,6 +60,7 @@ import type {
   MatchConfigSource,
   MatchLiveControls,
   RosterAbility,
+  RosterItem,
   RosterStack,
 } from './MatchConfigSource';
 import { ABILITY_LETTERS } from './rosterVisuals';
@@ -109,6 +111,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
       // on a live unit, not a setting the match persists.
       grantGold: (id, amount) => this.withUnit(id, unit => unit.wallet?.earn(amount)),
       itemStock: () => shopItems().map(item => ({ id: item.id, name: item.name, cost: item.cost })),
+      itemsOf: id => this.itemsOf(id),
       // Straight through: the HUD owns which panel is up, and this adapter's
       // whole job is to be the one file in the config directory that may talk
       // to the match.
@@ -195,6 +198,37 @@ export default class MatchDirectorSource implements MatchConfigSource {
     const index = ABILITY_LETTERS.indexOf(letter as (typeof ABILITY_LETTERS)[number]);
     if (index < 0) return null;
     return unit.spells?.[ABILITY_SLOTS[index]] ?? null;
+  }
+
+  /**
+   * The bag, as six slots.
+   *
+   * Built by counting to `INVENTORY_SIZE` rather than mapping `unit.items` —
+   * which is already that long — so the seam keeps its shape for an id with no
+   * unit behind it. That is not hypothetical: a bot removed from the Đội tab
+   * leaves the roster before `ObjectManager.update()` sweeps it, and a row
+   * mid-repaint can still ask.
+   *
+   * `icon.url`, not `icon.path`. `hudState.buildItems` reads `path` for the
+   * player's own bar, but every other picture this file hands a row — the
+   * avatar, an ability icon — comes off `.url`, and one row drawing its
+   * squares from two different fields of the same handle is how a broken
+   * image gets shipped in only one of the two places.
+   */
+  private itemsOf(id: string): RosterItem[] {
+    const held = this.unitOf(id)?.items ?? [];
+    const slots: RosterItem[] = [];
+
+    for (let slot = 0; slot < INVENTORY_SIZE; slot++) {
+      const item = held[slot];
+      if (!item) {
+        slots.push({ filled: false, url: '', name: '' });
+        continue;
+      }
+      slots.push({ filled: true, url: item.icon?.url ?? '', name: item.def?.name ?? '' });
+    }
+
+    return slots;
   }
 
   private abilitiesOf(unit: Champion): RosterAbility[] {

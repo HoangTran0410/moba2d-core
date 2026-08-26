@@ -32,6 +32,7 @@ import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import { atOwnFountain, buyItem, sellItem, type ShopMode } from '@/game/economy/ItemShop';
 import { sellRows, shopRows, type SellRow, type ShopRow } from '@/game/hud/shop/shopState';
 import { contentCatalog } from '@/content/catalog';
+import { activePanelTab } from './config/panelTab';
 
 export interface SpellItemDisplay {
   name: string;
@@ -153,6 +154,21 @@ export interface HudInteractions {
    * in both modes.
    */
   openSpellPicker(): void;
+  /**
+   * Open the panel **on Đội** — the bottom-HUD portrait's entry point.
+   *
+   * Not `openSpellPicker`, and the difference is the whole reason this exists:
+   * `activePanelTab` deliberately outlives the panel, the match and the scene
+   * (`config/panelTab.ts` says why), so the corner button reopens wherever the
+   * player last was. That is right for a general way in and wrong for a
+   * gesture that names what it wants — a portrait wired to it would open the
+   * display settings for anyone who was last on Cài đặt.
+   *
+   * Desktop only, because there is no portrait to press anywhere else:
+   * `MobileHudView` renders no bottom strip, on the grounds that a unit's
+   * on-map body already *is* its avatar.
+   */
+  openRoster(): void;
   /**
    * The desktop strip's shortcut: open the panel on Đấu thủ with the player's
    * loadout editor already open, aimed at the slot whose icon was clicked.
@@ -515,6 +531,16 @@ export function createHudInteractions(game: Game): HudInteractions {
     },
 
     openSpellPicker(): void {
+      state.showShop = false;
+      state.editPlayerSlot = null;
+      state.showSpellsPicker = true;
+      game.pause();
+      state.spellHover = null;
+    },
+
+    /** See the interface: the tab is the point. */
+    openRoster(): void {
+      activePanelTab.value = 'roster';
       state.showShop = false;
       state.editPlayerSlot = null;
       state.showSpellsPicker = true;

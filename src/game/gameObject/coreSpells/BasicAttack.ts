@@ -35,14 +35,10 @@ export default class BasicAttack extends Spell {
   name = 'Đánh Thường (Basic Attack)';
   image = AssetManager.get('spell_basic_attack');
   description =
-    `Ra lệnh <span class="buff">đánh thường</span> mục tiêu địch <span>gần con trỏ chuột nhất</span> ` +
-    `(trong vòng <span>${CURSOR_ACQUISITION_RADIUS}</span> đơn vị quanh con trỏ, và phải nhìn thấy được). ` +
-    `Nếu <span class="buff">quanh con trỏ không có ai</span>, tự động đánh <span>kẻ địch gần bản thân nhất</span> ` +
-    `trong <span class="buff">tầm với</span> — để vừa chạy vừa quay lại bắn (con trỏ vẫn dùng để chỉ hướng chạy). ` +
-    `Tướng sẽ <span class="buff">tự đuổi theo và đánh liên tục</span> cho tới khi mục tiêu chết, ` +
-    `chạy khỏi tầm nhìn, hoặc lệnh bị huỷ — bởi <span class="debuff">hiệu ứng khống chế</span>, ` +
-    `bởi lệnh di chuyển (chuột phải xuống đất), hoặc khi bạn dùng một chiêu thức khác. ` +
-    `Nhịp đánh và sát thương lấy từ chỉ số của tướng, không phải từ chiêu thức này.`;
+    `Đánh <span class="buff">kẻ địch gần con trỏ nhất</span> trong vòng ` +
+    `<span>${CURSOR_ACQUISITION_RADIUS}</span> đơn vị. Không có ai ở đó thì đánh kẻ gần mình nhất ` +
+    `trong <span class="buff">tầm với</span>, để vừa chạy vừa bắn. Tướng tự đuổi và đánh liên tục ` +
+    `tới khi mục tiêu chết hoặc bạn ra lệnh khác. Nhịp đánh và sát thương lấy từ chỉ số của tướng.`;
 
   /**
    * Display only, and refreshed from the live swing timer every frame by

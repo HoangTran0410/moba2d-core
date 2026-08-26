@@ -247,6 +247,16 @@ const itemStock = computed(() => {
 });
 
 /**
+ * The six squares on the row. A per-row call rather than a `computed`, like
+ * `scoreOf` and `stacksOf` beside it: there is one of these per participant,
+ * and `panel.version` is the single dependency every one of them re-reads on.
+ */
+const itemsOf = (row: ConfigRosterEntry) => {
+  void panel.version.value;
+  return live.value?.itemsOf(row.id) ?? [];
+};
+
+/**
  * Hand this unit the shop.
  *
  * No `panel.invalidate()`: the panel is being closed, not repainted — see
@@ -363,7 +373,13 @@ defineExpose({
         class="practice-roster-row"
         :class="{ 'is-player': row.isPlayer }"
       >
-        <div class="practice-roster-main">
+        <!-- `has-bag` is a layout fact the stylesheet cannot work out for
+             itself: below 640px the row splits in two, and which elements are
+             *on* the second line decides whether the first one has the ~210px
+             the four kit icons need. With no bag there is no second line and
+             the row must stay exactly as it was — which is the shape the menu
+             always sees, since items only exist inside a match. -->
+        <div class="practice-roster-main" :class="{ 'has-bag': live && itemStock.length }">
           <!-- The invisible "open the editor" button covers the identity zone
                and *only* it — never the toggle, the side switch or the delete
                beside them. That was the objection to this shape when the row
@@ -419,8 +435,47 @@ defineExpose({
             </span>
           </div>
 
+          <!--
+            The bag, on the row itself.
+
+            The drawer below is where this would naturally have gone — the gold
+            cheat and the shop button are already there — and that would have
+            shown the items while missing the point of showing them: reading
+            two champions' builds against each other takes both being visible
+            at once, without opening anything. It also fills the dead strip
+            that sat between the name and the KDA at any width above a phone.
+
+            Always six squares, empty ones drawn as sunken frames. See
+            `RosterItem`: a strip as wide as the champion is fed would shift
+            the numbers beside it every time anyone bought anything.
+
+            Inert, unlike the ability icons above — an item's stats and its
+            recipe are a shop-sized description, and the shop is one button
+            away in the drawer. The name in a `title` is what a square owes.
+
+            Behind `itemStock.length`, the same guard the Cửa hàng button in
+            the drawer carries: an empty *bag* is worth drawing, an empty
+            *shelf* is not. A pack that predates items has nothing that could
+            ever land in these frames, and six dashed squares under every name
+            would be the row explaining a feature that build does not have.
+          -->
+          <span v-if="live && itemStock.length" class="practice-roster-items">
+            <span
+              v-for="(item, slot) of itemsOf(row)"
+              :key="slot"
+              class="practice-roster-item"
+              :class="{ 'is-empty': !item.filled }"
+              :title="item.name || undefined"
+            >
+              <img crossorigin="anonymous" v-if="item.url" :src="item.url" alt="" />
+            </span>
+          </span>
+
           <!-- KDA doubles as the drawer toggle in a match; outside one there is
-               no score to show, so the caret carries the drawer on its own. -->
+               no score to show, so the caret carries the drawer on its own.
+               The wallet rides in the same cell, above the score: both are
+               numbers about this champion, and grouping them leaves the whole
+               middle of the row to the bag. -->
           <button
             type="button"
             class="practice-stat-toggle"
@@ -429,6 +484,10 @@ defineExpose({
             :aria-label="`Chỉ số và luyện tập của ${row.label}`"
             @click="toggleExpanded(row)"
           >
+            <span v-if="live" class="practice-roster-gold">
+              <i class="fas fa-coins" aria-hidden="true"></i>
+              {{ goldOf(row) }}
+            </span>
             <span v-if="live" class="practice-score">
               <span class="practice-score-k">{{ scoreOf(row).kills }}</span>
               <span class="practice-score-sep">/</span>
@@ -463,6 +522,13 @@ defineExpose({
           >
             <i class="fas fa-times"></i>
           </button>
+          <!-- The player cannot be deleted, and before the bag arrived that
+               just meant one row ended 44px earlier than the rest. It means
+               more now: every column left of it — the six squares especially —
+               shifted with it, and a strip of items you cannot read straight
+               down is most of what putting them on the row was for. So the
+               column stays, empty. -->
+          <span v-else class="practice-roster-gap" aria-hidden="true"></span>
         </div>
 
         <div v-if="isExpanded(row)" class="practice-stat-sheet">

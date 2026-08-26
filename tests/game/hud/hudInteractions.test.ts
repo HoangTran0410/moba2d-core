@@ -5,6 +5,7 @@ import {
   filterSpells,
   type SpellItemDisplay,
 } from '../../../src/game/hud/hudInteractions';
+import { activePanelTab } from '../../../src/game/hud/config/panelTab';
 
 const spell = (overrides: Partial<SpellItemDisplay>): SpellItemDisplay => ({
   name: 'Quả Cầu Ma Thuật',
@@ -121,6 +122,61 @@ describe('createHudInteractions — the ways into the practice panel', () => {
     expect(hud.showSpellsPicker).toBe(true);
     expect(hud.editPlayerSlot).toBeNull();
     expect(game.pause).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * Tapping the bottom-HUD portrait means "show me the team", and saying that
+   * takes a way in of its own.
+   *
+   * `openSpellPicker` cannot serve it: `activePanelTab` deliberately outlives
+   * the panel, the match and even the scene (see `panelTab.ts`), so the corner
+   * button reopens wherever the player last was. For anyone who was last on
+   * Cài đặt, a portrait wired to it would open the display settings.
+   */
+  it('the avatar gesture opens the panel on Đội, wherever it was left', () => {
+    const hud = createHudInteractions(fakeGame());
+    activePanelTab.value = 'settings';
+
+    hud.openRoster();
+
+    expect(activePanelTab.value).toBe('roster');
+    expect(hud.showSpellsPicker).toBe(true);
+  });
+
+  it('pauses on the way in, the way every other door into the panel does', () => {
+    const game = fakeGame();
+
+    createHudInteractions(game).openRoster();
+
+    expect(game.pause).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * The shop does not pause and the panel does, so both being up at once is
+   * two full-width panels arguing over a 390px screen — the same reason
+   * `openShopFor` closes the panel going the other way.
+   */
+  it('closes the shop on the way in', () => {
+    const hud = createHudInteractions(fakeGame());
+    hud.showShop = true;
+
+    hud.openRoster();
+
+    expect(hud.showShop).toBe(false);
+  });
+
+  /**
+   * `GameScene` cancels touches on the canvas, so a thumb synthesises no
+   * `click` — the same thing the recall button's scan below checks, and the
+   * one thing no behaviour test of `hudInteractions` can see. The portrait is
+   * desktop-only (`MobileHudView` renders no bottom strip at all), but the
+   * desktop view is what a touch laptop shows too.
+   */
+  it('the portrait answers a thumb as well as a mouse', () => {
+    const source = readFileSync('src/game/hud/DesktopHudView.vue', 'utf8');
+
+    expect(source).toContain('@click="hud.openRoster()"');
+    expect(source).toContain('@touchend.prevent="hud.openRoster()"');
   });
 
   it('does not build or expose an unused full spell catalogue', () => {

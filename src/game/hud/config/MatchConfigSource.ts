@@ -124,6 +124,25 @@ export interface ItemOption {
 }
 
 /**
+ * One slot of a participant's bag, as a roster row draws it. **Always
+ * `INVENTORY_SIZE` of them**, filled or not — the same decision, for the same
+ * reason, that `ItemSlotDisplay` makes about the player's own bar: a fixed
+ * shape is one a reader learns the width of, and a strip that grew as items
+ * were bought would shift the numbers beside it every time a bot bought
+ * something.
+ *
+ * A bare shape rather than `ItemSlotDisplay` itself, which carries a hot key,
+ * a cooldown wedge and `canCast` — all of them facts about *casting* an item,
+ * which a roster row does not offer. Same reasoning as `ItemOption` above.
+ */
+export interface RosterItem {
+  filled: boolean;
+  /** '' for an empty slot, and for an item whose pack named art nothing registered. */
+  url: string;
+  name: string;
+}
+
+/**
  * The controls that need a match to be running. Reachable only through
  * `MatchConfigSource.live`, which is `null` on the menu — so a tab cannot
  * render a button that would do nothing, and cannot compile one either.
@@ -164,6 +183,17 @@ export interface MatchLiveControls {
    * pre-empt it.
    */
   itemStock(): ItemOption[];
+  /**
+   * What this participant is **holding**, which is the question the rest of
+   * this group could not answer: `giveItem` and `openShopFor` put items in a
+   * bag, `itemStock` lists what a shelf sells, and nothing read the bag back.
+   * A row could hand a bot an item and then show no sign it had.
+   *
+   * Live-only for the same reason the wallet is: outside a match there is no
+   * bag, and a strip of six empty squares under every name on the menu would
+   * be six lies about a match that has not started.
+   */
+  itemsOf(id: string): RosterItem[];
   /**
    * Hand the *shop panel* to this unit: same shelf, same recipes, same
    * refusals, but showing that champion's gold and spending it.

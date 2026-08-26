@@ -128,7 +128,25 @@ const lifted = (slot: number): boolean => {
   </div>
 
   <div v-if="state.avatar" class="bottom-HUD">
-    <div class="champion-avatar">
+    <!--
+      The portrait is the way to the team, which is the panel this HUD had no
+      direct gesture for: Esc and the corner button both open it wherever it
+      was last left. A plain `<div>` with handlers rather than a `<button>`,
+      matching the `.spell` icons three lines down — this is a round framed
+      picture with a badge positioned inside it, and a button element would
+      arrive with a reset to undo before any of that draws.
+
+      Both handlers, because `GameScene` calls `preventDefault()` on every
+      touch on the page: a `@click`-only control is perfect under a mouse and
+      dead under a thumb, and `.prevent` stops the pair firing twice where the
+      click *is* synthesised. `hudInteractions.test.ts` scans for both.
+    -->
+    <div
+      class="champion-avatar"
+      title="Xem đội"
+      @click="hud.openRoster()"
+      @touchend.prevent="hud.openRoster()"
+    >
       <img
         crossorigin="anonymous"
         :src="state.avatar"

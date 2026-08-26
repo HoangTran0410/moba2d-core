@@ -13,6 +13,7 @@ import {
   savePregameConfig,
 } from '../../../src/game/config/PregameConfig';
 import { MatchTeam } from '../../../src/game/config/MatchTeams';
+import { INVENTORY_SIZE } from '../../../src/game/items/Item';
 import { context as practiceContext } from '../practice/helpers';
 import { packIsInstalled } from '../../support/installedPacks';
 import { contentCatalog } from '../../../src/content/catalog';
@@ -555,6 +556,50 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       source.live.clearItems(id);
 
       expect(source.live.goldOf(id), 'clearing the bag paid a refund').toBe(before);
+    });
+
+    /**
+     * The bag, read back — the one question `MatchLiveControls` could not
+     * answer.
+     *
+     * It had `giveItem`, `clearItems` and `itemStock` and no way to ask what a
+     * unit is actually *holding*, so a roster row could hand a bot an item and
+     * then show nothing about it. Six slots always, the empty ones included,
+     * for the reason `ItemSlotDisplay` gives about the player's own bar: a
+     * fixed shape reads at a glance where a list that grows as items are
+     * bought does not.
+     */
+    it('reports a bag as six slots, the empty ones included', () => {
+      if (!source.live) return;
+      const [boots] = seedItems();
+      const id = source.roster()[0].id;
+      source.live.clearItems(id);
+
+      source.live.giveItem(id, boots.id);
+      const slots = source.live.itemsOf(id);
+
+      expect(slots.length).toBe(INVENTORY_SIZE);
+      expect(slots[0].filled).toBe(true);
+      expect(slots[0].name).toBe(boots.name);
+      expect(slots[1].filled, 'an untouched slot came back filled').toBe(false);
+      expect(slots[1].name).toBe('');
+    });
+
+    /**
+     * A pack may name art nothing registered — `seedItems`' `ghost` is exactly
+     * that, and `HeldItem.icon` is `null` for it. `''` rather than `null`, so
+     * a row has one falsy value to guard on: the same shape `ItemSlotDisplay`
+     * already uses for an unregistered icon in the player's own bar.
+     */
+    it('carries an empty url for an item whose art nothing registered', () => {
+      if (!source.live) return;
+      const [, ghost] = seedItems();
+      const id = source.roster()[0].id;
+      source.live.clearItems(id);
+
+      source.live.giveItem(id, ghost.id);
+
+      expect(source.live.itemsOf(id)[0]).toEqual({ filled: true, url: '', name: ghost.name });
     });
   });
 

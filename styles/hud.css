@@ -27,6 +27,11 @@
   height: 80px;
   border-radius: 50%;
   border: 2px solid #aaa;
+  cursor: pointer;
+}
+
+.bottom-HUD .champion-avatar:hover img {
+  border: 2px solid #eee;
 }
 
 .champion-avatar {
@@ -769,6 +774,30 @@
   background: rgba(80, 200, 200, 0.12);
 }
 
+/* The row's reading order is kit, then bag, then the numbers, then these two —
+   and at full strength a teal arrow and a red cross next to each other are the
+   brightest things in it. So they step back until they are wanted.
+
+   Behind `hover: hover` on purpose: dimming is only honest where there is a
+   pointer to undim it. A thumb has no hover state, so on a phone these stay at
+   full contrast — the alternative is a permanently faint control with no way to
+   reveal it. Their 44px columns are untouched either way; that is the thumb
+   minimum, and this row has no `body.touch-ui` override to restore it from. */
+@media (hover: hover) {
+  .practice-team-switch,
+  .practice-remove-bot {
+    opacity: 0.5;
+    transition: opacity 0.12s ease;
+  }
+
+  .practice-team-switch:hover,
+  .practice-team-switch:focus-visible,
+  .practice-remove-bot:hover,
+  .practice-remove-bot:focus-visible {
+    opacity: 1;
+  }
+}
+
 .practice-roster-row {
   display: flex;
   flex-direction: column;
@@ -876,21 +905,25 @@
   white-space: nowrap;
 }
 
-/* The champion's Q/W/E/R at a glance, under the name. Small on purpose, but a
-   real control: tapping one opens that ability's description. `position:
-   relative` is what wins the click against `.practice-roster-open` stacked
-   underneath. An empty slot shows its letter instead of a broken icon, and has
-   nothing to describe — hence `.is-inert`. */
+/* The champion's Q/W/E/R at a glance, under the name — and the loudest thing
+   on the row, deliberately. A kit here is four picks out of a catalogue rather
+   than a champion's fixed set, so "which four" is the fact a roster exists to
+   answer; at 20px it was a decoration beside the name and nobody pressed it.
+   32px is also a real target for the description it opens.
+
+   `position: relative` is what wins the click against `.practice-roster-open`
+   stacked underneath. An empty slot shows its letter instead of a broken icon,
+   and has nothing to describe — hence `.is-inert`. */
 .practice-roster-spells {
   display: flex;
-  gap: 3px;
-  margin-top: 3px;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .practice-roster-spell {
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   flex-shrink: 0;
   display: flex;
@@ -960,8 +993,54 @@
 
 .practice-roster-spell-empty {
   color: var(--hextech-muted);
-  font-size: 0.62em;
+  font-size: 0.8em;
   font-weight: bold;
+}
+
+/* ------------------------------------------------------- The bag, on the row
+   Six squares between the name and the numbers, filling the strip that was
+   dead space at any width above a phone. RosterTab.vue's own comment carries
+   why they are here rather than in the drawer.
+
+   28px against the abilities' 32px, and that difference is the row's priority
+   order made visible instead of written down: the kit is what this game builds
+   a champion out of, the bag is what a match adds to it. `flex-shrink: 0` on
+   both, or a long champion name would eat the squares before wrapping itself. */
+.practice-roster-items {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 0 0.7rem;
+}
+
+.practice-roster-item {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--hextech-sunken);
+  border: 1px solid var(--hextech-line);
+  border-radius: 3px;
+}
+
+/* An empty slot is information — "nobody has given this bot anything" — so it
+   is drawn rather than skipped. Dashed and unfilled so a glance counts the
+   squares that *are* filled without reading any of them. See `RosterItem` for
+   why the count never changes. */
+.practice-roster-item.is-empty {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.practice-roster-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* `.participant-remove`'s column, to the pixel: 44px wide, ruled off from the
@@ -979,6 +1058,15 @@
 
 .practice-remove-bot:hover {
   background: #3a2222;
+}
+
+/* Where the delete would be on the one row that has none. `.practice-remove-bot`'s
+   column to the pixel, minus everything that makes it a control — see
+   RosterTab.vue for why an empty column beats a short row. */
+.practice-roster-gap {
+  flex-shrink: 0;
+  width: 44px;
+  border-left: 2px solid var(--hextech-line);
 }
 
 /* The bot's three AI-behaviour toggles and the tier it plays at, now the top of
@@ -1116,8 +1204,14 @@ body.touch-ui .practice-add-bot {
    labels it used to caption with live in the drawer's Thành tích section. */
 .practice-stat-toggle {
   display: flex;
+  /* Wrapping, so `.practice-roster-gold` can claim a line of its own with
+     `flex-basis: 100%` and no wrapper element: gold above, score and caret
+     below. Both are numbers about this champion, and keeping them in one cell
+     is what leaves the whole middle of the row to the bag. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: flex-end;
+  gap: 0 0.5rem;
   flex-shrink: 0;
   padding: 0 0.7rem;
   background: none;
@@ -1130,6 +1224,21 @@ body.touch-ui .practice-add-bot {
 
 .practice-stat-toggle:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* What this champion can still spend. Muted gold rather than the score's three
+   colours: it is context for the numbers under it, not a fourth number
+   competing with them. `tabular-nums` so a wallet ticking up does not shuffle
+   the digits sideways. */
+.practice-roster-gold {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  color: var(--hextech-gold-dim);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
 }
 
 .practice-score {
@@ -1516,6 +1625,75 @@ body.touch-ui .practice-add-bot {
   .practice-render-settings {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  /* A row in a match splits in two here: who, then what they have.
+
+       who   | (o) BẠN / <tướng> / Q W E R
+       what  | [bag] [gold + K/D/CS] [switch] [delete]
+
+     The six squares, the numbers cell and the two 44px columns come to more
+     than a 390px row holds before the champion's name gets a pixel, so
+     *something* has to drop. It is the numbers and the buttons rather than
+     only the bag, and that is the part measurement decided: `flex: 1` on the
+     identity zone is `flex-basis: 0`, so the wrap algorithm sizes it at zero
+     and happily leaves the numbers cell on line one — which then takes the
+     room the four 32px kit icons needed, and they overflow their own box and
+     draw *under* the score. Giving the identity zone a full-width basis is
+     what reserves that line for it.
+
+     `order` rather than DOM position throughout: on any wider screen the bag
+     belongs in the middle of the row, which is the dead space it exists to
+     fill. Moving the markup would move it everywhere.
+
+     Scoped to `.has-bag`, so the menu — where there are no items and so no
+     second line to put anything on — keeps the single-line row it has today
+     rather than pushing two buttons onto a line of their own. */
+  .practice-roster-main {
+    flex-wrap: wrap;
+  }
+
+  /* 13.5rem is the identity zone's *content*, added up: 0.8rem of padding
+     either side, a 44px portrait, the 0.8rem gap after it and 140px of kit
+     icons (4 x 32 + 3 x 4). Stating it as the flex basis rather than leaving
+     `flex: 1`'s zero is the whole fix — the wrap algorithm can only reserve
+     room it has been told about, and with a basis of zero it gave the icons'
+     room away and let them draw under the score. */
+  .practice-roster-main.has-bag .practice-roster-identity {
+    flex: 1 1 13.5rem;
+  }
+
+  .practice-roster-main.has-bag .practice-roster-items {
+    order: 1;
+    flex: 0 0 auto;
+    padding: 0.45rem 0.8rem;
+    border-top: 1px solid var(--hextech-line);
+  }
+
+  /* 24px here against 28 on a wide row: the second line has to hold the bag
+     *and* the numbers, and `.practice-roster-main` is 342px at this width —
+     not the 390 the viewport suggests, because the panel, the team box and the
+     row each take padding on the way in. Still comfortably below the 32px kit
+     icons, which is the ordering that matters. */
+  .practice-roster-main.has-bag .practice-roster-item {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* `flex-basis: 0`, and that is the fix rather than a smaller fixed width.
+     The numbers cell wraps internally (gold above the score), and a wrapping
+     flex container's `auto` basis is its *max-content* — the ~215px it would
+     need with nothing wrapped, not the ~110px it draws at. Flex assigns items
+     to lines from those hypothetical sizes and only shrinks afterwards, so
+     `flex-shrink` cannot rescue it and any fixed basis is a guess that a long
+     score (`13 / 12 / 148`) eventually outgrows. At zero it always shares the
+     line with the bag and then grows into whatever is left, with `min-width:
+     auto` — a flex item's min-content floor — keeping the digits readable. */
+  .practice-roster-main.has-bag .practice-stat-toggle {
+    order: 2;
+    flex: 1 1 0;
+    border-left: none;
+    border-top: 1px solid var(--hextech-line);
   }
 }
 
