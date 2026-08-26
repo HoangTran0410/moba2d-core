@@ -319,6 +319,21 @@ describe('basic attacks', () => {
     expect(pending(game)).toHaveLength(0);
   });
 
+  it('a unit with no sight of its own cannot hold an order — a trap is not a fighter', () => {
+    // Chompers and other trap-pets carry visionRadius 0; the sight leash must
+    // not hand them the distance-free `canSee` or a blind trap chases forever.
+    const game = createGame();
+    const attacker = champion(game, 0);
+    attacker.stats.visionRadius.baseValue = 0;
+    const target = champion(game, 100);
+    attacker.orderAttack(target);
+
+    attacker.basicAttack.update();
+
+    expect(attacker.basicAttack.target).toBeNull();
+    expect(attacker.basicAttack.lastEnd).toBe('LOST');
+  });
+
   it('gives the order up when the target slips out of sight into a bush', () => {
     const game = createGame();
     const attacker = champion(game, 0);

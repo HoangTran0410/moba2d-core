@@ -242,6 +242,16 @@ export default class BasicAttackController {
     // stealth is not untargetability, but chasing something invisible is the
     // same bad experience, so an order drops on it too
     if (hasFlag(target.stats.actionState, ActionState.STEALTHED)) return false;
+    // A unit with no sight of its own — a trap-pet, a chomper — keeps the old
+    // touch-range leash. It cannot *see* anything, and `canSee`'s own-view
+    // pass is deliberately distance-free (bounding candidates is the caller's
+    // job — this is that bounding), so handing it to `canSee` turned every
+    // blind trap into a fighter that never lets go.
+    const ownSight = this.owner.stats.visionRadius.value;
+    if (ownSight <= 0) {
+      const touch = ownSight + (target.stats?.size?.value ?? 0) / 2;
+      return p5.Vector.dist(this.owner.position, target.position) <= touch;
+    }
     // The leash is sight, not a radius of the chaser's own: an ordered target
     // is pursued as far as the team can actually see it — across the whole
     // map in open ground, the source game's own rule — and the order drops
