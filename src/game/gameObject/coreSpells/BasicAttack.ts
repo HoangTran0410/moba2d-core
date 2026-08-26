@@ -37,8 +37,10 @@ export default class BasicAttack extends Spell {
   description =
     `Đánh <span class="buff">kẻ địch gần con trỏ nhất</span> trong vòng ` +
     `<span>${CURSOR_ACQUISITION_RADIUS}</span> đơn vị. Không có ai ở đó thì đánh kẻ gần mình nhất ` +
-    `trong <span class="buff">tầm với</span>, để vừa chạy vừa bắn. Tướng tự đuổi và đánh liên tục ` +
-    `tới khi mục tiêu chết hoặc bạn ra lệnh khác. Nhịp đánh và sát thương lấy từ chỉ số của tướng.`;
+    `trong <span class="buff">tầm với</span>, để vừa chạy vừa bắn. Bấm vào <span class="buff">đất ` +
+    `trống</span> thì tướng đi tới đó và tự khai hỏa vào kẻ địch đầu tiên gặp trên đường ` +
+    `(attack-move). Tướng tự đuổi và đánh liên tục tới khi mục tiêu chết hoặc bạn ra lệnh khác. ` +
+    `Nhịp đánh và sát thương lấy từ chỉ số của tướng.`;
 
   /**
    * Display only, and refreshed from the live swing timer every frame by
@@ -68,9 +70,10 @@ export default class BasicAttack extends Spell {
    *     which is what makes this a kiting key and not a charge key. It is the
    *     live stat, so a champion's own range-boosting passive lengthens the fallback the same
    *     frame it lengthens the swing;
-   *   - `visionRadius`, because `BasicAttackController.leashTo` gives the order
-   *     up past exactly that. Acquiring beyond it would hand the controller a
-   *     target it drops on the next frame — an order that visibly does nothing.
+   *   - `visionRadius`, so the champion never *picks for itself* something at
+   *     the edge of the world. The chase, once ordered, is leashed by sight
+   *     alone (`BasicAttackController.canKeep`) — this clamp is about what an
+   *     aimless press may choose, not about how far a chosen chase may go.
    */
   get fallbackRadius(): number {
     const owner = this.owner as AttackableUnit | undefined;
@@ -131,10 +134,22 @@ export default class BasicAttack extends Spell {
   onSpellCast(context: CastContext): void {
     const target = this.acquire(context.cursorWorld);
     if (target) this.order(target);
+    else this.attackMove(context.cursorWorld);
   }
 
   /**
-   * The enemy this press picked, or null for "nothing there" — a no-op.
+   * Empty ground is an order too — the source game's attack-move. The champion
+   * walks to the point, sweeping as it goes, and opens fire on the first
+   * visible enemy the sweep meets; see `BasicAttackController.orderAttackMove`.
+   * A press into open ground used to be a silent no-op, which read as the key
+   * failing exactly when the player asked for aggression.
+   */
+  protected attackMove(cursor: Vec2): void {
+    this.controller?.orderAttackMove(cursor.x, cursor.y);
+  }
+
+  /**
+   * The enemy this press picked, or null for "nothing there" — attack-move.
    *
    * Two passes, in this order, and the order is the whole design: whatever the
    * player is pointing at wins, and only when they are pointing at empty ground

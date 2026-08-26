@@ -26,8 +26,11 @@ import {
   MELEE_SWING_TOTAL_MS,
   MELEE_WINDUP_MS,
   RANGED_BOLT_SPEED,
+  RANGED_WINDUP_FRACTION,
+  RANGED_WINDUP_MAX_MS,
   type BasicAttackHit,
 } from '../../../src/game/combat/BasicAttack';
+import { ATTACK_MOVE_ARRIVE_PX } from '../../../src/game/combat/BasicAttackController';
 import type { GameObjectRuntimeContext } from '../../../src/game/gameObject/GameObject';
 import type GameObject from '../../../src/game/gameObject/GameObject';
 
@@ -301,13 +304,28 @@ describe('basic attacks', () => {
     expect(attacker.destination).toMatchObject({ x: 0, y: 0 });
   });
 
-  it('gives an order up when the target outruns the attacker sight', () => {
+  it('chases an ordered target across open ground well past its own sight radius', () => {
     const game = createGame();
     const attacker = champion(game, 0);
     const target = champion(game, 100);
     attacker.orderAttack(target);
 
-    target.position.set(attacker.stats.visionRadius.value + 100, 0);
+    const far = attacker.stats.visionRadius.value + 400;
+    target.position.set(far, 0);
+    attacker.basicAttack.update();
+
+    expect(attacker.basicAttack.target).toBe(target);
+    expect(attacker.destination).toMatchObject({ x: far, y: 0 });
+    expect(pending(game)).toHaveLength(0);
+  });
+
+  it('gives the order up when the target slips out of sight into a bush', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    const target = champion(game, 100);
+    attacker.orderAttack(target);
+
+    target.isInsideBush = true;
     attacker.basicAttack.update();
 
     expect(attacker.basicAttack.target).toBeNull();
@@ -392,6 +410,7 @@ describe('basic attacks', () => {
     expect(bolt.speed).toBe(DEFAULT_CHAMPION_ATTACK.boltUnitsPerSecond! / 60);
     expect(bolt.maxHitCount).toBe(0);
 
+    while (bolt.armMs > 0) bolt.update();
     for (let frame = 0; frame < 10; frame++) bolt.update();
     expect(target.stats.health.value).toBe(100);
     expect(bolt.position.x).toBeGreaterThan(0);
@@ -601,6 +620,129 @@ describe('basic attacks', () => {
     expect(attacker.basicAttack.target).toBeNull();
     expect(attacker.basicAttack.lastEnd).toBe('CLEARED');
     expect(attacker.destination).toMatchObject({ x: 400, y: 400 });
+  });
+
+  // ------------------------------------------------------------- the wind-up
+
+  it('roots the attacker for the wind-up and the bolt flies only at its end', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    const target = champion(game, 200);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+
+    // committed: the bolt exists but is still on the string, at the attacker
+    const bolt = pending(game)[0] as BasicAttackBolt;
+    expect(attacker.basicAttack.windupMs).toBeGreaterThan(0);
+    expect(bolt.armMs).toBeGreaterThan(0);
+
+    // a move order during the wind-up is overridden, not obeyed
+    attacker.navigateTo(900, 0);
+    attacker.basicAttack.update();
+    expect(attacker.destination).toMatchObject({ x: 0, y: 0 });
+
+    // nocked, the bolt rides the attacker instead of flying
+    bolt.update();
+    expect(bolt.position.x).toBe(0);
+
+    while (bolt.armMs > 0) bolt.update();
+    bolt.update();
+    expect(bolt.position.x).toBeGreaterThan(0);
+  });
+
+  it('scales the wind-up with attack speed, under the ceiling', () => {
+    const game = createGame();
+    const slow = champion(game, 0, { damage: 5, attacksPerSecond: 0.5, range: 300 });
+    const fast = champion(game, 0, { damage: 5, attacksPerSecond: 2, range: 300 });
+
+    expect(slow.basicAttack.windupFor()).toBe(RANGED_WINDUP_MAX_MS);
+    expect(fast.basicAttack.windupFor()).toBe(500 * RANGED_WINDUP_FRACTION);
+  });
+
+  it('crowd control during the wind-up cancels the nocked bolt outright', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    const target = champion(game, 200);
+    const hits: BasicAttackHit[] = [];
+    game.eventManager.on(EventType.ON_ATTACK_HIT, (hit: BasicAttackHit) => hits.push(hit));
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+    const bolt = pending(game)[0] as BasicAttackBolt;
+    expect(bolt.armMs).toBeGreaterThan(0);
+
+    attacker.addBuff(new Stun(1_000, attacker, attacker));
+    attacker.updateBuffs();
+    attacker.basicAttack.update();
+    bolt.update();
+
+    expect(attacker.basicAttack.windupMs).toBe(0);
+    expect(bolt.toRemove).toBe(true);
+    expect(hits).toHaveLength(0);
+  });
+
+  it('holds a melee attacker still for its swing wind-up', () => {
+    const game = createGame();
+    const attacker = champion(game, 0, MELEE);
+    const target = champion(game, 100);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+    expect(attacker.basicAttack.windupMs).toBe(MELEE_WINDUP_MS);
+
+    attacker.navigateTo(900, 0);
+    attacker.basicAttack.update();
+    expect(attacker.destination).toMatchObject({ x: 0, y: 0 });
+  });
+
+  // ------------------------------------------------------------ attack-move
+
+  it('walks an attack-move order toward its point when nothing is in sight', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    game.setPlayer(attacker);
+    indexObjects(game, [attacker]);
+
+    attacker.basicAttack.orderAttackMove(600, 0);
+    attacker.basicAttack.update();
+
+    expect(attacker.basicAttack.target).toBeNull();
+    expect(attacker.destination).toMatchObject({ x: 600, y: 0 });
+  });
+
+  it('opens fire on the first enemy its sweep sees, and resumes after the kill', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    game.setPlayer(attacker);
+    const enemy = champion(game, 250);
+    indexObjects(game, [attacker, enemy]);
+
+    attacker.basicAttack.orderAttackMove(2_000, 0);
+    attacker.basicAttack.update();
+
+    expect(attacker.basicAttack.target).toBe(enemy);
+    expect(attacker.basicAttack.moveOrder).not.toBeNull();
+
+    enemy.die({ reviveAfter: 1_000 });
+    attacker.basicAttack.update();
+    expect(attacker.basicAttack.target).toBeNull();
+    expect(attacker.basicAttack.lastEnd).toBe('KILLED');
+
+    attacker.basicAttack.update();
+    expect(attacker.destination).toMatchObject({ x: 2_000, y: 0 });
+  });
+
+  it('an attack-move order ends at its point, and a move order cancels one', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    game.setPlayer(attacker);
+    indexObjects(game, [attacker]);
+
+    attacker.basicAttack.orderAttackMove(ATTACK_MOVE_ARRIVE_PX - 5, 0);
+    attacker.basicAttack.update();
+    expect(attacker.basicAttack.moveOrder).toBeNull();
+
+    attacker.basicAttack.orderAttackMove(600, 0);
+    attacker.orderMove(400, 400);
+    expect(attacker.basicAttack.moveOrder).toBeNull();
   });
 
   // ---------------------------------------------------------------------- AI

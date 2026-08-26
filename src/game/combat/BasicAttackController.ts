@@ -1,12 +1,17 @@
 import { hasFlag } from '@/utils/index';
 import ActionState from '@/game/enums/ActionState';
 import EventType from '@/game/enums/EventType';
+import { canSee } from '@/game/combat/Vision';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import { FALLBACK_CHASE_MARGIN, findAttackTargetNearPoint } from './AttackTargeting';
 import {
   BasicAttackBolt,
   BasicAttackSwing,
   MELEE_RANGE_THRESHOLD,
+  MELEE_WINDUP_MS,
   RANGED_BOLT_UNITS_PER_SECOND,
+  RANGED_WINDUP_FRACTION,
+  RANGED_WINDUP_MAX_MS,
   canBeHit,
 } from './BasicAttack';
 
@@ -16,9 +21,15 @@ import {
  */
 export type AttackOrderEnd = 'KILLED' | 'LOST' | 'CLEARED' | 'DISABLED';
 
+/** The sweep's cadence — the same beat the bot brain thinks on. */
+export const ATTACK_MOVE_SCAN_INTERVAL_MS = 250;
+/** Close enough to an attack-move point to call the order done. */
+export const ATTACK_MOVE_ARRIVE_PX = 25;
+
 /**
  * Owns one unit's basic attack: the standing order, the walk into range, the
- * swing timer, and the two events that make the attack visible to spells.
+ * swing timer, the wind-up hold, and the two events that make the attack
+ * visible to spells.
  *
  * Composition rather than a base class, because the three units that already
  * attack (Minion, Monster, Turret) each grew their own loop and unifying them is
@@ -26,9 +37,12 @@ export type AttackOrderEnd = 'KILLED' | 'LOST' | 'CLEARED' | 'DISABLED';
  * only ever touches `owner.stats`, `owner.moveTo/stopMovement` and the object
  * manager.
  *
- * The controller never scans for targets. A target is always *given* to it —
- * by the player's right click or by the AI's own jittered scan — so adding a
- * champion costs zero quadtree queries per frame.
+ * The controller never scans for targets — a target is always *given* to it,
+ * by the player's right click or by the AI's own jittered scan — with one
+ * stated exception: a standing **attack-move** order (`orderAttackMove`, the
+ * player's `A` onto empty ground) sweeps for the nearest visible enemy on a
+ * 250ms beat while it walks its point down. Only that order pays a query, and
+ * only while it stands, so an idle champion still costs zero per frame.
  */
 export default class BasicAttackController {
   readonly owner: AttackableUnit;
@@ -57,6 +71,23 @@ export default class BasicAttackController {
    * somebody, and the somebody would be a frame that never came.
    */
   repositionMs = 0;
+  /**
+   * ms the current swing still roots its owner — the wind-up, the one beat of
+   * stillness that stands in for an attack animation this canvas does not
+   * have. While it runs, the owner's own move orders are overridden rather
+   * than obeyed; hit-and-run is still the game, but each hit costs its beat.
+   * Crowd control that clears CAN_ATTACK is the only cancel, and the nocked
+   * bolt (`BasicAttackBolt.armMs`) or the swing's own reach check
+   * (`BasicAttackSwing.strike`) cancels with it.
+   */
+  windupMs = 0;
+  /**
+   * The attack-move order: walk here, fighting whatever the sweep meets on
+   * the way. Survives the targets the sweep itself picks — a kill hands the
+   * walk back — and is cleared by any explicit order, move or attack.
+   */
+  moveOrder: { x: number; y: number } | null = null;
+  private scanMs = 0;
 
   constructor(owner: AttackableUnit) {
     this.owner = owner;
@@ -89,18 +120,31 @@ export default class BasicAttackController {
     );
   }
 
-  /**
-   * How far the unit will chase before giving the order up. Its own sight: an
-   * attack order should never drag a champion after something it cannot see.
-   */
-  leashTo(target: AttackableUnit): number {
-    return this.owner.stats.visionRadius.value + (target.stats?.size?.value ?? 0) / 2;
+  /** The ranged wind-up: a fraction of the live interval, so attack speed buys
+   *  the lock down, under the ceiling. See RANGED_WINDUP_FRACTION's header. */
+  windupFor(): number {
+    return Math.min(RANGED_WINDUP_MAX_MS, this.intervalMs * RANGED_WINDUP_FRACTION);
   }
 
   order(target: AttackableUnit | null): void {
     if (!target || target === this.owner || target.teamId === this.owner.teamId) return;
     if (!canBeHit(target)) return;
+    // an explicit order replaces a standing attack-move sweep
+    this.moveOrder = null;
     this.target = target;
+    this.lastEnd = null;
+  }
+
+  /**
+   * The attack-move order — the source game's `A` onto empty ground. The unit
+   * walks toward the point, sweeping as it goes, and opens fire on the first
+   * visible enemy the sweep meets; the point is resumed after each kill and
+   * the order ends on arrival, on any explicit order, or on crowd control.
+   */
+  orderAttackMove(x: number, y: number): void {
+    this.target = null;
+    this.moveOrder = { x, y };
+    this.scanMs = 0;
     this.lastEnd = null;
   }
 
@@ -108,6 +152,7 @@ export default class BasicAttackController {
   clear(): void {
     if (this.target) this.lastEnd = 'CLEARED';
     this.target = null;
+    this.moveOrder = null;
   }
 
   update(): void {
@@ -116,11 +161,29 @@ export default class BasicAttackController {
 
     if (this.owner.isDead) {
       this.target = null;
+      this.moveOrder = null;
+      this.windupMs = 0;
       return;
     }
 
+    // The wind-up hold. The commit already happened — the bolt is nocked, or
+    // the melee swing object is winding — so all that is left to do here is
+    // keep the feet planted until the beat has passed. Crowd control ends the
+    // hold (and the delivery objects cancel themselves off the same fact).
+    if (this.windupMs > 0) {
+      this.windupMs -= deltaTime;
+      if (this.owner.canAttack) {
+        this.owner.stopMovement();
+        return;
+      }
+      this.windupMs = 0;
+    }
+
     const target = this.target;
-    if (!target) return;
+    if (!target) {
+      this.sweep();
+      return;
+    }
 
     // Crowd control ends the order, it does not pause it. A stun, charm, fear,
     // suppression or disarm all clear ActionState.CAN_ATTACK, and every one of
@@ -131,6 +194,7 @@ export default class BasicAttackController {
     if (!this.owner.canAttack) {
       this.lastEnd = 'DISABLED';
       this.target = null;
+      this.moveOrder = null;
       this.owner.stopMovement();
       return;
     }
@@ -138,9 +202,9 @@ export default class BasicAttackController {
     const reach = this.reachTo(target);
     if (!this.canKeep(target)) {
       // A lock goes stale between frames: the target dies, is removed, is made
-      // untargetable, vanishes into stealth, or simply outruns our sight. In
-      // every one of those cases the unit stops where it is rather than picking
-      // a new fight nobody ordered.
+      // untargetable, vanishes into stealth, or slips out of everything the
+      // team can see. In every one of those cases the unit stops where it is
+      // rather than picking a new fight nobody ordered.
       this.lastEnd = target.isDead || target.toRemove ? 'KILLED' : 'LOST';
       this.target = null;
       this.owner.stopMovement();
@@ -164,10 +228,11 @@ export default class BasicAttackController {
     if (!this.owner.canAttack) return;
 
     // The swing wins over the step: a kiting unit plants for the frame it fires
-    // on, whatever window was still open.
+    // on, whatever window was still open — and now for the whole wind-up.
     this.repositionMs = 0;
     this.owner.stopMovement();
     this.cooldownMs = this.intervalMs;
+    this.windupMs = this.isRanged ? this.windupFor() : MELEE_WINDUP_MS;
     this.launch(target, reach);
   }
 
@@ -177,7 +242,56 @@ export default class BasicAttackController {
     // stealth is not untargetability, but chasing something invisible is the
     // same bad experience, so an order drops on it too
     if (hasFlag(target.stats.actionState, ActionState.STEALTHED)) return false;
-    return p5.Vector.dist(this.owner.position, target.position) <= this.leashTo(target);
+    // The leash is sight, not a radius of the chaser's own: an ordered target
+    // is pursued as far as the team can actually see it — across the whole
+    // map in open ground, the source game's own rule — and the order drops
+    // the moment it slips into fog or an unshared bush. This used to be
+    // `visionRadius` as a distance, which dropped a perfectly visible target
+    // the player had explicitly clicked, two steps into the chase, and left
+    // the champion standing still on an order it looked like it accepted.
+    return canSee(this.owner, target);
+  }
+
+  /**
+   * One tick of a standing attack-move order: scan on the beat, otherwise
+   * walk the point down, and end the order on arrival.
+   */
+  private sweep(): void {
+    const destination = this.moveOrder;
+    if (!destination) return;
+
+    this.scanMs -= deltaTime;
+    if (this.scanMs <= 0) {
+      this.scanMs = ATTACK_MOVE_SCAN_INTERVAL_MS;
+      const found = findAttackTargetNearPoint(this.owner, this.owner.position, this.sweepRadius());
+      if (found) {
+        // Straight onto `target`, not through `order()`: an explicit order
+        // replaces the sweep, but the sweep's own pick must leave the walk
+        // standing so a kill resumes it.
+        this.target = found;
+        this.lastEnd = null;
+        return;
+      }
+    }
+
+    const dx = destination.x - this.owner.position.x;
+    const dy = destination.y - this.owner.position.y;
+    if (Math.hypot(dx, dy) <= ATTACK_MOVE_ARRIVE_PX) {
+      this.moveOrder = null;
+      this.owner.stopMovement();
+      return;
+    }
+    this.owner.navigateTo(destination.x, destination.y);
+  }
+
+  /**
+   * What the sweep may open fire on: the same derivation as the `A` key's own
+   * fallback — someone this unit can plausibly engage, never a charge across
+   * open ground after a speck at the edge of vision.
+   */
+  sweepRadius(): number {
+    const reach = this.owner.stats.attackRange.value + this.owner.stats.size.value / 2;
+    return Math.min(reach + FALLBACK_CHASE_MARGIN, this.owner.stats.visionRadius.value);
   }
 
   /**
@@ -201,6 +315,9 @@ export default class BasicAttackController {
       bolt.speed = (this.owner.attackBoltUnitsPerSecond ?? RANGED_BOLT_UNITS_PER_SECOND) / 60;
       bolt.position.set(this.owner.position.x, this.owner.position.y);
       bolt.destination.set(target.position.x, target.position.y);
+      // Nocked for the wind-up: it rides the attacker, charging visibly, and
+      // flies when the beat has passed.
+      bolt.arm(this.windupMs);
       this.owner.game.objectManager.addObject?.(bolt);
     } else {
       const swing = new BasicAttackSwing(this.owner, target);

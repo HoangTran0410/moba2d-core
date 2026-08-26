@@ -178,9 +178,9 @@ describe('BasicAttack, the ability in the A slot', () => {
 
   /**
    * The bound is what stops this becoming a charge command. An enemy the
-   * champion cannot shoot from where it stands — and could not hold an order on
-   * anyway, `BasicAttackController.leashTo` gives up at `visionRadius` — is not
-   * a target a blind press is allowed to volunteer for.
+   * champion cannot shoot from where it stands is not a target a *blind* press
+   * is allowed to volunteer for — the chase, once a target is chosen on
+   * purpose, is leashed by sight alone (`BasicAttackController.canKeep`).
    */
   it('will not start a chase: the fallback stops at reach plus a step', () => {
     const world = harness();
@@ -254,10 +254,12 @@ describe('BasicAttack, the ability in the A slot', () => {
     expect(world.player.spells[0].currentCooldown).toBe(0);
   });
 
-  it('leaves a standing order alone when a later press finds nothing', () => {
+  it('a later press onto empty ground converts the chase into an attack-move', () => {
     const world = harness();
     // Out past both circles, so the second press really does come up empty on
-    // both passes rather than quietly re-acquiring the same body.
+    // both passes rather than quietly re-acquiring the same body. An empty
+    // press used to be a silent no-op that left the order alone; it is a real
+    // order now — go there instead, fighting whatever the sweep meets.
     const enemy = champion(world.game, 3_000);
     world.world([enemy]);
 
@@ -265,7 +267,8 @@ describe('BasicAttack, the ability in the A slot', () => {
     expect(world.player.basicAttack.target).toBe(enemy);
 
     world.press(HotKeys.A, { x: 0, y: 0 });
-    expect(world.player.basicAttack.target).toBe(enemy);
+    expect(world.player.basicAttack.target).toBeNull();
+    expect(world.player.basicAttack.moveOrder).toMatchObject({ x: 0, y: 0 });
   });
 
   // ---------------------------------------------------------------- stickiness
@@ -278,6 +281,8 @@ describe('BasicAttack, the ability in the A slot', () => {
 
     world.player.basicAttack.update();
     expect(pending(world.game)[0]).toBeInstanceOf(BasicAttackBolt);
+    // the swing's wind-up roots the attacker first; the chase resumes after it
+    while (world.player.basicAttack.windupMs > 0) world.player.basicAttack.update();
 
     // the target walks out of reach; nobody presses anything again
     enemy.position.set(450, 0);

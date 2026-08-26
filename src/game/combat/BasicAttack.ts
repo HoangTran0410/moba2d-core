@@ -51,6 +51,23 @@ export const MELEE_SWING_TOTAL_MS = 380;
 export const MELEE_RANGE_THRESHOLD = 140;
 /** A bolt that somehow never arrives fizzles rather than living forever. */
 export const BOLT_MAX_LIFE_MS = 3_000;
+/**
+ * The wind-up: the beat of stillness a swing costs before it releases.
+ *
+ * A basic attack used to leave the attacker fully mobile — the bolt left on
+ * the commit frame and nothing in the body ever acknowledged the shot, so a
+ * kiting champion read as a gun turret strapped to a walk. This canvas has no
+ * attack animations; the stop *is* the animation. The source game roots an
+ * attacker for the front fraction of every swing and kiting is the skill of
+ * moving in the gaps between them, so the ranged wind-up here is a fraction
+ * of the live interval — attack speed buys the lock down, exactly as it does
+ * there — under a ceiling so a slow attacker reads as deliberate rather than
+ * stuck. Melee's beat is MELEE_WINDUP_MS, which BasicAttackSwing already
+ * carries; the controller holds the attacker for the same span so a strike
+ * cannot be walked out of its own reach.
+ */
+export const RANGED_WINDUP_FRACTION = 0.25;
+export const RANGED_WINDUP_MAX_MS = 300;
 
 /**
  * Payload of EventType.ON_ATTACK_HIT. This is the seam an on-hit passive (Toxic
@@ -162,6 +179,15 @@ export class BasicAttackBolt extends MissileSpellObject {
   target: AttackableUnit | null = null;
   color: number[] = [255, 236, 190];
   _life = BOLT_MAX_LIFE_MS;
+  /**
+   * ms the bolt is still on the string — the attacker's wind-up. While nocked
+   * it rides the attacker instead of flying, brightening as the release nears
+   * (the wind-up made visible), and it cancels itself outright if the attacker
+   * dies or loses CAN_ATTACK: there is no shot to dodge yet.
+   */
+  armMs = 0;
+  private armTotalMs = 0;
+  private flightSpeed: number | null = null;
 
   trailSystem: TrailSystem | null = new TrailSystem({
     trailColor: '#ffe9bcaa',
@@ -170,7 +196,31 @@ export class BasicAttackBolt extends MissileSpellObject {
     trailLifeTime: 180,
   });
 
+  /** Nock the bolt for `ms` — the controller's wind-up, handed over once. */
+  arm(ms: number): void {
+    this.armMs = ms;
+    this.armTotalMs = ms;
+  }
+
   onBeforeMove(): void {
+    if (this.armMs > 0) {
+      this.armMs -= deltaTime;
+      if (this.owner.isDead || !this.owner.canAttack) {
+        this.toRemove = true;
+        return;
+      }
+      if (this.flightSpeed === null) this.flightSpeed = this.speed;
+      this.speed = 0;
+      this.position.set(this.owner.position.x, this.owner.position.y);
+      if (this.target && !this.target.isDead && !this.target.toRemove) {
+        this.destination.set(this.target.position.x, this.target.position.y);
+      }
+      return;
+    }
+    if (this.flightSpeed !== null) {
+      this.speed = this.flightSpeed;
+      this.flightSpeed = null;
+    }
     this._life -= deltaTime;
     if (this._life <= 0) {
       this.toRemove = true;
@@ -190,12 +240,23 @@ export class BasicAttackBolt extends MissileSpellObject {
   draw(): void {
     const pos = this.position;
     const [r, g, b] = this.color;
+    const nocked = this.armMs > 0;
+    const charge =
+      this.armTotalMs > 0 ? 1 - Math.max(0, this.armMs) / this.armTotalMs : 1;
     push();
     noStroke();
-    fill(r, g, b, 90);
-    circle(pos.x, pos.y, this.size * 1.9);
-    fill(255, 255, 255, 230);
-    circle(pos.x, pos.y, this.size * 0.6);
+    if (nocked) {
+      // charging on the attacker: small and dim to full and bright at release
+      fill(r, g, b, 40 + 50 * charge);
+      circle(pos.x, pos.y, this.size * (0.8 + 1.1 * charge));
+      fill(255, 255, 255, 110 + 120 * charge);
+      circle(pos.x, pos.y, this.size * (0.25 + 0.35 * charge));
+    } else {
+      fill(r, g, b, 90);
+      circle(pos.x, pos.y, this.size * 1.9);
+      fill(255, 255, 255, 230);
+      circle(pos.x, pos.y, this.size * 0.6);
+    }
     pop();
   }
 }
