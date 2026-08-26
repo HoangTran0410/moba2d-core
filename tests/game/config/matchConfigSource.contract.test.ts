@@ -15,6 +15,34 @@ import {
 import { MatchTeam } from '../../../src/game/config/MatchTeams';
 import { context as practiceContext } from '../practice/helpers';
 import { packIsInstalled } from '../../support/installedPacks';
+import { contentCatalog } from '../../../src/content/catalog';
+
+/**
+ * A shelf to drive the item cheat against.
+ *
+ * This checkout's installed packs ship no items — the reference pack sells
+ * nothing by design — so every assertion inside `for (const option of
+ * itemStock())` used to run zero times and pass. A vacuous test is worse than
+ * no test: it reports green for a shape nobody checked. One probe pack per
+ * call, with a fresh id each time, so seeding cannot collide with the last
+ * test's leftovers.
+ */
+let probeSeed = 0;
+const seedItems = (): { id: string; name: string }[] => {
+  const packId = `probe${probeSeed++}`;
+  contentCatalog().installData({
+    manifest: { id: packId, version: '1.0.0', coreRange: '*' },
+    items: {
+      boots: { id: 'boots', name: 'Giày Thử', icon: 'spell_basic_attack', cost: 300 },
+      // A key nothing registered: legal, and the reason `image` may be `''`.
+      ghost: { id: 'ghost', name: 'Đồ Ma', icon: 'no_such_asset_key', cost: 400 },
+    },
+  } as never);
+  return [
+    { id: `${packId}:boots`, name: 'Giày Thử' },
+    { id: `${packId}:ghost`, name: 'Đồ Ma' },
+  ];
+};
 
 /**
  * **The test that makes one panel possible.**
@@ -69,6 +97,9 @@ const presetFor = (loadout: { championName: string }) => ({
 });
 
 /** A camera, render settings and an exit, with no `Game` behind them. */
+/** What `openShopFor` was asked to open, so the delegation can be asserted. */
+const openedShopFor: string[] = [];
+
 const fakeHost = (director: MatchDirector): MatchDirectorHost => {
   let zoom = 1;
   let quality: MatchDirectorHost['renderQuality'] = 'auto';
@@ -85,6 +116,7 @@ const fakeHost = (director: MatchDirector): MatchDirectorHost => {
       snapToScale() {},
     },
     touchUi: false,
+    openShopFor: (id: string) => openedShopFor.push(id),
     // Fixed, on purpose — this is the bench's stand-in for "the map this
     // match actually booted onto", which a real `Game` never changes for the
     // life of the match. `setMap` must never move it; that is exactly what
@@ -488,11 +520,31 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       // that is a legal state (every pack predating items). What is checked is
       // the *shape*, because an entry missing `cost` renders as `— undefined`
       // in the picker.
-      for (const option of source.live.itemStock()) {
+      seedItems();
+      const listed = source.live.itemStock();
+      expect(listed.length, 'the probe pack never reached the catalogue').toBeGreaterThan(0);
+
+      for (const option of listed) {
         expect(typeof option.id).toBe('string');
         expect(typeof option.name).toBe('string');
         expect(Number.isFinite(option.cost)).toBe(true);
       }
+    });
+
+    /**
+     * The roster's way into the shop. Asserted as delegation rather than as an
+     * outcome because the outcome is a Vue panel: what this seam owes is that
+     * the *id* survives the trip, so the shop opens over the unit whose row
+     * was pressed and not over the player.
+     */
+    it('hands the shop panel to a named unit', () => {
+      if (!source.live) return;
+      const id = source.roster()[0].id;
+      openedShopFor.length = 0;
+
+      source.live.openShopFor(id);
+
+      expect(openedShopFor).toEqual([id]);
     });
 
     it('empties a bag without charging or refunding anything', () => {

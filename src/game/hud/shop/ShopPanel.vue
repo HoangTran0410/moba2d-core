@@ -127,6 +127,30 @@ const bag = computed(() => {
   return hud.shopBag();
 });
 
+/**
+ * Whose shop this is, their balance, and whether they may trade — all three
+ * from `hud` rather than from `state`, because `HudState` is about **the
+ * player**: `state.gold` feeds the desktop bar's gold pill and must keep
+ * meaning the player's gold even while this panel is open over a bot's.
+ *
+ * Recomputed off the `state` prop for the same reason `stock` and `bag` are —
+ * it is a new object on every 20Hz tick, so depending on it *is* the refresh.
+ */
+const subject = computed(() => {
+  void props.state;
+  return hud.shopSubjectName();
+});
+
+const gold = computed(() => {
+  void props.state;
+  return hud.shopGold();
+});
+
+const canTrade = computed(() => {
+  void props.state;
+  return hud.shopCanTrade();
+});
+
 const sections = computed(() => shopSections(stock.value));
 const owned = computed(() => heldItemIds(bag.value));
 
@@ -231,10 +255,17 @@ const lifted = (slot: number): boolean => {
 <template>
   <div class="shop-panel" :class="{ 'has-detail': picked !== null }">
     <header class="shop-header">
-      <h3>Cửa hàng</h3>
+      <!-- The title carries *whose* shop this is, and only when that is not
+           the player — a heading that always names somebody stops being read,
+           and the one case where it is load-bearing is the cheat, where the
+           gold on screen belongs to a bot. See `hud.shopSubjectName`. -->
+      <h3>
+        Cửa hàng
+        <span v-if="subject" class="shop-subject">{{ subject }}</span>
+      </h3>
       <div class="shop-gold">
         <i class="fa-solid fa-coins"></i>
-        <span>{{ state.gold }}</span>
+        <span>{{ gold }}</span>
       </div>
       <button
         class="shop-close"
@@ -249,7 +280,7 @@ const lifted = (slot: number): boolean => {
     <!-- The one sentence the grid cannot say for itself. Every tile is greyed
          when the player is away from the platform, which reads as "everything
          is too expensive" without this line naming the actual reason. -->
-    <p v-if="!state.canShop" class="shop-warning">
+    <p v-if="!canTrade" class="shop-warning">
       <i class="fa-solid fa-triangle-exclamation"></i>
       Chỉ mua bán được khi đứng trong bệ đá của đội mình
     </p>

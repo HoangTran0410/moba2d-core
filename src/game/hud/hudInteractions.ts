@@ -28,7 +28,8 @@ import type Camera from '@/game/gameObject/map/Camera';
 import type { RenderQuality } from '@/game/managers/ObjectManager';
 import { removeAccents } from '@/utils/index';
 import type { AssetKey } from '@/managers/AssetManager';
-import { buyItem, sellItem } from '@/game/economy/ItemShop';
+import type Champion from '@/game/gameObject/attackableUnits/Champion';
+import { atOwnFountain, buyItem, sellItem, type ShopMode } from '@/game/economy/ItemShop';
 import { sellRows, shopRows, type SellRow, type ShopRow } from '@/game/hud/shop/shopState';
 import { contentCatalog } from '@/content/catalog';
 
@@ -187,11 +188,36 @@ export interface HudInteractions {
    * itself.
    */
   showShop: boolean;
+  /**
+   * Whose shop is open — `null` for the player's own, which is the default and
+   * the only thing the corner button and the `P` key ever set. See
+   * `openShopFor`; it is an id rather than a champion because a captured
+   * reference outlives the unit it points at.
+   */
+  shopSubjectId: string | null;
   /** Open it. Refuses nothing: the cards carry their own refusals. */
   openShop(): void;
   closeShop(): void;
   /** What the `P` key does — one key in, one key out. */
   toggleShop(): void;
+  /**
+   * Open the shop **aimed at another champion** — the roster's entry point.
+   *
+   * Everything the panel then shows is that champion's: their gold, their bag,
+   * their refusals. Buying spends their wallet. It is a cheat only in that the
+   * fountain rule is waived (`ShopMode`), because the subject is a bot standing
+   * wherever the match put it; the gold is real.
+   *
+   * Refuses an id nobody has, rather than opening a panel with nothing behind
+   * it.
+   */
+  openShopFor(id: string): void;
+  /** '' when the shop is the player's own — there is nothing to label. */
+  shopSubjectName(): string;
+  /** The **subject's** balance, which is not `HudState.gold` when a bot is being shopped for. */
+  shopGold(): number;
+  /** Whether the subject may trade right now. False only ever means "not at the fountain". */
+  shopCanTrade(): boolean;
   /** Everything on sale right now, each row carrying why it cannot be bought. */
   shopStock(): ShopRow[];
   /** What is in the bag, sellable, with what each would pay back. */
@@ -230,6 +256,51 @@ export function createHudInteractions(game: Game): HudInteractions {
   let director: MatchDirector | null = null;
   let camera: Camera | null = null;
 
+  /**
+   * The champion behind a roster id, resolved fresh every time.
+   *
+   * `game.director.roster()` rather than a map kept here: the roster is the
+   * one place that knows who is in the match, and a bot can join or leave it
+   * mid-match through the Đội tab. A cache would be a second answer to the
+   * same question, out of date exactly when it matters.
+   */
+  const subjectUnit = (id: string): Champion | null => {
+    for (const entry of game.director?.roster() ?? []) {
+      if (entry.unit?.id === id) return entry.unit;
+    }
+    return null;
+  };
+
+  /**
+   * Who the shop is for, and under which rules — or `null`, which means the
+   * shop should not be open at all.
+   *
+   * The `null` case is a unit that has left the roster while its shop was up.
+   * Falling back to the player would be worse than closing: the panel would
+   * keep drawing, and the only sign that the gold on screen had become
+   * somebody else's is a number nobody is looking at.
+   */
+  const shopSubject = (): { champion: Champion; mode: ShopMode } | null => {
+    if (state.shopSubjectId === null) {
+      return game.player ? { champion: game.player, mode: 'PLAYER' } : null;
+    }
+    const champion = subjectUnit(state.shopSubjectId);
+    if (!champion) {
+      // Read on the panel's own repaint, so this is where a vanished subject
+      // is noticed and where the panel is taken down.
+      state.showShop = false;
+      state.shopSubjectId = null;
+      return null;
+    }
+    return { champion, mode: 'CHEAT' };
+  };
+
+  /** Shuts the config panel *and* unpauses, but only if it was up. */
+  const leaveConfigPanel = (): void => {
+    if (state.showSpellsPicker) state.closeSpellPicker();
+    state.editPlayerSlot = null;
+  };
+
   const state = reactive({
     /**
      * Resolved on first read, not here: `Game` constructs its `InGameHUD` —
@@ -256,6 +327,16 @@ export function createHudInteractions(game: Game): HudInteractions {
     editPlayerSlot: null as number | null,
     onEscapeInner: null as (() => boolean) | null,
     showShop: false,
+    /**
+     * Whose shop is open — `null` for the player's own, which is the default
+     * and the only thing the corner button and the `P` key ever set.
+     *
+     * An **id**, not a champion: a captured reference outlives the unit it
+     * points at, and a bot removed from the roster while its shop is open
+     * would leave the panel spending gold into an object nothing else in the
+     * match can see. Re-resolved on every read.
+     */
+    shopSubjectId: null as string | null,
     spellHover: null as any,
     spellInfo: { top: 'auto', bottom: '0px', left: '0px', width: '300px' },
     touchUi: false,
@@ -311,16 +392,53 @@ export function createHudInteractions(game: Game): HudInteractions {
     openShop(): void {
       // The two modals are mutually exclusive: both are full-width, and
       // stacking them leaves the player looking at two close buttons.
-      state.showSpellsPicker = false;
-      state.editPlayerSlot = null;
+      leaveConfigPanel();
+      state.shopSubjectId = null;
       state.showShop = true;
       state.spellHover = null;
       // Deliberately no `game.pause()`. See `showShop`.
     },
 
+    openShopFor(id: string): void {
+      // Checked before anything opens: a panel whose subject does not resolve
+      // has no gold to show and no bag to draw, and the player would be
+      // looking at an empty shelf with no way to tell why.
+      if (!subjectUnit(id)) return;
+      leaveConfigPanel();
+      state.shopSubjectId = id;
+      state.showShop = true;
+      state.spellHover = null;
+    },
+
+    shopSubjectName(): string {
+      // '' for the player's own shop. The header only labels the exception,
+      // because a title that always names somebody stops being read.
+      if (state.shopSubjectId === null) return '';
+      const champion = subjectUnit(state.shopSubjectId);
+      if (!champion) return '';
+      // The same fallback the roster row uses. An unlabelled *cheat* shop is
+      // the one case where the label is load-bearing, so a nameless champion
+      // must not produce one.
+      return champion.name || 'Không tên';
+    },
+
+    shopGold(): number {
+      return shopSubject()?.champion.wallet?.balance ?? 0;
+    },
+
+    shopCanTrade(): boolean {
+      const subject = shopSubject();
+      if (!subject) return false;
+      // A cheat's subject is never "at the fountain" and never needs to be.
+      return subject.mode === 'CHEAT' || atOwnFountain(subject.champion, game);
+    },
+
     closeShop(): void {
       state.showShop = false;
       state.spellHover = null;
+      // Back to the player, or the next press of the corner button silently
+      // opens a bot's shop and the only sign is a gold figure nobody looks at.
+      state.shopSubjectId = null;
     },
 
     toggleShop(): void {
@@ -329,13 +447,13 @@ export function createHudInteractions(game: Game): HudInteractions {
     },
 
     shopStock(): ShopRow[] {
-      const player = game.player;
-      return player ? shopRows(player, game) : [];
+      const subject = shopSubject();
+      return subject ? shopRows(subject.champion, game, subject.mode) : [];
     },
 
     shopBag(): SellRow[] {
-      const player = game.player;
-      return player ? sellRows(player, game) : [];
+      const subject = shopSubject();
+      return subject ? sellRows(subject.champion, game, subject.mode) : [];
     },
 
     /**
@@ -346,14 +464,14 @@ export function createHudInteractions(game: Game): HudInteractions {
      * platform.
      */
     buy(itemId: string): void {
-      const player = game.player;
+      const subject = shopSubject();
       const def = contentCatalog().item(itemId);
-      if (player && def) buyItem(player, def, game);
+      if (subject && def) buyItem(subject.champion, def, game, subject.mode);
     },
 
     sell(slot: number): void {
-      const player = game.player;
-      if (player) sellItem(player, slot, game);
+      const subject = shopSubject();
+      if (subject) sellItem(subject.champion, slot, game, subject.mode);
     },
 
     moveItem(from: number, to: number): void {

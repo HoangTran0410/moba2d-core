@@ -60,6 +60,21 @@
   flex: none;
 }
 
+/* Whose shop, when it is not the player's — see `ShopPanel.vue`. Set apart
+   from the word "Cửa hàng" rather than replacing it, so the panel is still
+   recognisable at a glance and the name reads as an answer to "for whom". */
+.shop-subject {
+  margin-left: 0.4em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #e3c07866;
+  background: #e3c07822;
+  color: #ffe2a3;
+  font-size: 0.78em;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .shop-header h3 {
   margin: 0;
   flex: 1;

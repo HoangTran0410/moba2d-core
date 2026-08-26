@@ -6,6 +6,7 @@ import {
   sellValueOf,
   type SellRefusal,
   type ShopHost,
+  type ShopMode,
   type ShopRefusal,
 } from '@/game/economy/ItemShop';
 import { shopItems } from '@/game/economy/itemCatalog';
@@ -171,7 +172,7 @@ const linkTo = (def: QualifiedItem | undefined, owned: boolean): RecipeLink | nu
   def ? { id: def.id, name: def.name, image: iconPath(def), cost: def.cost, owned } : null;
 
 /** Every item on sale, cheapest first, each carrying why it cannot be bought. */
-export function shopRows(champion: Champion, host: ShopHost): ShopRow[] {
+export function shopRows(champion: Champion, host: ShopHost, mode: ShopMode = 'PLAYER'): ShopRow[] {
   const stock = shopItems();
 
   // Built once per call, not once per card. Both directions of the tree need a
@@ -193,7 +194,7 @@ export function shopRows(champion: Champion, host: ShopHost): ShopRow[] {
 
   return stock
     .map(def => {
-      const refusal = refusalFor(champion, def, host);
+      const refusal = refusalFor(champion, def, host, mode);
 
       // `componentSlotsFor` and not "is this id in the bag": a recipe naming
       // one part twice against a bag holding one must tick exactly one entry,
@@ -261,13 +262,13 @@ export interface SellRow {
 }
 
 /** What is in the bag right now, sellable. Empty slots are left out. */
-export function sellRows(champion: Champion, host: ShopHost): SellRow[] {
+export function sellRows(champion: Champion, host: ShopHost, mode: ShopMode = 'PLAYER'): SellRow[] {
   const rows: SellRow[] = [];
   const held = champion.items ?? [];
   for (let slot = 0; slot < held.length; slot++) {
     const item = held[slot];
     if (!item) continue;
-    const refusal = sellRefusalFor(champion, slot, host);
+    const refusal = sellRefusalFor(champion, slot, host, mode);
     rows.push({
       slot,
       id: item.def.id,

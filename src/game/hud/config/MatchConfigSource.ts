@@ -164,6 +164,21 @@ export interface MatchLiveControls {
    * pre-empt it.
    */
   itemStock(): ItemOption[];
+  /**
+   * Hand the *shop panel* to this unit: same shelf, same recipes, same
+   * refusals, but showing that champion's gold and spending it.
+   *
+   * The tab used to pick items from a `<select>` and hand them over free. Two
+   * things were wrong with that and only one was the dropdown: an item chosen
+   * from a list of names is chosen without its stats, its description or its
+   * build path, all of which the shop already draws — and gold that is never
+   * spent makes the roster's own `+200 / +1000` meaningless.
+   *
+   * Closes this panel on the way, which also unpauses: the shop deliberately
+   * does not pause, and two overlapping full-width panels in 390px is not a
+   * layout.
+   */
+  openShopFor(id: string): void;
   /** Into the first free slot. No gold charged and no fountain required — it is a cheat. */
   giveItem(id: string, itemId: string): void;
   /** Everything in the bag, back off. */

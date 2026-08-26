@@ -45,6 +45,29 @@ import type { QualifiedItem } from '@/content/PackRegistry';
  */
 export const SELL_REFUND_FRACTION = 0.7;
 
+/**
+ * **Who the shop is answering to**, and therefore which rules apply.
+ *
+ * The shop has two callers now. `'PLAYER'` is the real one: a champion
+ * standing on their own platform, spending their own gold. `'CHEAT'` is the
+ * practice panel's roster, which can open the same shop *aimed at another
+ * champion* so an owner can build a bot a kit without playing it.
+ *
+ * The only difference is the fountain. "At your own fountain, and nowhere
+ * else" is a rule about where the buyer's feet are, and in the second case the
+ * buyer is a bot standing wherever the match has put it — enforced, the
+ * feature refuses every purchase for the whole match bar the seconds after a
+ * respawn. Everything else is untouched: the gold is real and comes out of
+ * that champion's own wallet, the bag is real and can be full, and a corpse
+ * still cannot shop.
+ *
+ * Named for who is asking rather than for what it turns off, because the
+ * second shape invites a second flag the day something else needs waiving.
+ * And it defaults to `'PLAYER'` everywhere, so a call site that forgets it
+ * gets the rule the game is played by, never the cheat.
+ */
+export type ShopMode = 'PLAYER' | 'CHEAT';
+
 /** Which rule said no. See the header for why this is not a boolean. */
 export type ShopRefusal = 'DEAD' | 'NOT_AT_FOUNTAIN' | 'NO_SLOT' | 'TOO_EXPENSIVE' | 'NOT_LOADED';
 
@@ -197,10 +220,11 @@ export function priceFor(champion: Champion, def: QualifiedItem): number {
 export function refusalFor(
   champion: Champion,
   def: QualifiedItem,
-  host: ShopHost
+  host: ShopHost,
+  mode: ShopMode = 'PLAYER'
 ): ShopRefusal | null {
   if (champion.isDead) return 'DEAD';
-  if (!atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
+  if (mode === 'PLAYER' && !atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
   // A combine frees its components' slots before it fills one, so a bag
   // holding exactly the six pieces of a build can still finish it. Refusing
   // that was the shop telling a player no at the one moment the inventory was
@@ -274,8 +298,13 @@ export function grantItem(champion: Champion, def: QualifiedItem): boolean {
  * comes out through `Wallet.spend`, which is itself all-or-nothing, so a
  * purchase can never leave a champion holding an item nobody paid for.
  */
-export function buyItem(champion: Champion, def: QualifiedItem, host: ShopHost): boolean {
-  if (refusalFor(champion, def, host) !== null) return false;
+export function buyItem(
+  champion: Champion,
+  def: QualifiedItem,
+  host: ShopHost,
+  mode: ShopMode = 'PLAYER'
+): boolean {
+  if (refusalFor(champion, def, host, mode) !== null) return false;
 
   const held = buildHeldItem(champion, def);
   if (!held) return false;
@@ -316,10 +345,11 @@ export function buyItem(champion: Champion, def: QualifiedItem, host: ShopHost):
 export function sellRefusalFor(
   champion: Champion,
   slot: number,
-  host: ShopHost
+  host: ShopHost,
+  mode: ShopMode = 'PLAYER'
 ): SellRefusal | null {
   if (champion.isDead) return 'DEAD';
-  if (!atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
+  if (mode === 'PLAYER' && !atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
   if (!champion.items?.[slot]) return 'EMPTY';
   return null;
 }
@@ -333,8 +363,13 @@ export function sellRefusalFor(
  * `refusalFor` plus the mutation. Re-deriving the rules here is how the two
  * halves of one panel came apart in the first place.
  */
-export function sellItem(champion: Champion, slot: number, host: ShopHost): number {
-  if (sellRefusalFor(champion, slot, host) !== null) return 0;
+export function sellItem(
+  champion: Champion,
+  slot: number,
+  host: ShopHost,
+  mode: ShopMode = 'PLAYER'
+): number {
+  if (sellRefusalFor(champion, slot, host, mode) !== null) return 0;
 
   const held = champion.items?.[slot];
   if (!held) return 0;

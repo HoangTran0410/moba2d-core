@@ -245,28 +245,20 @@ const itemStock = computed(() => {
 });
 
 /**
- * Which item each row's picker is showing, keyed by participant id.
+ * Hand this unit the shop.
  *
- * Keyed by id and not by index because the roster is spliced when a bot is
- * removed — an index-keyed map would silently move one bot's selection onto
- * another's picker.
+ * No `panel.invalidate()`: the panel is being closed, not repainted — see
+ * `MatchConfigSource.openShopFor`, which also unpauses on the way out because
+ * the shop deliberately does not pause and two full-width panels do not fit in
+ * 390px.
  */
-const pickedItem = ref<Record<string, string>>({});
-
-const giveItem = (row: ConfigRosterEntry): void => {
-  const itemId = pickedItem.value[row.id] ?? itemStock.value[0]?.id;
-  if (!itemId) return;
-  live.value?.giveItem(row.id, itemId);
-  panel.invalidate();
+const openShop = (row: ConfigRosterEntry): void => {
+  live.value?.openShopFor(row.id);
 };
 
 const clearItems = (row: ConfigRosterEntry): void => {
   live.value?.clearItems(row.id);
   panel.invalidate();
-};
-
-const onItemPicked = (row: ConfigRosterEntry, event: Event): void => {
-  pickedItem.value[row.id] = (event.target as HTMLSelectElement).value;
 };
 
 const scoreOf = (row: ConfigRosterEntry) => {
@@ -615,26 +607,23 @@ defineExpose({
 
             <!-- Nothing to show when no installed pack sells anything, which
                  is every pack that predates items. -->
+            <!-- The real shop, aimed at this unit: its gold, its bag, its
+                 recipes. It replaced a `<select>` of item names plus a "Cho",
+                 which handed items over free and could show neither a stat
+                 line nor a build path — and which quietly made the gold
+                 buttons above it decorative, since nothing in the panel spent
+                 any. Hidden when no installed pack sells anything. -->
             <div v-if="live && itemStock.length" class="practice-cheat-item">
-              <select
-                class="practice-cheat-item-picker"
-                :id="`practice-cheat-item-${row.index}`"
-                :value="pickedItem[row.id] ?? itemStock[0].id"
-                @change="onItemPicked(row, $event)"
-              >
-                <option v-for="option of itemStock" :key="option.id" :value="option.id">
-                  {{ option.name }} — {{ option.cost }}
-                </option>
-              </select>
               <span class="practice-cheat-stack-actions">
                 <button
                   type="button"
                   class="practice-cheat-btn"
-                  :id="`practice-cheat-give-item-${row.index}`"
-                  @click="giveItem(row)"
-                  @touchend.prevent="giveItem(row)"
+                  :id="`practice-cheat-shop-${row.index}`"
+                  @click="openShop(row)"
+                  @touchend.prevent="openShop(row)"
                 >
-                  Cho
+                  <i class="fas fa-store" aria-hidden="true"></i>
+                  Cửa hàng
                 </button>
                 <button
                   type="button"

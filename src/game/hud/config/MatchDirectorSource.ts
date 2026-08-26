@@ -81,6 +81,8 @@ export interface MatchDirectorHost {
   setRenderFps(fps: RenderFps): void;
   /** Applies a touch/pointer switch to the live match — `Game.setTouchControlsEnabled`. */
   setTouchUiEnabled(enabled: boolean): void;
+  /** Opens the shop panel aimed at a roster unit — `HudInteractions.openShopFor`. */
+  openShopFor(id: string): void;
   requestExit(): void;
 }
 
@@ -107,6 +109,10 @@ export default class MatchDirectorSource implements MatchConfigSource {
       // on a live unit, not a setting the match persists.
       grantGold: (id, amount) => this.withUnit(id, unit => unit.wallet?.earn(amount)),
       itemStock: () => shopItems().map(item => ({ id: item.id, name: item.name, cost: item.cost })),
+      // Straight through: the HUD owns which panel is up, and this adapter's
+      // whole job is to be the one file in the config directory that may talk
+      // to the match.
+      openShopFor: id => this.host.openShopFor(id),
       giveItem: (id, itemId) =>
         this.withUnit(id, unit => {
           const def = contentCatalog().item(itemId);

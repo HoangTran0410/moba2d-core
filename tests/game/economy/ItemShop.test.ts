@@ -304,3 +304,94 @@ describe('what refuses a sale', () => {
     }
   });
 });
+
+/**
+ * **Who the shop is answering to**, and therefore which rules apply.
+ *
+ * The shop grew a second caller: the practice panel's roster can open it
+ * *aimed at another champion* — a bot — so an owner can build that bot a kit
+ * without playing it. Everything about that is the same shop; one rule cannot
+ * survive the trip.
+ *
+ * "At your own fountain, and nowhere else" is a rule about where the buyer's
+ * feet are, and the buyer here is a bot standing wherever the match has put
+ * it. Enforced, the feature is dead on arrival — the panel would refuse every
+ * purchase for the whole match except the few seconds after a respawn. So
+ * `'CHEAT'` waives exactly that one check.
+ *
+ * It waives **nothing else**, and that is the half worth testing. The gold is
+ * real and comes out of that bot's own wallet; the bag is real and can be
+ * full; a corpse still cannot shop. The mode is not "ignore the rules", it is
+ * "this buyer is not standing in a shop" — which is why it is named for who is
+ * asking rather than for what it turns off.
+ */
+describe('shopping on someone else’s behalf', () => {
+  let game: TestGame;
+  let bot: Champion;
+  let host: {
+    fountains: { teamId?: string; position: { x: number; y: number }; radius: number }[];
+  };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    resetSpellRegistryForTests();
+    game = createGame();
+    bot = new Champion({ game, position: createVector(9_000, 9_000), teamId: 'blue' });
+    game.setPlayer(bot);
+    indexObjects(game, [bot]);
+    host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+    bot.wallet!.earn(10_000);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('refuses a purchase out in the lane, as the player’s own shop must', () => {
+    expect(refusalFor(bot, def({ cost: 300 }), host)).toBe('NOT_AT_FOUNTAIN');
+  });
+
+  it('allows it for a cheat, because the buyer is not the one standing anywhere', () => {
+    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBeNull();
+  });
+
+  it('still charges that champion’s own gold', () => {
+    const before = bot.wallet!.balance;
+    expect(buyItem(bot, def({ cost: 300 }), host, 'CHEAT')).toBe(true);
+    expect(bot.wallet!.balance).toBe(before - 300);
+  });
+
+  it('still refuses when that champion cannot afford it', () => {
+    bot.wallet!.spend(bot.wallet!.balance - 100);
+    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBe('TOO_EXPENSIVE');
+    expect(buyItem(bot, def({ cost: 300 }), host, 'CHEAT')).toBe(false);
+  });
+
+  it('still refuses when that champion’s bag is full', () => {
+    for (let slot = 0; slot < INVENTORY_SIZE; slot++) {
+      bot.equipItem(new HeldItem(def({ id: `ref:filler${slot}` }), null, null), slot);
+    }
+    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBe('NO_SLOT');
+  });
+
+  it('still refuses a corpse', () => {
+    // Death is not about where the feet are. A dead champion has no inventory
+    // to put anything in until it respawns, and the panel says so.
+    bot.takeDamage(99_999, undefined, 'TRUE');
+    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBe('DEAD');
+  });
+
+  it('sells out in the lane too, and pays that champion', () => {
+    bot.equipItem(new HeldItem(def({ cost: 300 }), null, null), 0);
+    expect(sellRefusalFor(bot, 0, host)).toBe('NOT_AT_FOUNTAIN');
+    expect(sellRefusalFor(bot, 0, host, 'CHEAT')).toBeNull();
+
+    const before = bot.wallet!.balance;
+    expect(sellItem(bot, 0, host, 'CHEAT')).toBe(sellValueOf(def({ cost: 300 })));
+    expect(bot.wallet!.balance).toBe(before + sellValueOf(def({ cost: 300 })));
+  });
+
+  it('defaults to the player’s rules when nobody says otherwise', () => {
+    // The default is the strict one on purpose: a call site that forgot to
+    // pass a mode gets the rule the game is played by, never the cheat.
+    expect(refusalFor(bot, def({ cost: 300 }), host)).toBe('NOT_AT_FOUNTAIN');
+    expect(sellItem(bot, 0, host)).toBe(0);
+  });
+});
