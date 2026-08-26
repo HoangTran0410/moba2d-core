@@ -10,6 +10,7 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { vTap } from './tapGuard';
+import { loadRecapCollapsed, saveRecapCollapsed } from './deathRecapPrefs';
 import type { DeathRecapDisplay } from './hudState';
 
 const props = defineProps<{
@@ -21,6 +22,13 @@ const props = defineProps<{
 const dismissedSeq = ref(0);
 const dismiss = (): void => {
   dismissedSeq.value = props.recap.seq;
+};
+
+/** Collapsed = just the killer headline. Persisted — see deathRecapPrefs. */
+const collapsed = ref(loadRecapCollapsed());
+const toggleCollapse = (): void => {
+  collapsed.value = !collapsed.value;
+  saveRecapCollapsed(collapsed.value);
 };
 
 /**
@@ -42,12 +50,28 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 </script>
 
 <template>
-  <div v-if="recap.seq !== dismissedSeq" ref="panelEl" class="death-recap">
+  <div
+    v-if="recap.seq !== dismissedSeq"
+    ref="panelEl"
+    class="death-recap"
+    :class="{ collapsed }"
+  >
     <div class="death-recap-head">
       <span class="death-recap-title">
         <i class="fas fa-skull" aria-hidden="true"></i>
         Hạ gục bởi <b>{{ recap.killer }}</b>
       </span>
+      <button
+        type="button"
+        class="death-recap-close"
+        :title="collapsed ? 'Mở rộng' : 'Thu gọn'"
+        :aria-label="collapsed ? 'Mở rộng bảng tổng kết' : 'Thu gọn bảng tổng kết'"
+        :aria-expanded="!collapsed"
+        @click="toggleCollapse()"
+        v-tap="toggleCollapse"
+      >
+        <i class="fas" :class="collapsed ? 'fa-chevron-down' : 'fa-chevron-up'" aria-hidden="true"></i>
+      </button>
       <button
         type="button"
         class="death-recap-close"
@@ -59,7 +83,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         <i class="fas fa-times" aria-hidden="true"></i>
       </button>
     </div>
-    <div class="death-recap-rows">
+    <div v-show="!collapsed" class="death-recap-rows">
       <div v-for="row in recap.rows" :key="row.attacker" class="death-recap-row">
         <div class="death-recap-attacker">
           <span class="death-recap-attacker-name">{{ row.attacker }}</span>
@@ -84,7 +108,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         </div>
       </div>
     </div>
-    <div class="death-recap-total">
+    <div v-show="!collapsed" class="death-recap-total">
       Tổng <b>{{ recap.total }}</b> sát thương phải chịu
     </div>
   </div>

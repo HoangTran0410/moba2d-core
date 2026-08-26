@@ -2224,6 +2224,27 @@ body.touch-ui .corner-btn {
   box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
   font-size: 13px;
   pointer-events: auto;
+  /* see-through enough to watch the fight it is narrating; solid when the
+     player is actually reading it */
+  opacity: 0.82;
+  transition: opacity 0.15s ease;
+}
+
+.death-recap:hover,
+.death-recap:active,
+.death-recap:focus-within {
+  opacity: 1;
+}
+
+/* collapsed: just the killer headline, out of the fight's way */
+.death-recap.collapsed {
+  width: auto;
+  max-width: min(340px, 86vw);
+  opacity: 0.72;
+}
+
+.death-recap.collapsed .death-recap-head {
+  margin-bottom: 0;
 }
 
 .death-recap-head {
