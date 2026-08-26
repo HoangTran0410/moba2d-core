@@ -20,6 +20,18 @@ export default class Buff {
   description: string | null = null;
   image: AssetHandle | null | undefined = null;
 
+  /**
+   * Whether this buff appears on the HUD's buff row and on the overhead strip
+   * above the champion. The mechanic runs either way — this is display only.
+   *
+   * Default true. A permanent armed state — an item passive that is simply
+   * always on while the item is held — sets false: the inventory slot already
+   * shows the item, and six of them wallpaper both bars with icons whose
+   * "remaining time" means nothing. A buff with a state worth glancing at
+   * (a charge armed, a stack count climbing) stays visible.
+   */
+  hudVisible = true;
+
   buffAddType = BuffAddType.REPLACE_EXISTING;
   maxStacks = 1;
 

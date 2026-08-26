@@ -360,6 +360,9 @@ function buildBuffs(player: any): BuffDisplay[] {
   const buffRows = new Map<any, BuffDisplay>();
   for (const buff of player.buffs || []) {
     if (!buff?.image?.path) continue;
+    // Display-only opt-out — a permanent item passive's armed state. See
+    // `Buff.hudVisible`; `=== false` so a plain test double stays visible.
+    if (buff.hudVisible === false) continue;
     ensureVisibleAsset(buff.image);
 
     const key = buff.stackId ?? buff.constructor;
@@ -373,7 +376,7 @@ function buildBuffs(player: any): BuffDisplay[] {
 
     if (existing) {
       existing.stacks += stacks;
-      if (timeLeft > existing.duration - existing.timeElapsed) {
+      if (buff.duration && timeLeft > existing.duration - existing.timeElapsed) {
         existing.duration = buff.duration;
         existing.timeElapsed = buff.timeElapsed;
         existing.timeLeftText = Math.ceil(timeLeft / 1000);
@@ -385,7 +388,9 @@ function buildBuffs(player: any): BuffDisplay[] {
       image: buff.image.path,
       duration: buff.duration,
       timeElapsed: buff.timeElapsed,
-      timeLeftText: Math.ceil(timeLeft / 1000),
+      // duration 0 is `Buff`'s "never expires": no countdown, rather than the
+      // negative seconds a permanent buff used to count into.
+      timeLeftText: buff.duration ? Math.ceil(timeLeft / 1000) : 0,
       stacks,
     });
   }

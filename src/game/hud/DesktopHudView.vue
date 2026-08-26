@@ -266,7 +266,7 @@ const lifted = (slot: number): boolean => {
       <div class="buffs">
         <div v-for="(buff, index) of state.buffs" :key="index" class="buff">
           <img crossorigin="anonymous" :src="buff.image" alt="buff" />
-          <span>{{ buff.timeLeftText }}</span>
+          <span v-if="buff.timeLeftText > 0">{{ buff.timeLeftText }}</span>
           <span v-if="buff.stacks > 1" class="stacks">{{ buff.stacks }}</span>
         </div>
       </div>

@@ -145,6 +145,40 @@ describe('computeHudState', () => {
     expect(slowRow.timeLeftText).toBe(4);
   });
 
+  it('shows no countdown for a permanent buff instead of counting into the negatives', () => {
+    // duration 0 is Buff's own convention for "never expires" — an item
+    // passive three minutes into a match used to render "-172" under its icon.
+    const player = fakePlayer({
+      buffs: [
+        {
+          image: { path: 'item.png', key: 'buff_x', status: 'ready' },
+          duration: 0,
+          timeElapsed: 172_000,
+          stackId: 'item_passive',
+        },
+      ],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.buffs).toHaveLength(1);
+    expect(state.buffs[0].timeLeftText).toBe(0);
+  });
+
+  it('keeps a buff that opted out of the HUD off the bar entirely', () => {
+    const player = fakePlayer({
+      buffs: [
+        {
+          image: { path: 'item.png', key: 'buff_x', status: 'ready' },
+          duration: 0,
+          timeElapsed: 1_000,
+          stackId: 'item_passive',
+          hudVisible: false,
+        },
+      ],
+    });
+    const state = computeHudState({ player } as any)!;
+    expect(state.buffs).toHaveLength(0);
+  });
+
   /**
    * A `countedStacks` buff (`ChoGath_R_Growth`, `Veigar_Q_Power` —
    * `src/game/gameObject/Buff.ts`) is one instance carrying its whole count

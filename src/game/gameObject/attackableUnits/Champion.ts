@@ -811,6 +811,7 @@ export default class Champion extends AttackableUnit {
     const buffCounts = new Map<BuffStackId, { image: AssetHandle; count: number }>();
     for (const buff of this.buffs) {
       if (!buff.image) continue;
+      if (buff.hudVisible === false) continue;
       const key = buff.stackId;
       const row = buffCounts.get(key);
       if (row) row.count += buff.stacks;
