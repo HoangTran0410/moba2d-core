@@ -41,7 +41,19 @@ export interface RuntimePackManifest {
   name: string;
   entry: string;
   assets: string;
+  /**
+   * How much this pack adds, declared by its own build so a player can read it
+   * *before* running any of its code — the install confirmation is the one
+   * screen that has to describe a pack it has not installed.
+   *
+   * All three optional, and `maps`/`items` were added after packs were already
+   * published: a manifest that declares only `champions`, or none of them, is
+   * an ordinary manifest and the line simply says less. `champions` counts
+   * only rows a pregame screen would offer, never a pack's own shelves.
+   */
   champions?: number;
+  maps?: number;
+  items?: number;
   /**
    * The pack's own mark, relative to this manifest. Optional; core draws a
    * monogram when it is absent, and never shows this on the install
@@ -248,8 +260,13 @@ export function checkPackManifest(
   if (missing.length > 0) {
     throw new PackLoadError('manifest', `manifest is missing: ${missing.join(', ')}`);
   }
-  if (candidate.champions !== undefined && typeof candidate.champions !== 'number') {
-    throw new PackLoadError('manifest', 'manifest.champions must be a number when present');
+  // Numbers this screen will render as a sentence, out of a stranger's JSON.
+  // A string here is not harmless: `"58"` written into `maps` reads as "58
+  // map" with no clue it was ever the wrong field.
+  for (const field of ['champions', 'maps', 'items'] as const) {
+    if (candidate[field] !== undefined && typeof candidate[field] !== 'number') {
+      throw new PackLoadError('manifest', `manifest.${field} must be a number when present`);
+    }
   }
   if (candidate.files !== undefined && !Array.isArray(candidate.files)) {
     throw new PackLoadError('manifest', 'manifest.files must be an array when present');

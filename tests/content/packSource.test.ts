@@ -100,6 +100,35 @@ describe('fetchPackManifest', () => {
     expect(error.message).toContain('champions');
   });
 
+  it.each(['maps', 'items'])(
+    'reports the manifest stage when %s is present but not a number',
+    async field => {
+      // Same shape as `champions` above, and same reason: these come out of a
+      // stranger's JSON, and a string that renders as "3 map" once would
+      // render as "58 map" for a pack that wrote `"58"` meaning champions.
+      vi.stubGlobal('fetch', respondWith({ ...MANIFEST, [field]: '3' }));
+      const error = await fetchPackManifest('https://h/p/manifest.json', '1.0.0').catch(e => e);
+      expect(error.stage).toBe('manifest');
+      expect(error.message).toContain(field);
+    }
+  );
+
+  it('accepts a manifest that declares maps and items, and one that declares neither', async () => {
+    // Optional, and added after packs were already published: a manifest
+    // written before these existed must install exactly as it did.
+    vi.stubGlobal('fetch', respondWith({ ...MANIFEST, maps: 1, items: 42 }));
+    await expect(fetchPackManifest('https://h/p/manifest.json', '1.0.0')).resolves.toMatchObject({
+      maps: 1,
+      items: 42,
+    });
+
+    const { maps: _m, items: _i, ...older } = { ...MANIFEST, maps: 1, items: 42 };
+    vi.stubGlobal('fetch', respondWith(older));
+    await expect(fetchPackManifest('https://h/p/manifest.json', '1.0.0')).resolves.toMatchObject({
+      id: 'riot',
+    });
+  });
+
   it('reports the manifest stage when assets leaves the manifest origin', async () => {
     vi.stubGlobal('fetch', respondWith({ ...MANIFEST, assets: 'https://evil.example/assets/' }));
     const error = await fetchPackManifest('https://h/p/manifest.json', '1.0.0').catch(e => e);

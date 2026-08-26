@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { contentsByPack, describeContents } from '@/scenes/packs/packContents';
+import {
+  contentsByPack,
+  describeContents,
+  describeDeclaredContents,
+} from '@/scenes/packs/packContents';
 
 const registry = (
   champions: { packId: string; playable: boolean }[] = [],
@@ -59,5 +63,33 @@ describe('describeContents', () => {
   it('says nothing for a pack that contributes nothing, so the row draws no line', () => {
     expect(describeContents({ champions: 0, maps: 0, items: 0 })).toBe('');
     expect(describeContents(undefined)).toBe('');
+  });
+});
+
+/**
+ * The same sentence, from a manifest instead of from the registry.
+ *
+ * The install confirmation is the one screen that has to describe a pack it
+ * has not run — all it holds is the JSON. Sharing the wording with the
+ * installed rows is the point: a player reads "58 tướng · 1 map · 42 trang bị"
+ * before installing and the identical line afterwards, rather than two
+ * phrasings of one fact.
+ */
+describe('describeDeclaredContents', () => {
+  it('reads the three counts a manifest may declare', () => {
+    expect(describeDeclaredContents({ champions: 58, maps: 1, items: 42 })).toBe(
+      '58 tướng · 1 map · 42 trang bị'
+    );
+  });
+
+  it('says only what a manifest actually declared', () => {
+    // `maps` and `items` were added after packs were already published, so
+    // every existing manifest has champions and nothing else. That line must
+    // read as it always did, not as "58 tướng · 0 map · 0 trang bị".
+    expect(describeDeclaredContents({ champions: 58 })).toBe('58 tướng');
+  });
+
+  it('says nothing for a manifest that declared none of them', () => {
+    expect(describeDeclaredContents({})).toBe('');
   });
 });

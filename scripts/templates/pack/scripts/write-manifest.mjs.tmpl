@@ -85,6 +85,8 @@ const icon = existsSync(join(dist, 'icon.png')) ? 'icon.png' : undefined;
 
 const { data } = await import(pathToFileURL(join(dist, 'pack.js')).href);
 const championCount = data.champions.filter(champion => champion.playable).length;
+const mapCount = (data.maps ?? []).length;
+const itemCount = Object.keys(data.items ?? {}).length;
 
 /**
  * Every file this build emitted, relative to the manifest and POSIX-separated
@@ -151,6 +153,13 @@ writeFileSync(
       entry: 'pack.js',
       assets: 'assets/',
       champions: championCount,
+      // Alongside `champions`, and for the same reason: the install
+      // confirmation is the one screen that has to describe this pack before
+      // any of its code has run, so the numbers have to travel in the
+      // manifest. Both optional on core's side — a manifest published before
+      // they existed installs exactly as it did.
+      maps: mapCount,
+      items: itemCount,
       // `undefined` here and `JSON.stringify` drops the key entirely, which is
       // what core's own defensive read of an absent icon expects.
       icon,

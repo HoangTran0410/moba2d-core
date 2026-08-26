@@ -42,6 +42,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { satisfiesCoreRange, type RuntimePackManifest } from '@/content/packSource';
+import { describeDeclaredContents } from './packContents';
 
 const props = defineProps<{
   manifestUrl: string;
@@ -69,6 +70,9 @@ const origin = computed(() => {
 });
 
 const compatible = computed(() => satisfiesCoreRange(props.manifest.coreRange, props.coreVersion));
+
+/** `'58 tướng · 1 map · 42 trang bị'`, or `''` when the manifest declared none. */
+const declared = computed(() => describeDeclaredContents(props.manifest));
 
 const onCancel = (): void => {
   if (props.installing) return;
@@ -189,8 +193,11 @@ onBeforeUnmount(() => {
         >
       </p>
 
-      <!-- 4. Champion count, when the manifest declared one. -->
-      <p v-if="manifest.champions" class="pack-confirm-champions">{{ manifest.champions }} tướng</p>
+      <!-- 4. What the pack adds, when its manifest declared any of it. The
+           same sentence the installed row will carry afterwards — see
+           `packContents.ts` — so the player is not asked to match two
+           phrasings of one fact across the press. -->
+      <p v-if="declared" class="pack-confirm-champions">{{ declared }}</p>
 
       <!-- 5. The authority sentence, verbatim. -->
       <p id="pack-confirm-authority" class="pack-confirm-authority">

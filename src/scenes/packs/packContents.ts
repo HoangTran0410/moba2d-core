@@ -74,3 +74,30 @@ export function describeContents(contents: PackContents | undefined): string {
   if (contents.items) parts.push(`${contents.items} trang bị`);
   return parts.join(' · ');
 }
+
+/**
+ * The same sentence for a pack that has not been installed yet.
+ *
+ * The install confirmation holds a manifest and nothing else — no registry to
+ * count, because none of the pack's code has run and, until the player presses
+ * through, none of it will. So the pack's own build declares the numbers
+ * (`scripts/write-manifest.mjs`) and this renders them through
+ * `describeContents`, deliberately, so the line a player reads *before*
+ * installing is word for word the line their row carries afterwards.
+ *
+ * Every field is optional and every absent one is dropped rather than shown as
+ * zero — `maps` and `items` were added after packs were already published, and
+ * an older manifest must read as it always did rather than as a pack that
+ * ships no maps.
+ */
+export function describeDeclaredContents(declared: {
+  champions?: number;
+  maps?: number;
+  items?: number;
+}): string {
+  return describeContents({
+    champions: declared.champions ?? 0,
+    maps: declared.maps ?? 0,
+    items: declared.items ?? 0,
+  });
+}
