@@ -420,13 +420,12 @@ await guard(async () => {
   check('so does the sell button', blockedSell === 1, `${blockedSell} blocked`);
   check('and the reason is the shop’s own sentence', why === 'Phải đứng ở bệ đá', `"${why}"`);
 
-  // ------------------------------------------- a corpse cannot sell either
+  // ------------------------------------------- a corpse shops on its timer
   //
-  // The case that was invisible while the Bán button gated on `canShop`
-  // alone: standing on your own platform satisfies that rule and being dead
-  // still refuses the sale, so the button looked enabled and did nothing.
-  // `sellRefusalFor` is the seam that answers both, and `SellRow` carries its
-  // sentence the way `ShopRow` carries `refusalFor`'s.
+  // The source game's rule: death satisfies the location check, so the
+  // respawn counter is shopping time. `sellRefusalFor` is still the one seam
+  // the Bán button reads — the assertion here is that death does not close
+  // the shop the way it once did.
   await page.evaluate(() => {
     const game = window.__lol2d.scene.oScene.game;
     game.player.position.set(game.player.position.x - 4_000, game.player.position.y);
@@ -443,11 +442,13 @@ await guard(async () => {
     () => window.__lol2d.scene.oScene.game.player.isDead === true
   );
   const deadBlockedSell = await page.locator('.shop-sell.blocked').count();
-  const deadReason = (await page.locator('.shop-sell-why').first().textContent())?.trim();
-  report.dead = { deadAtFountain, deadBlockedSell, deadReason };
+  report.dead = { deadAtFountain, deadBlockedSell };
   check('the champion is really dead', deadAtFountain, `isDead=${deadAtFountain}`);
-  check('a corpse’s sell button refuses', deadBlockedSell === 1, `${deadBlockedSell} blocked`);
-  check('and says which rule refused it', deadReason === 'Đang chết', `"${deadReason}"`);
+  check(
+    'a corpse still sells — the death timer is shopping time',
+    deadBlockedSell === 0,
+    `${deadBlockedSell} blocked`
+  );
 
   // Escape closes the shop and leaves the config panel shut.
   await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());

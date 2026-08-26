@@ -43,10 +43,11 @@ const def = (over: Partial<QualifiedItem> = {}): QualifiedItem => ({
 /**
  * Where a shop may be used, and what it refuses.
  *
- * The rule the owner chose: **at your own fountain, and nowhere else.** It is
- * the same rule both games this engine's players have played use, and it is
- * what gives going home a price and a reward — without it, recall is a
- * movement ability and nothing more.
+ * The rule the owner chose: **at your own fountain — or dead.** It is the
+ * same rule both games this engine's players have played use: the fountain
+ * half gives going home a price and a reward — without it, recall is a
+ * movement ability and nothing more — and the death timer is shopping time,
+ * so a corpse buys from wherever it fell.
  *
  * `refusalFor` answers with *which* rule said no rather than a bare false, so
  * the panel can say "chưa đủ vàng" instead of greying a button out for
@@ -114,9 +115,16 @@ describe('the shop', () => {
       expect(refusalFor(champion, def(), host)).toBe('NO_SLOT');
     });
 
-    it('refuses a corpse', () => {
+    it('lets a corpse buy — the death timer is shopping time', () => {
       champion.takeDamage(99_999, undefined, 'TRUE');
-      expect(refusalFor(champion, def(), host)).toBe('DEAD');
+      expect(refusalFor(champion, def(), host)).toBeNull();
+    });
+
+    it('lets a corpse buy from wherever it fell, not only at the fountain', () => {
+      champion.position.set(2_000, 0);
+      champion.takeDamage(99_999, undefined, 'TRUE');
+      expect(refusalFor(champion, def(), host)).toBeNull();
+      expect(buyItem(champion, def(), host)).toBe(true);
     });
 
     it('refuses an item whose spell has not been fetched yet, rather than half-building it', () => {
@@ -269,18 +277,16 @@ describe('what refuses a sale', () => {
     expect(sellRefusalFor(champion, 0, host)).toBe('NOT_AT_FOUNTAIN');
   });
 
-  it('refuses a corpse, which is the case the panel could not see', () => {
+  it('lets a corpse sell — the death timer is shopping time', () => {
     champion.takeDamage(99_999, undefined, 'TRUE');
     expect(champion.isDead).toBe(true);
-    expect(sellRefusalFor(champion, 0, host)).toBe('DEAD');
+    expect(sellRefusalFor(champion, 0, host)).toBeNull();
   });
 
-  it('answers DEAD before NOT_AT_FOUNTAIN, because a corpse is never at one', () => {
-    // Order matters only in that the sentence shown has to be the true one.
-    // A dead champion off the platform is dead first.
+  it('lets a corpse sell from wherever it fell — death satisfies the location rule', () => {
     champion.position.set(2_000, 0);
     champion.takeDamage(99_999, undefined, 'TRUE');
-    expect(sellRefusalFor(champion, 0, host)).toBe('DEAD');
+    expect(sellRefusalFor(champion, 0, host)).toBeNull();
   });
 
   it('is the whole of what `sellItem` checks, so the two can never disagree', () => {
@@ -321,7 +327,7 @@ describe('what refuses a sale', () => {
  *
  * It waives **nothing else**, and that is the half worth testing. The gold is
  * real and comes out of that bot's own wallet; the bag is real and can be
- * full; a corpse still cannot shop. The mode is not "ignore the rules", it is
+ * full. The mode is not "ignore the rules", it is
  * "this buyer is not standing in a shop" — which is why it is named for who is
  * asking rather than for what it turns off.
  */
@@ -371,11 +377,9 @@ describe('shopping on someone else’s behalf', () => {
     expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBe('NO_SLOT');
   });
 
-  it('still refuses a corpse', () => {
-    // Death is not about where the feet are. A dead champion has no inventory
-    // to put anything in until it respawns, and the panel says so.
+  it('outfits a corpse too — death opens the shop rather than closing it', () => {
     bot.takeDamage(99_999, undefined, 'TRUE');
-    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBe('DEAD');
+    expect(refusalFor(bot, def({ cost: 300 }), host, 'CHEAT')).toBeNull();
   });
 
   it('sells out in the lane too, and pays that champion', () => {

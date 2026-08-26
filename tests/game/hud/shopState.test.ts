@@ -518,17 +518,17 @@ describe('a bag row’s refusal', () => {
     expect(row.reason).toBe(REFUSAL_TEXT.NOT_AT_FOUNTAIN);
   });
 
-  it('names death, which is the case the panel could not see', () => {
+  it('lets a corpse sell — the death timer is shopping time', () => {
     champion.takeDamage(99_999, undefined, 'TRUE');
     const [row] = sellRows(champion, host);
-    expect(row.refusal).toBe('DEAD');
-    expect(row.reason).toBe(REFUSAL_TEXT.DEAD);
+    expect(row.refusal).toBeNull();
+    expect(row.reason).toBe('');
   });
 
   it('has a sentence for every refusal a sale can produce', () => {
     // A missing entry renders `undefined` at the player. Asserted against the
     // union rather than a list kept here, so adding a refusal breaks this.
-    for (const refusal of ['DEAD', 'NOT_AT_FOUNTAIN', 'EMPTY'] as const) {
+    for (const refusal of ['NOT_AT_FOUNTAIN', 'EMPTY'] as const) {
       expect(REFUSAL_TEXT[refusal], refusal).toBeTruthy();
     }
   });

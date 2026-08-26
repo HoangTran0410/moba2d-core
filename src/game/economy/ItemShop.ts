@@ -9,12 +9,17 @@ import type { QualifiedItem } from '@/content/PackRegistry';
 /**
  * Buying and selling, and the rules about where.
  *
- * ## At your own fountain, and nowhere else
+ * ## At your own fountain — or dead
  *
  * The owner's call, and it is the rule both games this engine's players have
- * played use. It is also the only thing that gives going home a price: without
- * it recall is a movement ability and nothing more, and a player who never
- * leaves the lane is strictly ahead of one who does.
+ * played use, both halves of it. Standing at your own fountain is what gives
+ * going home a price: without it recall is a movement ability and nothing
+ * more, and a player who never leaves the lane is strictly ahead of one who
+ * does. And a death timer is shopping time — death *satisfies* the location
+ * rule rather than adding a refusal on top of it, so a corpse buys and sells
+ * from wherever it fell and respawns already carrying what its gold was for.
+ * The respawn counter is the one stretch a player is guaranteed to be
+ * reading the shop instead of the fight.
  *
  * ## Why `refusalFor` answers with a reason
  *
@@ -58,8 +63,7 @@ export const SELL_REFUND_FRACTION = 0.7;
  * buyer is a bot standing wherever the match has put it — enforced, the
  * feature refuses every purchase for the whole match bar the seconds after a
  * respawn. Everything else is untouched: the gold is real and comes out of
- * that champion's own wallet, the bag is real and can be full, and a corpse
- * still cannot shop.
+ * that champion's own wallet, and the bag is real and can be full.
  *
  * Named for who is asking rather than for what it turns off, because the
  * second shape invites a second flag the day something else needs waiving.
@@ -69,21 +73,21 @@ export const SELL_REFUND_FRACTION = 0.7;
 export type ShopMode = 'PLAYER' | 'CHEAT';
 
 /** Which rule said no. See the header for why this is not a boolean. */
-export type ShopRefusal = 'DEAD' | 'NOT_AT_FOUNTAIN' | 'NO_SLOT' | 'TOO_EXPENSIVE' | 'NOT_LOADED';
+export type ShopRefusal = 'NOT_AT_FOUNTAIN' | 'NO_SLOT' | 'TOO_EXPENSIVE' | 'NOT_LOADED';
 
 /**
- * The same question for a sale. Two of the buy refusals apply unchanged —
- * selling is gated on the fountain for the reason `sellItem` gives, and a
- * corpse trades no more than it shops — plus one that only makes sense here.
+ * The same question for a sale. One buy refusal applies unchanged — selling
+ * is gated on the same at-the-fountain-or-dead rule buying uses, for the
+ * reason `sellItem` gives — plus one that only makes sense here.
  *
  * It exists because there was no way to *ask*. The panel gated its Bán button
- * on "am I at the fountain" alone, which is one of the two rules `sellItem`
- * really applies, so a dead champion's sell button looked enabled and did
- * nothing — the exact "the button says yes and the purchase says no" failure
- * `refusalFor` was written to prevent, reproduced on the other half of the
- * same panel because only one half had a seam to ask.
+ * on "am I at the fountain" alone rather than on what `sellItem` really
+ * applies, so the button and the sale could disagree — the exact "the button
+ * says yes and the purchase says no" failure `refusalFor` was written to
+ * prevent, reproduced on the other half of the same panel because only one
+ * half had a seam to ask.
  */
-export type SellRefusal = 'DEAD' | 'NOT_AT_FOUNTAIN' | 'EMPTY';
+export type SellRefusal = 'NOT_AT_FOUNTAIN' | 'EMPTY';
 
 /**
  * The bits of a `Game` this file reads. Structural rather than `Game` itself,
@@ -223,8 +227,11 @@ export function refusalFor(
   host: ShopHost,
   mode: ShopMode = 'PLAYER'
 ): ShopRefusal | null {
-  if (champion.isDead) return 'DEAD';
-  if (mode === 'PLAYER' && !atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
+  // Dead-or-at-the-fountain — the header's rule. Death satisfies the
+  // location check; it never adds a refusal of its own.
+  if (mode === 'PLAYER' && !champion.isDead && !atOwnFountain(champion, host)) {
+    return 'NOT_AT_FOUNTAIN';
+  }
   // A combine frees its components' slots before it fills one, so a bag
   // holding exactly the six pieces of a build can still finish it. Refusing
   // that was the shop telling a player no at the one moment the inventory was
@@ -356,8 +363,9 @@ export function sellRefusalFor(
   host: ShopHost,
   mode: ShopMode = 'PLAYER'
 ): SellRefusal | null {
-  if (champion.isDead) return 'DEAD';
-  if (mode === 'PLAYER' && !atOwnFountain(champion, host)) return 'NOT_AT_FOUNTAIN';
+  if (mode === 'PLAYER' && !champion.isDead && !atOwnFountain(champion, host)) {
+    return 'NOT_AT_FOUNTAIN';
+  }
   if (!champion.items?.[slot]) return 'EMPTY';
   return null;
 }

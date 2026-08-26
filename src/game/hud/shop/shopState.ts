@@ -60,7 +60,6 @@ const AS_PERCENT = new Set<ItemStatKey>(['critChance', 'critDamage', 'omnivamp']
 
 /** Why the shop said no, in the player's own language. */
 export const REFUSAL_TEXT: Record<ShopRefusal | SellRefusal, string> = {
-  DEAD: 'Đang chết',
   NOT_AT_FOUNTAIN: 'Phải đứng ở bệ đá',
   NO_SLOT: 'Túi đồ đã đầy',
   TOO_EXPENSIVE: 'Không đủ vàng',
