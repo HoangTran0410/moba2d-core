@@ -92,15 +92,3 @@ export const SUGGESTED_PACKS: SuggestedPack[] = [
     icon: 'https://moba2d-packs.github.io/dota/icon.png',
   },
 ];
-
-/**
- * The pack this build installs by itself on a first boot.
- *
- * The same string as `runtimePacks.ts`'s own `DEFAULT_PACK_URL`, and
- * deliberately a second copy of it rather than an import: that module is the
- * one `src/content/` file pinned to the `game` chunk, so reaching it — even
- * for a string literal — would fetch the whole match to draw this shelf.
- * `tests/scenes/packsBootPath.test.ts` imports the real constant (a test file
- * never goes through `manualChunks`) and fails when the two drift apart.
- */
-export const DEFAULT_PACK_URL = SUGGESTED_PACKS[0].manifestUrl;

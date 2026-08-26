@@ -3,10 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { scanImports, stripComments } from '@/seams/importScan';
 import { DEFAULT_PACK_URL } from '@/content/runtimePacks';
-import {
-  DEFAULT_PACK_URL as SUGGESTED_DEFAULT,
-  SUGGESTED_PACKS,
-} from '@/scenes/packs/suggestedPacks';
+import { SUGGESTED_PACKS } from '@/scenes/packs/suggestedPacks';
 
 /**
  * The packs screen is reached from the menu, before any match exists, so
@@ -134,23 +131,26 @@ describe('the packs screen boots without the game', () => {
    * The packs screen cannot statically import `DEFAULT_PACK_URL` from
    * `@/content/runtimePacks` — that is exactly the crossing the case above
    * bans, since reaching that module at all would pin the packs screen to
-   * the `game` chunk. So the URL is duplicated, and nothing at runtime
-   * catches the two drifting apart.
+   * the `game` chunk. So nothing at runtime catches the shelf and the boot
+   * seeder drifting apart, and this does.
    *
-   * The copy lives in `scenes/packs/suggestedPacks.ts` now rather than in
-   * `PacksScene.vue`, because the shelf that renders it is a list a pack can
-   * be appended to. Asserted by importing both modules rather than by
-   * matching a literal out of the source: a *test* file is not bound by the
-   * same constraint — `vite.config.ts`'s `manualChunks` only runs at build
-   * time and Vitest never goes through it — and the old regex would have
-   * gone quiet, passing on a `null` it never got, the moment the declaration
-   * stopped being a bare string.
+   * Asserted by importing both modules rather than by matching a literal out
+   * of the source: a *test* file is not bound by the same constraint —
+   * `vite.config.ts`'s `manualChunks` only runs at build time and Vitest
+   * never goes through it — and the old regex would have gone quiet, passing
+   * on a `null` it never got, the moment the declaration stopped being a bare
+   * string.
    *
-   * Without this cross-check, editing `DEFAULT_PACK_URL` would leave the
-   * shelf's one-press install pointing at a dead pack.
+   * **Membership, not position.** This used to also assert that the seeded
+   * pack was `SUGGESTED_PACKS[0]`, through an exported
+   * `suggestedPacks.DEFAULT_PACK_URL` whose only consumer was this line — so
+   * an export with no runtime reader encoded a rule nobody had asked for, and
+   * appending a pack above the current first entry would have failed a test
+   * with nothing broken. The risk worth catching is the one below: editing
+   * `DEFAULT_PACK_URL` and not the shelf leaves the shelf's one-press install
+   * pointing at a dead pack.
    */
   it('the shelf offers the same default pack the boot path installs', () => {
-    expect(SUGGESTED_DEFAULT).toBe(DEFAULT_PACK_URL);
     expect(
       SUGGESTED_PACKS.some(pack => pack.manifestUrl === DEFAULT_PACK_URL),
       'no entry on the shelf is the pack this build seeds by itself'
