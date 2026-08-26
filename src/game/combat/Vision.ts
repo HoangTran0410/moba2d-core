@@ -77,6 +77,9 @@ export interface Seeable {
   isInsideBush?: boolean;
   alwaysVisible?: boolean;
   visionRadius?: number;
+  /** What this lights for its team — `AttackableUnit`'s getter; see
+   *  `grantedSightRadius` for how it and the stat combine. */
+  fogRevealRadius?: number;
   stats?: { visionRadius?: { value: number }; size?: { value: number } };
   game?: VisionHost;
 }
@@ -143,22 +146,32 @@ export function hasLineOfSight(game: VisionHost | undefined, from: Point, to: Po
 /**
  * How much fog a thing lifts for its team.
  *
- * This is *granted* vision, not eyesight. `Minion`, `Monster` and `Turret` all
- * zero it on purpose — the fog in this game is painted by champions and wards
- * and nothing else — while plainly still being able to see the champion walking
- * past them. So this number decides who counts as a shared eye, and never
- * whether a unit can see for itself.
+ * This is *granted* vision, not eyesight, and it must agree with what the fog
+ * painter paints: the lit screen and the borrowable eyes are the same question
+ * asked twice, and while they drifted apart an enemy standing in an allied
+ * minion's lit circle was on the player's screen and still refused as a
+ * target — visible, unclickable. So the answer is the larger of the two seams:
  *
- * `stats` first and the bare field second, because `AttackableUnit.visionRadius`
- * is the *animated* value: it starts at 0 and is lerped toward the stat inside
- * `draw()`, so a unit that has not been drawn yet — or is off camera, or is in a
- * headless test — reads as blind. `StealthWard_Object` and the other spell-made
- * eyes have no stats and carry the plain field.
+ * - `fogRevealRadius`, the getter `FogOfWar` reads — minions and turrets zero
+ *   `visionRadius` on purpose and light their cheap circle through this
+ *   instead. For a champion it aliases the *animated* `visionRadius` (0 until
+ *   `draw()` has lerped it up), which is why it cannot simply be preferred;
+ * - the stat, then the bare field a spell-made eye (a ward) carries. `stats`
+ *   before the field for the same animated-value reason: a unit that has not
+ *   been drawn yet — off camera, or in a headless test — reads as blind there.
+ *
+ * Whether a unit can see *for itself* is never this number's business.
  */
 function grantedSightRadius(source: Seeable): number {
+  const lit = typeof source.fogRevealRadius === 'number' ? source.fogRevealRadius : 0;
   const fromStats = source.stats?.visionRadius?.value;
-  if (typeof fromStats === 'number') return fromStats;
-  return typeof source.visionRadius === 'number' ? source.visionRadius : 0;
+  const own =
+    typeof fromStats === 'number'
+      ? fromStats
+      : typeof source.visionRadius === 'number'
+        ? source.visionRadius
+        : 0;
+  return Math.max(lit, own);
 }
 
 function grantsSight(candidate: Seeable, teamId: string): boolean {

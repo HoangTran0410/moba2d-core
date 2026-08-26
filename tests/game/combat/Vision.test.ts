@@ -273,6 +273,24 @@ describe('canSee', () => {
     expect(canSee(looker, enemy)).toBe(false);
   });
 
+  it('borrows an allied minion’s lit circle — the screen and the A key must agree', () => {
+    // A minion zeroes `visionRadius` (it cannot target through fog itself)
+    // but lights `fogRevealRadius` for its team, and the fog painter draws
+    // that circle — so an enemy standing in it is on the player's screen.
+    // The borrowed-eye scan used to read only `visionRadius`, so the same
+    // enemy was refused as a target: visible, unclickable, and the A key
+    // walked the player to the click instead of firing.
+    const looker = champion('blue', 0);
+    const enemy = champion('red', 300);
+    const minion = champion('blue', 280);
+    minion.stats.visionRadius.baseValue = 0;
+    Object.defineProperty(minion, 'fogRevealRadius', { value: 320 });
+    indexObjects(game, [looker, enemy, minion]);
+    terrain([{ type: 'wall', vertices: slab(100, -100, 40, 200) }]);
+
+    expect(canSee(looker, enemy)).toBe(true);
+  });
+
   it('always sees a structure, which stays on the map once found', () => {
     const looker = champion('blue', 0);
     const tower = champion('red', 300);
