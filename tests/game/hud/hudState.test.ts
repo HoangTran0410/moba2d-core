@@ -45,11 +45,11 @@ describe('computeHudState', () => {
       isDead: true,
       deathRecap: {
         seq: 3,
-        killerName: 'Ahri',
+        killerName: 'Vera',
         entries: [
-          { atMs: 0, amount: 20, type: 'MAGIC', attackerName: 'Ahri', attackerId: 'a', source: 'Quả Cầu' },
-          { atMs: 1, amount: 15, type: 'MAGIC', attackerName: 'Ahri', attackerId: 'a', source: 'Quả Cầu' },
-          { atMs: 2, amount: 8, type: 'PHYSICAL', attackerName: 'Ahri', attackerId: 'a', source: 'Đánh thường' },
+          { atMs: 0, amount: 20, type: 'MAGIC', attackerName: 'Vera', attackerId: 'a', source: 'Hỏa Cầu' },
+          { atMs: 1, amount: 15, type: 'MAGIC', attackerName: 'Vera', attackerId: 'a', source: 'Hỏa Cầu' },
+          { atMs: 2, amount: 8, type: 'PHYSICAL', attackerName: 'Vera', attackerId: 'a', source: 'Đánh thường' },
           { atMs: 3, amount: 60, type: 'TRUE', attackerName: 'Trụ', attackerId: 't' },
         ],
       },
@@ -57,12 +57,12 @@ describe('computeHudState', () => {
     const state = computeHudState({ player } as any)!;
     const recap = state.deathRecap!;
 
-    expect(recap.killer).toBe('Ahri');
+    expect(recap.killer).toBe('Vera');
     expect(recap.seq).toBe(3);
     expect(recap.total).toBe(103);
-    expect(recap.rows.map(r => r.attacker)).toEqual(['Trụ', 'Ahri']);
+    expect(recap.rows.map(r => r.attacker)).toEqual(['Trụ', 'Vera']);
     const ahri = recap.rows[1];
-    expect(ahri.sources[0]).toMatchObject({ label: 'Quả Cầu', amount: 35, hits: 2, type: 'MAGIC' });
+    expect(ahri.sources[0]).toMatchObject({ label: 'Hỏa Cầu', amount: 35, hits: 2, type: 'MAGIC' });
     // an unnamed hit falls back to its damage type's own label
     expect(recap.rows[0].sources[0].label).toBe('Sát thương chuẩn');
   });

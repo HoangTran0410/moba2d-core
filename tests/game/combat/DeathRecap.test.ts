@@ -27,7 +27,7 @@ describe('the death-recap ledger', () => {
   const duo = () => {
     const victim = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
     const killer = new Champion({ game, position: createVector(100, 0), teamId: 'red' });
-    killer.name = 'Ahri';
+    killer.name = 'Vera';
     game.setPlayer(victim);
     indexObjects(game, [victim, killer]);
     return { victim, killer };
@@ -35,15 +35,15 @@ describe('the death-recap ledger', () => {
 
   it('records the landed hit with who and, when named, what', () => {
     const { victim, killer } = duo();
-    victim.takeDamage(20, killer, 'MAGIC', 'Quả Cầu Ma Thuật');
+    victim.takeDamage(20, killer, 'MAGIC', 'Hỏa Cầu');
     victim.takeDamage(10, killer, 'PHYSICAL');
 
     expect(victim.recentDamageLog).toHaveLength(2);
     expect(victim.recentDamageLog[0]).toMatchObject({
       amount: 20,
       type: 'MAGIC',
-      attackerName: 'Ahri',
-      source: 'Quả Cầu Ma Thuật',
+      attackerName: 'Vera',
+      source: 'Hỏa Cầu',
     });
     expect(victim.recentDamageLog[1].source).toBeUndefined();
   });
@@ -71,12 +71,12 @@ describe('the death-recap ledger', () => {
 
   it('die() publishes the recap — killing blow included — and clears the ledger', () => {
     const { victim, killer } = duo();
-    victim.takeDamage(30, killer, 'MAGIC', 'Quả Cầu Ma Thuật');
+    victim.takeDamage(30, killer, 'MAGIC', 'Hỏa Cầu');
     victim.takeDamage(99_999, killer, 'TRUE');
 
     expect(victim.isDead).toBe(true);
     expect(victim.deathRecap).not.toBeNull();
-    expect(victim.deathRecap!.killerName).toBe('Ahri');
+    expect(victim.deathRecap!.killerName).toBe('Vera');
     expect(victim.deathRecap!.seq).toBe(1);
     const amounts = victim.deathRecap!.entries.map(entry => entry.amount);
     expect(amounts[0]).toBe(30);
