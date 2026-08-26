@@ -286,6 +286,22 @@
   user-select: none;
 }
 
+/* Core's semver, beside the build clock. Separated by a middle dot rather than
+   a space, because `v2026.8.25.19.0 core 1.4.0` is two numbers a reader has to
+   guess the boundary of. No colour: it matters on exactly one day — when a
+   pack refuses to install and names a version — and shouting the rest of the
+   time would make the corner stamp something the eye has to dismiss.
+
+   Like `.menu-version-offline` beside it, this inherits the parent's
+   `pointer-events: none`, so its `title` is documentation for whoever reads
+   the markup rather than a tooltip. Left in for the same reason the sibling
+   has one. */
+.menu-version-core::before {
+  content: '·';
+  margin: 0 0.35rem;
+  opacity: 0.6;
+}
+
 /* The one thing here worth a colour: "this app now opens without a network"
    is the whole point of installing it, and it is otherwise invisible. */
 .menu-version-offline {

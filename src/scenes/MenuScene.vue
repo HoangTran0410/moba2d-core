@@ -172,6 +172,27 @@ const toggleFullscreen = (): void => {
  * player was in a match must still be offered when they come back out.
  */
 const appVersion = __APP_VERSION__;
+
+/**
+ * Core's semver, which is a different question from the build clock above.
+ *
+ * `__APP_VERSION__` answers "which build am I on". This answers "which core",
+ * and it is the number a content pack's `coreRange` is measured against — so
+ * it is the one that decides whether a pack installs.
+ *
+ * It is on screen because of the failure that put it there. An install was
+ * refused with *"pack lol needs core >=1.4.0, this is 1.3.0"* on a machine
+ * whose `package.json` said 1.4.0: a dev server that had been up since before
+ * the bump was still serving the old `define`. There was nowhere in the
+ * running app to see which core it really was, so the only evidence available
+ * was the refusal — and the refusal was the thing in doubt. Now the menu says
+ * it before anyone has to install anything to find out.
+ *
+ * The define, not `packSource`'s `CORE_VERSION` re-export: identical value,
+ * and importing it would pull the pack loader into the menu's chunk for a
+ * string. `versionStamp.test.ts` keeps the two reading the same identifier.
+ */
+const coreVersion = __CORE_VERSION__;
 const updating = ref(false);
 
 const installUpdate = async (): Promise<void> => {
@@ -358,6 +379,16 @@ const updateState = computed(() => {
        on", invisible the rest of the time. -->
   <p id="menu-version" class="menu-version">
     v{{ appVersion }}
+    <!-- Core's own semver, dimmer than the build clock beside it: it matters
+         on exactly one day, when a pack refuses to install and its message
+         names a number this is the only place to check. -->
+    <span
+      id="menu-core-version"
+      class="menu-version-core"
+      title="Phiên bản core, dùng để kiểm tra pack"
+    >
+      core {{ coreVersion }}
+    </span>
     <span v-if="offlineReady" class="menu-version-offline" title="Đã lưu để chơi offline">
       <i class="fas fa-circle-check" aria-hidden="true"></i> offline
     </span>
