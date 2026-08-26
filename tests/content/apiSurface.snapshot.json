@@ -1,5 +1,5 @@
 {
-  "contract": 5,
+  "contract": 6,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
