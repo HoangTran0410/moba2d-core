@@ -52,6 +52,7 @@ import * as Vision from '@/game/combat/Vision';
 import * as ExecuteTargeting from '@/game/combat/ExecuteTargeting';
 import * as AttackTargeting from '@/game/combat/AttackTargeting';
 import * as GlobalShot from '@/game/combat/GlobalShot';
+import { applyOnHitEffects } from '@/game/combat/OnHit';
 import TargetResolver from '@/game/spell/targeting/TargetResolver';
 import {
   PredefinedFilters,
@@ -245,6 +246,14 @@ const COMBAT = Object.freeze({
   GlobalShot,
   TargetResolver,
   PredefinedFilters,
+  /**
+   * The on-hit pipeline's re-application entry, for *propagators* — an item
+   * or passive that applies everyone's on-hit effects again (a phantom hit)
+   * or at a second victim (a side bolt). Always with `echo: true`; the
+   * ordinary payload case never calls this — it just implements `Buff.onHit`.
+   * See `combat/OnHit.ts`'s header for the termination rule.
+   */
+  applyOnHitEffects,
 });
 /**
  * Read the ordering rule off `ObjectManager`'s own header: **more important

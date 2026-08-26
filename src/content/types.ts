@@ -57,6 +57,7 @@ export type {
  * commit that added them rather than repeated here.
  */
 export type { BasicAttackHit } from '@/game/combat/BasicAttack';
+export type { OnHitEvent } from '@/game/combat/OnHit';
 export type { default as BasicAttackController } from '@/game/combat/BasicAttackController';
 export type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 export type { KillCredit } from '@/game/combat/MatchTally';

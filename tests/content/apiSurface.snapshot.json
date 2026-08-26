@@ -1,5 +1,5 @@
 {
-  "contract": 4,
+  "contract": 5,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -91,6 +91,7 @@
     "combat.Vision:object",
     "combat.Vision.canSee:function",
     "combat.Vision.hasLineOfSight:function",
+    "combat.applyOnHitEffects:function",
     "enums:object",
     "enums.ActionState:object",
     "enums.ActionState.CAN_ATTACK:number",
