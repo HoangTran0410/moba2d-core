@@ -8,26 +8,60 @@
 #   git push --no-verify           # skip once, on purpose
 #   MOBA2D_SKIP_VERIFY=1 git push  # same, for scripts
 #
-# Verify refuses to run while a pack is linked (links:check) — that is the same
-# rule commits already follow: `npm run pack:unlink -- --all` first, then push,
-# then re-link.
+# While a pack is linked for development, verify cannot run at all (links:check
+# refuses, and four test files are red under any link by design) — but the link
+# lives in the working tree, not in history, so that alone is no reason to
+# block a push. What must never leave is a *commit* with the link baked in: a
+# committed src/generated/installedPacks.ts naming a dev-linked pack is an
+# import that resolves for nobody else. So: unlinked pushes get the full gate;
+# linked pushes get each outgoing commit checked for exactly that poison, a
+# warning that the test suite did not run, and passage.
 
 [ "$MOBA2D_SKIP_VERIFY" = "1" ] && exit 0
 
 # stdin: one "<local ref> <local sha> <remote ref> <remote sha>" line per ref.
 # A push that only deletes remote refs (local sha all zeros) verifies nothing.
 zero=0000000000000000000000000000000000000000
-updates=0
+pairs=
 while read -r local_ref local_sha remote_ref remote_sha; do
-  [ "$local_sha" = "$zero" ] || updates=1
+  [ "$local_sha" = "$zero" ] && continue
+  pairs="$pairs $local_sha:$remote_sha"
 done
-[ "$updates" = "1" ] || exit 0
+[ -n "$pairs" ] || exit 0
 
-echo "pre-push: running npm run verify (git push --no-verify skips this once)"
-npm run verify && exit 0
+if npm run --silent links:check >/dev/null 2>&1; then
+  # Not linked: the full gate.
+  echo "pre-push: running npm run verify (git push --no-verify skips this once)"
+  npm run verify && exit 0
 
-echo ""
-echo "pre-push: verify FAILED — push blocked."
-echo "  - still linked to a pack? run: npm run pack:unlink -- --all"
-echo "  - skip once on purpose:       git push --no-verify"
-exit 1
+  echo ""
+  echo "pre-push: verify FAILED — push blocked."
+  echo "  skip once on purpose: git push --no-verify"
+  exit 1
+fi
+
+# Linked for development. Check every outgoing commit (just the tip when the
+# remote side is new and there is no range to ask for) for a committed dev
+# link, and let a clean push through.
+for pair in $pairs; do
+  local_sha=${pair%:*}
+  remote_sha=${pair#*:}
+  if [ "$remote_sha" = "$zero" ]; then
+    commits=$local_sha
+  else
+    commits=$(git rev-list "$remote_sha..$local_sha" 2>/dev/null) || commits=$local_sha
+  fi
+  for sha in $commits; do
+    if git show "$sha:src/generated/installedPacks.ts" 2>/dev/null | grep -q 'linked: true'; then
+      echo "pre-push: commit $sha carries src/generated/installedPacks.ts with a dev-linked"
+      echo "  pack in it — that import resolves on no machine but this one. Push blocked."
+      echo "  Fix: npm run pack:unlink -- --all, commit the regenerated file (or amend), re-link."
+      exit 1
+    fi
+  done
+done
+
+echo "pre-push: a pack is linked for development, so the verify suite cannot run —"
+echo "  outgoing commits carry no dev link, letting the push through unverified."
+echo "  For the full gate: npm run pack:unlink -- --all, push again, then re-link."
+exit 0
