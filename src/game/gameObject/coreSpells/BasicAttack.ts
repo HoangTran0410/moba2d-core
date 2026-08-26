@@ -49,6 +49,10 @@ export default class BasicAttack extends Spell {
   coolDown = 1_000 / DEFAULT_CHAMPION_ATTACK.attacksPerSecond;
   manaCost = 0;
 
+  // An attack order is not an ability cast: a spellblade-style "after casting
+  // a spell, your next attack…" must never be armed by the attack itself.
+  countsAsAbilityCast = false;
+
   /** How far from the cursor a press reaches. Override for a per-champion feel. */
   get acquisitionRadius(): number {
     return CURSOR_ACQUISITION_RADIUS;

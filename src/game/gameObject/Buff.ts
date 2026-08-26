@@ -2,6 +2,8 @@ import BuffAddType from '@/game/enums/BuffAddType';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type { GameObjectRuntimeContext } from './GameObject';
 import type AttackableUnit from './attackableUnits/AttackableUnit';
+import type { OnHitEvent } from '@/game/combat/OnHit';
+import type Spell from './Spell';
 
 export type BuffConstructorArgs = [
   duration: number,
@@ -95,6 +97,18 @@ export default class Buff {
   targetUnit: AttackableUnit;
   game: GameObjectRuntimeContext;
 
+  /**
+   * The spell whose *presence* this buff depends on, or null for the default —
+   * a buff that stands on its own once applied (every timed effect).
+   *
+   * Set it on a permanent buff hung by something removable: an item passive's
+   * on-hit or reflect, a kit passive's aura. `Spell.onRemoved` deactivates
+   * every buff on its owner that names it here, which is what makes selling
+   * the item (or swapping the kit) actually take the effect away — before
+   * this existed, a sold Giáp Gai kept its spikes for the rest of the match.
+   */
+  sourceSpell: Spell | null = null;
+
   _deactivateListeners: (() => void)[] = [];
   _created = false;
   _deactivated = false;
@@ -183,6 +197,21 @@ export default class Buff {
    * unit put a reflect behind them and it silently stopped firing.
    */
   onDamageTaken(_swung: number, _landed: number, _attacker?: AttackableUnit): void {}
+
+  /**
+   * Called once per basic attack the *owner of this buff* lands — the on-hit
+   * seam, walked by `combat/OnHit.ts`'s `applyOnHitEffects` from
+   * `landBasicAttack` after the swing's own damage has been applied.
+   *
+   * The effect deals its own damage (`hit.victim.takeDamage(..., 'MAGICAL')`),
+   * heals, refunds — nothing is folded back into the swing, so each payload
+   * carries its own damage type through mitigation. An effect that
+   * *re-applies* on-hits (a phantom hit, a side bolt, a doubling) must mark
+   * what it starts `echo: true` and refuse to act when `hit.echo` is already
+   * true — see `OnHit.ts`'s header for why that pair of rules is what makes
+   * every stack of propagators terminate.
+   */
+  onHit(_hit: OnHitEvent): void {}
 
   /**
    * Damage this buff can still absorb, drawn as a grey overlay on the health

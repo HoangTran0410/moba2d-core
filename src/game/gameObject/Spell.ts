@@ -56,6 +56,22 @@ export default class Spell {
   healthCost = 0;
 
   /**
+   * Whether a completed cast of this spell counts as *using an ability* — the
+   * question a spellblade-style effect ("your next attack after casting a
+   * spell…") asks of the `ON_POST_CAST_SPELL` event it hears.
+   *
+   * True for every ordinary kit spell, which is why the default is here and
+   * not on each of them. Core switches it off for the casts that merely ride
+   * the spell machinery without being abilities: the basic attack
+   * (`coreSpells/BasicAttack` — every attack order would otherwise arm the
+   * empowerment it is supposed to consume), Hồi Thành (`preset.ts`), and a
+   * held item's own passive and active (`ItemShop.buildHeldItem` — an item
+   * passive is *pressed* once per life to arm it, and an item triggering
+   * itself is not what anyone means by "after casting a spell").
+   */
+  countsAsAbilityCast = true;
+
+  /**
    * What this ability *does*, for the bot brain — see `src/game/ai/SpellRole.ts`.
    * Optional on purpose: an untagged spell is classified from its `castSpec`,
    * so tagging is an improvement a champion can opt into, never a gate on
@@ -341,16 +357,29 @@ export default class Spell {
     return false;
   }
 
-  // Notes: Deactivate is never called as spell removal hasn't been added yet.
   deactivate(): void {
     this.runtime.cancel('SCENE_EXIT');
     this.resetCoolDown();
     this.spellVfx?.dispose();
   }
 
+  /**
+   * The spell is leaving its owner for good — an item sold, a kit swapped.
+   *
+   * Any permanent buff that declared this spell as its `sourceSpell` goes
+   * with it. That is the other half of the item-passive contract: the passive
+   * hangs a duration-0 buff once per life (`Champion.armPassives`), and
+   * without this sweep the buff outlived the sale — a sold Giáp Gai kept
+   * reflecting for the rest of the match. Over a copy, because
+   * `deactivateBuff` calls out to listeners that must not mutate the list
+   * under the walk.
+   */
   onRemoved(): void {
     this.runtime.cancel('SCENE_EXIT');
     this.spellVfx?.dispose();
+    for (const buff of [...(this.owner?.buffs ?? [])]) {
+      if (buff.sourceSpell === this) buff.deactivateBuff();
+    }
   }
 
   resetCoolDown(): void {

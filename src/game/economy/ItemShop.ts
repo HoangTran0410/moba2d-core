@@ -265,8 +265,16 @@ export function buildHeldItem(champion: Champion, def: QualifiedItem): HeldItem 
   const classes = resolveSpellClasses(def);
   if (!classes) return null;
 
-  const build = (SpellClass: unknown): Spell | null =>
-    SpellClass ? new (SpellClass as new (owner: Champion) => Spell)(champion) : null;
+  const build = (SpellClass: unknown): Spell | null => {
+    if (!SpellClass) return null;
+    const spell = new (SpellClass as new (owner: Champion) => Spell)(champion);
+    // An item's own casts are not ability casts: the passive is pressed once
+    // per life just to arm it, and an active triggering a spellblade-style
+    // "after casting a spell" empowerment would let one item power another —
+    // see `Spell.countsAsAbilityCast`.
+    spell.countsAsAbilityCast = false;
+    return spell;
+  };
 
   return new HeldItem(def, build(classes.passive), build(classes.active), iconOf(def));
 }

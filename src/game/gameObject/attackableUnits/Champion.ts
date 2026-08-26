@@ -372,6 +372,8 @@ export default class Champion extends AttackableUnit {
     if (this.passive?.constructor === PassiveClass) return;
     this.removeSpell(this.passive ?? undefined);
     this.passive = PassiveClass ? new PassiveClass(this) : null;
+    // Arming a passive is not casting a spell — see `Spell.countsAsAbilityCast`.
+    if (this.passive) this.passive.countsAsAbilityCast = false;
     // Nothing to clear from `_armedPassives`: it is keyed by instance, and the
     // outgoing instance is gone. The incoming one has never been armed, so the
     // next frame arms it.

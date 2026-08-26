@@ -1,4 +1,5 @@
 import EventType from '@/game/enums/EventType';
+import { applyOnHitEffects } from '@/game/combat/OnHit';
 import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
@@ -92,6 +93,12 @@ export function landBasicAttack(
   // line is what makes armour mean anything at all.
   victim.takeDamage(total, attacker, 'PHYSICAL');
   if (crit) showCritSpark(attacker, victim);
+  // After the swing's own damage, before the observation event: an on-hit
+  // effect is part of the attack (League's order too), so anything watching
+  // ON_ATTACK_HIT sees the world with the whole attack already applied. Each
+  // effect deals its own separately-typed damage — nothing here re-enters the
+  // physical hit above. See `combat/OnHit.ts`.
+  applyOnHitEffects({ attacker, victim, damage: total, ranged, crit, echo: false });
   attacker.game?.eventManager?.emit(EventType.ON_ATTACK_HIT, {
     attacker,
     victim,

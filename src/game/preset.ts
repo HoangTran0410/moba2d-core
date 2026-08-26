@@ -92,6 +92,8 @@ export type { SpellClass };
  */
 export const attachRecall = <T extends Champion>(champion: T): T => {
   champion.recall = new RecallClass(champion);
+  // Going home is not casting a spell — see `Spell.countsAsAbilityCast`.
+  champion.recall.countsAsAbilityCast = false;
   return champion;
 };
 

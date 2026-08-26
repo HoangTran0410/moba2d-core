@@ -47,7 +47,7 @@
  */
 const PINNED_MANA_LINES = new Set([
   'AttackableUnit.ts:546:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
-  'Champion.ts:644:let mana = this.stats.mana.value;',
+  'Champion.ts:646:let mana = this.stats.mana.value;',
 ]);
 
 /**
