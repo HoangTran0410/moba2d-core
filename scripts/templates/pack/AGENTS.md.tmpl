@@ -172,6 +172,13 @@ Vitest's failure printer walks the test game object and trips its throwing
 failure is the assertion above it — read the whole message before touching
 the fixture.
 
+**A gitignored lockfile still pins.** `package-lock.json` is untracked but
+real on disk: `npm install` resolves `@moba2d/core`'s git dependency to
+whatever commit the *local* lockfile recorded, however old. To actually pick
+up core's current `#main`, run `npm update @moba2d/core`. CI never has the
+lockfile, so it resolves fresh every run — the drift only ever shows up
+locally.
+
 **`npm install` (and any `bun install`) stomps a dev link.** While this pack
 is linked to a local core checkout (`npm run pack:link` from core), an install
 here silently replaces the symlink with the registry copy and every new-API
