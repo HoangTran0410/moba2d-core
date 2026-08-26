@@ -18,11 +18,23 @@ import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUni
  */
 
 /**
- * Projectile speed in world units per second. A champion is 55 units across and
- * walks 180 units/sec; minion bolts fly at 360 and read well at that scale, so a
- * champion bolt sits just above them and still crosses its own attack range in
- * well over half a second. Spell missiles move 780-1200 — a basic attack must
- * never be mistaken for one of those.
+ * The *fallback* projectile speed in world units per second — what a ranged
+ * unit with no tuning of its own fires at (a monster, a structure without a
+ * turret class). A champion never uses this: `Champion.applyAttackTuning`
+ * always sets `attackBoltUnitsPerSecond`, defaulting to
+ * `DEFAULT_CHAMPION_ATTACK`'s 1000 and tuned per champion by the pack
+ * (~500-1900, the source game's own per-champion missile speeds at half
+ * scale — a buckshot near-hitscan and an enchanter's lob are different
+ * weapons and read as such).
+ *
+ * 420 used to be every champion's speed too, chosen only to sit above the
+ * minions' 360 — 2.3× the champion's own 180 units/s walk, against the 5-11×
+ * the genre tunes autos to, and every ranged auto read as a lob. Champion
+ * bolts now overlap the 780-1200 band spell missiles fly in; what keeps a
+ * basic attack from being mistaken for a skillshot is not the speed band any
+ * more but what it always really was — a bolt is small, homes on its victim
+ * and cannot be sidestepped, where a skillshot is bigger, flies a straight
+ * line and misses.
  */
 export const RANGED_BOLT_UNITS_PER_SECOND = 420;
 /** The engine steps missiles once per frame at 60fps. */

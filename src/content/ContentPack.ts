@@ -264,6 +264,15 @@ export interface ChampionAttack {
   damage: number;
   attacksPerSecond: number;
   range: number;
+  /**
+   * World units per second the basic-attack bolt flies, for a ranged
+   * champion (`range` above the melee threshold). Absent, core's
+   * `DEFAULT_CHAMPION_ATTACK` speed applies. This is where a pack gives its
+   * marksmen the near-hitscan crack and its enchanters the slow lob the
+   * source game tunes per champion — see `DEFAULT_CHAMPION_ATTACK`'s own
+   * doc comment for the scale this number lives on.
+   */
+  boltUnitsPerSecond?: number;
 }
 
 /**

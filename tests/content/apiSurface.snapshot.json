@@ -219,6 +219,7 @@
     "units.Champion:class",
     "units.DEFAULT_CHAMPION_ATTACK:object",
     "units.DEFAULT_CHAMPION_ATTACK.attacksPerSecond:number",
+    "units.DEFAULT_CHAMPION_ATTACK.boltUnitsPerSecond:number",
     "units.DEFAULT_CHAMPION_ATTACK.damage:number",
     "units.DEFAULT_CHAMPION_ATTACK.range:number",
     "units.MAX_UNIT_SIZE:number",

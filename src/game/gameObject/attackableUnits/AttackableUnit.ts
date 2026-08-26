@@ -159,6 +159,15 @@ export default class AttackableUnit extends GameObject {
    */
   isImmovable = false;
 
+  /**
+   * World units per second this unit's basic-attack bolt flies, when it is a
+   * ranged unit. Undefined means `BasicAttackController.launch` falls back to
+   * `RANGED_BOLT_UNITS_PER_SECOND` — the slow default a monster or a turretless
+   * structure keeps. Champions always set it (`applyAttackTuning`), which is
+   * where a pack's per-champion missile speeds land.
+   */
+  attackBoltUnitsPerSecond?: number;
+
   /** Frames left in which body separation skips this unit. See markDisplaced(). */
   _separationGrace = 0;
 

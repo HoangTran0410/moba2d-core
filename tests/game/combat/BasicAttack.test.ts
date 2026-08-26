@@ -346,6 +346,37 @@ describe('basic attacks', () => {
 
   // ------------------------------------------------------- ranged delivery
 
+  it("fires at the tuning's own missile speed, which is how a pack tells a buckshot from a lob", () => {
+    const game = createGame();
+    const attacker = champion(game, 0, {
+      damage: 10,
+      attacksPerSecond: 1,
+      range: 300,
+      boltUnitsPerSecond: 1900,
+    });
+    const target = champion(game, 250);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+
+    const bolt = pending(game)[0];
+    if (!(bolt instanceof BasicAttackBolt)) throw new Error('expected a bolt');
+    expect(bolt.speed).toBe(1900 / 60);
+  });
+
+  it('a ranged unit with no tuning of its own keeps the slow shared fallback', () => {
+    const game = createGame();
+    const attacker = champion(game, 0);
+    // the monster case: the field a champion always carries, absent
+    attacker.attackBoltUnitsPerSecond = undefined;
+    const target = champion(game, 200);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+
+    const bolt = pending(game)[0];
+    if (!(bolt instanceof BasicAttackBolt)) throw new Error('expected a bolt');
+    expect(bolt.speed).toBe(RANGED_BOLT_SPEED);
+  });
+
   it('damages a ranged target on arrival and not before', () => {
     const game = createGame();
     const attacker = champion(game, 0);
@@ -355,7 +386,10 @@ describe('basic attacks', () => {
 
     const bolt = pending(game)[0];
     if (!(bolt instanceof BasicAttackBolt)) throw new Error('expected a bolt');
-    expect(bolt.speed).toBe(RANGED_BOLT_SPEED);
+    // A champion always carries a missile speed of its own (the tuning's, or
+    // DEFAULT_CHAMPION_ATTACK's 1000) — never the slow 420 fallback a monster
+    // gets, which is what this used to pin.
+    expect(bolt.speed).toBe(DEFAULT_CHAMPION_ATTACK.boltUnitsPerSecond! / 60);
     expect(bolt.maxHitCount).toBe(0);
 
     for (let frame = 0; frame < 10; frame++) bolt.update();

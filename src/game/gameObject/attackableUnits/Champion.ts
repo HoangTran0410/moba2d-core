@@ -33,6 +33,12 @@ export interface ChampionAttackTuning {
   attacksPerSecond: number;
   /** Surface-to-surface reach. Above MELEE_RANGE_THRESHOLD this fires a bolt. */
   range: number;
+  /**
+   * World units per second the bolt flies, ranged champions only. Optional —
+   * absent, `DEFAULT_CHAMPION_ATTACK.boltUnitsPerSecond` applies — so a pack
+   * tunes only the champions whose delivery is part of their identity.
+   */
+  boltUnitsPerSecond?: number;
 }
 
 /**
@@ -51,11 +57,22 @@ export interface ChampionAttackTuning {
  *
  * The range is 300, comfortably inside the 500 sight radius (so you can attack
  * what you can see and the leash never fires first) and below a turret's 430.
+ *
+ * The bolt flies at 1000 units/s — the source game's median ranged missile
+ * (~2000 units/s) at this canvas's half scale, crossing the 300 reach in
+ * 0.3s. It used to be 420, a leftover from when the only requirement was
+ * "faster than a minion's 360": relative to the champion's own 180 units/s
+ * walk that was 2.3×, against the 5-11× the genre trains people on, and every
+ * ranged auto read as a lob. A pack tunes it per champion through
+ * `boltUnitsPerSecond` (a buckshot marksman near-hitscan, an enchanter's slow
+ * arc), which is how the source game does it too — per champion, roughly
+ * 1000-3800 there, so ~500-1900 here.
  */
 export const DEFAULT_CHAMPION_ATTACK: ChampionAttackTuning = {
   damage: 14,
   attacksPerSecond: 1.1,
   range: 300,
+  boltUnitsPerSecond: 1000,
 };
 
 export interface ChampionPresetData {
@@ -383,6 +400,10 @@ export default class Champion extends AttackableUnit {
     this.stats.attackDamage.baseValue = attack.damage;
     this.stats.attackSpeed.baseValue = attack.attacksPerSecond;
     this.stats.attackRange.baseValue = attack.range;
+    // A plain field, not a stat: nothing in the game modifies missile speed,
+    // and `BasicAttackController.launch` reads it once per bolt.
+    this.attackBoltUnitsPerSecond =
+      attack.boltUnitsPerSecond ?? DEFAULT_CHAMPION_ATTACK.boltUnitsPerSecond;
   }
 
   update() {

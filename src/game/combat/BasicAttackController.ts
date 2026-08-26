@@ -2,7 +2,13 @@ import { hasFlag } from '@/utils/index';
 import ActionState from '@/game/enums/ActionState';
 import EventType from '@/game/enums/EventType';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
-import { BasicAttackBolt, BasicAttackSwing, MELEE_RANGE_THRESHOLD, canBeHit } from './BasicAttack';
+import {
+  BasicAttackBolt,
+  BasicAttackSwing,
+  MELEE_RANGE_THRESHOLD,
+  RANGED_BOLT_UNITS_PER_SECOND,
+  canBeHit,
+} from './BasicAttack';
 
 /**
  * Why an attack order stopped. Surfaced so callers (the AI, later an order
@@ -190,6 +196,9 @@ export default class BasicAttackController {
       const bolt = new BasicAttackBolt(this.owner);
       bolt.target = target;
       bolt.damage = damage;
+      // The unit's own missile speed — the per-champion tuning a pack ships —
+      // over the slow shared default for anything that declares none.
+      bolt.speed = (this.owner.attackBoltUnitsPerSecond ?? RANGED_BOLT_UNITS_PER_SECOND) / 60;
       bolt.position.set(this.owner.position.x, this.owner.position.y);
       bolt.destination.set(target.position.x, target.position.y);
       this.owner.game.objectManager.addObject?.(bolt);

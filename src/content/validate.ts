@@ -160,6 +160,17 @@ function checkChampions(pack: Record<string, unknown>, errors: string[]): void {
             errors.push(`champions.${entry.id}.attack.${field}: must be a finite number`);
           }
         }
+        // Optional, but not free-form: a zero or negative missile speed is a
+        // bolt that never arrives, which plays as an attack that silently
+        // deals no damage.
+        if (
+          entry.attack.boltUnitsPerSecond !== undefined &&
+          (!isFiniteNumber(entry.attack.boltUnitsPerSecond) || entry.attack.boltUnitsPerSecond <= 0)
+        ) {
+          errors.push(
+            `champions.${entry.id}.attack.boltUnitsPerSecond: must be a positive finite number`
+          );
+        }
       }
     }
     if (!Array.isArray(entry.spells)) {
