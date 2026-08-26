@@ -357,40 +357,95 @@ describe('the recall button', () => {
 describe('the item buttons', () => {
   const VIEWPORTS = [PHONE, { width: 667, height: 375 }, { width: 932, height: 430 }];
 
-  it('lays out one position per inventory slot, filling left to right then down', () => {
+  it('lays out one position per inventory slot, nearest the thumb first', () => {
     // Two columns of three: the desktop grid turned on its side, because the
     // strip beside the ability fan is ~115px wide on a 667x375 phone and three
-    // thumb-sized columns do not fit in it. The *reading order* is the
-    // desktop's, so the two layouts disagree about shape and agree about which
-    // circle is which.
+    // thumb-sized columns do not fit in it.
     const items = computeTouchLayout(PHONE, SLOTS).items;
 
     expect(items).toHaveLength(6);
     expect(items.map(button => button.slot)).toEqual([0, 1, 2, 3, 4, 5]);
 
-    for (const [left, right] of [
-      [0, 1],
-      [2, 3],
-      [4, 5],
-    ]) {
-      expect(items[right].x, `slot ${right} is not right of slot ${left}`).toBeGreaterThan(
-        items[left].x
-      );
-      expect(items[right].y, `slot ${right} is not level with slot ${left}`).toBeCloseTo(
-        items[left].y,
-        6
-      );
-    }
-    for (const [top, bottom] of [
+    // Bottom row first, then up. A player with two active items paints the
+    // bottom row and nothing else.
+    for (const [near, far] of [
       [0, 2],
       [2, 4],
       [1, 3],
       [3, 5],
     ]) {
-      expect(items[bottom].y, `slot ${bottom} is not below slot ${top}`).toBeGreaterThan(
-        items[top].y
+      expect(items[far].y, `slot ${far} is not above slot ${near}`).toBeLessThan(items[near].y);
+      expect(items[far].x).toBeCloseTo(items[near].x, 6);
+    }
+    // And within a row, the lower slot is the one closer to the fan.
+    for (const [near, far] of [
+      [0, 1],
+      [2, 3],
+      [4, 5],
+    ]) {
+      expect(items[far].x, `slot ${far} is not left of slot ${near}`).toBeLessThan(items[near].x);
+      expect(items[far].y, `slot ${far} is not level with slot ${near}`).toBeCloseTo(
+        items[near].y,
+        6
       );
-      expect(items[bottom].x).toBeCloseTo(items[top].x, 6);
+    }
+  });
+
+  /**
+   * The rule the reordering exists to make true, stated as the thing a player
+   * can actually feel: **a lower slot is never further from the attack button
+   * than a higher one.**
+   *
+   * Reported from a real phone. The grid reserves six positions whether or not
+   * anything is in them — it has to, or buying an item would move every button
+   * under the thumb — and it used to fill from the *far corner*, so the common
+   * case of owning one active item drew a single circle at the point furthest
+   * from every other control: 270px left of the attack button and 136px up a
+   * 390px-tall screen, floating alone in the middle of the view. The
+   * reservation is the same size; which end it fills from was free.
+   *
+   * It also gives the bag's drag-to-rearrange a point on a phone: moving an
+   * active into slot 0 moves its button to the thumb.
+   */
+  it('puts slot 0 on the near corner of the reservation and slot 5 on the far one', () => {
+    // Stated as corners rather than as distances on purpose. A first draft
+    // asserted that reach grows monotonically with the slot number, and no 2x3
+    // grid can deliver that — the fan's centre sits between two rows, so the
+    // middle-right circle is a pixel nearer the attack button than the
+    // bottom-right one. What is true, and is the whole design, is which corner
+    // each end of the reservation occupies.
+    for (const viewport of VIEWPORTS) {
+      const items = computeTouchLayout(viewport, SLOTS).items;
+      const right = Math.max(...items.map(item => item.x));
+      const left = Math.min(...items.map(item => item.x));
+      const bottom = Math.max(...items.map(item => item.y));
+      const top = Math.min(...items.map(item => item.y));
+      const where = `${viewport.width}x${viewport.height}`;
+
+      expect(items[0].x, `${where}: slot 0 is not in the column nearest the fan`).toBeCloseTo(
+        right,
+        6
+      );
+      expect(items[0].y, `${where}: slot 0 is not on the bottom edge`).toBeCloseTo(bottom, 6);
+      expect(items[5].x, `${where}: slot 5 is not in the far column`).toBeCloseTo(left, 6);
+      expect(items[5].y, `${where}: slot 5 is not on the top row`).toBeCloseTo(top, 6);
+    }
+  });
+
+  it('keeps the nearest slots on the bottom edge, where they cover least', () => {
+    // The other half of the complaint: three rows of reserved circles is a
+    // third of a landscape phone's height. Only the bottom row is painted for
+    // a player with one or two actives, so it is the row that has to be the
+    // one hugging the edge.
+    for (const viewport of VIEWPORTS) {
+      const layout = computeTouchLayout(viewport, SLOTS);
+      const lowest = Math.max(...layout.items.map(item => item.y));
+      for (const slot of [0, 1]) {
+        expect(
+          layout.items[slot].y,
+          `${viewport.width}x${viewport.height}: slot ${slot} is not on the bottom row`
+        ).toBeCloseTo(lowest, 6);
+      }
     }
   });
 

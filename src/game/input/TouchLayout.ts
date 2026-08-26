@@ -224,9 +224,24 @@ export function computeTouchLayout(viewport: TouchViewport, slotCount: number): 
    * the stick's band, where a finger reaching for it steers the champion
    * instead of casting. Two columns need 4.5 and fit on both.
    *
-   * The reading order is still the desktop's — slot 0 top-left, filling left
-   * to right then down — so the two layouts disagree about shape and agree
-   * about which circle is which.
+   * **Slot 0 is the corner nearest the thumb**, and the grid fills bottom row
+   * first, right to left, growing up and away. That is the opposite of the
+   * desktop grid's reading order, and the reversal is the whole point:
+   * position and slot number are invisible to each other on a phone — there
+   * are no hotkey labels out here — so the only thing the ordering can encode
+   * is *reach*.
+   *
+   * Reported from a real phone, and the fix is free. The six positions are
+   * reserved whether or not anything is in them, because a row that grew as
+   * items were bought would move every button under the thumb between one
+   * fight and the next. But filling from the far corner meant the common case
+   * — one active item — drew a single circle at the point furthest from every
+   * other control: 270px left of the attack button and 136px up a 390px-tall
+   * screen, alone in the middle of the view. Same reservation, same size; only
+   * which end it fills from changed.
+   *
+   * It is also what gives the bag's drag-to-rearrange a purpose on a phone:
+   * dragging an active into slot 0 moves its button to the thumb.
    */
   const itemRadius = clamp(unit * 0.05, 18, 26);
   const itemGap = itemRadius * 0.5;
@@ -243,10 +258,14 @@ export function computeTouchLayout(viewport: TouchViewport, slotCount: number): 
   const bottomRowY = viewport.height - margin - itemRadius;
   const items: TouchButton[] = [];
   for (let slot = 0; slot < ITEM_SLOT_COUNT; slot++) {
+    // Both axes count *outward from the near corner*, so slot 0 lands on the
+    // bottom-right of the grid — the circle closest to the ability fan — and
+    // slot 5 on the top-left. See the comment above for why that is the
+    // ordering rather than the desktop's.
     const column = slot % itemColumns;
     const row = Math.floor(slot / itemColumns);
-    const x = rightColumnX - (itemColumns - 1 - column) * itemStep;
-    const y = bottomRowY - (itemRows - 1 - row) * itemStep;
+    const x = rightColumnX - column * itemStep;
+    const y = bottomRowY - row * itemStep;
     items.push({
       slot,
       x: clamp(x, itemRadius + 2, viewport.width - itemRadius - 2),
