@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SpellForm } from '../../../src/game/spell/runtime/CancelPolicy';
 import StatusFlags from '../../../src/game/enums/StatusFlags';
 import Spell from '../../../src/game/gameObject/Spell';
 import Stats from '../../../src/game/gameObject/Stats';
@@ -38,6 +39,9 @@ class RuntimeSpell extends Spell {
       activation: 'PRESS',
       targeting: 'SELF',
       castTimeMs: 100,
+      // CHANNELED: these pins exercise the MOVE/DISPLACEMENT routing, and the
+      // default HELD no longer accepts either — a cast is not a self-root.
+      interrupts: SpellForm.CHANNELED,
       resource: { commitAt: 'start', refundOn: ['STUN'] },
       cooldown: { startAt: 'end', durationMs: 500 },
     };

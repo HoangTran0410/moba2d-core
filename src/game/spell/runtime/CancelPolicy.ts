@@ -31,18 +31,28 @@ export const isInterruptibleState = (state: SpellRuntimeState): boolean =>
   INTERRUPTIBLE_STATES.includes(state);
 
 /**
- * The four shapes a live spell can have. Each is a complete interrupt table, so
+ * The shapes a live spell can have. Each is a complete interrupt table, so
  * a spell states one name instead of switching flags on and off and leaving the
  * reader to work out what it meant.
  *
- * - `HELD` — the champion is performing it right now, so everything that takes
- *   control of him away takes the spell with it. The default, and correct for
- *   every cast time, every channel and every instant press.
- * - `AIMED` — held, but walking is part of the gesture: a drawn bow tracks the
- *   cursor while the champion strafes. Crowd control still takes it.
- * - `TETHERED` — the effect stands in the world but stays bound to the caster,
- *   who may walk and be shoved around without ending it. Losing control of
- *   himself still ends it, because he is still paying for it.
+ * - `HELD` — the champion is performing it right now, so what takes *him* out
+ *   takes the spell: death, stun-class control, silence. His own feet do not —
+ *   walking, kiting, even Flashing mid-charge carries the cast along. The
+ *   default. It used to cancel on `move` and `displacement` as well, which
+ *   made every cast time a self-root and every blink combo a cancel: a
+ *   champion charging a sweep lost it to the Flash that is the whole point of
+ *   charging it, and a move order queued during a 300ms cast deleted the
+ *   cast. The source game draws the line the other way — your own movement
+ *   never drops what you are holding; only a true channel is that fragile —
+ *   and a game played by thumb on a joystick cannot afford the old line at
+ *   all: holding the stick is *always* a standing move order.
+ * - `AIMED`, `TETHERED` — kept as the intent a spell's source states (a drawn
+ *   bow tracked while strafing; an effect standing in the world, bound to its
+ *   caster) but the table is `HELD`'s: the distinctions they drew were
+ *   degrees of movement-fragility that no longer exist.
+ * - `CHANNELED` — the one movement-fragile form left. A channel is a promise
+ *   to stand still, so the caster's own move order ends it and so does being
+ *   shoved. Hồi Thành, and every channel bar.
  * - `INDEPENDENT` — the effect is out of his hands and running on its own
  *   clock. Only his death reaches it. This is the summoned-object case, and
  *   also the self-effect case: a roll already has its momentum.
@@ -52,9 +62,10 @@ export const isInterruptibleState = (state: SpellRuntimeState): boolean =>
  * objects glued to a body.
  */
 export const SpellForm = {
-  HELD: { death: true, stun: true, silence: true, displacement: true, move: true },
-  AIMED: { death: true, stun: true, silence: true, displacement: true, move: false },
+  HELD: { death: true, stun: true, silence: true, displacement: false, move: false },
+  AIMED: { death: true, stun: true, silence: true, displacement: false, move: false },
   TETHERED: { death: true, stun: true, silence: true, displacement: false, move: false },
+  CHANNELED: { death: true, stun: true, silence: true, displacement: true, move: true },
   INDEPENDENT: { death: true, stun: false, silence: false, displacement: false, move: false },
 } as const satisfies Record<string, InterruptPolicy>;
 

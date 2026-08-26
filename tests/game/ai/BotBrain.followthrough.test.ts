@@ -78,7 +78,13 @@ const makeCastingSpell = (): SpellStub => {
     manaCost = 10;
     declaredRange: number | undefined = 500;
     state = 'CASTING';
-    castSpec = { activation: 'PRESS' as const, targeting: 'DIRECTION' as const, castTimeMs: 500 };
+    castSpec = {
+      activation: 'PRESS' as const,
+      targeting: 'DIRECTION' as const,
+      castTimeMs: 500,
+      // the movement-fragile form: only a channel still pins a bot's feet
+      interrupts: { move: true, displacement: true },
+    };
     press = vi.fn(() => true);
     hold = vi.fn();
     release = vi.fn();
@@ -163,7 +169,7 @@ describe('a bot does not walk out of its own cast', () => {
   beforeEach(() => stubGameGlobals());
   afterEach(() => vi.unstubAllGlobals());
 
-  it('issues no move order while a cast that moving would cancel is in flight', () => {
+  it('issues no move order while a channel that moving would cancel is in flight', () => {
     const { bot, brain } = setup();
     bot._autoCast = false;
     bot.spells = [null, makeCastingSpell()] as unknown as Spell[];
@@ -172,6 +178,23 @@ describe('a bot does not walk out of its own cast', () => {
     run(brain, 2_000);
 
     expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it('walks freely through a held cast — the default form no longer breaks on a step', () => {
+    const { bot, brain } = setup();
+    bot._autoCast = false;
+    const spell = makeCastingSpell();
+    (spell as unknown as { castSpec: { interrupts?: unknown } }).castSpec = {
+      activation: 'PRESS' as const,
+      targeting: 'DIRECTION' as const,
+      castTimeMs: 500,
+    };
+    bot.spells = [null, spell] as unknown as Spell[];
+    const navigateTo = vi.spyOn(bot, 'navigateTo');
+
+    run(brain, 2_000);
+
+    expect(navigateTo).toHaveBeenCalled();
   });
 
   it('still drives normally once nothing is mid-cast', () => {

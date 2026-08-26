@@ -89,19 +89,37 @@ const specFor = (form: SpellFormName, overrides: Partial<CastSpec> = {}): CastSp
 });
 
 describe('cancel policy: the forms', () => {
-  it('gives every form a table no other form has', () => {
+  it('holds three distinct tables: held, channeled, independent', () => {
+    // HELD, AIMED and TETHERED converged on purpose — the distinctions they
+    // drew were degrees of movement-fragility that no longer exist (a cast is
+    // not a self-root; a blink mid-charge is a combo, not a cancel). The
+    // names stay because a spell stating TETHERED still says what it *is*.
+    expect(SpellForm.AIMED).toEqual(SpellForm.HELD);
+    expect(SpellForm.TETHERED).toEqual(SpellForm.HELD);
     const tables = SPELL_FORM_NAMES.map(name => JSON.stringify(SpellForm[name]));
-
-    expect(new Set(tables).size).toBe(SPELL_FORM_NAMES.length);
+    expect(new Set(tables).size).toBe(3);
   });
 
-  it('names every form back from its own table', () => {
-    for (const name of SPELL_FORM_NAMES) {
-      expect(spellFormNameOf(SpellForm[name])).toBe(name);
-    }
+  it('never lets the caster’s own feet end a held spell', () => {
+    expect(SpellForm.HELD.move).toBe(false);
+    expect(SpellForm.HELD.displacement).toBe(false);
   });
 
-  it('treats an omitted table as HELD, the strictest form', () => {
+  it('keeps a channel fragile: a move order or a shove ends it', () => {
+    expect(SpellForm.CHANNELED.move).toBe(true);
+    expect(SpellForm.CHANNELED.displacement).toBe(true);
+    expect(SpellForm.CHANNELED.stun).toBe(true);
+  });
+
+  it('names the distinct tables back, and the synonyms as HELD', () => {
+    expect(spellFormNameOf(SpellForm.HELD)).toBe('HELD');
+    expect(spellFormNameOf(SpellForm.CHANNELED)).toBe('CHANNELED');
+    expect(spellFormNameOf(SpellForm.INDEPENDENT)).toBe('INDEPENDENT');
+    expect(spellFormNameOf(SpellForm.AIMED)).toBe('HELD');
+    expect(spellFormNameOf(SpellForm.TETHERED)).toBe('HELD');
+  });
+
+  it('treats an omitted table as HELD, the default form', () => {
     expect(resolveInterrupts(undefined)).toEqual(SpellForm.HELD);
     expect(spellFormNameOf(undefined)).toBe('HELD');
   });

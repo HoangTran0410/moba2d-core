@@ -71,9 +71,11 @@ export function makeRecallCastBar(api: ContentApi) {
  * not pickable in the setup screen — it lives on `Champion.recall` and is bound
  * to `B`. Everyone can go home; nobody chooses to.
  *
- * `SpellForm.HELD` (the default `interrupts`) is the whole tension of it:
- * moving or being crowd-controlled ends the trip. Taking damage ends it too,
- * which no form covers — see `onUpdate`.
+ * `SpellForm.CHANNELED` is the whole tension of it: moving or being
+ * crowd-controlled ends the trip. (The default `HELD` no longer breaks on the
+ * caster's own movement — a channel is the one form that still does, and this
+ * is the channel it exists for.) Taking damage ends it too, which no form
+ * covers — see `onUpdate`.
  *
  * **Who builds one, now**: not `Champion` — it only holds `recall: Spell |
  * null` and never constructs one itself. `preset.ts`'s `attachRecall`
@@ -117,6 +119,7 @@ function __buildRecall(api: ContentApi) {
         activation: 'PRESS',
         targeting: 'SELF',
         channel: { durationMs: RECALL_CHANNEL_MS, tickEveryMs: RECALL_TICK_MS },
+        interrupts: api.enums.SpellForm.CHANNELED,
         resource: { commitAt: 'start', refundOn: [] },
         cooldown: { startAt: 'end', durationMs: this.coolDown },
         vfx: {

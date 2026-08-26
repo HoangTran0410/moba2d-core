@@ -1610,11 +1610,14 @@ export class BotBrain {
    * Whether a fresh move order would cancel one of this bot's own casts.
    *
    * `drive()` re-issues `navigateTo` every think tick and `navigateTo` bumps
-   * `movementRevision`, which `CancelPolicy` reads as `'MOVE'` — cancelled by the
-   * default `SpellForm.HELD`. The think interval is 250ms, so every ability with
-   * a cast time at or above it died mid-cast, ten of them on the shipped roster:
-   * one ultimate at 1000ms down to another ability at 250. Following an existing route is
-   * fine and stays allowed — only a *new* order bumps the counter.
+   * `movementRevision`, which `CancelPolicy` reads as `'MOVE'`. The default
+   * `SpellForm.HELD` no longer accepts that reason — a cast is not a self-root
+   * — so this now guards only the movement-fragile forms (`CHANNELED`: Hồi
+   * Thành and the channel bars), read off the same `resolveInterrupts` the
+   * runtime applies. When every cast was move-fragile, the 250ms think tick
+   * killed every ability with a cast time at or above it, ten on the shipped
+   * roster. Following an existing route is fine and stays allowed — only a
+   * *new* order bumps the counter.
    *
    * The basic attack is exempt by `attackOrder: 'keep'`, the marker for the one
    * spell where casting *is* the order. Without that check a bot mid-swing would
