@@ -56,6 +56,56 @@ The test for all five: at minimum zoom, in a fight, could a player who has never
 seen this champion tell where it hits and who it hit? If not, simplify until
 they can.
 
+## Color is a language, and the numbers already speak it
+
+Adapted from Riot's public VFX style guide (the 2017 League of Legends one —
+its Gameplay/Value/Color/Shapes/Timing sections are the source for this whole
+block), filtered down to what a p5 canvas at this scale can honour.
+
+1. **Damage type has exactly one colour channel: the combat text.**
+   `DAMAGE_TEXT_COLOR` in `CombatText.ts` — physical amber, magic violet, true
+   white, heals green, gold amber-yellow. Every typed number a player sees
+   teaches this vocabulary, so nothing else may contradict it: never float a
+   custom-coloured number for typed damage, and never reuse one of those hues
+   to mean something else in text.
+2. **World VFX carry *identity*, not type** — a champion's motif, an item's
+   own colour — but they must not *lie across temperature*: a magic proc does
+   not dress in the physical amber family, a physical proc does not read as
+   arcane violet. Cool hues on magic, warm on physical, is the default; break
+   it only when the identity itself demands it, and let the text correct the
+   record.
+3. **Avoid both ends of value and saturation.** Pure white/black or 0%/100%
+   saturation blend into UI or vanish into terrain; the focal element earns
+   focus by *contrast against its own secondary elements*, not by maxing any
+   slider. One focal point per effect — if two layers compete, desaturate or
+   dim the one that carries less information.
+
+## Items and procs: the noise budget
+
+The hierarchy rule ("visual impact represents gameplay impact") gives items a
+hard ceiling, because an item proc fires far more often than any ability:
+
+- **A proc flash is one layer, ≤ ~55 units radius, ≤ ~300ms.** It marks that
+  the proc happened and on whom; the number beside it says how much and what
+  type. If a proc effect feels long, it is too long — nothing about a proc is
+  worth covering the fight for.
+- **A worn state is a thin stroke, never a fill.** A charge that is loaded, a
+  stack count that changes the next swing — these are *anticipation*, the one
+  timing stage a reactive proc otherwise has none of, and they belong on the
+  body as an outline the champion stays visible through (the spellblade
+  orbit, a full-rage arc with its tick marks). Draw a state only while it
+  would change a player's decision: an always-on glow says nothing and spends
+  the budget saying it.
+- **Show a state only when it is true right now.** The shimmer that says "the
+  next swing procs" must read the same predicate the proc spends against —
+  a ready-glow over an internal cooldown that will eat the proc is the effect
+  lying, which is worse than the effect missing.
+- **Climax and dissipation still apply.** The flash appears at the impact, on
+  the victim, and fades — never pops out at full size on its last frame. The
+  three stages (anticipation → climax → dissipation) are the guide's timing
+  spine; for a proc item, anticipation is the worn state, climax is the
+  flash, dissipation is its fade.
+
 ### Anything the player has to *find* has a size floor
 
 The five rules above are judgement calls. This one is not, because it has been
