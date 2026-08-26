@@ -153,6 +153,15 @@ export default class FogOfWar {
     // `minimapBlips` draws without consulting the flag at all.
     //
     // The narrowing moved down to the two paint lists below, where it belongs.
+    // How far an object lights fog. AttackableUnits carry the `fogRevealRadius`
+    // getter (minions and turrets have no combat sight — visionRadius 0 — but
+    // still light a circle for the team). A spell-made eye — a pack's ward, a
+    // plain SpellObject with a bare `visionRadius` — carries no such getter,
+    // and `undefined > 0` silently dropped it from this whole pass: the one
+    // seam `combat/Vision.ts` promises works for wards lit nothing on screen.
+    const fogRevealOf = (o: any): number =>
+      typeof o.fogRevealRadius === 'number' ? o.fogRevealRadius : (o.visionRadius ?? 0);
+
     const allyObjects = this.game.objectManager.queryObjects({
       queryByDisplayBoundingBox: true,
       filters: [
@@ -160,9 +169,7 @@ export default class FogOfWar {
         (o: any) => {
           if (o === this.game.player) return true;
           if (PredefinedFilters.includeDead(o)) return false;
-          // `fogRevealRadius`, not `visionRadius`: minions and turrets carry no
-          // combat sight (visionRadius 0) but still light a circle for the team.
-          return o.fogRevealRadius > 0;
+          return fogRevealOf(o) > 0;
         },
       ],
     });
@@ -184,13 +191,13 @@ export default class FogOfWar {
         // the minimap while the player is looking somewhere else.
         const { sightPoly, playersInSight } = this.calculateSightForObject(obj);
         visiblePlayers.push(...playersInSight);
-        if (nearCamera(obj.position.x, obj.position.y, obj.fogRevealRadius)) {
+        if (nearCamera(obj.position.x, obj.position.y, fogRevealOf(obj))) {
           allSightPoly.push({ object: obj, sightPoly });
         }
       } else {
         // A minion or turret: one cheap circle, no raycast, no per-body query.
         // `revealer`, not `circle`: `circle` is a p5 global. See CLAUDE.md.
-        const revealer = { x: obj.position.x, y: obj.position.y, r: obj.fogRevealRadius };
+        const revealer = { x: obj.position.x, y: obj.position.y, r: fogRevealOf(obj) };
         revealCircles.push(revealer);
         if (nearCamera(revealer.x, revealer.y, revealer.r)) paintedCircles.push(revealer);
       }

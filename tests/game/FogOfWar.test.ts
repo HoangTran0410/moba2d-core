@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FogOfWar from '../../src/game/gameObject/map/FogOfWar';
+import Champion from '../../src/game/gameObject/attackableUnits/Champion';
+import { Rectangle } from '../../src/libs/quadtree';
+import { createGame, indexObjects, stubGameGlobals, type TestGame } from './fixtures';
 
 // Static wall polygons, far enough apart that "which wall is in range" is
 // unambiguous per test position.
@@ -135,5 +138,72 @@ describe('FogOfWar sight cache', () => {
     const outsideObj = { position: { x: 50, y: 50 }, visionRadius: 100 };
     fog.getSightPoly(outsideObj);
     expect(buildSegments).toHaveBeenLastCalledWith([bush]);
+  });
+});
+
+/**
+ * The fog pass and the spell-made eye.
+ *
+ * `combat/Vision.ts` has always honoured a statless allied object carrying a
+ * plain `visionRadius` (a ward) for *targeting*; the fog pass gated its ally
+ * query on `fogRevealRadius > 0`, a getter only AttackableUnit carries, so the
+ * same ward lit nothing on screen — planted in a real match it read as an
+ * item that does not work at all.
+ */
+describe('FogOfWar and the spell-made eye', () => {
+  beforeEach(() => {
+    stubGameGlobals();
+    vi.stubGlobal('createGraphics', () => ({ pixelDensity: vi.fn() }));
+    vi.stubGlobal('windowWidth', 800);
+    vi.stubGlobal('windowHeight', 600);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function fogWorld() {
+    const game = createGame() as TestGame & { terrainMap: unknown };
+    game.terrainMap = { getObstaclesInChampionSight: () => [] };
+    const player = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(player);
+    // far outside the player's own sight, so only the ward can light it
+    const enemy = new Champion({ game, position: createVector(2_000, 0), teamId: 'red' });
+    return { game, player, enemy };
+  }
+
+  /** A ward the way a pack builds one: position, teamId, a plain visionRadius. */
+  function ward(x: number, y: number, teamId: string) {
+    const eye = {
+      position: { x, y },
+      teamId,
+      visionRadius: 350,
+      toRemove: false,
+      getDisplayBoundingBox() {
+        return new Rectangle({ x: x - 10, y: y - 10, w: 20, h: 20, data: eye });
+      },
+    };
+    return eye;
+  }
+
+  it('an allied ward with a bare visionRadius lights an enemy standing in it', () => {
+    const { game, player, enemy } = fogWorld();
+    const eye = ward(2_000, 100, player.teamId);
+    indexObjects(game, [player, enemy, eye as never]);
+
+    const fog = new FogOfWar(game);
+    fog.calculateSight();
+
+    expect(enemy.visibleToPlayerTeam).toBe(true);
+  });
+
+  it('an enemy ward lights nothing for the player', () => {
+    const { game, player, enemy } = fogWorld();
+    const eye = ward(2_000, 100, enemy.teamId);
+    indexObjects(game, [player, enemy, eye as never]);
+
+    const fog = new FogOfWar(game);
+    fog.calculateSight();
+
+    expect(enemy.visibleToPlayerTeam).toBe(false);
   });
 });
