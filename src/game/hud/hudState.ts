@@ -85,6 +85,8 @@ export interface BuffDisplay {
 export interface DeathRecapSourceRow {
   /** The ability's own name when the damage named one, else the type's label. */
   label: string;
+  /** The ability's icon URL, '' when no live spell matched the label. */
+  image: string;
   amount: number;
   hits: number;
   /** 'PHYSICAL' | 'MAGIC' | 'TRUE' — the panel colours the number with it. */
@@ -460,6 +462,53 @@ const DAMAGE_TYPE_LABEL: Record<string, string> = {
   TRUE: 'Sát thương chuẩn',
 };
 
+/** A source label, as the icon map keys it: codename trimmed, case folded. */
+const sourceKeyOf = (name: string): string =>
+  name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+
+/**
+ * label -> iconUrl, read off the spells actually living in this match.
+ *
+ * The ledger stores display labels, not ids — and resolving a bare id
+ * through the catalog is the qualified-id swamp (`summonerIdOr`'s trap).
+ * Every live `Spell` already carries its own `name` and `image`, so one walk
+ * over the world's champions — kits, passives, item spells — answers the
+ * lookup for any installed pack, with no registry and no chunk crossing.
+ * Cached per death: icons do not change while the corpse reads them.
+ */
+let recapIconCache: { recap: unknown; icons: Map<string, string> } | null = null;
+function recapIconsFor(player: any, recap: unknown): Map<string, string> {
+  // Keyed on the recap object itself, not its seq: seq restarts per unit, so
+  // a fresh match's first death would otherwise wear the last match's icons.
+  if (recapIconCache?.recap === recap) return recapIconCache.icons;
+  const icons = new Map<string, string>();
+  const claim = (spell: { name?: string; image?: { path?: string; key?: string; status?: string } } | null | undefined): void => {
+    const name = spell?.name;
+    const path = spell?.image?.path;
+    if (!name || !path) return;
+    const key = sourceKeyOf(name);
+    if (!icons.has(key)) {
+      ensureVisibleAsset(spell.image as AssetHandle);
+      icons.set(key, path);
+    }
+  };
+  const units: any[] = player.game?.objectManager?.objects ?? [];
+  for (const unit of [player, ...units]) {
+    if (!Array.isArray(unit?.spells)) continue;
+    for (const spell of unit.spells) claim(spell);
+    claim(unit.passive);
+    claim(unit.recall);
+    if (Array.isArray(unit.items)) {
+      for (const held of unit.items) {
+        claim(held?.passive);
+        claim(held?.active);
+      }
+    }
+  }
+  recapIconCache = { recap, icons };
+  return icons;
+}
+
 /**
  * Groups the death ledger for the panel: one row per attacker, heaviest
  * first; inside a row, one line per named source (or per damage type when
@@ -468,6 +517,7 @@ const DAMAGE_TYPE_LABEL: Record<string, string> = {
 function buildDeathRecap(player: any): DeathRecapDisplay | null {
   if (!player.isDead || !player.deathRecap) return null;
   const recap = player.deathRecap;
+  const icons = recapIconsFor(player, recap);
 
   const rows = new Map<string, DeathRecapRow & { lines: Map<string, DeathRecapSourceRow> }>();
   let total = 0;
@@ -497,7 +547,13 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
       line.amount += entry.amount;
       line.hits += 1;
     } else {
-      row.lines.set(key, { label, amount: entry.amount, hits: 1, type: entry.type });
+      row.lines.set(key, {
+        label,
+        image: icons.get(sourceKeyOf(label)) ?? '',
+        amount: entry.amount,
+        hits: 1,
+        type: entry.type,
+      });
     }
   }
 

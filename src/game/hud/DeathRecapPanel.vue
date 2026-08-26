@@ -45,6 +45,16 @@ const dismiss = (): void => {
           <span class="death-recap-attacker-total">{{ row.total }}</span>
         </div>
         <div v-for="line in row.sources" :key="line.label + line.type" class="death-recap-source">
+          <img
+            v-if="line.image"
+            crossorigin="anonymous"
+            class="death-recap-source-icon"
+            :src="line.image"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <span v-else class="death-recap-source-dot" aria-hidden="true"></span>
           <span class="death-recap-source-label">{{ line.label }}</span>
           <span v-if="line.hits > 1" class="death-recap-source-hits">×{{ line.hits }}</span>
           <span class="death-recap-source-amount" :class="'dmg-' + line.type.toLowerCase()">

@@ -67,6 +67,33 @@ describe('computeHudState', () => {
     expect(recap.rows[0].sources[0].label).toBe('Sát thương chuẩn');
   });
 
+  it('resolves a source line’s icon off the spells living in the match', () => {
+    const spell = {
+      name: 'Hỏa Cầu (mã nội bộ)',
+      image: { path: 'q.png', key: 'spell_q', status: 'ready' },
+    };
+    const attackerish = { spells: [spell], items: [] };
+    const player = fakePlayer({
+      isDead: true,
+      game: { objectManager: { objects: [attackerish] } },
+      deathRecap: {
+        seq: 9,
+        killerName: 'Vera',
+        entries: [
+          { atMs: 0, amount: 12, type: 'MAGIC', attackerName: 'Vera', attackerId: 'a', source: 'Hỏa Cầu' },
+          { atMs: 1, amount: 5, type: 'TRUE', attackerName: 'Trụ', attackerId: 't' },
+        ],
+      },
+    });
+    const state = computeHudState({ player } as any)!;
+    const rows = state.deathRecap!.rows;
+    const vera = rows.find(r => r.attacker === 'Vera')!;
+    expect(vera.sources[0].image).toBe('q.png');
+    // an unmatched line degrades to no icon, never to a broken image
+    const tru = rows.find(r => r.attacker === 'Trụ')!;
+    expect(tru.sources[0].image).toBe('');
+  });
+
   it('shows no recap while alive, even with an old one recorded', () => {
     const player = fakePlayer({
       isDead: false,
