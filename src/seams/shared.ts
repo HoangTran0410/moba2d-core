@@ -112,11 +112,41 @@ export function walkTsFiles(root: string, options: SeamCheckOptions = {}): strin
   return allTsFiles(root).filter(entry => exemptionFor(skip, entry) === undefined);
 }
 
-/** The unfiltered listing — `skip` not yet applied, dependencies still out. */
+/**
+ * The unfiltered listing — `skip` not yet applied, dependencies still out.
+ *
+ * A hand-rolled walk that **prunes as it descends**, not
+ * `readdirSync({ recursive: true })` with a post-filter. The recursive form
+ * reads everything first and drops `node_modules` afterwards, which is two
+ * different bugs wearing one line: it pays for listing every dependency file
+ * it is about to throw away, and — the one that took a machine down — it
+ * follows directory *symlinks*, so a linked monorepo (`pack:link` puts
+ * `node_modules/@moba2d/core -> ../core` in the pack while core's own
+ * workspace link points back at the pack) is an infinite cycle the listing
+ * allocates path strings into until the heap dies. Pruning `node_modules`
+ * before stepping in, and never stepping through a symlinked directory at
+ * all, closes both: a seam checks the code a tree authors, and nothing a
+ * tree authors is on the far side of either.
+ */
 function allTsFiles(root: string): string[] {
-  return readdirSync(root, { recursive: true, encoding: 'utf8' })
-    .filter(entry => entry.endsWith('.ts'))
-    .filter(entry => !entry.split(/[\\/]/).includes('node_modules'));
+  const out: string[] = [];
+  const walk = (relativeDir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(join(root, relativeDir), { withFileTypes: true });
+    } catch {
+      return; // an unreadable directory has nothing scannable in it
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules') continue;
+      const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      // `isDirectory()` is false for a symlink to one, which is the point.
+      if (entry.isDirectory()) walk(relativePath);
+      else if (entry.isFile() && entry.name.endsWith('.ts')) out.push(relativePath);
+    }
+  };
+  walk('');
+  return out.sort();
 }
 
 export function readSource(root: string, relativePath: string): string {
