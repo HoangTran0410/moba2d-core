@@ -15,6 +15,10 @@ npm run verify
 order. It is **this pack's own gate**: `npm install` never runs it for you,
 and core's own `verify` never reaches into a pack it does not own.
 
+Once this pack is a git repository, `npm run hooks:install` points git at
+`scripts/git-hooks/`, and from then on every `git push` runs `verify` first —
+`git push --no-verify` skips it once, on purpose.
+
 ## Play it before you publish it
 
 You do not need a copy of core. Serve your own build and install it into a

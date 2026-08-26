@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-push gate: `npm run verify` must pass before anything leaves this machine.
+#
+# Versioned here rather than living only in .git/hooks so a fresh clone gets it
+# back with one command: `npm run hooks:install` (points core.hooksPath here).
+#
+# Escape hatches:
+#   git push --no-verify           # skip once, on purpose
+#   MOBA2D_SKIP_VERIFY=1 git push  # same, for scripts
+
+[ "$MOBA2D_SKIP_VERIFY" = "1" ] && exit 0
+
+# stdin: one "<local ref> <local sha> <remote ref> <remote sha>" line per ref.
+# A push that only deletes remote refs (local sha all zeros) verifies nothing.
+zero=0000000000000000000000000000000000000000
+updates=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] || updates=1
+done
+[ "$updates" = "1" ] || exit 0
+
+echo "pre-push: running npm run verify (git push --no-verify skips this once)"
+npm run verify && exit 0
+
+echo ""
+echo "pre-push: verify FAILED — push blocked."
+echo "  fix what it printed, or skip once on purpose: git push --no-verify"
+exit 1

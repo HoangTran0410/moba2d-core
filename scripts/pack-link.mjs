@@ -54,7 +54,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
@@ -76,6 +76,18 @@ const REQUIRED = ['pack.ts', join('generated', 'assetManifest.ts')];
 
 /** Where the npm-installed core is parked while a link stands in its place. */
 const ASIDE = '.core-npm';
+
+/**
+ * Written beside the link with the linked core's path in it, read by the
+ * pack's own `scripts/check-core-link.mjs`. An `npm install` (or `bun
+ * install`) in the pack replaces the pack->core symlink with the registry/git
+ * copy and leaves everything else in the scope directory alone — so this file
+ * outliving the symlink is how the pack detects the stomp and can print the
+ * exact repair, instead of the author meeting it as typecheck errors against
+ * an old core. Nobody remembers "an install drops the link"; this remembers
+ * for them.
+ */
+const MARKER = '.core-link-target';
 
 /**
  * Packs that are core's own and are never linked or unlinked by this script.
@@ -171,6 +183,7 @@ export async function linkPack({ coreRoot = coreRootDefault, packDir }) {
     await rename(coreInPack, aside);
   }
   await linkTo(coreInPack, core);
+  await writeFile(join(pack, 'node_modules', SCOPE, MARKER), `${core}\n`);
 
   // core -> pack.
   await linkTo(join(core, 'node_modules', SCOPE, `${PACKAGE_PREFIX}${name}`), pack);
@@ -197,6 +210,7 @@ export async function unlinkPack({ coreRoot = coreRootDefault, name, packDir }) 
   const aside = join(pack, 'node_modules', SCOPE, ASIDE);
   if (await isLink(coreInPack)) await rm(coreInPack, { recursive: true, force: true });
   if (existsSync(aside)) await rename(aside, coreInPack);
+  await rm(join(pack, 'node_modules', SCOPE, MARKER), { force: true });
 }
 
 /**

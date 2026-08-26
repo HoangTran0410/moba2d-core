@@ -35,7 +35,7 @@
  * choices; `moba2d-pack-add` is how a real second ability, at a real slot,
  * gets added afterwards.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -228,6 +228,9 @@ function writeTemplate(file, rel, slot) {
   const outPath = join(targetPath, outRel);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, substitute(readFileSync(file, 'utf8'), slot));
+  // A git hook is the one kind of file git itself refuses to run without the
+  // executable bit, and writeFileSync does not carry one over from the .tmpl.
+  if (segments[0] === 'scripts' && segments[1] === 'git-hooks') chmodSync(outPath, 0o755);
   return 1;
 }
 
@@ -246,6 +249,7 @@ console.log(`
   Then, to put it where a player can install it:
 
     git init && git add -A && git commit -m "scaffold ${packId}"
+    npm run hooks:install   # pre-push runs verify before anything leaves
     gh repo create <name> --public --source=. --push
     # Settings -> Pages -> Source: GitHub Actions, once, by hand
     # installs from https://<owner>.github.io/<repo>/manifest.json

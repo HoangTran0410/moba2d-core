@@ -8,6 +8,8 @@
     "assets:check": "moba2d-generate-assets --check",
     "catalog:generate": "moba2d-generate-spell-catalog --tree=__PACK_ID__ --root=.",
     "catalog:check": "moba2d-generate-spell-catalog --check --tree=__PACK_ID__ --root=.",
+    "core:check": "node scripts/check-core-link.mjs",
+    "postinstall": "node scripts/check-core-link.mjs --warn-only",
     "prepare": "npm run assets:generate && npm run catalog:generate",
     "typecheck": "tsc -p tsconfig.json",
     "check-unused": "node scripts/check-unused.mjs",
@@ -16,7 +18,8 @@
     "build": "npm run assets:generate && npm run catalog:generate && vite build && node scripts/write-manifest.mjs",
     "manifest:write": "node scripts/write-manifest.mjs",
     "serve": "moba2d-pack-serve",
-    "verify": "npm run assets:check && npm run catalog:check && npm run typecheck && npm run check-unused && npm run check-seams && npm run build && npm test"
+    "hooks:install": "git config core.hooksPath scripts/git-hooks",
+    "verify": "npm run core:check && npm run assets:check && npm run catalog:check && npm run typecheck && npm run check-unused && npm run check-seams && npm run build && npm test"
   },
   "devDependencies": {
     "@moba2d/core": "__CORE_SPEC__",
