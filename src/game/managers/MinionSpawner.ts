@@ -117,8 +117,9 @@ export default class MinionSpawner {
    * system stays cleared rather than filling back up with corpses.
    *
    * Elapsed match time freezes rather than draining while off. `setEnabled`
-   * abandons any partly released wave and restarts a full current interval when
-   * switched back on, so the old queue cannot leak out of a paused panel toggle.
+   * abandons any partly released wave and restarts from the match-opening delay
+   * when switched back on, so the old queue cannot leak out of a paused panel
+   * toggle and the player *sees* the switch work — see `setEnabled`.
    */
   enabled = true;
 
@@ -134,9 +135,16 @@ export default class MinionSpawner {
    * Changes the wave clock without rewinding the match-time thresholds.
    *
    * Off abandons the unreleased tail of the current wave. On keeps `_elapsedMs`
-   * (and therefore the 14/30-minute cadence) but replaces the stale remaining
-   * countdown with one full interval. Repeating the current state is a no-op so
-   * an already-running clock is never postponed by a duplicate UI event.
+   * (and therefore the 14/30-minute cadence) but restarts the countdown at the
+   * match-opening delay rather than a full interval. This used to wait out a
+   * whole interval "so the switch is quiet", and it read as broken from the
+   * panel: the toggle clears the field instantly on the way off, so silence on
+   * the way back on looks like nothing ever spawning again — the more so
+   * because every re-open of the panel pauses the countdown and every off/on
+   * flip restarted it. One wave a second after the switch is the same promise
+   * match start makes, and it is still one wave, never a backdated burst.
+   * Repeating the current state is a no-op so an already-running clock is
+   * never postponed by a duplicate UI event.
    */
   setEnabled(on: boolean): void {
     if (on === this.enabled) return;
@@ -145,7 +153,7 @@ export default class MinionSpawner {
       this._queue.length = 0;
       return;
     }
-    this._nextWaveIn = waveIntervalAt(this._elapsedMs);
+    this._nextWaveIn = FIRST_WAVE_DELAY_MS;
   }
 
   get liveCount(): number {

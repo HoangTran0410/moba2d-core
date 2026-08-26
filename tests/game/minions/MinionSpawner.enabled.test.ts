@@ -54,8 +54,8 @@ describe('MinionSpawner.enabled', () => {
 
   /**
    * The clock freezes rather than draining while off, so switching minions back
-   * on gives a full interval of quiet — not a burst of backdated waves, which
-   * is the same reason `_nextWaveIn` resets instead of subtracting.
+   * on gives a beat of quiet — not a burst of backdated waves, which is the
+   * same reason `_nextWaveIn` resets instead of subtracting.
    */
   it('resumes queueing when switched back on, from a clock that did not run', () => {
     spawner.enabled = false;
@@ -68,6 +68,31 @@ describe('MinionSpawner.enabled', () => {
 
     advance(3 * FRAME_MS);
     expect(spawner.waveCount).toBe(1);
+    expect(spawner.liveCount).toBeGreaterThan(0);
+  });
+
+  /**
+   * The panel path: waves have been running, the toggle goes off (clearing the
+   * field on the spot) and back on. The reported bug — "turned minions back on
+   * and nothing ever spawned" — was `setEnabled(true)` restarting a *full*
+   * interval: 30 quiet seconds after an instant clear, with every re-open of
+   * the paused panel freezing the countdown and every off/on flip restarting
+   * it. Switching back on now answers within the match-opening delay, exactly
+   * one wave, the same promise match start makes.
+   */
+  it('spawns the first wave within the opening delay after an off/on flip', () => {
+    advance(PAST_TWO_WAVES_MS);
+    expect(spawner.waveCount).toBe(2);
+
+    spawner.setEnabled(false);
+    for (const minion of spawner.minions) minion.toRemove = true;
+    spawner.update();
+    expect(spawner.liveCount).toBe(0);
+
+    spawner.setEnabled(true);
+    expect(spawner.nextWaveIn).toBe(FIRST_WAVE_DELAY_MS);
+    advance(FIRST_WAVE_DELAY_MS + 2 * FRAME_MS);
+    expect(spawner.waveCount).toBe(3);
     expect(spawner.liveCount).toBeGreaterThan(0);
   });
 

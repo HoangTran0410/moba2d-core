@@ -763,10 +763,11 @@ export default class MatchDirector {
   }
 
   /**
-   * Off stops the wave clock and clears the field; on restarts the clock from a
-   * full interval (`MinionSpawner` freezes its countdown rather than draining
-   * it) and leaves whatever is standing alone — the player asked for waves
-   * again, not for the field to be swept first.
+   * Off stops the wave clock and clears the field; on restarts the clock from
+   * the match-opening delay (`MinionSpawner.setEnabled` — a full interval of
+   * silence after an instant clear read as the switch being broken) and leaves
+   * whatever is standing alone — the player asked for waves again, not for the
+   * field to be swept first.
    *
    * No `monsters.length = 0` counterpart here: the spawner prunes `toRemove`
    * minions on its own update whether it is enabled or not, so the list empties
