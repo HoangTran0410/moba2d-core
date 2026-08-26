@@ -375,11 +375,14 @@ defineExpose({
         :class="{ 'is-player': row.isPlayer }"
       >
         <!-- `has-bag` is a layout fact the stylesheet cannot work out for
-             itself: below 640px the row splits in two, and which elements are
-             *on* the second line decides whether the first one has the ~210px
-             the four kit icons need. With no bag there is no second line and
-             the row must stay exactly as it was — which is the shape the menu
-             always sees, since items only exist inside a match. -->
+             itself: with a bag the row becomes a two-line grid (identity and
+             numbers above, the item strip below, one action rail beside both
+             — see hud.css's "The in-match row, gridded"), because the
+             one-line flex row never fit that much fixed content and the kit
+             icons painted under the item strip. With no bag there is no
+             second line and the row stays the one-line flex it always was —
+             the shape the menu always sees, since items only exist inside a
+             match. -->
         <div class="practice-roster-main" :class="{ 'has-bag': live && itemStock.length }">
           <!-- The invisible "open the editor" button covers the identity zone
                and *only* it — never the toggle, the side switch or the delete
@@ -523,12 +526,12 @@ defineExpose({
           >
             <i class="fas fa-times"></i>
           </button>
-          <!-- The player cannot be deleted, and before the bag arrived that
-               just meant one row ended 44px earlier than the rest. It means
-               more now: every column left of it — the six squares especially —
-               shifted with it, and a strip of items you cannot read straight
-               down is most of what putting them on the row was for. So the
-               column stays, empty. -->
+          <!-- The player cannot be deleted. In the menu's one-line flex row
+               this spacer keeps the columns of neighbouring rows aligned —
+               without it one row just ends 44px early. The in-match grid
+               (`has-bag`) hides it instead: grid tracks align by
+               construction, and the switch takes the whole rail on the one
+               row that has no delete. -->
           <span v-else class="practice-roster-gap" aria-hidden="true"></span>
         </div>
 
