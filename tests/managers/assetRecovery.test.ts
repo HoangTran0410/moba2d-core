@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import AssetManager from '../../src/managers/AssetManager';
+import AssetManager, { FORCED_RESTORE_HIDDEN_MS } from '../../src/managers/AssetManager';
 import { assetManifest, type AssetKey } from '../../src/generated/assetManifest';
 
 /**
@@ -82,6 +82,75 @@ describe('recovering images the browser threw away', () => {
 
     expect(await AssetManager.recoverIfLost(() => Promise.resolve('decoded'))).toEqual([]);
     expect(image.painted).toEqual([]);
+  });
+
+  /**
+   * The probe is one 1x1 canvas and the purge is the browser's own sweep at
+   * the browser's own granularity — a buffer that small can survive a sweep
+   * that took every real asset, and did, on a real installed PWA after the
+   * probe shipped. A return from a long stay in the background therefore
+   * restores whatever the probe claims; only short hops stay probe-gated.
+   */
+  it('restores after a long stay hidden even when the probe noticed nothing', async () => {
+    const { key, image } = await loaded();
+    AssetManager.backingStoresLost = () => false;
+
+    const restored = await AssetManager.recoverIfLost(
+      () => Promise.resolve('decoded'),
+      FORCED_RESTORE_HIDDEN_MS
+    );
+
+    expect(restored).toContain(key);
+    expect(image.painted).toEqual(['decoded']);
+  });
+
+  it('keeps a short hop probe-gated', async () => {
+    const { image } = await loaded();
+    AssetManager.backingStoresLost = () => false;
+
+    const restored = await AssetManager.recoverIfLost(
+      () => Promise.resolve('decoded'),
+      FORCED_RESTORE_HIDDEN_MS - 1
+    );
+
+    expect(restored).toEqual([]);
+    expect(image.painted).toEqual([]);
+  });
+
+  /**
+   * A forced restore can land on a canvas that was never purged, and an image
+   * with alpha drawn over itself thickens every translucent pixel. The repaint
+   * clears the surface first when the image exposes one.
+   */
+  it('clears the surface before repainting into it', async () => {
+    const key = freshKey();
+    const calls: string[] = [];
+    const image = {
+      canvas: { width: 4, height: 4 },
+      drawingContext: {
+        clearRect: () => calls.push('clear'),
+        drawImage: () => calls.push('draw'),
+      },
+    };
+    AssetManager.configureLoaders({
+      image: () => Promise.resolve(image),
+      json: () => Promise.reject(new Error('unused')),
+      audio: () => Promise.reject(new Error('unused')),
+    });
+    await AssetManager.ensure(key);
+    AssetManager.backingStoresLost = () => true;
+
+    await AssetManager.recoverIfLost(() => Promise.resolve('decoded'));
+    expect(calls).toEqual(['clear', 'draw']);
+  });
+
+  it('bumps the purge epoch, so self-painted buffers hear about the sweep', async () => {
+    await loaded();
+    AssetManager.backingStoresLost = () => true;
+    const before = AssetManager.purgeEpoch;
+
+    await AssetManager.recoverIfLost(() => Promise.resolve('decoded'));
+    expect(AssetManager.purgeEpoch).toBe(before + 1);
   });
 
   it('repaints into the image object everything is already holding', async () => {

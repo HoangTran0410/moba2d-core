@@ -74,12 +74,45 @@ Math.hypot = fastHypot;
   // Coming back from the background is where every image in the game can be
   // gone. See the note on the probe in `AssetManager`: p5 keeps each one as an
   // off-DOM canvas, and that is the memory a phone reclaims first while the app
-  // is not on screen. The probe is armed here, once, and read on every return.
+  // is not on screen. The probe is armed here, once, and read on every return —
+  // but the probe alone is not the whole detection any more: it is one 1x1
+  // canvas, small enough to survive a purge that took every real asset
+  // (reported from a real installed PWA after the probe shipped), so a return
+  // from a *long* stay in the background restores unconditionally
+  // (`FORCED_RESTORE_HIDDEN_MS`), and only the short hops stay probe-gated.
+  //
+  // Three return signals, not one. `visibilitychange` is the ordinary pair;
+  // `pageshow` with `persisted` is the back/forward cache handing back a page
+  // whose canvases went cold while it slept; `focus` is the belt-and-braces
+  // for installed iOS home-screen apps, where `visibilitychange` has a history
+  // of not firing on return. A resume with no recorded absence just reads the
+  // probe, so a spurious signal costs one 1x1 getImageData.
   AssetManager.armBackingStoreProbe();
   if (typeof document !== 'undefined') {
+    let hiddenAtMs: number | null = null;
+
+    const resume = (forcedHiddenForMs?: number) => {
+      const hiddenForMs =
+        forcedHiddenForMs ?? (hiddenAtMs === null ? 0 : performance.now() - hiddenAtMs);
+      hiddenAtMs = null;
+      void AssetManager.recoverIfLost(undefined, hiddenForMs);
+    };
+
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) return;
-      void AssetManager.recoverIfLost();
+      if (document.hidden) hiddenAtMs = performance.now();
+      else resume();
+    });
+    window.addEventListener('pagehide', () => {
+      hiddenAtMs = performance.now();
+    });
+    window.addEventListener('pageshow', event => {
+      // A bfcache restore froze the page for however long it was away; treat
+      // it as a long absence rather than trusting a probe that slept with it.
+      if ((event as PageTransitionEvent).persisted) resume(Number.POSITIVE_INFINITY);
+      else resume();
+    });
+    window.addEventListener('focus', () => {
+      if (!document.hidden) resume();
     });
   }
 

@@ -13,6 +13,7 @@
  * uses. Only `draw()` and the buffer builder may touch p5.
  */
 import { removeGraphics } from '@/utils/graphics.utils';
+import AssetManager from '@/managers/AssetManager';
 
 export interface MinimapRect {
   x: number;
@@ -149,6 +150,8 @@ export class Minimap {
   private collapsedBuffer: any = null;
   private expandedBuffer: any = null;
   private expandedBufferSize = 0;
+  /** The restore generation these buffers were painted under — see `bufferFor`. */
+  private bufferEpoch = AssetManager.purgeEpoch;
 
   constructor(private readonly host: MinimapHost) {
     const viewport = host.viewport();
@@ -256,6 +259,17 @@ export class Minimap {
   }
 
   private bufferFor(size: number): any {
+    // A background purge blanks these pre-rendered layers along with every
+    // image (`AssetManager`'s probe note): the manager repaints what it
+    // loaded, but it never saw this picture, so the epoch is how this file
+    // hears "your canvases are gone, paint again".
+    if (this.bufferEpoch !== AssetManager.purgeEpoch) {
+      this.bufferEpoch = AssetManager.purgeEpoch;
+      removeGraphics(this.collapsedBuffer);
+      removeGraphics(this.expandedBuffer);
+      this.collapsedBuffer = null;
+      this.expandedBuffer = null;
+    }
     if (!this.expanded) {
       if (!this.collapsedBuffer) this.collapsedBuffer = this.buildBuffer(MINIMAP_SIZE);
       return this.collapsedBuffer;

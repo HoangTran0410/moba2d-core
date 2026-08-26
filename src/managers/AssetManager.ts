@@ -221,9 +221,27 @@ function decodeImageElement(url: string): Promise<CanvasImageSource> {
 
 /** What the repaint needs of a `p5.Image`. */
 interface RepaintableImage {
-  drawingContext?: { drawImage(source: CanvasImageSource, x: number, y: number): void };
+  canvas?: { width: number; height: number };
+  drawingContext?: {
+    clearRect?(x: number, y: number, width: number, height: number): void;
+    drawImage(source: CanvasImageSource, x: number, y: number): void;
+  };
   setModified?: (value: boolean) => void;
 }
+
+/**
+ * Hidden this long, the restore runs whether or not the probe noticed a purge.
+ *
+ * The probe is one 1x1 canvas, and purging is the browser's decision at the
+ * browser's granularity: a buffer that small can survive a sweep that took
+ * every real asset with it — reported from a real installed PWA *after* the
+ * probe shipped, same blank icons, probe still holding its pixel. A long stay
+ * in the background is the one situation the purge happens in at all, so the
+ * return from one is worth an unconditional repaint: ~370 decodes served from
+ * the service worker's cache, off the frame loop, on a resume where a beat of
+ * loading is expected anyway. Short hops between apps stay on the probe.
+ */
+export const FORCED_RESTORE_HIDDEN_MS = 15_000;
 
 export default class AssetManager {
   private static loaders = defaultLoaders;
@@ -275,6 +293,15 @@ export default class AssetManager {
   static armBackingStoreProbe: () => void = armProbe;
 
   /**
+   * Bumped once per completed restore. Anything that caches its own painted
+   * `p5.Graphics` (the minimap's terrain buffer is the case) compares this to
+   * the value it saw when it painted, and rebuilds when they differ — the
+   * purge took those buffers too, and this manager cannot repaint a picture it
+   * never drew.
+   */
+  static purgeEpoch = 0;
+
+  /**
    * Repaints every loaded image back into the `p5.Image` that already holds it.
    *
    * **Into the same object**, which is the whole of it: every champion, spell
@@ -300,6 +327,11 @@ export default class AssetManager {
       jobs.push(
         decode(url)
           .then(source => {
+            // Cleared first: a forced restore can land on a canvas that was
+            // *not* purged, and drawing an image with alpha over itself
+            // thickens every translucent pixel a little more each time.
+            const surface = image.canvas;
+            if (surface) image.drawingContext!.clearRect?.(0, 0, surface.width, surface.height);
             image.drawingContext!.drawImage(source, 0, 0);
             // p5 uploads a texture from this canvas in WEBGL mode and caches
             // it; the flag is how it is told the pixels moved.
@@ -315,17 +347,23 @@ export default class AssetManager {
     // up by label on every draw and rebuild themselves lazily, so dropping them
     // is the whole repair.
     this.placeholders.clear();
+    this.purgeEpoch++;
     return restored;
   }
 
   /**
    * The one call a resume makes. Cheap when nothing was lost, which is most
    * resumes.
+   *
+   * `hiddenForMs` is how long the page had been hidden when this resume fired.
+   * Past `FORCED_RESTORE_HIDDEN_MS` the probe is not trusted with the answer —
+   * see that constant's own comment — and the restore runs regardless.
    */
   static async recoverIfLost(
-    decode?: (url: string) => Promise<CanvasImageSource>
+    decode?: (url: string) => Promise<CanvasImageSource>,
+    hiddenForMs = 0
   ): Promise<AssetKey[]> {
-    if (!this.backingStoresLost()) return [];
+    if (hiddenForMs < FORCED_RESTORE_HIDDEN_MS && !this.backingStoresLost()) return [];
     const restored = await this.restoreImages(decode);
     this.armBackingStoreProbe();
     return restored;
