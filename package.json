@@ -46,6 +46,7 @@
     "scripts/lib/packRoot.mjs",
     "scripts/templates",
     "scripts/version.mjs",
+    "scripts/vite/restart-on-version-change.mjs",
     "src",
     "styles",
     "index.html",

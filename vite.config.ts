@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { buildVersion } from './scripts/version.mjs';
 // @ts-expect-error — same: plain .mjs, shared with `scripts/check-chunks.mjs`.
 import { installedContentPackages } from './scripts/installed-packs.mjs';
+import { restartOnVersionChange } from './scripts/vite/restart-on-version-change.mjs';
 
 const version: string = buildVersion();
 
@@ -37,6 +38,13 @@ export default defineConfig({
   root: '.',
   base: './',
   plugins: [
+    // `__CORE_VERSION__` below is read from `package.json` once, here, when
+    // this config loads — and Vite watches this file but not that one. So a
+    // `contract:bump` against a running dev server leaves it serving the old
+    // number, and the next pack install fails with a message that accuses the
+    // code of being un-bumped. See the plugin's own comment; it has cost a
+    // debugging cycle already.
+    restartOnVersionChange({ packageJsonPath: resolve(__dirname, 'package.json') }),
     vue(),
     VitePWA({
       /**
