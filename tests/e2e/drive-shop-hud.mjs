@@ -457,5 +457,92 @@ await guard(async () => {
   check('escape closes the shop', stillOpen === 0, `${stillOpen} panels`);
   check('and does not open the panel under it', configOpen === 0, `${configOpen} panels`);
 
+  // ------------------------------------------- the roster's shop, and back
+  // The one journey no unit test can see: the config panel is *unmounted*
+  // while the shop is up, so whether a player comes back to where they were
+  // depends on which state survived that unmount — which is a fact about
+  // module scope, not about any function's return value.
+  const drawers = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.practice-stat-toggle')].map(b =>
+        b.getAttribute('aria-expanded')
+      )
+    );
+
+  await page.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    for (const entry of game.director.roster()) if (!entry.isPlayer) entry.unit.wallet?.earn(5_000);
+  });
+  await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
+  await page.waitForTimeout(500);
+  await page.locator('.practice-stat-toggle').nth(1).click();
+  await page.waitForTimeout(300);
+
+  const drawersBefore = await drawers();
+  report.drawersBefore = drawersBefore;
+  check('a roster drawer is open', drawersBefore.includes('true'), drawersBefore.join(','));
+
+  const rosterShop = page.locator('[id^="practice-cheat-shop-"]').first();
+  check('the row offers a shop button', (await rosterShop.count()) > 0, 'button');
+  await rosterShop.click();
+  await page.waitForTimeout(600);
+
+  const subject = (
+    await page
+      .locator('.shop-subject')
+      .textContent()
+      .catch(() => null)
+  )?.trim();
+  const subjectGold = Number((await page.locator('.shop-gold span').first().textContent())?.trim());
+  // Read off the match rather than compared against a magnitude: an earlier
+  // case in this driver hands the *player* gold too, so "the bigger number is
+  // the bot's" is a coincidence of ordering, not the claim. The claim is whose
+  // wallet the panel is reading.
+  const wallets = await page.evaluate(name => {
+    const game = window.__lol2d.scene.oScene.game;
+    const roster = game.director.roster();
+    return {
+      subject: roster.find(entry => entry.unit.name === name)?.unit.wallet?.balance ?? null,
+      player: game.player.wallet?.balance ?? null,
+    };
+  }, subject);
+  report.rosterShop = { subject, subjectGold, wallets };
+  check('the header names whose shop it is', !!subject, `"${subject}"`);
+  check(
+    'and it is not the player',
+    wallets.subject !== null && wallets.subject !== wallets.player,
+    JSON.stringify(wallets)
+  );
+  // Within a few coins: income accrues by the second, so the panel's figure and
+  // a later read of the same wallet are never identical.
+  check(
+    'it shows the subject’s own gold',
+    wallets.subject !== null && Math.abs(subjectGold - wallets.subject) < 30,
+    `panel ${subjectGold}, wallet ${wallets.subject}, player ${wallets.player}`
+  );
+  check(
+    'the config panel is out of the way, not stacked under it',
+    (await page.locator('.practice-panel').count()) === 0,
+    'panels'
+  );
+  check(
+    'and the match runs while shopping, as it does for the player',
+    await page.evaluate(() => !window.__lol2d.scene.oScene.game.paused),
+    'paused'
+  );
+
+  await page.locator('.shop-close').click();
+  await page.waitForTimeout(600);
+
+  const cameBack = await page.locator('.practice-panel').count();
+  check('closing it puts the panel back', cameBack === 1, `${cameBack} panels`);
+  const drawersAfter = cameBack === 1 ? await drawers() : [];
+  report.drawersAfter = drawersAfter;
+  check(
+    'with the same drawer still open',
+    drawersAfter.join(',') === drawersBefore.join(','),
+    `${drawersBefore.join(',')} -> ${drawersAfter.join(',')}`
+  );
+
   check('no runtime errors', h.errors.length === 0, h.errors.slice(0, 3).join(' | '));
 });

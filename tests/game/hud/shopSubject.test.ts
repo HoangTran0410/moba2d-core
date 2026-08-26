@@ -159,3 +159,96 @@ describe('the shop’s subject', () => {
     expect(hud.showShop).toBe(false);
   });
 });
+
+/**
+ * **Leaving the panel for the shop, and coming back to where you were.**
+ *
+ * The roster's shop button closes the config panel, and the alternative —
+ * stacking the shop *over* it — was considered and rejected on three counts,
+ * all recorded here because "why not just render both" is the obvious question:
+ *
+ *   1. **The config panel holds the match paused.** `CLAUDE.md` records four
+ *      bugs from mutating a match inside that window, and a purchase is a
+ *      mutation: `equipItem` installs a `StatsModifier` and nothing ticks to
+ *      settle it. Closing the panel unpauses, so the shop runs against a live
+ *      match the way the player's own does.
+ *   2. **They are the same width.** The shop is 392px and `.pregame-tab` is
+ *      sized for a 390px landscape phone, so "stacked" would look identical to
+ *      "replaced" on the device that matters — with two close buttons and an
+ *      ambiguous Escape.
+ *   3. `onEscapeInner` already threads Escape through one layer of panel.
+ *      A second makes that chain longer for no behaviour anyone asked for.
+ *
+ * What was actually wrong was losing your place, and that is fixed by putting
+ * it back rather than by never leaving.
+ */
+describe('coming back from a subject’s shop', () => {
+  let game: TestGame;
+  let player: Champion;
+  let bot: Champion;
+  let hud: ReturnType<typeof createHudInteractions>;
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    player = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    bot = new Champion({ game, position: createVector(9_000, 9_000), teamId: 'red' });
+    game.setPlayer(player);
+    indexObjects(game, [player, bot]);
+    (game as never as { fountains: unknown[] }).fountains = [];
+    (game as never as { director: unknown }).director = {
+      roster: () => [
+        { unit: player, isPlayer: true },
+        { unit: bot, isPlayer: false },
+      ],
+    };
+    // The panel pauses and the shop unpauses; the fixture has to answer both
+    // or the thing under test never runs.
+    Object.assign(game, { pause: vi.fn(), unpause: vi.fn() });
+    hud = createHudInteractions(game as never);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('puts the config panel back when the shop closes', () => {
+    hud.openSpellPicker();
+    hud.openShopFor(bot.id);
+    expect(hud.showSpellsPicker, 'the panel should be out of the way while shopping').toBe(false);
+
+    hud.closeShop();
+
+    expect(hud.showSpellsPicker, 'the panel did not come back').toBe(true);
+    expect(hud.showShop).toBe(false);
+  });
+
+  it('does not conjure a panel that was never open', () => {
+    // The corner button and the `P` key open the player's own shop from a
+    // running match. Closing that must not drop the player into a paused
+    // config panel they did not ask for.
+    hud.openShop();
+    hud.closeShop();
+    expect(hud.showSpellsPicker).toBe(false);
+  });
+
+  it('forgets the way back once it has been taken', () => {
+    hud.openSpellPicker();
+    hud.openShopFor(bot.id);
+    hud.closeShop();
+    hud.closeSpellPicker();
+
+    hud.openShop();
+    hud.closeShop();
+
+    expect(hud.showSpellsPicker, 'a stale return re-opened the panel').toBe(false);
+  });
+
+  it('forgets it when the panel is left by any other door', () => {
+    // Escape out of the shop and then out of the panel, or press the corner
+    // button again — either way the next shop is a fresh one.
+    hud.openSpellPicker();
+    hud.openShopFor(bot.id);
+    hud.openShop(); // switched to the player's own shop from the HUD
+    hud.closeShop();
+    expect(hud.showSpellsPicker).toBe(false);
+  });
+});

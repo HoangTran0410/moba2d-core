@@ -40,6 +40,7 @@
  */
 import { computed, inject, ref, shallowRef } from 'vue';
 import { CONFIG_PANEL } from './panelState';
+import { expandedRosterRows } from './expandedRows';
 import type { ConfigRosterEntry } from './MatchConfigSource';
 import {
   AI_COUNT_MAX,
@@ -169,20 +170,21 @@ const setDifficulty = (row: ConfigRosterEntry, difficulty: BotDifficulty): void 
 };
 
 /**
- * Which cards have their drawer open, keyed by row id rather than by position:
- * removing Bot 1 shifts every row below it, and an open drawer would jump to a
- * different participant instead of closing.
+ * Which cards have their drawer open — module state, not a `ref` here.
+ *
+ * A `const` at the top of `<script setup>` is rebuilt on every mount, and both
+ * HUD views mount this panel with `v-if`, so every drawer used to close itself
+ * every time the panel did. See `expandedRows.ts`; `panelTab.ts` is the same
+ * decision one file over.
  */
-const expanded = ref(new Set<string>());
-
-const isExpanded = (row: ConfigRosterEntry): boolean => expanded.value.has(row.id);
+const isExpanded = (row: ConfigRosterEntry): boolean => expandedRosterRows.value.has(row.id);
 
 const toggleExpanded = (row: ConfigRosterEntry): void => {
   // A new Set rather than mutating in place: `ref` tracks the reference, and a
   // `Set` mutated through it does not notify.
-  const next = new Set(expanded.value);
+  const next = new Set(expandedRosterRows.value);
   if (!next.delete(row.id)) next.add(row.id);
-  expanded.value = next;
+  expandedRosterRows.value = next;
 };
 
 // ------------------------------------------------------------------- cheats

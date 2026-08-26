@@ -195,6 +195,12 @@ export interface HudInteractions {
    * reference outlives the unit it points at.
    */
   shopSubjectId: string | null;
+  /**
+   * Whether closing the shop should put the config panel back. Set only by
+   * `openShopFor`, and only when that panel was actually up — see its own
+   * comment for why the shop replaces the panel rather than stacking over it.
+   */
+  shopReturnsToPanel: boolean;
   /** Open it. Refuses nothing: the cards carry their own refusals. */
   openShop(): void;
   closeShop(): void;
@@ -337,6 +343,23 @@ export function createHudInteractions(game: Game): HudInteractions {
      * match can see. Re-resolved on every read.
      */
     shopSubjectId: null as string | null,
+    /**
+     * Whether closing the shop should put the config panel back.
+     *
+     * The roster's shop button closes that panel — deliberately, rather than
+     * stacking over it: the panel holds the match **paused**, and a purchase
+     * is a mutation (`equipItem` installs a `StatsModifier`) with nothing
+     * ticking to settle it, which `CLAUDE.md` names as having caused four bugs
+     * already. The two are also the same width, so on the 390px phone the
+     * layout is sized for, "stacked" would look identical to "replaced" with
+     * two close buttons and an ambiguous Escape.
+     *
+     * What was actually wrong was losing your place. So the way back is
+     * remembered instead — and cleared the moment the shop is opened by any
+     * other door, or a corner-button shop would drop the player into a paused
+     * panel they never asked for.
+     */
+    shopReturnsToPanel: false,
     spellHover: null as any,
     spellInfo: { top: 'auto', bottom: '0px', left: '0px', width: '300px' },
     touchUi: false,
@@ -393,6 +416,10 @@ export function createHudInteractions(game: Game): HudInteractions {
       // The two modals are mutually exclusive: both are full-width, and
       // stacking them leaves the player looking at two close buttons.
       leaveConfigPanel();
+      // Opened from the HUD, so there is nothing to go back to — and saying so
+      // here is what stops a stale flag from an earlier roster shop reopening
+      // the panel behind this one.
+      state.shopReturnsToPanel = false;
       state.shopSubjectId = null;
       state.showShop = true;
       state.spellHover = null;
@@ -404,6 +431,8 @@ export function createHudInteractions(game: Game): HudInteractions {
       // has no gold to show and no bag to draw, and the player would be
       // looking at an empty shelf with no way to tell why.
       if (!subjectUnit(id)) return;
+      // Read before the panel is closed, or it is always false.
+      state.shopReturnsToPanel = state.showSpellsPicker;
       leaveConfigPanel();
       state.shopSubjectId = id;
       state.showShop = true;
@@ -439,6 +468,13 @@ export function createHudInteractions(game: Game): HudInteractions {
       // Back to the player, or the next press of the corner button silently
       // opens a bot's shop and the only sign is a gold figure nobody looks at.
       state.shopSubjectId = null;
+
+      if (!state.shopReturnsToPanel) return;
+      state.shopReturnsToPanel = false;
+      // `openSpellPicker` re-pauses and re-mounts the panel. Which tab and
+      // which rows were open survive that, because both live in modules rather
+      // than in `<script setup>` — see `panelTab.ts` and `expandedRows.ts`.
+      state.openSpellPicker();
     },
 
     toggleShop(): void {
