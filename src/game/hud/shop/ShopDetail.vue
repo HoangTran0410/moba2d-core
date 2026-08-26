@@ -44,6 +44,7 @@
 import { computed } from 'vue';
 import ShopRecipeTree from './ShopRecipeTree.vue';
 import { bagSlotOf, priceLabel, recipeTree, type SellRow, type ShopRow } from './shopState';
+import { vTap } from '../tapGuard';
 
 const props = defineProps<{
   /** The item being shown, or null when nothing has been picked yet. */
@@ -66,7 +67,7 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
     <!-- Compact layouts only (see `styles/shop.css`): there the pane covers the
          grid rather than sitting beside it, and a way back is the whole
          difference between a drill-down and a dead end. -->
-    <button class="shop-detail-back" @click="$emit('back')" @touchend.prevent="$emit('back')">
+    <button class="shop-detail-back" @click="$emit('back')" v-tap="() => $emit('back')">
       <i class="fa-solid fa-chevron-left"></i> Danh sách
     </button>
 
@@ -87,7 +88,7 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
           class="shop-buy"
           :class="{ blocked: row.refusal !== null }"
           @click="$emit('buy', row.id)"
-          @touchend.prevent="$emit('buy', row.id)"
+          v-tap="() => $emit('buy', row!.id)"
         >
           <span class="shop-buy-label">Mua</span>
           <span class="shop-buy-price"><i class="fa-solid fa-coins"></i>{{ price.pay }}</span>
@@ -104,7 +105,7 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
             class="shop-sell"
             :class="{ blocked: held.refusal !== null }"
             @click="$emit('sell', held.slot)"
-            @touchend.prevent="$emit('sell', held.slot)"
+            v-tap="() => $emit('sell', held!.slot)"
           >
             <span class="shop-sell-label">Bán</span>
             <span class="shop-sell-price"><i class="fa-solid fa-coins"></i>+{{ held.refund }}</span>
@@ -135,7 +136,7 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
               class="shop-into-chip"
               :class="{ held: parent.owned }"
               @click="$emit('pick', parent.id)"
-              @touchend.prevent="$emit('pick', parent.id)"
+              v-tap="() => $emit('pick', parent.id)"
             >
               <img
                 v-if="parent.image"

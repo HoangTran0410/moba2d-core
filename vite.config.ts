@@ -513,7 +513,15 @@ export default defineConfig({
             // touches `MatchDirector`, `AIChampion` and `Camera`, so it belongs
             // to the match. `tests/scenes/matchConfigChunk.test.ts` is what
             // keeps the rest of the directory able to live out here.
-            (id.includes('src/game/hud/config/') && !id.includes('MatchDirectorSource'))
+            (id.includes('src/game/hud/config/') && !id.includes('MatchDirectorSource')) ||
+            // The tap directive is shared the same way: the config tabs above
+            // (pregame) and the shop/HUD (game) both wire touch controls
+            // through it, and it imports nothing but a Vue type. Left
+            // unpinned it lands in `game` and hands `pregame` back the static
+            // `pregame -> game` edge this list exists to prevent; pinned
+            // here, the shop's import of it is one more `game -> pregame`
+            // edge, which already exists and is the allowed direction.
+            id.includes('src/game/hud/tapGuard')
           ) {
             return 'pregame';
           }

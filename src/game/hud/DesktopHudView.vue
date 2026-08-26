@@ -12,6 +12,7 @@
 import { inject, ref } from 'vue';
 import FormatUtils from '@/utils/format.utils';
 import { InventoryDrag } from './inventoryDrag';
+import { vTap } from './tapGuard';
 import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
 
@@ -145,7 +146,7 @@ const lifted = (slot: number): boolean => {
       class="champion-avatar"
       title="Xem đội"
       @click="hud.openRoster()"
-      @touchend.prevent="hud.openRoster()"
+      v-tap="() => hud.openRoster()"
     >
       <img
         crossorigin="anonymous"
@@ -179,7 +180,7 @@ const lifted = (slot: number): boolean => {
           :key="index"
           :class="[spell.small ? 'spell small' : 'spell', { sustaining: spell.sustaining }]"
           @click="hud.openPlayerLoadout(index)"
-          @touchend.prevent="hud.openPlayerLoadout(index)"
+          v-tap="() => hud.openPlayerLoadout(index)"
           @mouseover="hud.mouseover(spell, $event)"
           @mouseout="hud.mouseout(spell)"
         >
@@ -352,9 +353,11 @@ const lifted = (slot: number): boolean => {
           thing more cheaply from here: it is the only round control in the
           bar, and it is nowhere near a hotkey.
 
-          `@touchend.prevent` beside `@click` is not belt-and-braces —
-          `GameScene` cancels touches on the canvas, so a thumb never
-          synthesises the click and a `@click`-only control is dead under one.
+          `v-tap` beside `@click` is not belt-and-braces — `GameScene`
+          cancels touches on the canvas, so a thumb never synthesises the
+          click and a `@click`-only control is dead under one. The guard form
+          (`./tapGuard.ts`), not a bare `@touchend`, so a drag that merely
+          began on the button does not press it on release.
           Clicking again cancels: `Game.recall()` owns that, not this.
         -->
         <button
@@ -366,7 +369,7 @@ const lifted = (slot: number): boolean => {
           }"
           :title="`${state.recall.name} (${state.recall.hotKey})`"
           @click="hud.recall()"
-          @touchend.prevent="hud.recall()"
+          v-tap="() => hud.recall()"
         >
           <i class="fa-solid fa-house-chimney"></i>
           <!-- The key moved into the tooltip when this button shrank to 22px.
@@ -388,7 +391,7 @@ const lifted = (slot: number): boolean => {
           :class="{ 'at-shop': state.canShop }"
           :title="state.canShop ? 'Mở cửa hàng' : 'Về bệ đá để mua đồ'"
           @click="hud.openShop()"
-          @touchend.prevent="hud.openShop()"
+          v-tap="() => hud.openShop()"
         >
           <i class="fa-solid fa-coins"></i>
           <span>{{ state.gold }}</span>

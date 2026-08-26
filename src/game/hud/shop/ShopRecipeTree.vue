@@ -21,6 +21,7 @@
  * Recursive by filename: a `<script setup>` SFC may refer to itself.
  */
 import type { RecipeNode } from './shopState';
+import { vTap } from '../tapGuard';
 
 defineProps<{ nodes: RecipeNode[] }>();
 defineEmits<{ pick: [id: string] }>();
@@ -33,7 +34,7 @@ defineEmits<{ pick: [id: string] }>();
         class="shop-tree-node"
         :class="{ held: node.link.owned }"
         @click="$emit('pick', node.link.id)"
-        @touchend.prevent="$emit('pick', node.link.id)"
+        v-tap="() => $emit('pick', node.link.id)"
       >
         <img
           v-if="node.link.image"

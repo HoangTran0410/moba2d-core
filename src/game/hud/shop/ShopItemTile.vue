@@ -26,6 +26,7 @@
  */
 import { computed } from 'vue';
 import { priceLabel, type ShopRow } from './shopState';
+import { vTap } from '../tapGuard';
 
 const props = defineProps<{
   row: ShopRow;
@@ -55,7 +56,7 @@ const hint = computed(() =>
     :class="{ blocked: row.refusal !== null, picked, owned }"
     :title="hint"
     @click="$emit('pick')"
-    @touchend.prevent="$emit('pick')"
+    v-tap="() => $emit('pick')"
   >
     <img v-if="row.image" crossorigin="anonymous" :src="row.image" :alt="row.name" />
     <!-- No art is a real state (a pack naming a key nothing registered), and an

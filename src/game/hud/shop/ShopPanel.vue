@@ -82,19 +82,25 @@
  * tick, so a tile can be a fifth of a second out of date by the time it is
  * pressed — which is exactly long enough to have walked off the platform.
  *
- * ## `@touchend.prevent` beside every `@click`
+ * ## `v-tap` beside every `@click`
  *
  * `GameScene` calls `preventDefault()` on every touch on the page, so the
  * browser synthesises neither the trailing `click` nor its own scrolling.
  * A `@click`-only control here is dead under a thumb and perfect under a
  * mouse — the failure this codebase has shipped three times. The scroll the
  * grid needs is bought back by `touch-action: pan-y` on the scroller itself
- * (`styles/shop.css`), the same way `.practice-tab-body` does it.
+ * (`styles/shop.css`), the same way `.practice-tab-body` does it. And the
+ * touch half is `v-tap` (`../tapGuard.ts`), not a bare `@touchend.prevent`:
+ * the `touchend` of a *scroll* fires on whichever tile the thumb started
+ * from, so the bare form opened an item detail at the end of every swipe
+ * through the grid — the guard fires only for a touch that ends near where
+ * it began.
  */
 import { computed, inject, ref } from 'vue';
 import ShopDetail from './ShopDetail.vue';
 import ShopItemTile from './ShopItemTile.vue';
 import { heldItemIds, shopSections, type SellRow } from './shopState';
+import { vTap } from '../tapGuard';
 import { InventoryDrag } from '../inventoryDrag';
 import type { HudInteractions } from '../hudInteractions';
 import type { HudState } from '../hudState';
@@ -271,7 +277,7 @@ const lifted = (slot: number): boolean => {
         class="shop-close"
         title="Đóng"
         @click="$emit('close')"
-        @touchend.prevent="$emit('close')"
+        v-tap="() => $emit('close')"
       >
         <i class="fa-solid fa-xmark"></i>
       </button>

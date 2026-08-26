@@ -176,7 +176,9 @@ describe('createHudInteractions — the ways into the practice panel', () => {
     const source = readFileSync('src/game/hud/DesktopHudView.vue', 'utf8');
 
     expect(source).toContain('@click="hud.openRoster()"');
-    expect(source).toContain('@touchend.prevent="hud.openRoster()"');
+    // the guard form, not a bare `@touchend` — a drag that merely began on
+    // the portrait must not open the roster on release (tapGuard.ts)
+    expect(source).toContain('v-tap="() => hud.openRoster()"');
   });
 
   it('does not build or expose an unused full spell catalogue', () => {
@@ -287,7 +289,8 @@ describe('createHudInteractions — Hồi Thành', () => {
 
     expect(source).toContain('class="recall-btn"');
     expect(source).toContain('@click="hud.recall()"');
-    expect(source).toContain('@touchend.prevent="hud.recall()"');
+    // the guard form, not a bare `@touchend` — see tapGuard.ts
+    expect(source).toContain('v-tap="() => hud.recall()"');
     expect(source).toContain('state.recall.hotKey');
     expect(source).toContain('state.recall.progressPercent');
   });

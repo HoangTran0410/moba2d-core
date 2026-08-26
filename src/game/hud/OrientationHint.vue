@@ -26,6 +26,7 @@
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { HudInteractions } from './hudInteractions';
+import { vTap } from './tapGuard';
 
 const hud = inject<HudInteractions>('hud')!;
 
@@ -70,7 +71,7 @@ onBeforeUnmount(() => {
         class="orientation-hint-dismiss"
         id="orientation-hint-dismiss"
         @click="dismissed = true"
-        @touchend.prevent="dismissed = true"
+        v-tap="() => (dismissed = true)"
       >
         Vẫn chơi dọc
       </button>

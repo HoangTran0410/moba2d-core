@@ -22,6 +22,7 @@ import { computed, inject, ref } from 'vue';
 import { resolveMapId } from '@/content/defaultMap';
 import { CONFIG_PANEL } from './panelState';
 import { CDR_PERCENT_MAX, CDR_PERCENT_MIN } from '@/game/config/PregameConfig';
+import { vTap } from '../tapGuard';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -53,6 +54,30 @@ const setCdr = (percent: number, persist: boolean): void => {
 const cdrValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const onCdrInput = (event: Event): void => setCdr(cdrValue(event), false);
 const onCdrChange = (event: Event): void => setCdr(cdrValue(event), true);
+
+/**
+ * The scroll-vs-slider tail `touch-action: pan-y` cannot cover — the same
+ * shape as the zoom slider's guard in `SettingsTab.vue`: a vertical scroll
+ * that begins on the track jumps the value on `pointerdown` before the pan is
+ * recognised, and the recognition arrives as `pointercancel`. Snapshot on the
+ * way down, put it back on the cancel.
+ */
+let cdrBeforeGesture: number | null = null;
+
+const onCdrPointerDown = (): void => {
+  cdrBeforeGesture = rules.value.cooldownReductionPercent;
+};
+
+const onCdrPointerUp = (): void => {
+  cdrBeforeGesture = null;
+};
+
+const onCdrPointerCancel = (event: Event): void => {
+  if (cdrBeforeGesture === null) return;
+  setCdr(cdrBeforeGesture, true);
+  (event.target as HTMLInputElement).value = String(rules.value.cooldownReductionPercent);
+  cdrBeforeGesture = null;
+};
 
 const onUrfChange = (event: Event): void => {
   source.setRules({ ...rules.value, manaFree: (event.target as HTMLInputElement).checked }, true);
@@ -185,8 +210,9 @@ const resetLabel = computed(() =>
     <!-- Cards, not a `<select>` — see the script's own comment on what a
          player could not see before. A `<select>` was also the one control on
          this tab that needed no touch handler, because `@change` fires under
-         a thumb; a button does not, so each card carries `@touchend.prevent`
-         beside its `@click` like every other control in this panel.
+         a thumb; a button does not, so each card carries `v-tap` beside its
+         `@click` like every other control in this panel — the tap guard, not
+         a bare `@touchend`, which also fired for the touchend of a scroll.
 
          Not wrapped in `.pregame-field`: that rule sets `display: block` on
          every descendant `span`, which is right for a one-line label and
@@ -196,7 +222,7 @@ const resetLabel = computed(() =>
       <div id="practice-map" class="map-picker" role="radiogroup" aria-label="Bản đồ">
         <button v-for="map of maps" :key="map.id" type="button" class="map-option"
           :class="{ selected: map.id === selectedMapId }" role="radio" :aria-checked="map.id === selectedMapId"
-          :data-map="map.id" @click="pickMap(map.id)" @touchend.prevent="pickMap(map.id)">
+          :data-map="map.id" @click="pickMap(map.id)" v-tap="() => pickMap(map.id)">
           <span class="map-option-name">
             {{ map.name }}
             <i v-if="map.id === selectedMapId" class="fas fa-check map-option-tick" aria-hidden="true"></i>
@@ -220,7 +246,8 @@ const resetLabel = computed(() =>
       <span>Giảm hồi chiêu:
         <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span>
       <input type="range" id="practice-cdr" :min="CDR_PERCENT_MIN" :max="CDR_PERCENT_MAX" :step="CDR_PERCENT_STEP"
-        :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange" />
+        :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange"
+        @pointerdown="onCdrPointerDown" @pointerup="onCdrPointerUp" @pointercancel="onCdrPointerCancel" />
     </label>
 
     <label class="pregame-toggle">

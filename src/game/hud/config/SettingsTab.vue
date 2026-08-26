@@ -27,6 +27,7 @@
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { CONFIG_PANEL } from './panelState';
+import { vTap } from '../tapGuard';
 import DomUtils from '@/utils/dom.utils';
 import { DEBUG_LAYER_KEYS, type DebugLayerConfig } from '@/game/config/PregameConfig';
 import {
@@ -114,6 +115,33 @@ const onZoomInput = (event: Event): void => {
 };
 
 const persistZoom = (): void => live?.persistZoom();
+
+/**
+ * The scroll-vs-slider tail `touch-action: pan-y` cannot cover. A vertical
+ * scroll that happens to begin on the track still jumps the value first — the
+ * browser commits the thumb to the touch point on `pointerdown`, fires
+ * `input`, and only *then* recognises the pan and hands the gesture to the
+ * scroller with a `pointercancel`. By that point the zoom has already moved.
+ * Snapshot on the way down, put it back on the cancel; a real drag or tap ends
+ * in `pointerup`/`change` and never sees this.
+ */
+let zoomBeforeGesture: number | null = null;
+
+const onZoomPointerDown = (): void => {
+  zoomBeforeGesture = live?.zoom ?? null;
+};
+
+const onZoomPointerUp = (): void => {
+  zoomBeforeGesture = null;
+};
+
+const onZoomPointerCancel = (event: Event): void => {
+  if (zoomBeforeGesture === null) return;
+  live?.setZoom(zoomBeforeGesture);
+  zoom.value = live?.zoom ?? zoomBeforeGesture;
+  (event.target as HTMLInputElement).value = String(zoom.value);
+  zoomBeforeGesture = null;
+};
 
 /**
  * ## Fullscreen
@@ -259,6 +287,9 @@ const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
         :value="zoom"
         @input="onZoomInput"
         @change="persistZoom"
+        @pointerdown="onZoomPointerDown"
+        @pointerup="onZoomPointerUp"
+        @pointercancel="onZoomPointerCancel"
       />
     </label>
 
@@ -268,7 +299,7 @@ const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
       class="practice-fullscreen"
       id="practice-fullscreen"
       @click="toggleFullscreen"
-      @touchend.prevent="toggleFullscreen"
+      v-tap="toggleFullscreen"
     >
       <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'" aria-hidden="true"></i>
       <span>{{ isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</span>

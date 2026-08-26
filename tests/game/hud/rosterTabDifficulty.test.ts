@@ -19,17 +19,26 @@ import { BOT_DIFFICULTY_ORDER } from '../../../src/game/config/PregameConfig';
  * called it with a different argument, would be the same bug wearing a
  * handler.
  *
- * The `.prevent` modifier on the touch half is what stops the pair firing twice
- * on a device that does synthesise the click.
+ * The touch half is `v-tap` (`src/game/hud/tapGuard.ts`), not a bare
+ * `@touchend.prevent`: the bare form also fired for the `touchend` of a
+ * *scroll*, pressing whatever control the thumb happened to start on. The
+ * directive both tells a tap from a scroll and cancels the synthesised click,
+ * so one press is not two — that behaviour is unit-tested in
+ * `tests/game/hud/tapGuard.test.ts`; here the template is checked to actually
+ * use it.
  */
 const ROSTER_TAB = join(__dirname, '../../../src/game/hud/config/RosterTab.vue');
 
-/** The first element in `markup` whose tag body mentions `className`. */
+/**
+ * The first element in `markup` whose tag body mentions `className`. Quoted
+ * attribute values may contain `>` (`v-tap="() => …"`), so the tag body is
+ * scanned as quoted-string-or-plain rather than as "anything but `>`".
+ */
 const elementWithClass = (markup: string, className: string): string => {
-  const pattern = new RegExp(`<(\\w+)([^>]*${className}[^>]*)>`, 's');
-  const found = pattern.exec(markup);
-  if (!found) throw new Error(`no element carrying class "${className}"`);
-  return found[2];
+  for (const found of markup.matchAll(/<(\w+)((?:"[^"]*"|[^>"])*)>/gs)) {
+    if (found[2].includes(className)) return found[2];
+  }
+  throw new Error(`no element carrying class "${className}"`);
 };
 
 /**
@@ -51,12 +60,18 @@ const elementAt = (markup: string, start: number): string => {
   throw new Error(`unbalanced <${tag}>`);
 };
 
-/** `@click="x"` / `@touchend.prevent="x"` → `{ click: 'x', touchend: 'x' }`. */
+/**
+ * `@click="x"` → `{ click: 'x' }`, and the tap directive's arrow unwrapped:
+ * `v-tap="() => x"` → `{ tap: 'x' }`, so "both halves reach the same setter"
+ * stays one string comparison.
+ */
 const handlersOf = (element: string): Record<string, string> => {
   const handlers: Record<string, string> = {};
   for (const [, event, expression] of element.matchAll(/@([a-z]+)(?:\.[a-z]+)*\s*=\s*"([^"]+)"/g)) {
     handlers[event] = expression.trim();
   }
+  const tap = /v-tap\s*=\s*"([^"]+)"/.exec(element);
+  if (tap) handlers.tap = tap[1].trim().replace(/^\(\)\s*=>\s*/, '');
   return handlers;
 };
 
@@ -68,12 +83,13 @@ describe('the difficulty control on a bot row', () => {
   it('answers a touch and a click with the same setter', () => {
     const handlers = handlersOf(button);
     expect(handlers.click, 'no @click handler').toBeDefined();
-    expect(handlers.touchend, 'no @touchend handler — dead under a thumb').toBeDefined();
-    expect(handlers.touchend).toBe(handlers.click);
+    expect(handlers.tap, 'no v-tap handler — dead under a thumb').toBeDefined();
+    expect(handlers.tap).toBe(handlers.click);
   });
 
-  it('cancels the synthesised click so one press is not two', () => {
-    expect(button).toMatch(/@touchend\.prevent/);
+  it('guards the touch half against scrolls, through the tap directive', () => {
+    expect(button).toMatch(/v-tap/);
+    expect(source).toContain("import { vTap } from '../tapGuard'");
   });
 
   it('renders one button per tier, from the config’s own list', () => {
@@ -107,7 +123,7 @@ describe('the difficulty control on a bot row', () => {
     );
     const handlers = handlersOf(clickOnly);
     expect(handlers.click).toBe('setDifficulty(row, tier)');
-    expect(handlers.touchend).toBeUndefined();
+    expect(handlers.tap).toBeUndefined();
 
     // …and a control that sits after the guard instead of inside it.
     const escaped =

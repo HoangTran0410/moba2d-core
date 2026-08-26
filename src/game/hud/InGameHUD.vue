@@ -41,6 +41,7 @@
 import { markRaw, onUnmounted, provide, ref, shallowRef } from 'vue';
 import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
+import { vTap } from './tapGuard';
 import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
@@ -140,7 +141,7 @@ defineExpose({
       class="corner-btn shop-btn"
       :class="{ 'at-shop': state?.canShop }"
       @click="hud.openShop()"
-      @touchend.prevent="hud.openShop()"
+      v-tap="() => hud.openShop()"
       title="Cửa hàng"
     >
       <i class="fa-solid fa-coins"></i>
@@ -149,7 +150,7 @@ defineExpose({
     <button
       class="corner-btn spell-picker-btn"
       @click="hud.openSpellPicker()"
-      @touchend.prevent="hud.openSpellPicker()"
+      v-tap="() => hud.openSpellPicker()"
       title="Bảng luyện tập"
     >
       <i class="fa-solid fa-wand-magic-sparkles"></i>

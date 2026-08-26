@@ -40,6 +40,7 @@
  */
 import { computed, inject, ref, shallowRef } from 'vue';
 import { CONFIG_PANEL } from './panelState';
+import { vTap } from '../tapGuard';
 import { expandedRosterRows } from './expandedRows';
 import type { ConfigRosterEntry } from './MatchConfigSource';
 import {
@@ -587,9 +588,10 @@ defineExpose({
                    behaviour exists to hold it: the player's row has none, and
                    nothing but this guard says so — `strict: false` means
                    `row.behaviour.difficulty` compiles anywhere. A scan test
-                   holds it here. `@touchend.prevent` beside `@click` because
-                   `GameScene` cancels every touch on the page — see
-                   `setDifficulty`. -->
+                   holds it here. `v-tap` beside `@click` because `GameScene`
+                   cancels every touch on the page, and a bare `@touchend`
+                   would also fire for the touchend of a scroll — see
+                   `tapGuard.ts`. -->
               <div class="practice-difficulty" role="group" aria-label="Trình độ">
                 <span class="practice-difficulty-title">Trình độ</span>
                 <span class="practice-difficulty-row">
@@ -602,7 +604,7 @@ defineExpose({
                     :id="`practice-difficulty-${tier}-${row.index}`"
                     :aria-pressed="row.behaviour.difficulty === tier"
                     @click="setDifficulty(row, tier)"
-                    @touchend.prevent="setDifficulty(row, tier)"
+                    v-tap="() => setDifficulty(row, tier)"
                   >
                     {{ DIFFICULTY_LABELS[tier] }}
                   </button>
@@ -649,9 +651,10 @@ defineExpose({
               way to a fair fight — and it is deliberately manual, so it does
               not pre-empt what that AI should eventually decide for itself.
 
-              `@touchend.prevent` beside every `@click`: `GameScene` cancels
-              every touch on the page, so a `@click`-only button is dead under
-              a thumb.
+              `v-tap` beside every `@click`: `GameScene` cancels every touch
+              on the page, so a `@click`-only button is dead under a thumb —
+              and a bare `@touchend` fired for scrolls too, which is what
+              `tapGuard.ts` tells apart.
             -->
             <div v-if="live" class="practice-cheat-stack">
               <span class="practice-cheat-stack-name">
@@ -666,7 +669,7 @@ defineExpose({
                   class="practice-cheat-btn"
                   :id="`practice-cheat-gold-${step}-${row.index}`"
                   @click="grantGold(row, step)"
-                  @touchend.prevent="grantGold(row, step)"
+                  v-tap="() => grantGold(row, step)"
                 >
                   +{{ step }}
                 </button>
@@ -688,7 +691,7 @@ defineExpose({
                   class="practice-cheat-btn"
                   :id="`practice-cheat-shop-${row.index}`"
                   @click="openShop(row)"
-                  @touchend.prevent="openShop(row)"
+                  v-tap="() => openShop(row)"
                 >
                   <i class="fas fa-store" aria-hidden="true"></i>
                   Cửa hàng
@@ -697,7 +700,7 @@ defineExpose({
                   type="button"
                   class="practice-cheat-btn"
                   @click="clearItems(row)"
-                  @touchend.prevent="clearItems(row)"
+                  v-tap="() => clearItems(row)"
                 >
                   Xoá đồ
                 </button>
