@@ -63,3 +63,9 @@ describe('the roster search box', () => {
     expect(code).not.toMatch(/class="kit-search-input"[^>]*autofocus/);
   });
 });
+
+describe('the search unfolds the roster', () => {
+  it('hands the roster whether a query is live, so folded packs open on results', () => {
+    expect(code).toMatch(/:search-active="search\.length > 0"/);
+  });
+});

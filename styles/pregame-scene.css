@@ -925,18 +925,42 @@
   align-items: center;
   gap: 0.45rem;
   margin: 0.5rem 0 0;
-  padding-bottom: 0.3rem;
+  padding: 0 0 0.3rem;
+  border: none;
   border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.25));
+  background: none;
+  font: inherit;
   font-size: 0.8em;
   font-weight: normal;
+  text-align: left;
+  cursor: pointer;
   color: var(--hextech-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-/* The first heading sits under the Ngẫu Nhiên card and needs no gap of its own. */
-.kit-pack-heading:first-of-type {
+/* The first heading sits under the Ngẫu Nhiên card and needs no gap of its own.
+   (Adjacency, not :first-of-type: the heading is a <button> now and the random
+   card above it is one too.) */
+.catalog-random-card + .kit-pack-heading {
   margin-top: 0.15rem;
+}
+
+.kit-pack-heading-chevron {
+  flex: none;
+  font-size: 0.85em;
+  opacity: 0.8;
+  transition: transform 0.15s ease;
+}
+
+.kit-pack-heading.folded .kit-pack-heading-chevron {
+  transform: rotate(-90deg);
+}
+
+/* A folded pack's rows leave the screen, never the DOM — and an open shelf
+   outranks the fold, so nothing the parent opens can be invisible. */
+.kit-shelf.pack-collapsed:not(.open) {
+  display: none;
 }
 
 .kit-pack-heading-icon {

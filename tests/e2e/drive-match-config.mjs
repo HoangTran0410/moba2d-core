@@ -210,6 +210,13 @@ check('and it joins the side whose button was pressed', redAfter === redBefore +
 // the same draft-until-confirm rule.
 await page.click('.practice-roster-row.is-player .practice-roster-open');
 await page.waitForSelector('.loadout-modal', { state: 'visible', timeout: 15_000 });
+// Pack sections start folded when more than one pack is installed; a tile
+// cannot be clicked through a folded heading, so open them all first.
+await page.evaluate(() => {
+  for (const heading of document.querySelectorAll('.kit-pack-heading[aria-expanded="false"]')) {
+    heading.click();
+  }
+});
 await page.click('.kit-shelf[data-champion="Zed"] .kit-shelf-apply');
 await page.waitForSelector('.kit-shelf[data-champion="Zed"].open .kit-apply-all', { timeout: 10_000 });
 await page.click('.kit-shelf[data-champion="Zed"] .kit-apply-all');

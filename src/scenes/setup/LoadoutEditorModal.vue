@@ -747,6 +747,7 @@ const hint = computed(() => {
         <KitRoster
           :shelves="visibleShelves"
           :pack-labels="packLabels"
+          :search-active="search.length > 0"
           :active-entry-id="activeEntryId"
           :selected-champion="selectedChampion"
           :match-rules="matchRules"

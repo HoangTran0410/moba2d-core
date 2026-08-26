@@ -419,3 +419,26 @@ export const getPregameCatalog = (): PregameCatalog => {
 export function resetPregameCatalog(): void {
   cached = null;
 }
+
+/**
+ * Whether a pack's shelves are on screen, under the roster's collapsible
+ * sections.
+ *
+ * Default folded: with several packs installed the roster used to open as
+ * every champion of every pack at once, and finding one pack's rows meant
+ * scrolling past all the others. A single-pack roster renders no headings, so
+ * there is nothing to fold and everything shows — that is also the core-alone
+ * boot case. A live search overrides the fold entirely: the filter already cut
+ * the roster down to matches, and hiding a match behind a heading the player
+ * would still have to open reads as the search finding nothing.
+ */
+export function packShelvesVisible(
+  packId: string,
+  expandedPacks: ReadonlySet<string>,
+  searching: boolean,
+  groupCount: number
+): boolean {
+  if (groupCount <= 1) return true;
+  if (searching) return true;
+  return expandedPacks.has(packId);
+}

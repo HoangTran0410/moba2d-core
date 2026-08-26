@@ -58,7 +58,7 @@ import { computed, ref, watch, nextTick } from 'vue';
 import { packAsset, spellDisplayOf, type SpellCatalogEntry } from '@/game/config/spellCatalog';
 import type { MatchRules } from '@/game/config/PregameConfig';
 import type { SavedKit } from '@/game/config/savedKits';
-import { groupShelvesByPack, type KitShelf, type PackLabel } from './pregameCatalog';
+import { groupShelvesByPack, packShelvesVisible, type KitShelf, type PackLabel } from './pregameCatalog';
 import SpellIcon from './SpellIcon.vue';
 import type { SpellPeek } from './useSpellPeek';
 
@@ -119,6 +119,12 @@ const props = defineProps<{
    * so it is what knows the labels changed.
    */
   packLabels: ReadonlyMap<string, PackLabel>;
+  /**
+   * True while the parent's search box holds a query. A live search unfolds
+   * every pack section — the filter already chose what to show, and a match
+   * hidden behind a folded heading reads as the search finding nothing.
+   */
+  searchActive: boolean;
 }>();
 /**
  * The roster as one flat list of rows, each a shelf and the heading that goes
@@ -142,8 +148,13 @@ const props = defineProps<{
  */
 const rosterRows = computed(() => {
   const { pinned, groups } = groupShelvesByPack(props.shelves, props.packLabels);
-  const rows: { shelf: KitShelf; heading: { pack: PackLabel; count: number } | null }[] = [];
-  for (const shelf of pinned) rows.push({ shelf, heading: null });
+  const rows: {
+    shelf: KitShelf;
+    heading: { pack: PackLabel; count: number } | null;
+    /** The pack this row folds under, or null for the pinned shelves. */
+    packId: string | null;
+  }[] = [];
+  for (const shelf of pinned) rows.push({ shelf, heading: null, packId: null });
   const headed = groups.length > 1;
   for (const group of groups) {
     group.shelves.forEach((shelf, index) => {
@@ -151,11 +162,27 @@ const rosterRows = computed(() => {
         shelf,
         heading:
           headed && index === 0 ? { pack: group.pack, count: group.shelves.length } : null,
+        packId: group.pack.id,
       });
     });
   }
-  return rows;
+  return { rows, groupCount: groups.length };
 });
+
+/**
+ * Which packs are unfolded. Session state of this mount, deliberately not
+ * persisted — the fold is a navigation aid, not a setting. Empty means every
+ * pack starts folded; `packShelvesVisible` says when that is overridden.
+ */
+const expandedPacks = ref(new Set<string>());
+const togglePack = (packId: string): void => {
+  const next = new Set(expandedPacks.value);
+  if (next.has(packId)) next.delete(packId);
+  else next.add(packId);
+  expandedPacks.value = next;
+};
+const packOpen = (packId: string): boolean =>
+  packShelvesVisible(packId, expandedPacks.value, props.searchActive, rosterRows.value.groupCount);
 
 /** Pack logos come from a pack's own host, so they can fail; the heading drops to text. */
 const packIconFailed = ref(new Set<string>());
@@ -215,6 +242,13 @@ watch(
   () => props.openShelf,
   newShelf => {
     if (!newShelf) return;
+    // The parent can open a shelf the fold is hiding (the slot bar, a saved
+    // kit); the pack unfolds rather than opening a shelf nobody can see.
+    if (newShelf.packId && !expandedPacks.value.has(newShelf.packId)) {
+      const next = new Set(expandedPacks.value);
+      next.add(newShelf.packId);
+      expandedPacks.value = next;
+    }
     void nextTick(() => {
       requestAnimationFrame(() => {
         const openEl = document.querySelector<HTMLElement>('.kit-shelf.open');
@@ -266,19 +300,31 @@ watch(
          `.kit-roster` is the grid itself and a real element per pack would
          make each one a single-column cell. The heading spans the row from CSS
          (`grid-column: 1 / -1`). -->
-    <template v-for="{ shelf, heading } in rosterRows" :key="shelf.name">
-    <h4 v-if="heading" class="kit-pack-heading">
+    <template v-for="{ shelf, heading, packId } in rosterRows.rows" :key="shelf.name">
+    <!-- The heading is the fold's handle: tap to open one pack's rows, tap
+         again to put them away. `aria-expanded` is the state the e2e drives
+         and a screen reader both read. -->
+    <button v-if="heading" type="button" class="kit-pack-heading"
+      :class="{ folded: !packOpen(heading.pack.id) }" :aria-expanded="packOpen(heading.pack.id)"
+      :title="packOpen(heading.pack.id) ? `Thu gọn ${heading.pack.name}` : `Mở ${heading.pack.name}`"
+      @click="togglePack(heading.pack.id)">
+      <i class="fas fa-chevron-down kit-pack-heading-chevron" aria-hidden="true"></i>
       <img crossorigin="anonymous" v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
         alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
         @error="onPackIconError(heading.pack)" />
       <span class="kit-pack-heading-name">{{ heading.pack.name }}</span>
       <span class="kit-pack-heading-count">{{ heading.count }} tướng</span>
-    </h4>
+    </button>
 
+    <!-- `pack-collapsed` hides with CSS rather than dropping the shelf from
+         the DOM: the e2e drives count `.kit-shelf` expecting the whole
+         catalogue, and an open shelf stays visible whatever its pack's fold
+         says (`:not(.open)` in the rule). -->
     <section class="kit-shelf" :class="{
       selected: isSelectedShelf(shelf),
       'has-kit': shelf.kit.length > 0,
       open: shelf === openShelf,
+      'pack-collapsed': packId !== null && !packOpen(packId),
     }" :data-champion="shelf.name">
       <!-- `has-kit` is the same predicate that decides whether the header is a
            button at all (`v-if="shelf.kit.length"` below), reused rather than

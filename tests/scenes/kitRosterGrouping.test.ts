@@ -4,8 +4,11 @@ vi.mock('../../src/managers/AssetManager', () => ({
   default: { get: () => undefined, getAsset: () => undefined, placeholder: () => undefined },
 }));
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   groupShelvesByPack,
+  packShelvesVisible,
   type KitShelf,
   type PackLabel,
 } from '../../src/scenes/setup/pregameCatalog';
@@ -123,5 +126,58 @@ describe('groupShelvesByPack', () => {
 
   it('is empty for an empty roster', () => {
     expect(groupShelvesByPack([], labels)).toEqual({ pinned: [], groups: [] });
+  });
+});
+
+/**
+ * The fold. With several packs installed the roster used to open as every
+ * champion of every pack at once; each pack is now a collapsible section,
+ * folded by default, and a live search unfolds everything the filter kept.
+ * The rule is pure so it can be pinned without mounting the grid.
+ */
+describe('packShelvesVisible', () => {
+  const none = new Set<string>();
+
+  it('shows everything when a single pack is installed — there are no headings to fold', () => {
+    expect(packShelvesVisible('lol', none, false, 1)).toBe(true);
+  });
+
+  it('starts folded once there is more than one pack', () => {
+    expect(packShelvesVisible('lol', none, false, 2)).toBe(false);
+  });
+
+  it('unfolds the pack the player opened, and only that one', () => {
+    const expanded = new Set(['lol']);
+    expect(packShelvesVisible('lol', expanded, false, 2)).toBe(true);
+    expect(packShelvesVisible('dota', expanded, false, 2)).toBe(false);
+  });
+
+  it('a live search unfolds every section the filter kept', () => {
+    expect(packShelvesVisible('lol', none, true, 2)).toBe(true);
+    expect(packShelvesVisible('dota', none, true, 2)).toBe(true);
+  });
+});
+
+/**
+ * Source pins, in the style of `loadoutSearch.test.ts` — nothing here mounts.
+ * The rule above only matters if the grid actually consults it, hides with CSS
+ * rather than dropping shelves from the DOM (the e2e drives count
+ * `.kit-shelf`), and never hides the shelf the parent opened.
+ */
+describe('the roster grid honours the fold', () => {
+  const source = readFileSync(resolve(__dirname, '../../src/scenes/setup/KitRoster.vue'), 'utf8');
+  const css = readFileSync(resolve(__dirname, '../../styles/pregame-scene.css'), 'utf8');
+
+  it('consults packShelvesVisible for both the heading state and the rows', () => {
+    expect(source).toMatch(/packShelvesVisible\(/);
+    expect(source).toMatch(/'pack-collapsed': packId !== null && !packOpen\(packId\)/);
+  });
+
+  it('the heading is the fold handle, with its state readable', () => {
+    expect(source).toMatch(/kit-pack-heading[\s\S]*?:aria-expanded="packOpen\(heading\.pack\.id\)"/);
+  });
+
+  it('hides with CSS and never hides an open shelf', () => {
+    expect(css).toMatch(/\.kit-shelf\.pack-collapsed:not\(\.open\)\s*\{\s*display:\s*none/);
   });
 });
