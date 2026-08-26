@@ -515,7 +515,11 @@ function recapIconsFor(player: any, recap: unknown): Map<string, string> {
  * nothing named itself), heaviest first.
  */
 function buildDeathRecap(player: any): DeathRecapDisplay | null {
-  if (!player.isDead || !player.deathRecap) return null;
+  // Deliberately not gated on `isDead`: respawns are fast here, and a recap
+  // that vanished with the corpse was gone before anyone finished reading
+  // it. The panel decides its own dismissal (the close button, or a tap
+  // outside once respawned) — the data just keeps answering.
+  if (!player.deathRecap) return null;
   const recap = player.deathRecap;
   const icons = recapIconsFor(player, recap);
 

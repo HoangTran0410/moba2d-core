@@ -94,12 +94,17 @@ describe('computeHudState', () => {
     expect(tru.sources[0].image).toBe('');
   });
 
-  it('shows no recap while alive, even with an old one recorded', () => {
+  it('keeps the recap through the respawn — dismissal is the panel’s call, not the corpse’s', () => {
+    // Respawns are fast; a recap gated on `isDead` was gone before anyone
+    // finished reading it. The panel closes on its button, or on a tap
+    // outside once respawned.
     const player = fakePlayer({
       isDead: false,
       deathRecap: { seq: 1, killerName: 'X', entries: [] },
     });
-    expect(computeHudState({ player } as any)!.deathRecap).toBeNull();
+    const recap = computeHudState({ player } as any)!.deathRecap;
+    expect(recap).not.toBeNull();
+    expect(recap!.seq).toBe(1);
   });
 
   it('is null with no player yet', () => {

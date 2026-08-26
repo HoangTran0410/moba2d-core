@@ -160,8 +160,9 @@ defineExpose({
 
   <!-- One recap for both views — see its own header. -->
   <DeathRecapPanel
-    v-if="state && state.isDead && state.deathRecap"
+    v-if="state && state.deathRecap"
     :recap="state.deathRecap"
+    :is-dead="state.isDead"
   />
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
