@@ -1,5 +1,5 @@
 {
-  "contract": 8,
+  "contract": 9,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -116,6 +116,7 @@
     "enums.EventType:object",
     "enums.EventType.ON_ATTACK:string",
     "enums.EventType.ON_ATTACK_HIT:string",
+    "enums.EventType.ON_ATTACK_LAUNCH:string",
     "enums.EventType.ON_BUFF_ADD:string",
     "enums.EventType.ON_BUFF_REMOVE:string",
     "enums.EventType.ON_DIE:string",
