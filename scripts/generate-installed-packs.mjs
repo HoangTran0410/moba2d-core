@@ -80,7 +80,7 @@ export function renderInstalledPacksSource({ packs, names, linked = [] }) {
 
   const imports = packs
     .flatMap(pack => [
-      `import ${pack.name}Code, {\n  data as ${pack.name}Data,\n  BUNDLED_PACK_ID as ${pack.name}PackId,\n} from '${pack.packageName}/pack';`,
+      `import ${pack.name}Code, { data as ${pack.name}Data } from '${pack.packageName}/pack';`,
       `import { assetManifest as ${pack.name}AssetManifest } from '${pack.packageName}/generated/assetManifest';`,
     ])
     .join('\n');
@@ -88,7 +88,7 @@ export function renderInstalledPacksSource({ packs, names, linked = [] }) {
   const entries = packs
     .map(
       pack => `  {
-    id: ${pack.name}PackId,
+    id: ${pack.name}Data.manifest.id,
     name: '${pack.name}',
     packageName: '${pack.packageName}',
     data: ${pack.name}Data,

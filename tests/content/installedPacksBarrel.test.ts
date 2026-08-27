@@ -43,10 +43,13 @@ describe('the generated installed-packs barrel', () => {
   });
 
   it('gives every entry the id its own pack manifest declares', () => {
-    // `id` comes from the pack's `BUNDLED_PACK_ID` export and `data.manifest.id`
-    // is the canonical spelling; `install.ts` installs code against the first
-    // and data under the second, so a disagreement would install one pack's
-    // spells under another pack's name.
+    // `id` is read straight off `data.manifest.id` by the generator, so the
+    // two cannot disagree — which is the point. The barrel used to import a
+    // separate `BUNDLED_PACK_ID` export from each pack and hope it matched;
+    // `packs/reference/pack.ts` and the `moba2d-pack-new` scaffold never
+    // exported one, so every pack but `lol` broke `pack:link` on a specifier
+    // that resolved to a module without that member. This still asserts the
+    // invariant the barrel's readers depend on.
     for (const pack of installedPacks) {
       expect(pack.id).toBe(pack.data.manifest.id);
       expect(pack.packageName).toBe(`@moba2d/content-${pack.name}`);
