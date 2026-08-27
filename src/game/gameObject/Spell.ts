@@ -12,6 +12,7 @@ import {
   type OwnerMovementSnapshot,
 } from '@/game/spell/runtime/CancelPolicy';
 import type { TargetingRequest } from '@/game/spell/targeting/TargetResolver';
+import { beginAttribution, endAttribution } from '@/game/combat/DamageAttribution';
 import type {
   CancelReason,
   CastContext,
@@ -196,10 +197,31 @@ export default class Spell {
     return createVector(aim ? aim.x : 0, aim ? aim.y : 0);
   }
 
+  /**
+   * Runs `body` with this spell as the attribution for any damage inside it
+   * that does not name a source, and for any `SpellObject` it constructs.
+   *
+   * Applied at the four places core hands control to the runtime — `update`,
+   * `press`, `hold`, `release` — rather than at each of the seven delegate
+   * callbacks below, because every one of those fires synchronously inside one
+   * of these four. Four brackets that cannot miss a path beat seven that can.
+   *
+   * See `combat/DamageAttribution.ts`, including why this saves and restores
+   * instead of assigning.
+   */
+  private attributed<T>(body: () => T): T {
+    const previous = beginAttribution(this);
+    try {
+      return body();
+    } finally {
+      endAttribution(previous);
+    }
+  }
+
   update(): void {
     this.onUpdate();
     this.observeInterrupts();
-    this.runtime.update(deltaTime);
+    this.attributed(() => this.runtime.update(deltaTime));
     if (this.owner.isDead) {
       this.spellVfx?.dispose();
       return;
@@ -292,7 +314,7 @@ export default class Spell {
   press(context: CastContext): boolean {
     this._castContext = snapshotContext(context);
     this.game.eventManager.emit(EventType.ON_PRE_CAST_SPELL, this);
-    const accepted = this.runtime.press(this._castContext);
+    const accepted = this.attributed(() => this.runtime.press(this._castContext!));
     if (accepted) {
       this.snapshotOwner();
       // Casting is the third way to cancel a standing attack order, beside a
@@ -327,12 +349,12 @@ export default class Spell {
   }
 
   hold(context: CastContext): boolean {
-    return this.runtime.hold(context);
+    return this.attributed(() => this.runtime.hold(context));
   }
 
   release(context: CastContext): boolean {
     this._castContext = snapshotContext(context);
-    const released = this.runtime.release(this._castContext);
+    const released = this.attributed(() => this.runtime.release(this._castContext!));
     this.syncVfxPhase();
     return released;
   }

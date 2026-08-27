@@ -9,6 +9,11 @@ import GameObject from '@/game/gameObject/GameObject';
 import UnitCollisionSystem from './UnitCollisionSystem';
 import { canSee, type Seeable as VisionObserver } from '@/game/combat/Vision';
 import { blend, isContinuousStep } from '@/game/render/Interpolation';
+import {
+  beginAttribution,
+  endAttribution,
+  type DamageAttributable,
+} from '@/game/combat/DamageAttribution';
 
 export type QueryArea = Circle | Rectangle;
 export type RenderQuality = 'auto' | 'low' | 'high';
@@ -417,7 +422,21 @@ export default class ObjectManager {
       // walk keeps this a field write, not a second pass over the list.
       o.renderOriginX = o.position.x;
       o.renderOriginY = o.position.y;
-      o.update?.();
+      // Whatever this object belongs to owns the damage it deals without
+      // naming a source — a missile's `onHit` runs here, frames after the cast
+      // that built it. Save/restore rather than assign: a child object built
+      // during this call inherits the attribution, and a reflect re-enters
+      // `takeDamage` from inside it. See `combat/DamageAttribution.ts`.
+      //
+      // Phrasing note: `BaseObjectTypes.test.ts` scans this whole file for
+      // TypeScript's three-letter escape hatch and does not strip comments, so
+      // prose here cannot spell it either.
+      const previous = beginAttribution((o as { attributedTo?: DamageAttributable }).attributedTo);
+      try {
+        o.update?.();
+      } finally {
+        endAttribution(previous);
+      }
     }
 
     // two-pass remove: collect dead, then filter once (avoids O(n²) splice)

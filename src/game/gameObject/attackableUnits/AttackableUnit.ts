@@ -18,6 +18,11 @@ import PathAgent from '@/game/nav/PathAgent';
 import { NAV_MAX_TERRAIN_RADIUS } from '@/game/nav/NavGrid';
 import type Buff from '@/game/gameObject/Buff';
 import type { BuffConstructor, BuffStackId } from '@/game/gameObject/Buff';
+import {
+  beginAttribution,
+  currentAttributionName,
+  endAttribution,
+} from '@/game/combat/DamageAttribution';
 
 export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
   game: GameObjectRuntimeContext;
@@ -521,7 +526,15 @@ export default class AttackableUnit extends GameObject {
     this._buffEffectsToDisable = 0;
 
     for (let buff of this.buffs) {
-      buff.update();
+      // A buff already carries the display name the recap wants, so a tick that
+      // deals damage without naming a source — `DamageOverTime`, an item's
+      // reflect — files under the buff itself.
+      const previous = beginAttribution(buff);
+      try {
+        buff.update();
+      } finally {
+        endAttribution(previous);
+      }
       this._buffEffectsToEnable |= buff.statusFlagsToEnable;
       this._buffEffectsToDisable |= buff.statusFlagsToDisable;
     }
@@ -665,7 +678,11 @@ export default class AttackableUnit extends GameObject {
     const landed = Math.min(damage, Math.max(0, this.stats.health.baseValue));
     this.tally.damageTaken += landed;
     if (attacker && attacker !== this) attacker.tally.damageDealt += landed;
-    if (landed > 0 && attacker !== this) this.recordDamageForRecap(landed, type, attacker, source);
+    if (landed > 0 && attacker !== this)
+      // An explicit `source` always wins: five sites across the packs
+      // deliberately name a sub-ability rather than their own spell. The
+      // ambient only fills the silence — see `combat/DamageAttribution.ts`.
+      this.recordDamageForRecap(landed, type, attacker, source ?? currentAttributionName());
 
     this.stats.health.baseValue -= damage;
 
@@ -727,7 +744,16 @@ export default class AttackableUnit extends GameObject {
   private reactToDamage(swung: number, landed: number, attacker?: AttackableUnit): void {
     for (const buff of [...this.buffs]) {
       if (buff.toRemove) continue;
-      buff.onDamageTaken(swung, landed, attacker);
+      // `DamageReflect` pays out from in here by re-entering `takeDamage` on
+      // the attacker, so this bracket is what puts that hit under the reflect's
+      // own name instead of leaving it nameless mid-way through someone else's
+      // damage pass.
+      const previous = beginAttribution(buff);
+      try {
+        buff.onDamageTaken(swung, landed, attacker);
+      } finally {
+        endAttribution(previous);
+      }
     }
   }
 

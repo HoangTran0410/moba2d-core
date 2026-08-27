@@ -1,4 +1,5 @@
 import GameObject from './GameObject';
+import { currentAttribution, type DamageAttributable } from '@/game/combat/DamageAttribution';
 import type Buff from './Buff';
 import type AttackableUnit from './attackableUnits/AttackableUnit';
 import type { GameObjectRuntimeContext } from './GameObject';
@@ -9,6 +10,23 @@ export default class SpellObject extends GameObject {
   isMissile = false;
   owner: AttackableUnit;
   destination!: p5.Vector;
+
+  /**
+   * The spell this object belongs to, for damage it deals without naming one.
+   *
+   * Stamped from whatever was casting when this was constructed, which is the
+   * object's own spell for the overwhelming majority of them — 34 of the dota
+   * pack's 40 spells and 226 of the lol pack's 268 build their object inside
+   * `onSpellCast`. A pack sets nothing and overrides nothing; see
+   * `combat/DamageAttribution.ts` for why the link has to be made here rather
+   * than passed down.
+   *
+   * `null` for an object built outside a cast — a child spawned by another
+   * object's `update()` inherits that object's attribution instead, through
+   * `ObjectManager.update()`'s own bracket, and one built from nowhere simply
+   * falls back to the damage-type label the recap used before.
+   */
+  attributedTo: DamageAttributable | null = currentAttribution();
 
   /** The body this effect rides on, once `attachTo` has been called. */
   _anchorUnit: AttackableUnit | null = null;
