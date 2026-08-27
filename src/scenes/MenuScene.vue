@@ -44,6 +44,7 @@ import {
   retryPackInstall,
 } from './packBanner';
 import { packHealthDismissed, packProblems } from '@/content/packHealth';
+import { DEFAULT_SIGNAL_URL, fetchLanRooms, randomRoomCode, type LanRoom } from './lanSignal';
 
 /**
  * ## The pack-health notice
@@ -115,6 +116,61 @@ function dismissPackProblem(): void {
 
 const emit = defineEmits<{ play: []; openConfig: []; openAbout: []; openPacks: [] }>();
 
+/**
+ * ## The LAN box
+ *
+ * The lobby writes the same URL parameters a hand-typed
+ * `?net=host&room=…` (or the e2e driver) writes, then presses the ordinary
+ * play path — so `GameScene.startGame`'s net arming stays the single seam
+ * and this component never touches `src/game/` (which would be the banned
+ * menu→game chunk edge; `scenes/lanSignal.ts` exists for exactly this
+ * boundary). Discovery is the broker's per-network room list — devices
+ * behind the same NAT see each other's rooms with no typing; the code field
+ * is the fallback for everything else.
+ */
+const lanOpen = ref(false);
+const lanRooms = ref<LanRoom[]>([]);
+const lanCode = ref('');
+const hostCode = ref<string | null>(null);
+let lanTimer: number | null = null;
+
+const signalUrl = (): string =>
+  new URLSearchParams(window.location.search).get('signal') ?? DEFAULT_SIGNAL_URL;
+
+const refreshLanRooms = async (): Promise<void> => {
+  lanRooms.value = await fetchLanRooms(signalUrl());
+};
+
+const toggleLan = (): void => {
+  lanOpen.value = !lanOpen.value;
+  if (lanOpen.value) {
+    void refreshLanRooms();
+    lanTimer = window.setInterval(() => void refreshLanRooms(), 4000);
+  } else if (lanTimer !== null) {
+    clearInterval(lanTimer);
+    lanTimer = null;
+  }
+};
+
+/** Arm the URL the way a hand-typed link would — the params ARE the API. */
+const armNet = (mode: 'host' | 'join', room: string): void => {
+  const params = new URLSearchParams(window.location.search);
+  params.set('net', mode);
+  params.set('room', room);
+  history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+};
+
+const hostLan = (): void => {
+  hostCode.value = hostCode.value ?? randomRoomCode();
+  armNet('host', hostCode.value);
+};
+
+const joinLanRoom = (code: string): void => {
+  if (!code) return;
+  armNet('join', code.toUpperCase());
+  emit('play');
+};
+
 // Reads real document state rather than always starting from "not
 // fullscreen": this component remounts on every menu entry (see
 // MenuScene.ts), but the browser's actual fullscreen state does not reset
@@ -157,6 +213,10 @@ onMounted(() => {
 onUnmounted(() => {
   stopWatching?.();
   stopWatching = null;
+  if (lanTimer !== null) {
+    clearInterval(lanTimer);
+    lanTimer = null;
+  }
 });
 
 const toggleFullscreen = (): void => {
@@ -278,6 +338,61 @@ const updateState = computed(() => {
     <button id="config-btn" class="hextech-btn secondary" @click="emit('openConfig')">
       Cấu Hình Trận Đấu
     </button>
+    <button
+      id="lan-btn"
+      class="hextech-btn secondary"
+      @click="toggleLan"
+      @touchend.prevent="toggleLan"
+    >
+      Chơi LAN
+    </button>
+    <div v-if="lanOpen" id="lan-box" class="lan-box">
+      <template v-if="hostCode">
+        <p class="lan-code">
+          Mã phòng: <b>{{ hostCode }}</b>
+        </p>
+        <button
+          id="lan-start-host"
+          class="hextech-btn"
+          @click="emit('play')"
+          @touchend.prevent="emit('play')"
+        >
+          Vào trận — bạn bè cùng mạng sẽ thấy phòng
+        </button>
+      </template>
+      <button v-else id="lan-host" class="hextech-btn" @click="hostLan" @touchend.prevent="hostLan">
+        Tạo phòng LAN
+      </button>
+      <div class="lan-rooms">
+        <p v-if="lanRooms.length === 0" class="lan-empty">Chưa thấy phòng nào cùng mạng…</p>
+        <button
+          v-for="room in lanRooms"
+          :key="room.code"
+          class="lan-room"
+          @click="joinLanRoom(room.code)"
+          @touchend.prevent="joinLanRoom(room.code)"
+        >
+          <i class="fas fa-wifi" aria-hidden="true"></i>
+          {{ room.name }} · {{ room.code }}
+        </button>
+      </div>
+      <div class="lan-join-code">
+        <input
+          v-model="lanCode"
+          maxlength="8"
+          placeholder="Mã phòng"
+          aria-label="Mã phòng LAN"
+          spellcheck="false"
+        />
+        <button
+          :disabled="!lanCode.trim()"
+          @click="joinLanRoom(lanCode.trim())"
+          @touchend.prevent="joinLanRoom(lanCode.trim())"
+        >
+          Vào
+        </button>
+      </div>
+    </div>
     <p v-if="preload.codeFailed" class="menu-loading-warning">
       Tải dữ liệu chưa xong — bấm Chơi để thử lại.
     </p>

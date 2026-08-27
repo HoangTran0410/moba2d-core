@@ -4,7 +4,8 @@ import type { KitPlan, MatchPlan } from '@/game/preset';
 import type { ActiveMap } from '@/content/ContentPack';
 import type Game from '@/game/Game';
 import { setNetRole, type NetUrlRequest } from './netRole';
-import { NetChannel, relayUrl } from './NetChannel';
+import { RelayClientTransport } from './transport';
+import { RtcClientTransport } from './RtcTransport';
 import { decodeMessage, type NetMessage } from './protocol';
 import { ClientSession } from './ClientSession';
 
@@ -23,8 +24,10 @@ export interface NetClientMatch {
 }
 
 export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetClientMatch> => {
-  const channel = new NetChannel(relayUrl(request.server, request.room, 'join'));
-  await channel.ready();
+  const channel =
+    request.transport === 'ws'
+      ? await RelayClientTransport.connect(request.server, request.room)
+      : await RtcClientTransport.connect(request.server, request.room);
 
   const hello = await channel.waitFor(raw => {
     const message = decodeMessage(raw);

@@ -5,7 +5,7 @@ import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attack
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
 import { setNetRole } from './netRole';
-import type { NetChannel } from './NetChannel';
+import type { ClientTransport } from './transport';
 import { decodeMessage, type NetEvent, type NetMessage, type UnitSnap } from './protocol';
 import { InterpolationBuffer } from './InterpolationBuffer';
 import { RECALL_SLOT } from './HostSession';
@@ -48,7 +48,7 @@ export class ClientSession implements NetGameHooks {
 
   constructor(
     private readonly game: Game,
-    private readonly channel: NetChannel,
+    private readonly channel: ClientTransport,
     hello: Extract<NetMessage, { t: 'hello' }>
   ) {
     game.net = this;

@@ -16,6 +16,8 @@
  * (`resetNetRoleForTests`).
  */
 
+import { DEFAULT_SIGNAL_URL } from '@/scenes/lanSignal';
+
 export type NetRole = 'off' | 'host' | 'client';
 
 let role: NetRole = 'off';
@@ -42,11 +44,23 @@ export const resetNetRoleForTests = (): void => {
   clientBoot = null;
 };
 
-/** The URL-armed request, read once per call: `?net=host|join&server=ws://…&room=…`. */
+/**
+ * The URL-armed request:
+ * `?net=host|join&room=…[&transport=rtc|ws][&signal=ws(s)://…]`.
+ *
+ * `transport` defaults to WebRTC — the player path, peer-to-peer after the
+ * handshake; `ws` keeps everything on the signaling socket, which is what
+ * the dev relay e2e drives and the fallback for a browser whose RTC is
+ * broken. `signal` (alias `server`, the older spelling) defaults per
+ * `scenes/lanSignal.ts`: the deployed broker in production, the local relay
+ * in dev.
+ */
 export interface NetUrlRequest {
   mode: 'host' | 'join';
+  /** The signaling broker (or, for `transport=ws`, the whole wire). */
   server: string;
   room: string;
+  transport: 'rtc' | 'ws';
 }
 
 export const netRequestFromUrl = (
@@ -57,7 +71,8 @@ export const netRequestFromUrl = (
   if (mode !== 'host' && mode !== 'join') return null;
   return {
     mode,
-    server: params.get('server') ?? 'ws://localhost:8790',
+    server: params.get('signal') ?? params.get('server') ?? DEFAULT_SIGNAL_URL,
     room: params.get('room') ?? 'r1',
+    transport: params.get('transport') === 'ws' ? 'ws' : 'rtc',
   };
 };

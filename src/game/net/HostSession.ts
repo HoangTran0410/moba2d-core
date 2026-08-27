@@ -20,8 +20,9 @@ import {
   type MatchPlan,
 } from '@/game/preset';
 import { allSpellIds, loadSpells, spellClassOfId } from '@/game/spellRegistry';
-import { setNetRole } from './netRole';
-import { NetChannel, parseHostFrame, relayUrl } from './NetChannel';
+import { setNetRole, type NetUrlRequest } from './netRole';
+import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
+import { RtcHostTransport } from './RtcTransport';
 import {
   decodeMessage,
   encodeMessage,
@@ -63,7 +64,7 @@ export class HostSession implements NetGameHooks {
 
   constructor(
     private readonly game: Game,
-    private readonly channel: NetChannel,
+    private readonly transport: HostTransport,
     plan: MatchPlan | null
   ) {
     setNetRole('host');
@@ -80,11 +81,11 @@ export class HostSession implements NetGameHooks {
       this.onCast(spell)
     );
 
-    // Orders apply the instant the socket delivers them — between ticks, not
+    // Orders apply the instant the wire delivers them — between ticks, not
     // queued to one. JS's single thread makes this safe (a message handler
     // never lands inside a half-finished tick), and it shaves the last
     // 0-16ms off remote input.
-    channel.setImmediate(raw => this.handleFrame(raw));
+    transport.setImmediate(event => this.handleEvent(event));
 
     // Dev-only handle for the e2e driver (`tests/e2e/drive-lan-sync.mjs`),
     // the same convention as `window.__lol2d`. Stripped from production.
@@ -95,12 +96,16 @@ export class HostSession implements NetGameHooks {
 
   static async attach(
     game: Game,
-    request: { server: string; room: string },
+    request: NetUrlRequest,
     plan: MatchPlan | null
   ): Promise<HostSession> {
-    const channel = new NetChannel(relayUrl(request.server, request.room, 'host'));
-    await channel.ready();
-    return new HostSession(game, channel, plan);
+    // The room's player-facing name in the lobby's same-network listing.
+    const roomName = `Trận của ${game.player.name}`;
+    const transport =
+      request.transport === 'ws'
+        ? await RelayHostTransport.connect(request.server, request.room, roomName)
+        : await RtcHostTransport.connect(request.server, request.room, roomName);
+    return new HostSession(game, transport, plan);
   }
 
   // ------------------------------------------------------------- tracking
@@ -276,24 +281,21 @@ export class HostSession implements NetGameHooks {
 
   /** Anything queued before the immediate handler was armed. */
   private applyClientFrames(): void {
-    for (const raw of this.channel.drain()) this.handleFrame(raw);
+    for (const event of this.transport.drain()) this.handleEvent(event);
   }
 
-  private handleFrame(raw: string): void {
-    const frame = parseHostFrame(raw);
-    if (!frame) return;
-    if (frame.sys === 'joined' && frame.id) {
-      void this.onClientJoined(frame.id);
+  private handleEvent(event: HostFrameEvent): void {
+    if (event.kind === 'joined') {
+      void this.onClientJoined(event.peerId);
       return;
     }
-    if (frame.sys === 'left' && frame.id) {
+    if (event.kind === 'left') {
       // v1: the champion stays, idle — a rejoin story is future work.
-      this.clients.delete(frame.id);
+      this.clients.delete(event.peerId);
       return;
     }
-    if (!frame.from || typeof frame.data !== 'string') return;
-    const message = decodeMessage(frame.data);
-    const champion = this.clients.get(frame.from);
+    const message = decodeMessage(event.raw);
+    const champion = this.clients.get(event.peerId);
     if (!message || !champion || champion.isDead) return;
     this.applyOrder(champion, message);
   }
@@ -405,11 +407,15 @@ export class HostSession implements NetGameHooks {
   // -------------------------------------------------------------- plumbing
 
   private broadcast(message: NetMessage): void {
-    this.channel.send(JSON.stringify({ to: 'all', data: encodeMessage(message) }));
+    // Snapshots ride the lossy lane where the transport has one: each is
+    // superseded 33ms later and the client's buffer drops stale arrivals by
+    // match time, so a retransmit would only ever deliver the past.
+    if (message.t === 'snap') this.transport.broadcastUnreliable(encodeMessage(message));
+    else this.transport.broadcast(encodeMessage(message));
   }
 
   private sendTo(clientId: string, message: NetMessage): void {
-    this.channel.send(JSON.stringify({ to: clientId, data: encodeMessage(message) }));
+    this.transport.sendTo(clientId, encodeMessage(message));
   }
 
   // The host intercepts nothing: its own input drives the match directly.
@@ -443,7 +449,7 @@ export class HostSession implements NetGameHooks {
 
   close(): void {
     this.stopCastListener();
-    this.channel.close();
+    this.transport.close();
     this.game.net = null;
     setNetRole('off');
   }

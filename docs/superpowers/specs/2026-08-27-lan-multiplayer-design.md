@@ -1,8 +1,11 @@
 # LAN Multiplayer v1 — host-authoritative event sync
 
-Status: v1 prototype shipped on `feat/lan-net-prototype`. This spec records
-the decisions and their reasons; the "Unfinished" section at the bottom is
-the honest ledger of what v1 deliberately does not do.
+Status: v1 prototype shipped on `feat/lan-net-prototype`; v1.5 (same
+branch) added own-champion prediction, 30Hz snapshots, WebRTC DataChannel
+transport with a deployed Cloudflare Worker signaling broker, per-network
+room discovery and a menu lobby. This spec records the decisions and their
+reasons; the "Unfinished" section at the bottom is the honest ledger of
+what deliberately does not exist yet.
 
 ## 1. The model: host-authoritative, never lockstep
 
@@ -60,18 +63,51 @@ replication, fog culling) — see §6.
 ## 3. v1 architecture
 
 ```
-host browser ──ws── scripts/net-relay.mjs ──ws── client browser(s)
- (real Game)          (dumb room fan-out)         (gated Game, puppets)
+                 signaling only (SDP/ICE)                signaling only
+host browser ───────────┐                  ┌──────────── client browser(s)
+ (real Game)            ▼                  ▼              (gated Game + own-
+              Cloudflare Worker + Durable Objects          champion prediction)
+              (net/signaling/, or scripts/net-relay.mjs in dev)
+host browser ◄════ RTCDataChannels, peer-to-peer ════► client browser(s)
+              `r` reliable: hello/events/orders
+              `u` unordered, maxRetransmits 0: snapshots
 ```
 
-- **Relay, not WebRTC.** Browsers cannot listen on sockets, and WebRTC needs
-  a signaling step anyway; a ~100-line `ws` room relay (`scripts/
-net-relay.mjs`) is the v1 transport. It knows nothing about the game: one
-  host per room, N joiners, `{to}`-addressed or broadcast JSON frames,
-  join/leave notices to the host.
+- **WebRTC DataChannels are the player wire** (`transport=rtc`, the
+  default): the broker carries only the handshake, then traffic is direct
+  peer-to-peer — on one LAN that is ICE _host candidates_, sub-millisecond,
+  no server in the loop (`iceServers` is deliberately empty; internet play
+  needs STUN/TURN — roadmap). Two channels per peer: `r` reliable/ordered
+  for the hello, events and orders; `u` `ordered:false, maxRetransmits:0`
+  for snapshots, which supersede each other 33ms apart anyway and whose
+  stale arrivals the interpolation buffer already drops by match time.
+  `src/game/net/transport.ts` is the seam: `RtcHostTransport`/
+  `RtcClientTransport` and the relay transports are two implementations of
+  one interface, and the sessions cannot tell them apart.
+- **Signaling is a Cloudflare Worker + two Durable Object classes**
+  (`net/signaling/`, deployed at
+  `wss://lol2d-signal.99-hoangtran.workers.dev`, baked as the production
+  default in `src/scenes/lanSignal.ts` and overridable with `?signal=`).
+  `SignalRoom` speaks **exactly `scripts/net-relay.mjs`'s protocol** — one
+  host, N joiners, `{from}`/`{to}` envelopes, join/leave notices — so the
+  dev relay remains a drop-in signaling (and `transport=ws` full-transport)
+  stand-in and `npm run e2e:lan` never touches the internet. `RoomDirectory`
+  is one instance per public IP (`CF-Connecting-IP`): a room registers with
+  its host's network directory while the host stays connected (DO-alarm
+  heartbeat, unregister on disconnect), and `GET /rooms` answers the open
+  rooms _on the caller's network_ — which is how two devices behind one NAT
+  find each other with no typing, the closest browsers get to mDNS.
+- **The menu got a lobby** (`MenuScene.vue` + `src/scenes/lanSignal.ts`,
+  which lives under `src/scenes/` because everything under `/src/game/` is
+  pinned to the game chunk and a menu import from there would be the banned
+  pregame→game edge): Tạo phòng LAN (5-char code), the same-network room
+  list polled from the broker with one-click join, and a join-by-code
+  fallback. The lobby only ever writes the same URL parameters a hand-typed
+  link (or the e2e driver) writes, then presses the ordinary play path —
+  `GameScene.startGame`'s net arming stays the single seam.
 - **The host runs the match unchanged.** `HostSession` (`src/game/net/
 HostSession.ts`) attaches after `new Game(...)` and:
-  - broadcasts a snapshot every ~66ms (15Hz): per tracked unit
+  - broadcasts a snapshot every 33ms (30Hz — LoL's own quantum): per tracked unit
     `[id, x, y, hp, maxHp, mana, dead, actionState, cooldowns?]`, stamped
     with `matchTimeMs`;
   - discovers units by diffing `objectManager.objects` against its id map —
@@ -98,6 +134,17 @@ HostSession.ts`) attaches after `new Game(...)` and:
   time (~one snapshot interval of latency), per-time not per-frame; snap
   instead of lerp when a unit moved more than a dash threshold between
   snapshots, so blinks read as blinks.
+- **The own champion is predicted, not interpolated** (v1.5, after the
+  measurement: 67ms from keypress to visible cast, 66 of it the cast event
+  waiting for the snapshot-cadence flush). Every client intercept sends the
+  order _and_ lets the local seam run — real walk, real cast, real cooldown
+  the same tick the key lands — while the host's echo cast event is dropped
+  and reconciliation compares against the newest raw snapshot: resources,
+  death and cooldowns applied verbatim, position pulled gently past 60
+  units of drift and snapped past 300 (a knockback prediction cannot see).
+  Cast events also flush the tick they commit instead of riding the
+  snapshot cadence. Measured after: own cast 1-4ms, remote commit 2-8ms, on
+  both transports.
 
 ## 4. The gates — four seams, no sprinkling
 
@@ -126,8 +173,9 @@ snapshot interval late — small on LAN). One code path for every unit.
 
 ## 5. Joining
 
-URL-armed, no menu UI: `?net=host&server=ws://<ip>:8790&room=r1` on the
-hosting machine, `?net=join&...` on the client, both then press Chơi. On
+URL-armed (`?net=host|join&room=CODE[&transport=rtc|ws][&signal=wss://…]`),
+or through the menu's LAN box, which writes exactly those parameters and
+presses the ordinary play path. On
 join the host rolls a random champion for the client (loading its spell
 chunks first), spawns it on the smaller team, and sends `hello` with the
 map id, rules (`cooldownMultiplier`/`manaFree`, applied onto the client's
@@ -136,21 +184,24 @@ for every unit already alive.
 
 ## 6. Roadmap (v2+)
 
+Landed since v1: WebRTC DataChannels with the lossy snapshot lane, the
+deployed Worker signaling with per-network discovery, own-champion
+prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
+
 1. **Fixed 30Hz simulation tick on the host** (accumulator in
-   `Game.update`) — LoL's 33ms quantum; also equalizes single-player feel
-   across refresh rates.
+   `Game.update`) — also equalizes single-player feel across refresh rates.
 2. **Movement as path replication**: `NavigationSystem` already produces
    waypoint lists and minions already walk them — replicate orders + paths,
    send low-rate corrections, and snapshots shrink by an order of
    magnitude.
-3. **WebRTC DataChannel + QR/copy-paste signaling** — serverless LAN, and
-   unreliable-mode snapshots stop head-of-line blocking casts.
-4. **Client-side prediction for the own champion**, with snapshot
-   reconciliation.
-5. **Fog-of-war interest culling**, through the same
+3. **STUN/TURN for internet play** — the RTC config is deliberately
+   host-candidates-only today; crossing NATs needs at least STUN, and
+   symmetric NATs need TURN (Cloudflare's TURN service pairs naturally with
+   the existing Worker).
+4. **Fog-of-war interest culling**, through the same
    `PredefinedFilters.visibleTo` seam the engine already routes sight
    through.
-6. **Seed handshake for cosmetics + a replay recorder** (inputs + seed on
+5. **Seed handshake for cosmetics + a replay recorder** (inputs + seed on
    one build/machine — the Chronobreak shape).
 
 ## 7. Unfinished in v1 (deliberate cuts, in the open)
@@ -171,5 +222,14 @@ for every unit already alive.
 - **`UNIT`-targeted casts re-resolve on the client** from the aim point, so
   the puppet may visually strike a different-but-nearby target than the
   host did; damage is host-truth either way.
-- **Snapshot format is JSON** (~3-6KB × 15Hz ≈ 50-90KB/s) — fine for LAN,
-  binary is v2's problem.
+- **Snapshot format is JSON** (~3-6KB × 30Hz ≈ 100-180KB/s) — fine for a
+  LAN and trivial for a DataChannel; binary is v2's problem.
+- **Prediction mispredicts are cosmetic and uncorrected**: a locally-played
+  cast the host refused (a silence landed first, death raced the key) shows
+  a ghost animation; authoritative state overwrites within a snapshot.
+- **The lobby's room list needs the broker reachable**: a fully offline LAN
+  (no internet at all) needs the dev relay pointed at by `?signal=`; room
+  codes still work against any reachable broker.
+- **A stale `?net=` in the address bar re-arms LAN on the next plain Chơi**
+  — the params are deliberately the API; clearing them is the player's (or
+  a future lobby toggle's) job.
