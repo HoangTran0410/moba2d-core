@@ -348,7 +348,15 @@ export default class MatchDirectorSource implements MatchConfigSource {
         loadout: DEFAULT_CHAMPION_LOADOUT,
         behaviour: undefined,
         invulnerable: false,
-        remote: true,
+        // Read-only on a *client*, where these rows are the host's world and
+        // nothing local may touch them — but a host owns the authoritative
+        // copy of every champion in the match, its clients' included, so the
+        // controls belong to it. The mutations already resolve these units
+        // (`unitOf` falls through to the net roster); this is what stops the
+        // tab from hiding the buttons that drive them. Health, mana and
+        // cooldowns then reach the client through the ordinary snapshot, and
+        // a kit or side change through an imposed champ event.
+        remote: isNetClient(),
       }))
     );
   }

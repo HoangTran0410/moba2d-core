@@ -19,6 +19,34 @@
  */
 export const DEFAULT_SIGNAL_URL = 'wss://moba2d-signal.99-hoangtran.workers.dev';
 
+/**
+ * Strip `?net=…&room=…` back off the address bar.
+ *
+ * The URL is the API, which means leaving has to un-say what pressing said.
+ * The lobby already did this on `Quay lại`, but a match armed from there kept
+ * the parameters for the whole of its life and *after* it: quitting to the
+ * menu left `?net=host&room=BH2Y7` sitting there, so the next press of Chơi —
+ * a plain solo match, as far as the player was concerned — opened a LAN host
+ * on a room code from a game that had already ended. The sessions call this
+ * as they tear down, which is the moment the arming stops being true.
+ *
+ * Lives here rather than in `game/net/` because both ends need it and only
+ * this module is allowed in both chunks (see the header above).
+ */
+export const disarmNetUrl = (): void => {
+  if (typeof window === 'undefined' || !window.history) return;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('net') && !params.has('room')) return;
+  params.delete('net');
+  params.delete('room');
+  const query = params.toString();
+  window.history.replaceState(
+    null,
+    '',
+    query ? `${window.location.pathname}?${query}` : window.location.pathname
+  );
+};
+
 /** 5 chars of A-Z2-9 (no 0/O/1/I): ~33M codes, plenty for rooms that live minutes. */
 export const randomRoomCode = (): string => {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

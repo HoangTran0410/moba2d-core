@@ -74,24 +74,35 @@ describe('a net client steering with the joystick', () => {
 
   it('samples a held stick instead of sending every frame', () => {
     session.interceptSteer({ x: 10, y: 0 });
-    now += 50;
+    now += 20;
     session.interceptSteer({ x: 20, y: 0 });
-    now += 50;
+    now += 20;
     session.interceptSteer({ x: 30, y: 0 });
-    // 100ms of holding: one order, the first.
+    // 40ms of holding: one order, the first.
     expect(framesOfType('steer')).toEqual([{ t: 'steer', to: { x: 10, y: 0 } }]);
 
-    now += 30; // 130ms since the first — the window is open again.
+    now += 20; // 60ms since the first — the window is open again.
     session.interceptSteer({ x: 40, y: 0 });
     expect(framesOfType('steer')).toHaveLength(2);
     expect(framesOfType('steer')[1]).toEqual({ t: 'steer', to: { x: 40, y: 0 } });
   });
 
-  it('shares one window with right-click orders rather than doubling the rate', () => {
+  it('samples the stick faster than clicks, on a window of its own', () => {
+    // A click is a discrete decision; a held thumb is a direction that keeps
+    // changing, and the host — so everyone else — knows only what it is told.
     session.interceptSteer({ x: 10, y: 0 });
-    now += 20;
     session.interceptPointer({ x: 999, y: 999 });
-    expect(framesOfType('move')).toEqual([]);
+    now += 60;
+    session.interceptSteer({ x: 20, y: 0 });
+    session.interceptPointer({ x: 998, y: 998 });
+
+    // 60ms: the stick has sampled twice, the click still once.
+    expect(framesOfType('steer')).toHaveLength(2);
+    expect(framesOfType('move')).toHaveLength(1);
+
+    now += 60; // 120ms total — the click's window opens now.
+    session.interceptPointer({ x: 997, y: 997 });
+    expect(framesOfType('move')).toHaveLength(2);
   });
 
   it('never throttles the release, and reopens the window behind it', () => {

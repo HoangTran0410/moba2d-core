@@ -48,6 +48,18 @@ export interface ChampionSpawnEvent {
    * ghost the host knew nothing about, beside an avatar-less puppet).
    */
   pet?: { size: number; lifeMs: number; ownerId?: string };
+  /**
+   * The host imposed this, rather than echoing back something the client did
+   * to itself.
+   *
+   * A client ignores champ events aimed at its *own* champion, because they
+   * are normally the echo of a đổi tướng it already applied locally — playing
+   * it back would re-apply what is already true. But the host is the
+   * authority, and its panel can change a client's champion too: that event
+   * has to land, or the two ends spend the rest of the match disagreeing
+   * about who the player is.
+   */
+  imposed?: true;
 }
 
 export interface MinionSpawnEvent {
@@ -125,6 +137,21 @@ export type NetMessage =
       rules: { cooldownMultiplier: number; manaFree: boolean };
       you: { id: string; team: string; plan: unknown };
       roster: NetEvent[];
+      /**
+       * The manifest URLs of every content pack the host has installed.
+       *
+       * A client that lacks the host's pack used to be told
+       * *"host plays on lol:summoners-rift, which this client does not have
+       * installed"* and dropped — a dead end for the ordinary case of a
+       * friend opening the game for the first time, since the pack is a URL
+       * and installing it is something the client can simply *do*. The map is
+       * only the half that failed loudest: the roster's spells come from the
+       * same packs.
+       *
+       * Optional so a host on an older build still hands out a usable hello;
+       * the client then fails the way it always did.
+       */
+      packs?: string[];
     }
   | { t: 'move'; x: number; y: number }
   /**

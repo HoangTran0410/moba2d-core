@@ -1,5 +1,8 @@
 import { loadSpells } from '@/game/spellRegistry';
 import { contentCatalog } from '@/content/catalog';
+import { readInstalledPacks } from '@/content/installedPackStore';
+import { fetchPackManifest } from '@/content/packSource';
+import { installPackNow } from '@/content/runtimePacks';
 import type { KitPlan, MatchPlan } from '@/game/preset';
 import type { ActiveMap } from '@/content/ContentPack';
 import type Game from '@/game/Game';
@@ -23,6 +26,30 @@ export interface NetClientMatch {
   plan: MatchPlan;
   attach(game: Game): ClientSession;
 }
+
+/**
+ * Install whatever of the host's packs this device lacks.
+ *
+ * Best-effort by design: a pack that will not fetch or will not load is not
+ * a reason to refuse the join outright, because the map check below is the
+ * honest test of whether the match can actually run — and a *champion* pack
+ * that failed leaves a playable match with fallback kits, which beats a dead
+ * end. Anything already installed is skipped by URL without a fetch.
+ */
+const installHostPacks = async (manifestUrls: readonly string[] | undefined): Promise<void> => {
+  if (!manifestUrls?.length) return;
+  const have = new Set<string>();
+  for (const record of readInstalledPacks()) have.add(record.manifestUrl);
+  for (const url of manifestUrls) {
+    if (have.has(url)) continue;
+    try {
+      const manifest = await fetchPackManifest(url);
+      await installPackNow(url, manifest);
+    } catch (error) {
+      console.warn(`net: could not install the host's pack ${url}`, error);
+    }
+  }
+};
 
 export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetClientMatch> => {
   // The lobby's own connection, when the player came through it — it already
@@ -52,6 +79,14 @@ export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetCl
   // must be set before the constructor runs.
   setNetRole('client', { playerTeam: hello.you.team });
 
+  // The host's content, before anything asks for the host's content. A
+  // joiner who has never installed a pack can now simply be given the host's
+  // list of manifest URLs and install what it is missing — the same install
+  // the packs screen performs, from the same URL, with no reload. Until this
+  // existed the join died on the map check below with a message that told the
+  // player what was wrong and nothing about how to fix it.
+  await installHostPacks(hello.packs);
+
   // Every kit in the roster, so puppets cast their real spells rather than
   // `classForId`'s basic-attack fallback on first contact.
   const spellIds = new Set<string>(yourPlan.spellIds);
@@ -67,7 +102,10 @@ export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetCl
   if (!summary) {
     channel.close();
     setNetRole('off');
-    throw new Error(`net: host plays on ${hello.mapId}, which this client does not have installed`);
+    throw new Error(
+      `net: host plays on ${hello.mapId}, which this client does not have and could not install` +
+        (hello.packs?.length ? ` from ${hello.packs.join(', ')}` : ' (the host sent no pack list)')
+    );
   }
   const geometry = await contentCatalog().loadMapGeometry(summary.id);
   if (!geometry) {

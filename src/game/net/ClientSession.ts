@@ -11,6 +11,7 @@ import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
 import { loadSpells } from '@/game/spellRegistry';
 import { setNetRole } from './netRole';
+import { disarmNetUrl } from '@/scenes/lanSignal';
 import type { ClientTransport } from './transport';
 import { decodeMessage, type NetEvent, type NetMessage, type UnitSnap } from './protocol';
 import { InterpolationBuffer } from './InterpolationBuffer';
@@ -30,6 +31,17 @@ import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champ
  * between samples.
  */
 const MOVE_ORDER_INTERVAL_MS = 120;
+/**
+ * The stick gets its own, faster window. A click is a discrete decision and
+ * 8 a second is plenty of them; a held thumb is a *continuously changing
+ * direction*, and sampling that 8 times a second is the whole of what the
+ * host — and therefore every other player — knows about where you are going.
+ * The cost of the difference is nothing: an order frame is ~45 bytes, so 20/s
+ * is under 1KB/s against a snapshot stream measured at 56-90KB/s. The two
+ * windows never overlap in practice either, because a phone has no mouse and
+ * a desktop has no stick.
+ */
+const STEER_ORDER_INTERVAL_MS = 50;
 /** A unit that covered more than this between snapshots blinked — snap, don't glide. */
 const DASH_SNAP_UNITS = 400;
 /** Own-champion drift below this is the host agreeing within noise — leave the prediction alone. */
@@ -71,6 +83,7 @@ export class ClientSession implements NetGameHooks {
    */
   private pendingRecap: DeathRecap | null = null;
   private lastMoveSentAt = 0;
+  private lastSteerSentAt = 0;
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsReceived: 0, eventsApplied: 0, damageTextsShown: 0 };
 
@@ -228,7 +241,10 @@ export class ClientSession implements NetGameHooks {
         // from the hello's own plan, and a đổi tướng was applied locally the
         // moment the player confirmed it (`onLoadoutApplied`) — the echo
         // arriving here has already happened, like a cast echo.
-        if (existing === this.game.player) return;
+        // ...unless the host imposed it: the panel on the other end owns
+        // this champion as much as the player does, and refusing the change
+        // here leaves the two ends playing different characters.
+        if (existing === this.game.player && !event.imposed) return;
         if (existing instanceof Champion) {
           // A re-broadcast: a re-rolled or re-kitted champion, or one that
           // just switched sides — the event always carries the current team,
@@ -424,13 +440,13 @@ export class ClientSession implements NetGameHooks {
       // the host walking to a point the thumb abandoned. Reopening the window
       // is part of the same thought — the next push is a new gesture and must
       // not wait out a sample the previous one paid for.
-      this.lastMoveSentAt = 0;
+      this.lastSteerSentAt = 0;
       this.channel.send(JSON.stringify({ t: 'steer', to: null }));
       return false;
     }
     const now = performance.now();
-    if (now - this.lastMoveSentAt >= MOVE_ORDER_INTERVAL_MS) {
-      this.lastMoveSentAt = now;
+    if (now - this.lastSteerSentAt >= STEER_ORDER_INTERVAL_MS) {
+      this.lastSteerSentAt = now;
       this.channel.send(JSON.stringify({ t: 'steer', to: { x: target.x, y: target.y } }));
     }
     return false;
@@ -509,5 +525,7 @@ export class ClientSession implements NetGameHooks {
     this.channel.close();
     this.game.net = null;
     setNetRole('off');
+    // The address bar stops claiming a room the moment the room stops.
+    disarmNetUrl();
   }
 }

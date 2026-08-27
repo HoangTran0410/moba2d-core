@@ -26,6 +26,8 @@ import { loadSpells, spellIdOfClass } from '@/game/spellRegistry';
 import { asKitPlan, planFromPreset } from './kitWire';
 import { isMatchTeamId } from '@/game/config/MatchTeams';
 import { setNetRole, type NetUrlRequest } from './netRole';
+import { disarmNetUrl } from '@/scenes/lanSignal';
+import { readInstalledPacks } from '@/content/installedPackStore';
 import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
@@ -43,6 +45,18 @@ import type { Vec2 } from '@/game/spell/runtime/types';
 
 /** 30Hz — LoL's own simulation quantum; LAN bandwidth makes the doubling free. */
 const SNAPSHOT_INTERVAL_MS = 33;
+/** What this host has installed, so a joiner can install the same. */
+const installedManifestUrls = (): string[] => {
+  const urls: string[] = [];
+  for (const record of readInstalledPacks()) urls.push(record.manifestUrl);
+  return urls;
+};
+
+/**
+ * How long a unit may go unmentioned before it is re-sent whether it changed
+ * or not — the floor under `snapshotUnits`' delta on a lane that drops.
+ */
+const SNAPSHOT_HEARTBEAT_MS = 1000;
 /** The recall pseudo-slot in cast events: `Champion.recall` deliberately lives outside `spells[]`. */
 export const RECALL_SLOT = 100;
 
@@ -68,6 +82,10 @@ export class HostSession implements NetGameHooks {
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsSent: 0, eventsSent: 0, castsSeen: 0 };
   private lastSnapshotAt = 0;
+  /** The champion whose side change is a client's own doing — see `onTeamChanged`. */
+  private teamEchoFor: Champion | null = null;
+  /** Per-unit "what we last put on the wire, and when" — see `snapshotUnits`. */
+  private lastRowSent = new Map<string, { row: string; at: number }>();
   private stopCastListener: () => void;
   private stopDamageListener: () => void;
   private stopAttackListener: () => void;
@@ -186,10 +204,11 @@ export class HostSession implements NetGameHooks {
     return id;
   }
 
-  private championEvent(id: string, unit: Champion): NetEvent {
+  private championEvent(id: string, unit: Champion, imposed = false): NetEvent {
     return {
       k: 'champ',
       id,
+      ...(imposed ? { imposed: true as const } : {}),
       team: unit.teamId,
       x: unit.position.x,
       y: unit.position.y,
@@ -275,6 +294,7 @@ export class HostSession implements NetGameHooks {
       if (!seen.has(attackable) && (attackable.toRemove || !this.stillQueued(attackable))) {
         this.ids.delete(unit);
         this.tracked.delete(id);
+        this.lastRowSent.delete(id);
         this.pendingEvents.push({ k: 'gone', id });
       }
     }
@@ -285,8 +305,36 @@ export class HostSession implements NetGameHooks {
     return this.game.objectManager._objectToBeAdd.includes(unit);
   }
 
+  /**
+   * A snapshot carries what changed, plus a heartbeat.
+   *
+   * A snapshot used to be every tracked unit every 33ms, which for a turret
+   * meant re-sending a position that is a constant for the whole match and a
+   * health bar that moves for maybe twenty seconds of it — measured at ~27%
+   * of a 5v5 snapshot, forever, for nothing. Idle jungle camps are the same
+   * shape, and so is every corpse.
+   *
+   * Omission is safe because `InterpolationBuffer.sample` walks the *newest*
+   * snapshot and leaves anything missing from it alone: an absent unit keeps
+   * the state it was last given rather than vanishing. Champions and marching
+   * minions change every tick and are therefore in every snapshot anyway, so
+   * nothing that moves is affected.
+   *
+   * The heartbeat is what makes it safe on the *lossy* lane. A delta that is
+   * dropped is a fact the client never hears, so every unit is re-sent at
+   * least this often regardless — one second of a stale turret bar is the
+   * worst a lost packet can now cost, and it costs it to one unit rather than
+   * to the frame.
+   */
   private snapshotUnits(): UnitSnap[] {
     const units: UnitSnap[] = [];
+    // Only a champion a *client* is playing needs cooldowns: the client reads
+    // them for its own HUD and throws away every other champion's, because
+    // puppet cooldowns run locally off cast events (`ClientSession.
+    // applyUnitSnap` says so). Bots and the host's own champion were paying
+    // an array of numbers a tick for nobody.
+    const clientChampions = new Set<Champion>(this.clients.values());
+    const now = this.game.matchTimeMs;
     for (const [id, unit] of this.tracked) {
       const snap: UnitSnap = {
         id,
@@ -298,9 +346,13 @@ export class HostSession implements NetGameHooks {
         dead: !!unit.isDead,
         actionState: unit.stats.actionState,
       };
-      if (unit instanceof Champion) {
+      if (unit instanceof Champion && clientChampions.has(unit)) {
         snap.cds = unit.spells.map(spell => spell.currentCooldown);
       }
+      const row = JSON.stringify(snap);
+      const last = this.lastRowSent.get(id);
+      if (last && last.row === row && now - last.at < SNAPSHOT_HEARTBEAT_MS) continue;
+      this.lastRowSent.set(id, { row, at: now });
       units.push(snap);
     }
     return units;
@@ -461,7 +513,14 @@ export class HostSession implements NetGameHooks {
     if (message.t === 'team') {
       // Through the director — the same single writer the panel uses — whose
       // `onTeamChanged` hook then re-broadcasts the side to every client.
-      if (isMatchTeamId(message.team)) this.game.director.setTeam(champion, message.team);
+      if (isMatchTeamId(message.team)) {
+        this.teamEchoFor = champion;
+        try {
+          this.game.director.setTeam(champion, message.team);
+        } finally {
+          this.teamEchoFor = null;
+        }
+      }
       return;
     }
     if (message.t === 'tp') {
@@ -541,6 +600,7 @@ export class HostSession implements NetGameHooks {
       },
       you: { id, team, plan },
       roster,
+      packs: installedManifestUrls(),
     });
   }
 
@@ -595,7 +655,10 @@ export class HostSession implements NetGameHooks {
   /** A live side switch — the champ event carries the team, so re-broadcast it. */
   onTeamChanged(unit: Champion): void {
     const id = this.ids.get(unit);
-    if (id) this.pendingEvents.push(this.championEvent(id, unit));
+    // `setTeam` is reached two ways — the host's panel, and a client asking to
+    // switch its own side. Only the first is something to impose back on the
+    // client that owns this champion; the second it already did to itself.
+    if (id) this.pendingEvents.push(this.championEvent(id, unit, unit !== this.teamEchoFor));
   }
 
   /**
@@ -612,7 +675,10 @@ export class HostSession implements NetGameHooks {
     if (!id) return;
     this.championNames.set(unit, unit.name);
     this.championPlans.set(unit, planFromPreset(preset));
-    this.pendingEvents.push(this.championEvent(id, unit));
+    // Always imposed: a client's own đổi tướng lands in `onClientLoadout`,
+    // which applies the preset directly and broadcasts for itself, so nothing
+    // that reaches this hook came from a client.
+    this.pendingEvents.push(this.championEvent(id, unit, true));
   }
 
   /** Positions of every tracked unit, for the e2e's cross-page comparison. */
@@ -652,5 +718,7 @@ export class HostSession implements NetGameHooks {
     this.transport.close();
     this.game.net = null;
     setNetRole('off');
+    // The address bar stops claiming a room the moment the room stops.
+    disarmNetUrl();
   }
 }
