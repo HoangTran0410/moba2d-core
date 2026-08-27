@@ -5,6 +5,7 @@ import Champion, {
   DEFAULT_CHAMPION_ATTACK,
   DEFAULT_CHAMPION_DEFENCE,
 } from '@/game/gameObject/attackableUnits/Champion';
+import type { DamageNumberEvent } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
 import Turret from '@/game/gameObject/structures/Turret';
@@ -64,6 +65,7 @@ export class HostSession implements NetGameHooks {
   readonly debugStats = { snapshotsSent: 0, eventsSent: 0, castsSeen: 0 };
   private lastSnapshotAt = 0;
   private stopCastListener: () => void;
+  private stopDamageListener: () => void;
 
   constructor(
     private readonly game: Game,
@@ -82,6 +84,16 @@ export class HostSession implements NetGameHooks {
 
     this.stopCastListener = game.eventManager.on(EventType.ON_POST_CAST_SPELL, (spell: Spell) =>
       this.onCast(spell)
+    );
+    // Every damage number the host floats, forwarded — a client's own
+    // `takeDamage` is gated, so this stream is the only source it has.
+    // Batched into the ordinary per-tick event flush, not sent per hit.
+    this.stopDamageListener = game.eventManager.on(
+      EventType.ON_TAKE_DAMAGE,
+      (hit: DamageNumberEvent) => {
+        const id = this.ids.get(hit.unit);
+        if (id) this.pendingEvents.push({ k: 'dmg', id, a: hit.amount, ty: hit.type });
+      }
     );
 
     // Orders apply the instant the wire delivers them — between ticks, not
@@ -544,6 +556,7 @@ export class HostSession implements NetGameHooks {
 
   close(): void {
     this.stopCastListener();
+    this.stopDamageListener();
     this.transport.close();
     this.game.net = null;
     setNetRole('off');

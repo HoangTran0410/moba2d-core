@@ -3,6 +3,8 @@ import AttackableUnit, {
   type DeathRecap,
 } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
+import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
+import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
@@ -60,7 +62,7 @@ export class ClientSession implements NetGameHooks {
   private pendingRecap: DeathRecap | null = null;
   private lastMoveSentAt = 0;
   /** e2e-readable counters — see the dev handle in the constructor. */
-  readonly debugStats = { snapshotsReceived: 0, eventsApplied: 0 };
+  readonly debugStats = { snapshotsReceived: 0, eventsApplied: 0, damageTextsShown: 0 };
 
   constructor(
     private readonly game: Game,
@@ -258,6 +260,19 @@ export class ClientSession implements NetGameHooks {
         if (!unit) return;
         this.units.delete(event.id);
         this.game.objectManager.removeObject(unit);
+        return;
+      }
+      case 'dmg': {
+        // The host's floated number, replayed through the same door it went
+        // through there — the per-victim merge and the type colours are the
+        // local `CombatText.show`'s own behaviour, not something re-derived.
+        // This stream is the client's only source: its `takeDamage` is gated,
+        // so nothing local ever floats a damage number.
+        const unit = this.units.get(event.id);
+        if (!unit || typeof event.a !== 'number') return;
+        const color = DAMAGE_TEXT_COLOR[event.ty as DamageType] ?? DAMAGE_TEXT_COLOR[DEFAULT_DAMAGE_TYPE];
+        this.debugStats.damageTextsShown++;
+        CombatText.show(unit, 'damage', event.a, [...color]);
         return;
       }
       case 'cast': {

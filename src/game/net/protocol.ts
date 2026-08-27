@@ -53,6 +53,23 @@ export interface GoneEvent {
   id: string;
 }
 
+/**
+ * A damage number over `id`'s head — the post-mitigation figure the host's
+ * own `CombatText` just floated. A client cannot compute any of these (its
+ * `takeDamage` is gated shut), so without this stream a LAN client's match
+ * has no floating numbers at all. Rides the ordinary per-tick event flush;
+ * the client replays it through the same `CombatText.show`, whose per-victim
+ * merge then behaves exactly as it does on the host.
+ */
+export interface DamageNumberNetEvent {
+  k: 'dmg';
+  id: string;
+  /** The shown (post-mitigation, pre-pool-cap) number. */
+  a: number;
+  /** `DamageType` — picks the colour, and with it the merge key. */
+  ty: string;
+}
+
 /** A committed cast — the client plays the spell's visual half from this. */
 export interface CastEvent {
   k: 'cast';
@@ -62,7 +79,12 @@ export interface CastEvent {
   y: number;
 }
 
-export type NetEvent = ChampionSpawnEvent | MinionSpawnEvent | GoneEvent | CastEvent;
+export type NetEvent =
+  | ChampionSpawnEvent
+  | MinionSpawnEvent
+  | GoneEvent
+  | CastEvent
+  | DamageNumberNetEvent;
 
 export type NetMessage =
   | { t: 'snap'; tm: number; units: UnitSnap[] }

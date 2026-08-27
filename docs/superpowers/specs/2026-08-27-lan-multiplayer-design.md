@@ -262,10 +262,16 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   just got snapped back), each client's own death recap (`died`, host →
   that client, since a client's damage ledger is gated empty), the Đội
   tab's read-only LAN rows on both ends (`NetGameHooks.netRosterUnits`),
-  and a host-added mid-match champion's spell chunks (the client fetches
+  a host-added mid-match champion's spell chunks (the client fetches
   before building the puppet instead of degrading every slot to a basic
-  attack). Still local-only: score tallies on a client (snapshots carry no
-  KDA), and every panel mutation other than the own-champion loadout.
+  attack), and every floating damage number (`dmg` events in the ordinary
+  flush — `AttackableUnit.takeDamage` announces the post-mitigation figure
+  on `EventType.ON_TAKE_DAMAGE` in the same breath it floats it, and the
+  client replays it through the same `CombatText.show`; a client's gated
+  `takeDamage` can float nothing of its own). Still local-only: score
+  tallies on a client (snapshots carry no KDA), heal/shield/gold combat
+  text (heals still run in the puppets' local sim; gold is unsynced), and
+  every panel mutation other than the own-champion loadout.
 - **A stale `?net=` in the address bar re-arms LAN on the next plain Chơi**
   — the params are deliberately the API; clearing them is the player's (or
   a future lobby toggle's) job.

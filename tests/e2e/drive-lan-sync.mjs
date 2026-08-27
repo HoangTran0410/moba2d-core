@@ -412,6 +412,17 @@ await guard(async () => {
     JSON.stringify(recap)
   );
 
+  // The same killing blow must also have floated a damage number on the
+  // client — its own `takeDamage` is gated, so the count can only move if
+  // the host's 'dmg' stream arrived and went through `CombatText.show`.
+  // Minion skirmishes usually push this well past 1 by now; the kill above
+  // guarantees at least the one.
+  const damageTexts = await clientPage.evaluate(
+    () => window.__lol2dNet.debugStats.damageTextsShown
+  );
+  report.damageTexts = damageTexts;
+  check('damage numbers float on the client', damageTexts > 0, `${damageTexts} shown`);
+
   // ------------------------------------------------------------ liveness
   const hostStats = await page.evaluate(() => window.__lol2dNet.debugStats);
   const clientStats = await clientPage.evaluate(() => window.__lol2dNet.debugStats);

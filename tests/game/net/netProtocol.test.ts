@@ -77,6 +77,7 @@ describe('event and order messages', () => {
           { k: 'minion', id: 'u9', team: 'BLUE', lane: 'mid', kind: 'melee', x: 10, y: 20 },
           { k: 'gone', id: 'u9' },
           { k: 'cast', id: 'u2', slot: 1, x: 500, y: 600 },
+          { k: 'dmg', id: 'u2', a: 44, ty: 'MAGIC' },
         ],
       },
       { t: 'move', x: 123, y: 456 },

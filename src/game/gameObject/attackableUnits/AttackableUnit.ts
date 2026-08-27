@@ -6,6 +6,7 @@ import StatusFlags from '@/game/enums/StatusFlags';
 import GameObject from '@/game/gameObject/GameObject';
 import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import Stats from '@/game/gameObject/Stats';
+import EventType from '@/game/enums/EventType';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
 import CombatText, {
   DAMAGE_TEXT_COLOR,
@@ -689,6 +690,15 @@ export default class AttackableUnit extends GameObject {
     // keeps a physical hit and a magic hit on one victim from blending into a
     // single number that hides which was which.
     CombatText.show(this, 'damage', damage, [...DAMAGE_TEXT_COLOR[type]]);
+    // The same number, for anyone who cannot compute it: a LAN client's own
+    // `takeDamage` is gated shut (the early return at the top), so the only
+    // damage numbers it can ever float are the ones the host's sim announces.
+    // `HostSession` is today's one listener; an offline match emits to nobody.
+    this.game?.eventManager?.emit(EventType.ON_TAKE_DAMAGE, {
+      unit: this,
+      amount: damage,
+      type,
+    } satisfies DamageNumberEvent);
 
     // What actually landed, for the scoreboard: capped at the pool that was
     // there to take it, so a 200-damage execute on a 12-health minion is 12
@@ -1123,6 +1133,18 @@ export const DEATH_RECAP_WINDOW_MS = 12_000;
 export const DEATH_RECAP_MAX_ENTRIES = 60;
 
 /** One landed hit, as the death recap will retell it. */
+/**
+ * `EventType.ON_TAKE_DAMAGE`'s payload: the post-mitigation number
+ * `CombatText` floats over `unit`'s head, in the same breath it is shown.
+ * Display truth, not combat truth — `amount` is the shown number, which the
+ * health pool may then cap (see `landed` just below the emit site).
+ */
+export interface DamageNumberEvent {
+  unit: AttackableUnit;
+  amount: number;
+  type: DamageType;
+}
+
 export interface DamageLogEntry {
   atMs: number;
   amount: number;
