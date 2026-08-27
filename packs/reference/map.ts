@@ -9,11 +9,15 @@ import type { MapDefinition } from '@moba2d/core/content/ContentPack';
  * polygon soup as a stress fixture, and the `NavGrid` clearance bug this
  * project shipped once only ever surfaced because SR's jungle has 60-90px
  * gaps. So this map is not decoration; it is a second, independent fixture
- * with the same two hostile properties, on purpose: a corridor in that same
- * 60-90px band (`tests/content/referenceMap.test.ts`'s `wallGapWidths`
- * measures it the way `NavGrid.fromPolygons` would), and a structure row
- * that is not symmetric across factions, so a muster rule that happened to
- * assume symmetry cannot pass by coincidence.
+ * with a corridor in that same hostile 60-90px band
+ * (`tests/content/referenceMap.test.ts`'s `wallGapWidths` measures it the
+ * way `NavGrid.fromPolygons` would). It used to be hostile in a second way
+ * too — a structure row that was not symmetric across factions, so a muster
+ * rule that derived the muster point from the buildings could not pass by
+ * assuming symmetry. That rule is gone (muster points are declared
+ * `slots.minion` entries now, validated at install), so the map is
+ * point-symmetric like a real MOBA map — see the geometry module's own
+ * header — and the same test file asserts the symmetry instead.
  *
  * It is also deliberately small and legible, and deliberately **not** Riot's
  * — two factions, one lane, a handful of walls, one neutral camp filled by
@@ -35,7 +39,10 @@ import type { MapDefinition } from '@moba2d/core/content/ContentPack';
 export const referenceMap: MapDefinition = {
   id: 'proving-grounds',
   name: 'Sân Thử Nghiệm',
-  size: 2400,
+  // 2416, not a rounder 2400, so the map's centre lands on a `NavGrid` cell
+  // centre — see the geometry module's header for why the centred corridor
+  // gap needs that.
+  size: 2416,
   factions: [{ id: 'amber' }, { id: 'jade' }],
   geometry: () => import('./provingGroundsGeometry').then(module => module.provingGroundsGeometry),
 };

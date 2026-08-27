@@ -8,10 +8,11 @@ import { NAV_CELL_SIZE } from '../../src/game/nav/NavGrid';
 import type { MapGeometry, StructureSlot } from '../../src/content/ContentPack';
 
 /**
- * Task 9's fixture map — small, and deliberately hostile in exactly two
- * ways. See `packs/reference/map.ts` and `packs/reference/
- * provingGroundsGeometry.ts` for what it is; this file is what proves it is
- * that, rather than merely looking like it on paper.
+ * Task 9's fixture map — small, point-symmetric like a real MOBA map, and
+ * deliberately hostile in one way (the 60-90px corridor `NavGrid` clearance
+ * needs a stress fixture for). See `packs/reference/map.ts` and
+ * `packs/reference/provingGroundsGeometry.ts` for what it is; this file is
+ * what proves it is that, rather than merely looking like it on paper.
  */
 
 /** `referenceMap.geometry` is a loader — resolve it once per test that needs it. */
@@ -133,11 +134,60 @@ describe('Proving Grounds, the reference pack’s own map', () => {
     expect(gaps.some(g => g >= 60 && g <= 90)).toBe(true);
   });
 
-  it('has an asymmetric structure row, which is what the muster rule assumes', async () => {
-    const { slots } = await geometry();
-    expect(slots.structure.length).toBeGreaterThan(0);
-    const perFaction = countBy(slots.structure, (s: StructureSlot) => s.faction);
-    expect(new Set(perFaction.values()).size).toBeGreaterThan(1);
+  it('is point-symmetric: every slot mirrors onto a slot of the other faction', async () => {
+    // `mirror(p) = (size - x, size - y)` — the 180° rotation about the map's
+    // centre that makes the two sides a fair fight. The map was deliberately
+    // asymmetric while the muster rule derived the muster point from the two
+    // turrets nearest the fountain; that rule is a declared-slot lookup now
+    // (`MinionSpawner.musterSlotFor`), so symmetry is what the shipped map
+    // promises instead.
+    const { slots, lanes } = await geometry();
+    const size = referenceMap.size;
+    const mirrored = (x: number, y: number, list: readonly { x: number; y: number }[]) =>
+      list.some(s => s.x === size - x && s.y === size - y);
+
+    for (const s of slots.structure) {
+      expect(mirrored(s.x, s.y, slots.structure), `structure at ${s.x},${s.y}`).toBe(true);
+    }
+    for (const s of slots.spawn) {
+      expect(mirrored(s.x, s.y, slots.spawn), `spawn at ${s.x},${s.y}`).toBe(true);
+    }
+    for (const s of slots.minion) {
+      expect(mirrored(s.x, s.y, slots.minion), `minion muster at ${s.x},${s.y}`).toBe(true);
+    }
+    for (const s of slots.neutral) {
+      expect(mirrored(s.x, s.y, slots.neutral), `neutral at ${s.x},${s.y}`).toBe(true);
+    }
+    // The lane both teams walk is the same path: the waypoint list is a
+    // palindrome under the mirror.
+    for (const lane of lanes ?? []) {
+      const points = lane.waypoints;
+      for (let i = 0; i < points.length; i++) {
+        const other = points[points.length - 1 - i];
+        expect(other.x).toBe(size - points[i].x);
+        expect(other.y).toBe(size - points[i].y);
+      }
+    }
+  });
+
+  it('is walled on all four edges — the arena has an outer boundary', async () => {
+    // Rasterised the same way `wallGapWidths` samples, so "walled" means what
+    // the pathfinder and the renderer will actually see: every cell whose
+    // centre lies on the outermost ring is inside some wall polygon.
+    const { terrain } = await geometry();
+    const size = referenceMap.size;
+    const cells = Math.ceil(size / NAV_CELL_SIZE);
+    const blockedAt = (x: number, y: number) =>
+      terrain.wall.some(wall => pointInPolygon(x, y, wall));
+    for (let c = 0; c < cells; c++) {
+      const mid = (c + 0.5) * NAV_CELL_SIZE;
+      const edge = 0.5 * NAV_CELL_SIZE;
+      const far = size - 0.5 * NAV_CELL_SIZE;
+      expect(blockedAt(mid, edge), `top edge open at x=${mid}`).toBe(true);
+      expect(blockedAt(mid, far), `bottom edge open at x=${mid}`).toBe(true);
+      expect(blockedAt(edge, mid), `left edge open at y=${mid}`).toBe(true);
+      expect(blockedAt(far, mid), `right edge open at y=${mid}`).toBe(true);
+    }
   });
 
   it('is navigable end to end despite that', async () => {
@@ -157,13 +207,13 @@ describe('Proving Grounds, the reference pack’s own map', () => {
     expect(typeof referenceMap.geometry).toBe('function');
   });
 
-  it('declares two factions with an unequal number of structures each', async () => {
+  it('gives both factions the same number of structures', async () => {
     const { slots } = await geometry();
-    const amber = slots.structure.filter(s => s.faction === 'amber').length;
-    const jade = slots.structure.filter(s => s.faction === 'jade').length;
+    const perFaction = countBy(slots.structure, (s: StructureSlot) => s.faction);
+    const amber = perFaction.get('amber') ?? 0;
+    const jade = perFaction.get('jade') ?? 0;
     expect(amber).toBeGreaterThan(0);
-    expect(jade).toBeGreaterThan(0);
-    expect(amber).not.toBe(jade);
+    expect(amber).toBe(jade);
   });
 
   it('gives every lane a muster point for both of its factions', async () => {
@@ -177,14 +227,17 @@ describe('Proving Grounds, the reference pack’s own map', () => {
     }
   });
 
-  it('fills its one neutral slot with the reference pack’s own monster, not the bundled pack’s', async () => {
+  it('fills every neutral slot with the reference pack’s own monster, not the bundled pack’s', async () => {
+    // Two mirrored camps, one warden definition — the same
+    // one-definition-many-slots reuse Summoner's Rift's wolf pits established.
     const { slots } = await geometry();
-    expect(slots.neutral).toHaveLength(1);
-    const role = slots.neutral[0].role;
+    expect(slots.neutral).toHaveLength(2);
     const monsters = referenceData.monsters ?? {};
-    const filler = Object.values(monsters).find(monster => monster.fills.includes(role));
-    expect(filler).toBeDefined();
-    expect(filler?.members.length).toBeGreaterThan(0);
+    for (const slot of slots.neutral) {
+      const filler = Object.values(monsters).find(monster => monster.fills.includes(slot.role));
+      expect(filler, `no monster fills role ${slot.role}`).toBeDefined();
+      expect(filler?.members.length).toBeGreaterThan(0);
+    }
   });
 
   it('passes validation as part of a pack, geometry included', async () => {
