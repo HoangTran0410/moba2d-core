@@ -13,6 +13,7 @@ import {
 } from '@/game/spell/runtime/CancelPolicy';
 import type { TargetingRequest } from '@/game/spell/targeting/TargetResolver';
 import { beginAttribution, endAttribution } from '@/game/combat/DamageAttribution';
+import { isNetClient } from '@/game/net/netRole';
 import type {
   CancelReason,
   CastContext,
@@ -615,6 +616,12 @@ export default class Spell {
    * and before this existed the upkeep quietly did not.
    */
   effectiveMana(amount: number): number {
+    // A LAN client's mana is snapshot truth, and its casts are replayed
+    // visuals of decisions the host already priced — so on a net client every
+    // cost is 0, exactly the way URF's manaFree works and through the same
+    // single expression of the rule. Without this a puppet's cast event
+    // would be refused whenever the 15Hz mana snapshot lags the host's spend.
+    if (isNetClient()) return 0;
     return this.game?.matchRules?.manaFree ? 0 : amount;
   }
 

@@ -4,6 +4,7 @@ import type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import type Fountain from '@/game/gameObject/structures/Fountain';
 import type { MinionMusterPoint } from '@/game/preset';
 import { LANES, getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
+import { isNetClient } from '@/game/net/netRole';
 
 /** ms between waves, per base. */
 export const WAVE_INTERVAL_MS = 30_000;
@@ -166,6 +167,11 @@ export default class MinionSpawner {
   }
 
   update() {
+    // A LAN client's minions arrive as spawn events from the host
+    // (`net/netRole.ts`, LAN design spec §4) — this spawner being the one
+    // place a wave is born is what makes that a single gate. `prune` is
+    // skipped too: the client's list is owned by its session.
+    if (isNetClient()) return;
     this.prune();
     if (!this.enabled) return;
 

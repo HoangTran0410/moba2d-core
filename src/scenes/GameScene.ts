@@ -16,6 +16,9 @@ import { resolveMapId } from '@/content/defaultMap';
 import { notePackSpellFailures } from '@/content/runtimePacks';
 import { hideMatchStartFailure, showMatchStartFailure } from './matchStartFailure';
 import { guardUpdate } from '@/managers/RenderGuard';
+import { netRequestFromUrl } from '@/game/net/netRole';
+import { startNetClientMatch } from '@/game/net/clientBoot';
+import { HostSession } from '@/game/net/HostSession';
 
 let previousTime: number;
 
@@ -272,6 +275,21 @@ export default class GameScene extends Scene {
   async startGame() {
     this._exited = false;
 
+    // A LAN match, armed by URL (`?net=host|join&server=…&room=…` — LAN
+    // design spec §5). A *client* takes its map, kit and team from the
+    // host's hello instead of planning locally, so the whole offline plan
+    // path below is replaced; a *host* runs the offline path unchanged and
+    // attaches its session at the bottom.
+    const netRequest = netRequestFromUrl();
+    if (netRequest?.mode === 'join') {
+      const netMatch = await startNetClientMatch(netRequest);
+      if (this._exited) return;
+      this.game = new Game(netMatch.activeMap, netMatch.plan);
+      netMatch.attach(this.game);
+      this.finishBoot();
+      return;
+    }
+
     const config = loadPregameConfig();
     const plan = planMatchKits(config);
     // The shop's stock rides along with the kits. A champion spawns standing
@@ -334,6 +352,19 @@ export default class GameScene extends Scene {
 
     const activeMap = { ...mapSummary, ...geometry };
     this.game = new Game(activeMap, plan);
+    if (netRequest?.mode === 'host') {
+      // Attached after construction, with the plan it was built from so
+      // every champion's kit can cross the wire as the data it came from.
+      void HostSession.attach(this.game, netRequest, plan).catch(error => {
+        console.error('net: host session failed to attach', error);
+      });
+    }
+    this.finishBoot();
+  }
+
+  /** The boot tail both the offline and the net-client paths share. */
+  private finishBoot(): void {
+    if (!this.game) return;
     this.warmRemainingSpells();
     // The match's own way out, since Escape is no longer one. `Game` holds no
     // reference to the scene manager and must not gain one — see
@@ -376,6 +407,9 @@ export default class GameScene extends Scene {
       this._animationFrameId = null;
     }
     if (this.game) this.game.onPauseChanged = null;
+    // Before destroy: the session owns the socket and the process-wide net
+    // role, and a role left set would gate the *next*, offline match.
+    this.game?.net?.close();
     this.game?.destroy();
     this.game = null;
     if (resumeP5ForNextScene) loop();

@@ -65,6 +65,8 @@ import type { JoystickVector } from './input/VirtualJoystick';
 import { issuePointerOrder } from './input/PointerOrders';
 import type Spell from './gameObject/Spell';
 import type { CastContext, Vec2 } from './spell/runtime/types';
+import { isNetClient, netClientBoot } from './net/netRole';
+import type { NetGameHooks } from './net/hooks';
 
 /**
  * How far ahead of the champion the joystick plants its destination, as frames
@@ -201,6 +203,14 @@ export default class Game {
   onPauseChanged: ((paused: boolean) => void) | null = null;
 
   /**
+   * The attached LAN session, or null for every offline match. Set by
+   * `HostSession`/`ClientSession` after construction; `Game` only ever calls
+   * through the `NetGameHooks` interface — see `net/hooks.ts` for the whole
+   * (deliberately small) coupling.
+   */
+  net: NetGameHooks | null = null;
+
+  /**
    * Cooldown reduction and URF, resolved from the pregame config at
    * construction. `Spell.ts` reads this off `owner.game.matchRules` — see
    * `Spell.reducedCooldown` — rather than this class pushing the numbers into
@@ -333,7 +343,10 @@ export default class Game {
     // Blue by default and for every match before the team tab existed, but the
     // player is now a movable roster slot like any bot — so its side comes from
     // the config, which persists a team switch the same way it persists a bot's.
-    const playerTeam = pregameConfig.playerTeam;
+    // A net client's side was decided by the host and arrived in the
+    // handshake (`net/clientBoot.ts`); everything else about the player's
+    // construction is unchanged — its kit is already in `plan.player`.
+    const playerTeam = netClientBoot()?.playerTeam ?? pregameConfig.playerTeam;
     this.player = attachRecall(
       new Champion({
         game: this,
@@ -352,6 +365,10 @@ export default class Game {
         // A thumb aims by dragging; a mouse aims by being somewhere. One line
         // decides which, and every spell downstream sees an ordinary context.
         const aim = this.touchAim.get(slot) ?? this.worldMouse;
+        // A net client sends the cast to the host instead of pressing it:
+        // returning undefined is the controller's own "no cast" path, and
+        // the visual comes back as a cast event like every other unit's.
+        if (this.net?.interceptCast(slot, aim)) return undefined;
         return this.createSpellContext(spell, this.player, aim);
       },
     });
@@ -391,7 +408,12 @@ export default class Game {
       { unit: this.player, loadout: pregameConfig.player },
     ];
 
-    for (let i = 0; i < pregameConfig.ai.count; i++) {
+    // A net client fields no bots of its own: the host's champions — bots
+    // and other players alike — arrive as spawn events and are built by
+    // `ClientSession` (LAN design spec §4). The loop below is the one place
+    // bots are born at boot, which is what makes this a single gate.
+    const localBotCount = isNetClient() ? 0 : pregameConfig.ai.count;
+    for (let i = 0; i < localBotCount; i++) {
       const botLoadout = pregameConfig.ai.bots[i];
       const botBehaviour = pregameConfig.ai.botBehaviours[i];
       const botTeam = pregameConfig.ai.botTeams[i];
@@ -562,12 +584,19 @@ export default class Game {
       mouseButton === RIGHT &&
       !hitTest({ x: mouseX, y: mouseY }, this.minimap.rect)
     ) {
-      const target = issuePointerOrder(this.player, this.objectManager, this.worldMouse);
-      // A move gets the existing green ground pulse. An attack already has the
-      // red target ring drawn by Champion.drawAttackOrder, so stacking both
-      // signals on an enemy body would say two different things at once.
-      if (!target) {
+      // A net client's orders go to the host instead of the local unit —
+      // the session throttles and serializes; the ground pulse still draws,
+      // because the click *was* accepted, just remotely.
+      if (this.net?.interceptPointer(this.worldMouse)) {
         this.clickedPoint = { x: this.worldMouse.x, y: this.worldMouse.y, size: 40 };
+      } else {
+        const target = issuePointerOrder(this.player, this.objectManager, this.worldMouse);
+        // A move gets the existing green ground pulse. An attack already has the
+        // red target ring drawn by Champion.drawAttackOrder, so stacking both
+        // signals on an enemy body would say two different things at once.
+        if (!target) {
+          this.clickedPoint = { x: this.worldMouse.x, y: this.worldMouse.y, size: 40 };
+        }
       }
     }
     this.clickedPoint.size *= 0.9;
@@ -578,6 +607,12 @@ export default class Game {
     this.touchControls.update();
     this.spellInputController.update(deltaTime);
     this.itemInputController.update(deltaTime);
+
+    // Last, after every local system has moved: a host session reads the
+    // settled tick to snapshot it, and a client session overwrites puppet
+    // positions with interpolated truth so the draw that follows paints the
+    // network's answer, not the local guess.
+    this.net?.update();
   }
 
   update() {
@@ -1118,6 +1153,10 @@ export default class Game {
   recall(): void {
     const spell = this.player?.recall;
     if (!spell) return;
+
+    // A net client asks the host to go home; the channel it watches is the
+    // host's, via snapshots.
+    if (this.net?.interceptRecall()) return;
 
     // Pressing it again is how the player calls the trip off; without this the
     // press would be refused as "already casting" and the only way to stop

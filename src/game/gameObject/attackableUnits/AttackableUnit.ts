@@ -25,6 +25,7 @@ import {
   endAttribution,
 } from '@/game/combat/DamageAttribution';
 import { amplifiedAbilityDamage } from '@/game/combat/Amplification';
+import { isNetClient } from '@/game/net/netRole';
 
 export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
   game: GameObjectRuntimeContext;
@@ -614,6 +615,12 @@ export default class AttackableUnit extends GameObject {
     type: DamageType = DEFAULT_DAMAGE_TYPE,
     source?: string
   ): void {
+    // A LAN client never simulates outcomes: health is snapshot truth
+    // (`net/netRole.ts`, spec §4 of the LAN design). This being the one
+    // funnel every damage source already goes through — a swing, a spell, a
+    // poison tick — is what makes "the client's spells are visual-only" one
+    // early return instead of an audit of 300 spell files.
+    if (isNetClient()) return;
     if (this.isDead) return;
 
     // **The attacker's build, before anything else touches the number.**

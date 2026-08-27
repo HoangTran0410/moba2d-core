@@ -91,6 +91,7 @@
     "e2e:inventory": "node tests/e2e/drive-inventory-drag.mjs /tmp/invdrag",
     "e2e:shop-touch": "node tests/e2e/drive-shop-touch.mjs",
     "e2e:camps": "node tests/e2e/verify-camp-spread.mjs",
+    "e2e:lan": "node tests/e2e/drive-lan-sync.mjs",
     "e2e:attacks": "node tests/e2e/drive-basic-attacks.mjs",
     "vendor:copy": "node scripts/copy-vendor.mjs",
     "chunks:check": "node scripts/check-chunks.mjs",
@@ -144,7 +145,8 @@
     "workbox-expiration": "^7.4.1",
     "workbox-precaching": "^7.4.1",
     "workbox-routing": "^7.4.1",
-    "workbox-strategies": "^7.4.1"
+    "workbox-strategies": "^7.4.1",
+    "ws": "^8.21.3"
   },
   "peerDependencies": {
     "vitest": ">=1.6.0"

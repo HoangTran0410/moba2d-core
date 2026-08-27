@@ -500,7 +500,7 @@ const planSlot = (choice: SlotChoice, slotIndex: number): string => {
  * must keep it. Omitted (or invalid), each falls back through `summonerIdOr`
  * to the shelf's own first entry rather than a literal id of this pack's own.
  */
-const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan => {
+export const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan => {
   const kit = randomChampionKit();
   // Left wholly unset (the AI's respawn re-roll — see `getChampionPresetRandom`),
   // D and F default to the shelf's first two entries rather than its first
