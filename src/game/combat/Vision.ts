@@ -243,6 +243,18 @@ function alliedEyes(game: VisionHost | undefined, teamId: string | undefined): S
  * module holding a candidate its own query already bounded (a spell's range, a
  * minion's aggro radius), and a second, invisible cap here would quietly retune
  * every one of them against a number chosen for the camera.
+ *
+ * **`FogOfWar.grantedEyeSees` is this function's twin and must stay identical
+ * to it.** The fog asks the same question of the same pairs when it decides
+ * whether an allied minion's or turret's circle actually lights a body standing
+ * in it — that half used to be a bare distance test, which is the drift this
+ * module's header warns about running in its other direction: an enemy behind a
+ * wall from an allied minion was drawn on the player's screen and still refused
+ * as a target. The two are not one function because `ContentApi` re-exports
+ * this whole module (`import * as Vision`), so exporting a fourth name here
+ * widens the published pack contract and forces `npm run contract:bump` for a
+ * predicate no pack has any use for. Both bodies are three lines over the same
+ * public `hasLineOfSight`; if either changes, change the other.
  */
 function viewIsClear(game: VisionHost | undefined, from: Seeable, target: Seeable): boolean {
   const origin = from.position;

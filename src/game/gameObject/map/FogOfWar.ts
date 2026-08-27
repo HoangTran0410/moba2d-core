@@ -5,6 +5,7 @@ import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import { PredefinedFilters } from '@/game/managers/ObjectManager';
 import { Circle } from '@/libs/quadtree';
 import { removeGraphics } from '@/utils/graphics.utils';
+import { hasLineOfSight } from '@/game/combat/Vision';
 
 // The fog polygon is recomputed at the unit's live position every frame — no
 // throttle, no interpolation — so the gradient (drawn every frame at the
@@ -21,16 +22,64 @@ import { removeGraphics } from '@/utils/graphics.utils';
 //      (PolyVisibility.computeViewport) depends on the unit's live position
 //      and must run every frame for the fog to track it smoothly — it's the
 //      O(n) part, and it's what actually runs unconditionally below.
-// A unit that hasn't moved at all since last frame (exact position/vision
-// radius equality) skips both and returns last frame's polygon outright, so
-// a standing unit still costs nothing.
+// A unit that hasn't moved at all since last frame (exact position/radius
+// equality) skips both and returns last frame's polygon outright, so a
+// standing unit — every turret, all match long — still costs nothing.
+//
+// Every revealer casts one of these polygons, champion or not. Minions and
+// turrets were painted as plain discs for a long time on the grounds that an
+// ally swarm should cost a fill each rather than a raycast each — and the disc
+// reached straight through walls and bushes, so a lane's fog looked as if the
+// wave could see into the jungle while `combat/Vision.ts` had already decided
+// it could not. Two things pay for the polygons instead: only revealers *near
+// the camera* get one at all (see calculateSight), and a granted revealer's
+// "hasn't moved" test carries a tolerance rather than demanding exact equality
+// (GRANTED_SIGHT_TOLERANCE_PX), because nobody is steering a minion's fog.
 type SightSegment = [number, number][];
+
+/**
+ * Soft-edge width, in world px, of the fade at the rim of a revealer's hole.
+ *
+ * A champion's own sight ends sharply; a granted circle — what a minion or a
+ * turret lends the team — fades over twice the distance, which is what has
+ * always made an ally swarm read as a soft wash rather than as a row of discs.
+ * Both numbers predate the polygons and are kept exactly as they were.
+ */
+const OWN_SIGHT_RING_PX = 50;
+const GRANTED_SIGHT_RING_PX = 100;
+
+/**
+ * How far a *granted* revealer may drift from the position its polygon was
+ * cast at before the polygon is recast.
+ *
+ * The player's own champions recast every frame (tolerance 0) because the fog
+ * has to track the thing the player is steering. A minion's circle is
+ * peripheral: it walks ~2.6px per frame, so 12px is one recast every five
+ * frames and cuts the sweep cost of a full wave by the same factor. Nothing
+ * shows, because the drift lands inside a 100px fade — but only as long as
+ * `computeSightPoly` widens its clip box by the same amount, or the box's
+ * straight edge would slide in under the gradient and draw a faint seam. It
+ * does; see the `boxRadius` line there.
+ */
+const GRANTED_SIGHT_TOLERANCE_PX = 12;
+
+/**
+ * How far an object lights fog. AttackableUnits carry the `fogRevealRadius`
+ * getter (minions and turrets have no combat sight — visionRadius 0 — but
+ * still light a circle for the team). A spell-made eye — a pack's ward, a
+ * plain SpellObject with a bare `visionRadius` — carries no such getter, and
+ * `undefined > 0` silently dropped it from the whole sight pass: the one seam
+ * `combat/Vision.ts` promises works for wards lit nothing on screen.
+ */
+const fogRevealOf = (o: any): number =>
+  typeof o.fogRevealRadius === 'number' ? o.fogRevealRadius : (o.visionRadius ?? 0);
 
 interface SightCacheEntry {
   sightPoly: { x: number; y: number }[];
   x: number;
   y: number;
-  visionRadius: number;
+  /** The reveal radius the polygon was cast at — not necessarily combat sight. */
+  radius: number;
   // Broken segment list for the obstacles currently in range. Obstacle
   // vertices are static world coordinates, so this depends only on *which*
   // obstacles are selected, never on the unit's exact position — see
@@ -43,7 +92,17 @@ interface SightCacheEntry {
   obstacleSignature: string;
 }
 
-type SightResult = { object: any; sightPoly: { x: number; y: number }[] };
+type SightResult = {
+  object: any;
+  sightPoly: { x: number; y: number }[];
+  /** What the gradient is sized to: the reveal radius, never combat sight. */
+  radius: number;
+  /** Width of the soft rim, in world px. */
+  ring: number;
+};
+
+/** A granted eye — a minion, a turret — and the circle it lends the team. */
+type RevealCircle = { source: any; x: number; y: number; r: number };
 
 export default class FogOfWar {
   game: any;
@@ -65,14 +124,6 @@ export default class FogOfWar {
     cameraKey: string;
     result: SightResult[];
   };
-
-  /**
-   * Cheap circle revealers — allied minions and turrets — from the last sight
-   * pass. Drawn as plain circles rather than wall-aware polygons so an ally
-   * swarm costs a fill each, not a raycast each. Held on the instance so a
-   * cached sight frame reuses the same circles the polys were paired with.
-   */
-  circleSights: { x: number; y: number; r: number }[] = [];
 
   constructor(game: any) {
     this.game = game;
@@ -152,16 +203,7 @@ export default class FogOfWar {
     // not show it. Turrets and fountains hid the bug, being structures that
     // `minimapBlips` draws without consulting the flag at all.
     //
-    // The narrowing moved down to the two paint lists below, where it belongs.
-    // How far an object lights fog. AttackableUnits carry the `fogRevealRadius`
-    // getter (minions and turrets have no combat sight — visionRadius 0 — but
-    // still light a circle for the team). A spell-made eye — a pack's ward, a
-    // plain SpellObject with a bare `visionRadius` — carries no such getter,
-    // and `undefined > 0` silently dropped it from this whole pass: the one
-    // seam `combat/Vision.ts` promises works for wards lit nothing on screen.
-    const fogRevealOf = (o: any): number =>
-      typeof o.fogRevealRadius === 'number' ? o.fogRevealRadius : (o.visionRadius ?? 0);
-
+    // The narrowing moved down to the two lists below, where it belongs.
     const allyObjects = this.game.objectManager.queryObjects({
       queryByDisplayBoundingBox: true,
       filters: [
@@ -176,14 +218,13 @@ export default class FogOfWar {
 
     const allSightPoly: SightResult[] = [];
     const visiblePlayers: any[] = [];
-    /** Every allied circle on the map — what `visibleToPlayerTeam` is computed from. */
-    const revealCircles: { x: number; y: number; r: number }[] = [];
-    /** The subset near the camera — what the overlay actually erases fog for. */
-    const paintedCircles: { x: number; y: number; r: number }[] = [];
+    /** Every allied granted circle on the map — what `visibleToPlayerTeam` is computed from. */
+    const revealCircles: RevealCircle[] = [];
     const nearCamera = (ox: number, oy: number, r: number) =>
       CollideUtils.circleRect(ox, oy, r, x, y, w, h);
 
     allyObjects.forEach((obj: any) => {
+      const radius = fogRevealOf(obj);
       if (obj.visionRadius > 0) {
         // Player and allied champions: the real, wall-aware sight polygon. Run
         // for all of them rather than the on-camera ones — a team fields at most
@@ -191,18 +232,45 @@ export default class FogOfWar {
         // the minimap while the player is looking somewhere else.
         const { sightPoly, playersInSight } = this.calculateSightForObject(obj);
         visiblePlayers.push(...playersInSight);
-        if (nearCamera(obj.position.x, obj.position.y, fogRevealOf(obj))) {
-          allSightPoly.push({ object: obj, sightPoly });
+        if (nearCamera(obj.position.x, obj.position.y, radius)) {
+          allSightPoly.push({ object: obj, sightPoly, radius, ring: OWN_SIGHT_RING_PX });
         }
       } else {
-        // A minion or turret: one cheap circle, no raycast, no per-body query.
+        // A minion or turret. Its circle is *granted* sight — the unit has no
+        // combat sight of its own — but it obeys the same walls a champion's
+        // does. It was painted as a plain disc for a long time, and the disc
+        // reached straight through walls and bushes: the fog on a lane read as
+        // if the wave could see into the jungle, while `combat/Vision.ts` had
+        // already decided (correctly) that it could not, so an enemy sitting
+        // in that lit-through wall was on screen and unclickable.
+        //
         // `revealer`, not `circle`: `circle` is a p5 global. See CLAUDE.md.
-        const revealer = { x: obj.position.x, y: obj.position.y, r: fogRevealOf(obj) };
+        const revealer: RevealCircle = {
+          source: obj,
+          x: obj.position.x,
+          y: obj.position.y,
+          r: radius,
+        };
         revealCircles.push(revealer);
-        if (nearCamera(revealer.x, revealer.y, revealer.r)) paintedCircles.push(revealer);
+        // The polygon is what costs, so only what is on screen pays for one.
+        // Off camera there is no fog to erase, and the visibility half below
+        // answers walls with a line-of-sight test that needs no polygon.
+        //
+        // `radius > 0` is not redundant with the ally filter: the player is
+        // force-included there whatever it lights, and its `visionRadius` is
+        // the *animated* one — 0 until `draw()` has lerped it up, and 0 for
+        // every champion in a headless test. A zero-radius revealer paints
+        // nothing, so casting a polygon for it is pure cost.
+        if (radius > 0 && nearCamera(revealer.x, revealer.y, revealer.r)) {
+          allSightPoly.push({
+            object: obj,
+            sightPoly: this.getSightPoly(obj, radius, GRANTED_SIGHT_TOLERANCE_PX),
+            radius,
+            ring: GRANTED_SIGHT_RING_PX,
+          });
+        }
       }
     });
-    this.circleSights = paintedCircles;
 
     // Reset the player's-eye visibility flag on every AttackableUnit, then
     // re-light the ones in sight. Structures opt out — once built they stay on
@@ -219,11 +287,18 @@ export default class FogOfWar {
     });
     visiblePlayers.forEach((p: any) => (p.visibleToPlayerTeam = true));
 
-    // Circle revealers light any body standing in them — one distance test per
-    // unit, no polygon test and no per-revealer query, so the ally swarm stays
-    // cheap. Deliberately wall-blind: a minion's cheap circle is not the
-    // player's exact sight, and folding walls back in would mean the raycast
-    // this path exists to avoid.
+    // Granted circles light any body standing in them — distance first, because
+    // it rejects almost everything for two multiplies, then the wall test.
+    //
+    // This flag decides what is *drawn*; `combat/Vision.ts`'s `canSee` decides
+    // what may be *targeted*, and the whole reason both exist is that they have
+    // to give the same answer. The distance test used to be the whole rule
+    // here, so an enemy behind a wall from an allied minion was drawn on the
+    // player's screen and refused as a target in the same frame.
+    //
+    // The raycast only runs for a pair that already passed the distance test,
+    // and the loop breaks on the first eye that sees — so a unit standing in
+    // its own wave pays one, and a unit nothing is lighting pays none.
     if (revealCircles.length) {
       this.game.objectManager.objects.forEach((o: any) => {
         if (!(o instanceof AttackableUnit) || o.visibleToPlayerTeam || o.alwaysVisible) return;
@@ -231,10 +306,10 @@ export default class FogOfWar {
         for (const c of revealCircles) {
           const dx = ox - c.x;
           const dy = oy - c.y;
-          if (dx * dx + dy * dy <= c.r * c.r) {
-            o.visibleToPlayerTeam = true;
-            break;
-          }
+          if (dx * dx + dy * dy > c.r * c.r) continue;
+          if (!this.grantedEyeSees(c.source, o)) continue;
+          o.visibleToPlayerTeam = true;
+          break;
         }
       });
     }
@@ -243,6 +318,32 @@ export default class FogOfWar {
       this.lastSightCalculation = { revision, cameraKey, result: allSightPoly };
     }
     return allSightPoly;
+  }
+
+  /**
+   * Whether a granted eye — an allied minion or turret — actually has `target`
+   * in view, distance already established by the caller.
+   *
+   * **This is `combat/Vision.ts`'s `viewIsClear`, line for line, and must stay
+   * that way**: that module answers what may be *targeted*, this answers what
+   * is *drawn*, and the fog is only a promise while the two agree. It is
+   * copied rather than imported because `ContentApi` re-exports the whole of
+   * `Vision` (`import * as Vision`), so a fourth exported name there widens the
+   * published pack contract — a `contract:bump` and a core minor — for a
+   * three-line predicate no pack has any use for. The geometry itself is *not*
+   * copied: both call the same public `hasLineOfSight`.
+   *
+   * The `isInsideBush` line is the half that is not geometry. `TerrainMap`
+   * maintains that boolean for champions only, so for a minion eye it reads
+   * false always, and the rule it states is "a champion in a bush is not lit by
+   * a wave standing in the same bush" — which is what `borrowedEyeSees` already
+   * decides on the targeting side. Dropping it here would light a body the
+   * player then could not click.
+   */
+  grantedEyeSees(eye: any, target: any): boolean {
+    if (!eye?.position || !target?.position) return false;
+    if (target.isInsideBush && !eye.isInsideBush) return false;
+    return hasLineOfSight(this.game, eye.position, target.position);
   }
 
   calculateSightForObject(obj: any): {
@@ -281,24 +382,32 @@ export default class FogOfWar {
   }
 
   // Returns the sight polygon for `obj`, always at its current position. A
-  // unit whose position and vision radius are bit-for-bit identical to last
-  // frame's (i.e. it hasn't moved) casts the exact same polygon, so this
+  // unit whose position and radius are bit-for-bit identical to last frame's
+  // (i.e. it hasn't moved) casts the exact same polygon, so this
   // short-circuits straight to the cached result without even querying
   // obstacles. Anything else — the unit moved, its radius changed, or this is
   // the first time we've seen it — goes through computeSightPoly.
-  getSightPoly(obj: any): { x: number; y: number }[] {
+  //
+  // `radius` defaults to whatever the object lights, which for a champion is
+  // its own sight and for a minion or turret the circle it grants; pass it
+  // explicitly only to override. `tolerancePx` widens the "hasn't moved" test
+  // for revealers whose fog nobody is steering — see
+  // GRANTED_SIGHT_TOLERANCE_PX. At the default 0 the test is exact equality,
+  // which is what it has always been.
+  getSightPoly(
+    obj: any,
+    radius: number = fogRevealOf(obj),
+    tolerancePx = 0
+  ): { x: number; y: number }[] {
     const entry = this.sightCache.get(obj);
 
-    if (
-      entry &&
-      obj.position.x === entry.x &&
-      obj.position.y === entry.y &&
-      obj.visionRadius === entry.visionRadius
-    ) {
-      return entry.sightPoly;
+    if (entry && entry.radius === radius) {
+      const dx = obj.position.x - entry.x;
+      const dy = obj.position.y - entry.y;
+      if (dx * dx + dy * dy <= tolerancePx * tolerancePx) return entry.sightPoly;
     }
 
-    return this.computeSightPoly(obj, entry);
+    return this.computeSightPoly(obj, radius, entry, tolerancePx);
   }
 
   // The actual visibility-polygon computation, run every frame a unit moves.
@@ -308,11 +417,17 @@ export default class FogOfWar {
   // what `entry` was built from (see buildObstacleSignature); the viewport
   // sweep always runs against obj's live position/radius so the returned
   // polygon is frame-accurate.
-  computeSightPoly(obj: any, entry?: SightCacheEntry): { x: number; y: number }[] {
-    let obstaclesInSight = this.game.terrainMap.getObstaclesInChampionSight(obj, [
-      TerrainType.WALL,
-      TerrainType.BUSH,
-    ]);
+  computeSightPoly(
+    obj: any,
+    radius: number = fogRevealOf(obj),
+    entry?: SightCacheEntry,
+    tolerancePx = 0
+  ): { x: number; y: number }[] {
+    let obstaclesInSight = this.game.terrainMap.getObstaclesInChampionSight(
+      obj,
+      [TerrainType.WALL, TerrainType.BUSH],
+      radius
+    );
 
     // remove bushes that player is inside => player can see through that bush
     obstaclesInSight = obstaclesInSight.filter(
@@ -325,18 +440,26 @@ export default class FogOfWar {
         ? entry.segments
         : this.buildSegments(obstaclesInSight);
 
+    // The clip box carries the move tolerance as slack. The gradient is drawn
+    // at the unit's *live* position while a tolerated polygon was cast up to
+    // `tolerancePx` away, so a box of exactly `radius` would sit that far
+    // inside the gradient on one side — and the box's edge is straight while
+    // the gradient's rim is round, so it would show as a faint straight cut
+    // through the fade. Widening puts the whole box back outside the rim,
+    // where the gradient is already fully transparent and nothing is drawn.
+    const boxRadius = radius + tolerancePx;
     const sightPoly = PolyVisibility.computeViewport(
       [obj.position.x, obj.position.y],
       segments,
-      [obj.position.x - obj.visionRadius, obj.position.y - obj.visionRadius],
-      [obj.position.x + obj.visionRadius, obj.position.y + obj.visionRadius]
+      [obj.position.x - boxRadius, obj.position.y - boxRadius],
+      [obj.position.x + boxRadius, obj.position.y + boxRadius]
     ).map((v: number[]) => ({ x: v[0], y: v[1] }));
 
     this.sightCache.set(obj, {
       sightPoly,
       x: obj.position.x,
       y: obj.position.y,
-      visionRadius: obj.visionRadius,
+      radius,
       segments,
       obstacleSignature,
     });
@@ -370,46 +493,30 @@ export default class FogOfWar {
   drawVisions(): void {
     const allSightPoly = this.calculateSight();
 
-    allSightPoly.forEach(
-      ({ object, sightPoly }: { object: any; sightPoly: { x: number; y: number }[] }) => {
-        const { x, y, gradient } = this.prepareRadialGradient(
-          object.position.x,
-          object.position.y,
-          object.visionRadius,
-          50
-        );
+    allSightPoly.forEach(({ object, sightPoly, radius, ring }: SightResult) => {
+      const { x, y, gradient } = this.prepareRadialGradient(
+        object.position.x,
+        object.position.y,
+        radius,
+        ring
+      );
 
-        // The gradient is defined around the origin (see prepareRadialGradient) so it
-        // can be shared across units/frames; translate the canvas to the unit's screen
-        // position and draw the polygon relative to that origin to line the two up.
-        // Canvas gradients paint using the CTM at fill time, not at creation time, so
-        // this reproduces exactly what passing absolute coordinates would have drawn.
-        this.overlay.push();
-        this.overlay.translate(x, y);
-        this.overlay.drawingContext.fillStyle = gradient;
-        this.overlay.beginShape();
-        sightPoly.forEach((v: { x: number; y: number }) => {
-          const pos = this.game.camera.worldToScreen(v.x, v.y);
-          this.overlay.vertex(pos.x - x, pos.y - y);
-        });
-        this.overlay.endShape(this.overlay.CLOSE);
-        this.overlay.pop();
-      }
-    );
-
-    // Allied minions and turrets: cheap circle holes, drawn after the wall-aware
-    // polygons so both stack into the same erased sight mask.
-    this.circleSights.forEach(c => this.drawCircleSight(c.x, c.y, c.r));
-  }
-
-  drawCircleSight(_x: number, _y: number, _r: number): void {
-    const { x, y, r, gradient } = this.prepareRadialGradient(_x, _y, _r, 100);
-
-    this.overlay.push();
-    this.overlay.translate(x, y);
-    this.overlay.drawingContext.fillStyle = gradient;
-    this.overlay.circle(0, 0, r * 2);
-    this.overlay.pop();
+      // The gradient is defined around the origin (see prepareRadialGradient) so it
+      // can be shared across units/frames; translate the canvas to the unit's screen
+      // position and draw the polygon relative to that origin to line the two up.
+      // Canvas gradients paint using the CTM at fill time, not at creation time, so
+      // this reproduces exactly what passing absolute coordinates would have drawn.
+      this.overlay.push();
+      this.overlay.translate(x, y);
+      this.overlay.drawingContext.fillStyle = gradient;
+      this.overlay.beginShape();
+      sightPoly.forEach((v: { x: number; y: number }) => {
+        const pos = this.game.camera.worldToScreen(v.x, v.y);
+        this.overlay.vertex(pos.x - x, pos.y - y);
+      });
+      this.overlay.endShape(this.overlay.CLOSE);
+      this.overlay.pop();
+    });
   }
 
   prepareRadialGradient(

@@ -68,6 +68,21 @@ const live = computed(() => {
   return source.live;
 });
 
+/**
+ * The roster and the practice cheats belong to the match, and on a LAN client
+ * the match belongs to its host — `MatchConfigSource.canEditMatchSettings`.
+ * Bất tử, hồi đầy, xoá hồi chiêu, vàng, đồ and the stack counters all write
+ * straight into a simulation the host owns; a bot added here would walk a lane
+ * only this device could see.
+ *
+ * The kit and side switches are deliberately *not* gated: those two cross the
+ * wire as a request and come back as the host's own change. Neither is the
+ * remove button, and it needs no gate of its own — it already hides on the
+ * player's row and on every `remote` one, which on a client is every row there
+ * is. The source refuses anyway.
+ */
+const canEditMatch = source.canEditMatchSettings;
+
 const TEAMS: { id: MatchTeamId; name: string; modifier: string }[] = [
   { id: MatchTeam.BLUE, name: 'Đội Xanh', modifier: 'blue' },
   { id: MatchTeam.RED, name: 'Đội Đỏ', modifier: 'red' },
@@ -354,6 +369,16 @@ defineExpose({
 
 <template>
   <div class="practice-tab-body practice-roster-body">
+    <!-- Why the add button and the Luyện tập drawer are missing. Says what a
+         client *can* still do, because that half is the surprising one: the
+         kit and side switches on its own row are real, and go through the
+         host. -->
+    <p v-if="!canEditMatch" class="practice-note practice-note-locked">
+      <i class="fas fa-lock" aria-hidden="true"></i>
+      Trận đấu mạng: đội hình do <strong>chủ phòng</strong> quyết. Bạn vẫn đổi được tướng và phe của
+      mình.
+    </p>
+
     <section
       v-for="team of teams"
       :key="team.id"
@@ -574,8 +599,11 @@ defineExpose({
           </div>
 
           <!-- No cheats on a LAN row — the drawer keeps the stat sheet, which
-               is the half a spectator can actually use. -->
-          <section v-if="!row.remote" class="practice-cheat-group">
+               is the half a spectator can actually use. And none anywhere on a
+               LAN *client*, whose own row is the one row here that is not
+               `remote`: every control in this group writes into the host's
+               simulation. See `canCheat`. -->
+          <section v-if="!row.remote && canEditMatch" class="practice-cheat-group">
             <h4 class="practice-stat-title">Luyện tập</h4>
 
             <!-- Bots only: how the AI plays this champion. The player drives its
@@ -758,7 +786,12 @@ defineExpose({
            The count is on the button rather than in a note beside it: at the
            cap, the control the player is pressing is the one that has to
            explain itself. -->
+      <!-- Hidden rather than disabled on a LAN client, unlike the Trận đấu
+           tab's rows. The difference is what the control carries: a greyed CDR
+           slider still tells a client what the host set, and a greyed "Thêm
+           bot" tells it nothing it cannot see by counting the rows above. -->
       <button
+        v-if="canEditMatch"
         type="button"
         class="practice-add-bot"
         :id="`practice-add-bot-${team.modifier}`"

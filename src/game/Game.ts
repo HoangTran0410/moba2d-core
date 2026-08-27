@@ -893,6 +893,9 @@ export default class Game {
    */
   private steerPlayer(direction: JoystickVector | null): void {
     if (!direction) {
+      // The host hears the thumb lift too, or its copy walks on to the last
+      // lookahead point and reconciliation drags this one after it.
+      this.net?.interceptSteer(null);
       this.player.stopMovement();
       return;
     }
@@ -906,10 +909,15 @@ export default class Game {
       JOYSTICK_LOOKAHEAD_MIN,
       Math.max(1, this.player.moveSpeed) * JOYSTICK_LOOKAHEAD_FRAMES
     );
-    this.player.moveTo(
-      this.player.position.x + direction.x * lookAhead,
-      this.player.position.y + direction.y * lookAhead
-    );
+    const target = {
+      x: this.player.position.x + direction.x * lookAhead,
+      y: this.player.position.y + direction.y * lookAhead,
+    };
+    // A net client forwards the push and still steers locally — the same
+    // predict-then-reconcile shape right-clicks already get. Without this a
+    // phone's stick moved nothing but its own screen.
+    this.net?.interceptSteer(target);
+    this.player.moveTo(target.x, target.y);
   }
 
   /** Unit vector the champion is pointed along; never (0,0). */

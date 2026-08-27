@@ -34,6 +34,16 @@
  * single gate, and the things that genuinely need a running match — KDA, refill,
  * clear cooldowns, stack counts, the camera zoom — hang off `MatchLiveControls`
  * where the type system can see they are unavailable.
+ *
+ * ## `canEditMatchSettings` is the second one, and it is about *whose* match
+ *
+ * `live` asks whether a match exists. This asks whether this device owns the
+ * one that does. On a LAN client it is false, and every write that changes the
+ * shared match — the rules, the world, the map, the cheats, the reset that
+ * rewrites all three — refuses. It is a plain boolean rather than a nullable
+ * group like `live` because the controls it gates are spread across two tabs
+ * and are the *same* controls a host uses: a client should see the match's real
+ * CDR and read that the jungle is on, greyed out, not find the rows missing.
  */
 import type { MatchTeamId } from '@/game/config/MatchTeams';
 import type {
@@ -234,6 +244,38 @@ export interface MatchLiveControls {
 export interface MatchConfigSource {
   /** `null` outside a match. The single gate on every live-only control. */
   readonly live: MatchLiveControls | null;
+
+  /**
+   * Whether this device may change settings that belong to the whole match.
+   *
+   * False on a LAN client and true everywhere else. A LAN match is
+   * host-authoritative — the host runs the one simulation and the client draws
+   * what it is told — so a client that moved the CDR slider, switched the
+   * jungle off or made itself invulnerable changed only its own half and
+   * desynced from the match everyone else was playing. The panel's own design
+   * spec listed this as v2 work; this is it.
+   *
+   * **What it does not gate**, because none of it is the shared match:
+   *
+   * - the Cài đặt tab — input mode, render quality, FPS, zoom, `revealMap` and
+   *   the debug layers. Those describe this screen, not the match, and two
+   *   players are meant to be able to set them differently;
+   * - the way out. A client must always be able to leave;
+   * - the kit and the side (`applyLoadout`, `setTeam`), which are the two panel
+   *   mutations that already cross the wire as a request to the host
+   *   (`NetGameHooks.onLoadoutApplied` / `onTeamChanged`) and come back as
+   *   real changes — they are the client asking, not the client diverging.
+   *
+   * Adding and removing bots **is** gated, through `canAddBot()` as well as
+   * the two mutations: `Game`'s constructor already forces a client's local bot
+   * count to 0, so a bot added from the panel was a body only that device could
+   * see, walking a lane nobody else had.
+   *
+   * The gate is enforced in the *source*, not only in the tabs: a refused write
+   * has to be refused wherever it is called from, and `MatchDirectorSource` is
+   * the only implementation that can ever answer false.
+   */
+  readonly canEditMatchSettings: boolean;
 
   // ------------------------------------------------------------------ roster
   roster(): ConfigRosterEntry[];

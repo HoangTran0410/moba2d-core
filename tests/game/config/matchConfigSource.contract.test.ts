@@ -495,6 +495,19 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
     });
 
     /**
+     * The panel's other capability flag. Both sources answer `true` here
+     * because neither bench is a LAN client — `netRole` is `'off'` for the
+     * whole of this file, which is the ordinary case and the one every other
+     * assertion above depends on. What a client may and may not do is
+     * `tests/game/config/netClientMatchSettings.test.ts`; what belongs *here*
+     * is that the flag exists on both implementations and does not
+     * accidentally lock the single-player panel.
+     */
+    it('lets this device edit the match settings when it is not a LAN client', () => {
+      expect(source.canEditMatchSettings).toBe(true);
+    });
+
+    /**
      * Gold and items are cheats, not settings: they change the match rather
      * than describing it, and `PregameConfig` has no wallet to write either
      * into. So they live behind `live` with refill and clear-cooldowns, and

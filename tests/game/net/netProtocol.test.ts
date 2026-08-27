@@ -114,6 +114,29 @@ describe('event and order messages', () => {
     }
   });
 
+  it('carries the joystick as a push and a release, not as a move', () => {
+    // A steer is its own message because the host must not run it through
+    // `issuePointerOrder` — see `protocol.ts`. Written out rather than
+    // round-tripped alone, so the field names are pinned too.
+    expect(encodeMessage({ t: 'steer', to: { x: 120, y: -40 } })).toBe(
+      '{"t":"steer","to":{"x":120,"y":-40}}'
+    );
+    expect(encodeMessage({ t: 'steer', to: null })).toBe('{"t":"steer","to":null}');
+
+    expect(decodeMessage('{"t":"steer","to":{"x":120,"y":-40}}')).toEqual({
+      t: 'steer',
+      to: { x: 120, y: -40 },
+    });
+    // The release is a value, not an absence: `to: null` decodes, a missing
+    // `to` does not, so a truncated frame can never read as "thumb lifted"
+    // and stop a champion nobody stopped.
+    expect(decodeMessage('{"t":"steer","to":null}')).toEqual({ t: 'steer', to: null });
+    expect(decodeMessage(JSON.stringify({ t: 'steer' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'steer', to: { x: 1 } }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'steer', to: { x: '1', y: '2' } }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'steer', to: 5 }))).toBeNull();
+  });
+
   it('refuses garbage rather than throwing', () => {
     expect(decodeMessage('not json at all {{{')).toBeNull();
     expect(decodeMessage(JSON.stringify({ hello: 'world' }))).toBeNull();

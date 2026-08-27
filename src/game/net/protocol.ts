@@ -127,6 +127,24 @@ export type NetMessage =
       roster: NetEvent[];
     }
   | { t: 'move'; x: number; y: number }
+  /**
+   * The virtual joystick: `to` is the world point the thumb is pushing
+   * toward — the lookahead `Game.steerPlayer` computes — and `null` is the
+   * thumb lifting.
+   *
+   * Deliberately *not* folded into `move`. The host applies `move` through
+   * `issuePointerOrder`, which promotes a point landing on an enemy into an
+   * attack order: right for a right-click, wrong for a stick, where the
+   * lookahead is only "the way I am pushing" and sweeping it across a minion
+   * would make the champion charge in. A steer drops the standing attack
+   * order instead, exactly as `steerPlayer` does locally.
+   *
+   * The release carries as much as the push. Without it the host's copy walks
+   * on to a lookahead point the thumb has already abandoned, and
+   * reconciliation drags the client along behind it — the stick would let go
+   * and the champion would keep going.
+   */
+  | { t: 'steer'; to: { x: number; y: number } | null }
   | { t: 'cast'; slot: number; x: number; y: number }
   /** Release the charge `cast` started, aimed where the drag ended. Without it, min-charge only. */
   | { t: 'rel'; slot: number; x: number; y: number }
@@ -144,7 +162,35 @@ export type NetMessage =
    * wrote (`AttackableUnit.deathRecap`; a client's `takeDamage` is gated).
    */
   | { t: 'died'; recap: unknown }
-  | { t: 'recall' };
+  | { t: 'recall' }
+  /**
+   * Client → host, first frame after the channels open: who this is, for the
+   * lobby's player list. It is the *only* message either side sends before a
+   * match exists, and it is deliberately not part of the hello: the hello is
+   * the host telling a client what match it has joined, and at this point
+   * there is no match — the host is still looking at its room code.
+   *
+   * A host that has already started ignores it (`HostSession` decodes it and
+   * finds nothing to do), which is exactly right: a late joiner is not
+   * entering a lobby, it is entering a game.
+   */
+  | { t: 'iam'; name: string }
+  /**
+   * Host → everyone, whenever the room's membership changes: who is in it.
+   *
+   * Broadcast rather than addressed, so one message serves every screen, and
+   * `host: true` is how each client knows which row is the person who
+   * decides when the match starts. Nobody is told which row is *itself* —
+   * the list is short and both ends already know their own name.
+   */
+  | { t: 'lobby'; players: LobbyPlayer[] };
+
+/** One row of the lobby's player list. */
+export interface LobbyPlayer {
+  id: string;
+  name: string;
+  host?: boolean;
+}
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
 
@@ -221,6 +267,14 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
       return typeof message.mapId === 'string' && typeof message.you === 'object'
         ? (parsed as NetMessage)
         : null;
+    case 'steer': {
+      // `null` is the release and is a whole message, not a missing field —
+      // an absent `to` is a malformed frame and must not read as "let go".
+      if (message.to === null) return { t: 'steer', to: null };
+      if (typeof message.to !== 'object') return null;
+      const { x, y } = message.to as Record<string, unknown>;
+      return typeof x === 'number' && typeof y === 'number' ? { t: 'steer', to: { x, y } } : null;
+    }
     case 'move':
     case 'tp':
       return typeof message.x === 'number' && typeof message.y === 'number'
@@ -232,6 +286,21 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
         : null;
     case 'team':
       return typeof message.team === 'string' ? { t: 'team', team: message.team } : null;
+    case 'iam':
+      return typeof message.name === 'string'
+        ? { t: 'iam', name: message.name.slice(0, 40) }
+        : null;
+    case 'lobby': {
+      if (!Array.isArray(message.players)) return null;
+      const players: LobbyPlayer[] = [];
+      for (const row of message.players) {
+        if (typeof row !== 'object' || row === null) continue;
+        const { id, name, host } = row as Record<string, unknown>;
+        if (typeof id !== 'string' || typeof name !== 'string') continue;
+        players.push({ id, name: name.slice(0, 40), host: host === true });
+      }
+      return { t: 'lobby', players };
+    }
     case 'cast':
     case 'rel':
       return typeof message.slot === 'number' ? (parsed as NetMessage) : null;

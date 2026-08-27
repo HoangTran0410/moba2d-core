@@ -9,9 +9,12 @@
   /* `safe center`: centered while the column fits, top-aligned the moment it
      does not — which is what lets `overflow-y: auto` actually reach the top
      of an overflowing column instead of clipping it (plain `center` +
-     overflow clips both ends). The expanded LAN panel on a landscape phone
-     is the case that found this. Plain `center` first, so a browser without
-     the `safe` keyword drops the second line and keeps today's behaviour.  */
+     overflow clips both ends). The case that found it was the LAN panel that
+     used to unfold here — it lives on its own screen now (`lan-scene.css`),
+     but a banner plus a pack notice plus the column still overflows a
+     landscape phone, so the rule stays. Plain `center` first, so a browser
+     without the `safe` keyword drops the second line and keeps today's
+     behaviour.  */
   justify-content: center;
   justify-content: safe center;
   flex-direction: column;
@@ -63,18 +66,20 @@
   z-index: 10;
 }
 
-/* One column, one width, one beat. The three stacked buttons share a fixed
-   width so the stack reads as a column rather than a staircase of three
-   different label lengths, and every step down the column is the same 14px —
-   #lan-btn shipped without any margin at all, which is what glued it to
-   Cấu Hình Trận Đấu in the report that prompted this. --menu-col-w is also
-   what the LAN panel's rows align to below. */
+/* One column, one width, one beat. The stacked buttons share a fixed width so
+   the stack reads as a column rather than a staircase of different label
+   lengths, and every step down the column is the same 14px — #lan-btn shipped
+   without any margin at all, which is what glued it to its neighbour in the
+   report that prompted this.
+
+   Two members now, not three: Cấu Hình moved down into `.menu-links`, which
+   sizes itself. The token stays a token because both remaining buttons and
+   several width caps below still read it. */
 #menu-scene {
   --menu-col-w: 230px;
 }
 
 #play-btn,
-#config-btn,
 #lan-btn {
   width: var(--menu-col-w);
   box-sizing: border-box;
@@ -84,11 +89,20 @@
   margin-top: 15px;
 }
 
-#config-btn,
+/* The second of the two match buttons, and deliberately the same weight as
+   Chơi: they are the two modes, not a mode and a sub-mode. It used to be a
+   `.secondary` in a row of three, where "Chơi", "Cấu Hình Trận Đấu" and
+   "Chơi LAN" were one shape doing three different jobs. */
 #lan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   margin-top: 14px;
 }
 
+/* Kept for the pregame screen's own use of `.hextech-btn.secondary`; no menu
+   button wears it any more. */
 .hextech-btn.secondary {
   font-size: 14px;
   padding: 0.5rem 1.5rem;
@@ -111,19 +125,27 @@
   cursor: pointer;
 }
 
-/* ------------------------------------------------ Nội dung / Pack, Giới thiệu
+/* ------------------------------- Cấu hình, Nội dung / Pack, Giới thiệu
 
-   Both used to be pinned here, in the top-right row beside the fullscreen
-   toggle, as unlabelled 1em glyphs. They are in the column flow under the two
-   buttons now, and the move is not decoration: a `fa-cubes` icon in a corner
-   does not say "this is where champions come from", and since the content pack
-   left the build that screen is how a player gets a roster at all. Two 1em
-   icon-only targets 44px apart from a third were also a mis-hit on a phone.
+   Two of the three used to be pinned here, in the top-right row beside the
+   fullscreen toggle, as unlabelled 1em glyphs. They are in the column flow
+   under the buttons now, and the move is not decoration: a `fa-cubes` icon in
+   a corner does not say "this is where champions come from", and since the
+   content pack left the build that screen is how a player gets a roster at
+   all. Two 1em icon-only targets 44px apart from a third were also a mis-hit
+   on a phone.
 
-   Quieter than `.hextech-btn.secondary` all the same — they still must not
-   compete with Chơi and Cấu Hình Trận Đấu for the first look.
-   `tests/scenes/viewportFit.test.ts` holds them unpinned; see its own comment
-   for why reaching for a corner again reinstates a whole class of bug. */
+   Cấu hình came the other way, down from the button column, for the opposite
+   reason: it was a full-size `.hextech-btn` sitting between the two that start
+   a match, so the menu offered three identical shapes of which only two were
+   ways to play. All three of these are screens you visit between matches,
+   which is the thing they have in common and the reason they share a row.
+
+   Quieter than `.hextech-btn.secondary` all the same — they must not compete
+   with Chơi and Chơi với bạn for the first look.
+   `tests/scenes/viewportFit.test.ts` holds all three unpinned; see its own
+   comment for why reaching for a corner again reinstates a whole class of
+   bug. */
 .menu-links {
   z-index: 10;
   display: flex;
@@ -170,9 +192,23 @@
   background: rgba(44, 36, 24, 0.6);
 }
 
-/* A read-only screen: plain, and deliberately the quieter of the two. */
+/* A read-only screen: plain, and deliberately the quietest of the three. */
 #about-btn {
   opacity: 0.85;
+}
+
+/* Demoted here from a full-size `.hextech-btn` in the column above, where it
+   competed with the two buttons that actually start a match — three identical
+   shapes doing three different jobs was the whole complaint. It is the same
+   kind of thing as its neighbours: a screen you visit between matches.
+
+   It has a rule of its own even though it inherits everything visible from
+   `.menu-link`, because `viewportFit.test.ts` reads this block to prove the
+   link was not pinned back into a corner, and `ruleFor` needs something to
+   read. Keeping it a hair brighter than Giới thiệu is the honest weighting —
+   more players open it. */
+#config-btn {
+  opacity: 0.95;
 }
 
 .hextech-btn {
@@ -511,123 +547,4 @@
   border-color: #c8aa6e55;
   background: transparent;
   color: #c8aa6e;
-}
-
-/* --- the LAN box -----------------------------------------------------------
-   More menu, not a dialog: every control in it shares `.hextech-btn
-   .secondary`'s type and sizing, the whole panel is width-capped to the
-   column's own rhythm (nothing wider than Cấu Hình Trận Đấu), and the two
-   list states are one line each. The room list is capped at ~3 rows and
-   scrolls inside itself; the scene root scrolls when a short viewport still
-   cannot fit the column (`#menu-scene` above). */
-.lan-box {
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  /* No border, no background: the LAN controls are menu rows, not a
-     dialog. Every row is exactly --menu-col-w wide — the same width the
-     three buttons above share — so the whole column reads as one shape. */
-  margin-top: 14px;
-}
-
-/* The panel's own buttons keep the menu buttons' intrinsic sizing — the flex
-   column must not stretch them into banners, and the longest label is
-   deliberately shorter than Cấu Hình Trận Đấu. */
-.lan-box .hextech-btn {
-  align-self: center;
-  width: var(--menu-col-w);
-  box-sizing: border-box;
-}
-
-.lan-code {
-  margin: 0;
-  max-width: var(--menu-col-w);
-  font-size: 11px;
-  line-height: 1.35;
-  color: rgba(214, 202, 182, 0.75);
-  letter-spacing: 0.04em;
-}
-
-.lan-rooms {
-  display: flex;
-  flex-direction: column;
-  width: var(--menu-col-w);
-  gap: 4px;
-  max-height: 84px; /* ~3 rows */
-  overflow-y: auto;
-}
-
-.lan-empty {
-  margin: 2px 0;
-  font-size: 12px;
-  line-height: 1.3;
-  color: rgba(214, 202, 182, 0.55);
-}
-
-.lan-room {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  font-size: 13px;
-  background: rgba(20, 40, 56, 0.9);
-  border: 1px solid rgba(120, 160, 180, 0.4);
-  color: #cfe3ee;
-  cursor: pointer;
-  text-align: left;
-}
-
-.lan-room:hover {
-  border-color: #6fc3dd;
-}
-
-.lan-room-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lan-room-code {
-  flex: 0 0 auto;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  color: rgba(207, 227, 238, 0.6);
-}
-
-/* One row: the input flexes, Vào keeps its own size. */
-.lan-join-code {
-  display: flex;
-  width: var(--menu-col-w);
-  gap: 6px;
-}
-
-.lan-join-code input {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  font-size: 13px;
-  background: rgba(6, 14, 22, 0.9);
-  border: 1px solid rgba(120, 160, 180, 0.4);
-  color: #e8e2d4;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.lan-join-code button {
-  flex: 0 0 auto;
-  padding: 5px 12px;
-  font-size: 13px;
-  background: rgba(30, 60, 80, 0.9);
-  border: 1px solid rgba(120, 160, 180, 0.5);
-  color: #d6ecf5;
-  cursor: pointer;
-}
-
-.lan-join-code button:disabled {
-  opacity: 0.4;
-  cursor: default;
 }

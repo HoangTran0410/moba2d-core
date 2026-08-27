@@ -34,8 +34,8 @@ function checkForPackUpdates(): void {
 
 /**
  * The lifecycle half of the main menu. The background carousel, the logo and
- * the buttons all live in `MenuScene.vue`; this owns mounting and the three
- * scene transitions the component can only ask for, not perform itself.
+ * the buttons all live in `MenuScene.vue`; this owns mounting and the scene
+ * transitions the component can only ask for, not perform itself.
  *
  * Mounted in `enter()` and unmounted in `exit()`, not `setup()`: this scene
  * is entered repeatedly (every "Quay lại" from the pregame or About screen),
@@ -73,6 +73,14 @@ export default class MenuScene extends Scene {
       },
       onOpenConfig: () => {
         void loadSetupScene().then(scene => this.sceneManager.showScene(scene));
+      },
+      // The LAN lobby. Not through `gamePreload.ts` and not part of the
+      // warm-up: the lobby itself opens no game code (it writes URL params and
+      // polls the broker — see `LanScene.ts`), and it is `LanScene`'s own
+      // "Vào trận" that reaches `loadGameScene`, by which time the warm-up
+      // this menu started has long finished.
+      onOpenLan: () => {
+        void import('./LanScene').then(module => this.sceneManager.showScene(module.default));
       },
       // Not routed through `gamePreload.ts`: that module warms only what
       // Play needs, and this screen opens no game code at all — see

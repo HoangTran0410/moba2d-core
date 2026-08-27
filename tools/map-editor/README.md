@@ -1,1 +1,1 @@
-<https://github.com/LOL2D/LOL2D-MapEditor2>
+<https://github.com/moba2d-game/map-editor>

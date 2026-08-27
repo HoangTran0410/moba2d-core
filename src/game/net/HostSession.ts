@@ -30,6 +30,7 @@ import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
 import { RtcHostTransport } from './RtcTransport';
+import { takeHostedTransport } from './lobbyHost';
 import {
   decodeMessage,
   encodeMessage,
@@ -130,6 +131,20 @@ export class HostSession implements NetGameHooks {
     request: NetUrlRequest,
     plan: MatchPlan | null
   ): Promise<HostSession> {
+    // The lobby's own room, when the host came through it — already open,
+    // already holding whoever was waiting in it. Taking it rather than
+    // dialling again is what makes "wait for your friends, then start" work
+    // at all: a second connection would reclaim the room from the first
+    // (`scripts/net-relay.mjs`: "last host wins") and every client sitting in
+    // the lobby would be talking to a socket nobody reads.
+    //
+    // The transport it hands back replays one `joined` per waiting peer the
+    // moment the constructor subscribes — see `lobbyHost.ts`, which is where
+    // that has to happen, because `joined` is the only thing that makes this
+    // class build a champion for a client.
+    const held = takeHostedTransport(request);
+    if (held) return new HostSession(game, held, plan);
+
     // The room's player-facing name in the lobby's same-network listing.
     const roomName = `Trận của ${game.player.name}`;
     const transport =
@@ -397,6 +412,19 @@ export class HostSession implements NetGameHooks {
       issuePointerOrder(champion, this.game.objectManager, { x: message.x, y: message.y });
       return;
     }
+    if (message.t === 'steer') {
+      // The stick's own semantics rather than `move`'s: no promotion to an
+      // attack order, and the standing one drops. This mirrors
+      // `Game.steerPlayer` onto the authoritative copy — the two must agree
+      // or the client predicts a walk while the host plants a chase.
+      if (!message.to) {
+        champion.stopMovement();
+        return;
+      }
+      champion.basicAttack?.clear();
+      champion.moveTo(message.to.x, message.to.y);
+      return;
+    }
     if (message.t === 'cast') {
       const spell = champion.spells[message.slot];
       if (!spell) return;
@@ -543,6 +571,9 @@ export class HostSession implements NetGameHooks {
 
   // The host intercepts nothing: its own input drives the match directly.
   interceptPointer(_point: Vec2): boolean {
+    return false;
+  }
+  interceptSteer(_target: Vec2 | null): boolean {
     return false;
   }
   interceptCast(_slot: number, _aim: Vec2, _phase: CastPhase): boolean {

@@ -62,6 +62,16 @@ export default class PregameConfigSource implements MatchConfigSource {
   /** No match, so nothing to act on. The panel reads this and hides those controls. */
   readonly live: MatchLiveControls | null = null;
 
+  /**
+   * Always. There is no match here to be anyone else's — this source is the
+   * menu's, over `localStorage`, and a LAN client's role is set when its
+   * session boots and cleared when it closes. It is also the answer this file
+   * *has* to give: asking `isNetClient()` would be a value import out of
+   * `src/game/net/`, which is the one thing this module may not do (see the
+   * header, and `tests/scenes/matchConfigChunk.test.ts`).
+   */
+  readonly canEditMatchSettings = true;
+
   private config: PregameConfig;
   private _inputMode: TouchModePreference = touchModePreference();
   private _touchUi: boolean = touchControlsPreference();

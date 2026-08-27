@@ -78,6 +78,19 @@ export class NetChannel {
     return out;
   }
 
+  /**
+   * Put frames back at the head of the queue, oldest first.
+   *
+   * For a reader that has to *look* at the stream without owning it: the LAN
+   * lobby drains while waiting for the hello so it can also see the room's
+   * player list go by, and everything else it finds belongs to the
+   * `ClientSession` that has not been built yet. Dropping those would drop
+   * the host's opening events.
+   */
+  pushBack(raws: string[]): void {
+    if (raws.length) this.queue.unshift(...raws);
+  }
+
   /** Waits for the next frame matching `accept`, draining nothing else. */
   async waitFor<T>(accept: (raw: string) => T | null, timeoutMs = 15_000): Promise<T> {
     const startedAt = Date.now();

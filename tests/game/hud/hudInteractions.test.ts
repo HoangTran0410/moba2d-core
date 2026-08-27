@@ -90,7 +90,12 @@ describe('practice range controls', () => {
     const source = readFileSync('src/game/hud/config/MatchTab.vue', 'utf8');
 
     expect(source).toContain('await source.resetToDefaults()');
-    expect(source).toContain(':disabled="resetting"');
+    // `resetting` still disables it, and `canEdit` now does too — a LAN client
+    // may not reset a match it does not own. Matched on the `resetting` term
+    // alone rather than the whole expression, so adding a third reason to
+    // disable this button is not a test edit; that a *client* cannot press it
+    // is asserted properly in `config/netClientMatchSettings.test.ts`.
+    expect(source).toMatch(/:disabled="[^"]*\bresetting\b[^"]*"/);
   });
 });
 

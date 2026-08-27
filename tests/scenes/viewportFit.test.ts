@@ -29,6 +29,7 @@ const SCENE_ROOTS = [
   { file: 'styles/menu-scene.css', selector: '#menu-scene' },
   { file: 'styles/about-scene.css', selector: '#about-scene' },
   { file: 'styles/pregame-scene.css', selector: '#pregame-scene' },
+  { file: 'styles/lan-scene.css', selector: '#lan-scene' },
 ];
 
 /** The declaration block for `selector`, comments already gone. */
@@ -109,7 +110,7 @@ describe('a scene root fits the screen it is on', () => {
   });
 
   /**
-   * And the two that moved have to stay unpinned.
+   * And the ones that moved have to stay unpinned.
    *
    * `#about-btn` and `#packs-btn` sat in `position: fixed` for their whole
    * life; the failure this replaces was them being off screen on a phone, and
@@ -117,10 +118,15 @@ describe('a scene root fits the screen it is on', () => {
    * added back to either — reaching for a corner again, or copied from
    * `#fullscreen-btn` right above it in the same file — silently reinstates
    * the entire class of bug, and nothing about the source would look wrong.
+   *
+   * `#config-btn` joined them from the other direction: it came *down* out of
+   * the button column, where it was a third full-size button between the two
+   * that start a match. It is a `.menu-link` now and belongs to the same row,
+   * so it inherits the same rule.
    */
-  it('keeps the two menu links in the column rather than pinned to a corner', () => {
+  it('keeps the menu links in the column rather than pinned to a corner', () => {
     const css = stripCss(read('styles/menu-scene.css'));
-    for (const selector of ['#about-btn', '#packs-btn']) {
+    for (const selector of ['#about-btn', '#packs-btn', '#config-btn']) {
       expect(
         ruleFor(css, selector),
         `${selector} is pinned again — it belongs in .menu-links, in the column flow`

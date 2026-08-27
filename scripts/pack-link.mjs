@@ -26,7 +26,7 @@
  *     server cannot see it at all. The link is exactly the shape npm's own
  *     workspace linking produces, so nothing downstream needs to know.
  *   - **pack -> core.** The quieter one. A scaffolded pack declares
- *     `@moba2d/core` as `github:HoangTran0410/moba2d-core#main`, so
+ *     `@moba2d/core` as `github:moba2d-game/core#main`, so
  *     `node_modules/@moba2d/core` inside the pack is a *copy npm fetched* —
  *     which means editing core here and running the pack's tests tests the
  *     published core, not the one just edited, and says nothing about it.

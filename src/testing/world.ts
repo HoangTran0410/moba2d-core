@@ -172,17 +172,24 @@ export function withWalls(
 ): void {
   const grid = NavGrid.fromPolygons(polygons, { size: mapSize });
   const host = game as unknown as { terrainMap: unknown };
+  const obstacles = (terrainTypes: string[] = []) =>
+    terrainTypes.length > 0 && !terrainTypes.includes(TerrainType.WALL)
+      ? []
+      : polygons.map(vertices => ({
+          position: { x: 0, y: 0 },
+          vertices,
+          type: TerrainType.WALL,
+        }));
   host.terrainMap = {
     field: new TerrainField(game as never, grid),
     wallPolygons: () => polygons,
-    getObstaclesInArea: (_area: unknown, terrainTypes: string[] = []) =>
-      terrainTypes.length > 0 && !terrainTypes.includes(TerrainType.WALL)
-        ? []
-        : polygons.map(vertices => ({
-            position: { x: 0, y: 0 },
-            vertices,
-            type: TerrainType.WALL,
-          })),
+    getObstaclesInArea: (_area: unknown, terrainTypes: string[] = []) => obstacles(terrainTypes),
+    // Answered too, and by the same list, because the fog's own sweep asks for
+    // it by name rather than through `getObstaclesInArea` — a stub without it
+    // makes `FogOfWar.computeSightPoly` throw rather than read as walless,
+    // which is the sort of failure that reads like a bug in the fog.
+    getObstaclesInChampionSight: (_unit: unknown, terrainTypes: string[] = [], _radius?: number) =>
+      obstacles(terrainTypes),
   };
 }
 

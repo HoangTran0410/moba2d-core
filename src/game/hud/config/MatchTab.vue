@@ -17,6 +17,21 @@
  * stage: each is one assignment, reversible by dragging or clicking back, and a
  * rule change is not a pick a player builds up over several taps. The two that
  * *do* confirm are at the bottom, and they are the two that are not recoverable.
+ *
+ * ## On a LAN client the whole tab is read-only
+ *
+ * Except the way out, which a client must always have. Everything above it
+ * belongs to the match, and a LAN match belongs to its host — see
+ * `MatchConfigSource.canEditMatchSettings`. The controls are *disabled and
+ * still rendered*, showing the values that are actually running: the honest
+ * thing for a client to see is the host's 40% CDR greyed out, not an empty tab
+ * that says nothing about the match it is in.
+ *
+ * The handlers check it too, and that is not belt-and-braces for the
+ * `:disabled` attributes. `v-tap` binds touch events straight to the element,
+ * and touch events still fire on a disabled `<button>` — so `pickMap` under a
+ * thumb would otherwise move `selectedMapId` (a local ref the source cannot
+ * refuse) and tick a map the match will never boot.
  */
 import { computed, inject, ref } from 'vue';
 import { resolveMapId } from '@/content/defaultMap';
@@ -30,6 +45,13 @@ const panel = inject(CONFIG_PANEL)!;
 const source = panel.source;
 
 const live = source.live;
+
+/**
+ * Read once, like `live` above: the net role is set when a session boots and
+ * cleared when it closes, and neither can happen while this panel is mounted
+ * over the match it belongs to.
+ */
+const canEdit = source.canEditMatchSettings;
 
 /**
  * Seeded from the source, which is the match's own view of its rules — a match
@@ -129,7 +151,7 @@ const maps = source.availableMaps();
 const selectedMapId = ref(resolveMapId(maps, source.getMap()) ?? source.getMap());
 
 const pickMap = (id: string): void => {
-  if (id === selectedMapId.value) return;
+  if (!canEdit || id === selectedMapId.value) return;
   source.setMap(id);
   selectedMapId.value = id;
 };
@@ -181,7 +203,7 @@ const confirmingReset = ref(false);
 const resetting = ref(false);
 
 const resetDefaults = async (): Promise<void> => {
-  if (resetting.value) return;
+  if (!canEdit || resetting.value) return;
   if (!confirmingReset.value) {
     confirmingReset.value = true;
     return;
@@ -207,6 +229,13 @@ const resetLabel = computed(() =>
 
 <template>
   <div class="practice-tab-body">
+    <!-- First, and before the controls it explains: a client that finds a
+         greyed-out tab is owed the reason above it, not under it. -->
+    <p v-if="!canEdit" class="practice-note practice-note-locked">
+      <i class="fas fa-lock" aria-hidden="true"></i>
+      Trận đấu mạng: chỉ <strong>chủ phòng</strong> đổi được cài đặt trận.
+    </p>
+
     <!-- Cards, not a `<select>` — see the script's own comment on what a
          player could not see before. A `<select>` was also the one control on
          this tab that needed no touch handler, because `@change` fires under
@@ -220,7 +249,7 @@ const resetLabel = computed(() =>
     <div class="map-field">
       <span class="map-field-label">Bản đồ</span>
       <div id="practice-map" class="map-picker" role="radiogroup" aria-label="Bản đồ">
-        <button v-for="map of maps" :key="map.id" type="button" class="map-option"
+        <button v-for="map of maps" :key="map.id" type="button" class="map-option" :disabled="!canEdit"
           :class="{ selected: map.id === selectedMapId }" role="radio" :aria-checked="map.id === selectedMapId"
           :data-map="map.id" @click="pickMap(map.id)" v-tap="() => pickMap(map.id)">
           <span class="map-option-name">
@@ -235,48 +264,53 @@ const resetLabel = computed(() =>
       </div>
 
       <!-- Only in a match, and only for the map: a live match cannot swap its
-         own world out from under itself — see `MatchConfigSource.getMap`. -->
-      <p v-if="live" class="practice-note">
+         own world out from under itself — see `MatchConfigSource.getMap`.
+         Not on a locked tab: "sẽ áp dụng cho trận tiếp theo" promises a next
+         match this device does not choose, and the lock note above already
+         said who does. -->
+      <p v-if="live && canEdit" class="practice-note">
         Bản đồ mới sẽ áp dụng cho trận tiếp theo — trận đang chạy vẫn trên
         <strong>{{ liveMapName }}</strong>.
       </p>
     </div>
 
-    <label class="pregame-field">
+    <label class="pregame-field" :class="{ locked: !canEdit }">
       <span>Giảm hồi chiêu:
         <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span>
       <input type="range" id="practice-cdr" :min="CDR_PERCENT_MIN" :max="CDR_PERCENT_MAX" :step="CDR_PERCENT_STEP"
-        :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange"
+        :disabled="!canEdit" :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange"
         @pointerdown="onCdrPointerDown" @pointerup="onCdrPointerUp" @pointercancel="onCdrPointerCancel" />
     </label>
 
-    <label class="pregame-toggle">
-      <input type="checkbox" id="practice-urf" :checked="rules.manaFree" @change="onUrfChange" />
+    <label class="pregame-toggle" :class="{ locked: !canEdit }">
+      <input type="checkbox" id="practice-urf" :disabled="!canEdit" :checked="rules.manaFree" @change="onUrfChange" />
       <span>URF (không tốn mana)</span>
     </label>
 
-    <label class="pregame-toggle">
-      <input type="checkbox" id="practice-jungle" :checked="world.jungle" @change="onJungleChange" />
+    <label class="pregame-toggle" :class="{ locked: !canEdit }">
+      <input type="checkbox" id="practice-jungle" :disabled="!canEdit" :checked="world.jungle" @change="onJungleChange" />
       <span>Quái rừng</span>
     </label>
 
-    <label class="pregame-toggle">
-      <input type="checkbox" id="practice-minions" :checked="world.minions" @change="onMinionsChange" />
+    <label class="pregame-toggle" :class="{ locked: !canEdit }">
+      <input type="checkbox" id="practice-minions" :disabled="!canEdit" :checked="world.minions" @change="onMinionsChange" />
       <span>Lính</span>
     </label>
 
     <!-- Scoped to the two switches above it, not to the whole tab: CDR and URF
          are immediate. And only in a match — outside one there is no paused
          loop for anything to be waiting on. -->
-    <p v-if="live" class="practice-note">
+    <p v-if="live && canEdit" class="practice-note">
       Quái rừng và lính: thay đổi có hiệu lực khi bạn đóng bảng và trận chạy tiếp.
     </p>
 
     <!-- Last in the flow and visually apart: the irreversible controls. See the
          file comment on why each is here and why both confirm. -->
     <div class="practice-tab-actions">
-      <button type="button" class="practice-reset" :class="{ confirming: confirmingReset }" :disabled="resetting"
-        id="practice-reset" @click="resetDefaults">
+      <!-- Locked with the rest: it is the rules, the world, the map and the
+           cheats in one press. The exit below it is never locked. -->
+      <button type="button" class="practice-reset" :class="{ confirming: confirmingReset }"
+        :disabled="resetting || !canEdit" id="practice-reset" @click="resetDefaults">
         <i class="fas fa-rotate-left" aria-hidden="true"></i>
         <span>{{ resetLabel }}</span>
       </button>

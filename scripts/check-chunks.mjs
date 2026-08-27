@@ -91,6 +91,16 @@ const RULES = [
       'through a dynamic import for exactly this reason',
   },
   {
+    chunk: 'LanScene',
+    forbidden: /^game-/,
+    why:
+      'the LAN lobby writes two URL parameters and polls a broker; it starts a match through ' +
+      "`gamePreload.loadGameScene`'s dynamic import, never a static one. This rule is not " +
+      'theoretical — the build that first split this screen off the menu shipped exactly that ' +
+      'edge, because `scenes/lanSignal.ts` was unassigned and Rollup hoisted it into `game` the ' +
+      'moment the menu stopped importing it (see the pin in `vite.config.ts`)',
+  },
+  {
     // Fix round 1 on content-pack-extraction batch 5 task 1 found this rule
     // missing: `src/content/install.ts` folds core's `Recall` onto the
     // installed pack with a *dynamic* `import('@/game/gameObject/coreSpells/Recall')`,

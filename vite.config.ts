@@ -521,7 +521,27 @@ export default defineConfig({
             // `pregame -> game` edge this list exists to prevent; pinned
             // here, the shop's import of it is one more `game -> pregame`
             // edge, which already exists and is the allowed direction.
-            id.includes('src/game/hud/tapGuard')
+            id.includes('src/game/hud/tapGuard') ||
+            // The LAN broker's address and its room arithmetic. It imports
+            // nothing at all and is read from both sides of the boundary:
+            // `scenes/LanScene.vue` (its own chunk, off the menu) and
+            // `src/game/net/netRole.ts` (`game`).
+            //
+            // An unassigned module reached from two chunks lands in whichever
+            // Rollup prefers, and when the lobby moved off the menu into its
+            // own scene it preferred `game` — measured, in the build that
+            // introduced `LanScene`: a 5.6KB screen whose whole job is to
+            // write two URL parameters gained a static
+            // `from"./game-*.js"` edge and pulled the entire match behind
+            // it. While the menu itself imported this file that never
+            // happened, which is exactly why the module's own header ("lives
+            // under `src/scenes/` — not `src/game/net/` — on purpose") was
+            // not enough on its own: the header states the direction, and
+            // only a pin holds it. Pinned to the side that can stand alone;
+            // `game` reading it is one more `game -> pregame` edge, the
+            // allowed direction. `tests/scenes/lanBootPath.test.ts` guards
+            // the source half, `chunks:check` the compiled half.
+            id.includes('src/scenes/lanSignal')
           ) {
             return 'pregame';
           }

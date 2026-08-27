@@ -1499,6 +1499,21 @@ body.touch-ui .practice-add-bot {
   font-style: italic;
 }
 
+/* The one note that is not an aside: it says why every control under it is
+   grey (a LAN client on the host's match settings — see
+   `MatchConfigSource.canEditMatchSettings`). It leads the tab instead of
+   trailing it, so it loses the top margin and the muted colour that make the
+   others recede. */
+.practice-note-locked {
+  margin: 0 0 0.8rem;
+  color: rgba(226, 190, 120, 0.9);
+  font-style: normal;
+}
+
+.practice-note-locked .fa-lock {
+  margin-right: 0.35rem;
+}
+
 /* ----------------------------------- Per-unit cheats, folded onto the roster
    These classes used to live behind a unit picker on the Gian lận tab; the
    picker is gone (each control is now inside its own champion's drawer on the
@@ -1643,9 +1658,15 @@ body.touch-ui .practice-add-bot {
   color: rgb(245, 165, 165);
 }
 
-.practice-reset:hover {
+.practice-reset:hover:not(:disabled) {
   border-color: rgba(220, 175, 80, 0.9);
   color: rgb(245, 215, 150);
+}
+
+/* Mid-reset, or locked to the host on a LAN client. */
+.practice-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Armed. Filled rather than merely brighter, so "one more press and it is

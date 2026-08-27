@@ -1,12 +1,12 @@
 # MOBA2D Core
 
-[![Build](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml/badge.svg)](https://github.com/HoangTran0410/moba2d-core/actions/workflows/build.yml)
+[![Build](https://github.com/moba2d-game/core/actions/workflows/build.yml/badge.svg)](https://github.com/moba2d-game/core/actions/workflows/build.yml)
 
 A 2D MOBA engine that runs entirely in the browser — team fights, bot opponents, fog of war, lanes and minion waves, and an installable PWA that plays offline.
 
 **This repository is the engine, not a game's worth of content.** It ships one champion of its own (Vera, in `packs/reference/`) and one map. Every larger roster arrives as a **content pack**: a separate package, built against a published `ContentApi`, that the game fetches from a URL at runtime. See [Content packs](#content-packs).
 
-**[▶ Play](https://hoangtran99.is-a.dev/moba2d-core/)**
+**[▶ Play](https://moba2d.pages.dev/)**
 
 ## Contents
 
@@ -55,7 +55,7 @@ Charged abilities are held down and fire on release. `Esc` pauses and opens the 
 Requires [Node.js](https://nodejs.org/) 20 or newer.
 
 ```bash
-git clone https://github.com/HoangTran0410/moba2d-core.git
+git clone https://github.com/moba2d-game/core.git
 cd moba2d-core
 npm install
 npm run dev
@@ -166,7 +166,7 @@ There are two ways a pack gets in.
 **At build time, as a dependency.** Still supported, for a developer who wants a pack in the tree while working:
 
 ```bash
-npm install github:HoangTran0410/moba2d-content-riot
+npm install github:moba2d-packs/lol
 npm run packs:generate     # rewrites src/generated/installedPacks.ts
 npm run dev
 ```

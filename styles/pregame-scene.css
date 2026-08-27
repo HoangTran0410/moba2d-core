@@ -284,6 +284,23 @@
   cursor: pointer;
 }
 
+/* A control this device is not allowed to move — a LAN client looking at the
+   host's match settings (`MatchConfigSource.canEditMatchSettings`). On the
+   wrapping label rather than the input, because the *label* is what carries
+   `cursor: pointer` and the text beside the box; dimming only the checkbox
+   would leave a bright, clickable-looking row around a grey square. Same
+   opacity/`not-allowed` pair every other disabled control in this file uses. */
+.pregame-toggle.locked,
+.pregame-field.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pregame-toggle.locked input,
+.pregame-field.locked input {
+  cursor: not-allowed;
+}
+
 /* =============== Map picker (MatchTab.vue) =============== */
 /* A row of cards where a `<select>` used to be. The three facts on each one —
    world size, faction count, source pack — are all already on
@@ -331,8 +348,15 @@
   cursor: pointer;
 }
 
-.map-option:hover {
+/* `:not(:disabled)`, so a locked picker does not light up under a hover it
+   will refuse — the selected card still reads as selected below. */
+.map-option:hover:not(:disabled) {
   border-color: var(--hextech-gold-dim);
+}
+
+.map-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .map-option.selected {

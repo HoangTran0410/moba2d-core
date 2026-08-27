@@ -41,7 +41,7 @@ const emit = defineEmits<{ close: []; openPacks: [] }>();
  * a link to a repository that is no longer the one being played is worse
  * than no link at all — see `README.md`, which carried the same stale URL.
  */
-const REPO_URL = 'https://github.com/HoangTran0410/moba2d-core';
+const REPO_URL = 'https://github.com/moba2d-game/core';
 </script>
 
 <template>

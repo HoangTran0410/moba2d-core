@@ -7,6 +7,7 @@ import { setNetRole, type NetUrlRequest } from './netRole';
 import { RelayClientTransport } from './transport';
 import { RtcClientTransport } from './RtcTransport';
 import { decodeMessage, type NetMessage } from './protocol';
+import { takeHeldRoom } from './lobbyJoin';
 import { ClientSession } from './ClientSession';
 
 /**
@@ -24,15 +25,27 @@ export interface NetClientMatch {
 }
 
 export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetClientMatch> => {
+  // The lobby's own connection, when the player came through it — it already
+  // waited for this hello, for as long as the host took (`lobbyJoin.ts`).
+  // Dialling again here would drop a live channel the host has already
+  // answered and wait for a second hello that is never coming.
+  //
+  // `null` is the hand-typed `?net=join&room=…` straight into Chơi: connect
+  // for ourselves, with the ordinary deadlines, because in *that* path the
+  // host is supposed to already be playing and silence is a real failure.
+  const held = takeHeldRoom(request);
   const channel =
-    request.transport === 'ws'
+    held?.channel ??
+    (request.transport === 'ws'
       ? await RelayClientTransport.connect(request.server, request.room)
-      : await RtcClientTransport.connect(request.server, request.room);
+      : await RtcClientTransport.connect(request.server, request.room));
 
-  const hello = await channel.waitFor(raw => {
-    const message = decodeMessage(raw);
-    return message?.t === 'hello' ? (message as Extract<NetMessage, { t: 'hello' }>) : null;
-  });
+  const hello =
+    held?.hello ??
+    (await channel.waitFor(raw => {
+      const message = decodeMessage(raw);
+      return message?.t === 'hello' ? (message as Extract<NetMessage, { t: 'hello' }>) : null;
+    }));
 
   const yourPlan = hello.you.plan as KitPlan;
   // The gates in AttackableUnit/Spell/MinionSpawner/Game key off this, so it

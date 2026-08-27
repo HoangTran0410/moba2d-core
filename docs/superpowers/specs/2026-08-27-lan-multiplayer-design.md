@@ -216,8 +216,17 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   touch.
 - **StatusFlags are not transmitted** (only `actionState`): client-side CC
   presentation may lag reality between snapshots.
-- **Touch controls on a net client are not intercepted** (`steerPlayer`
-  writes locally); keyboard/mouse only for v1 clients.
+- **Touch controls are intercepted** as of 2026-08-28. The claim they were
+  not was always broader than the truth: spell buttons, charge press/release,
+  recall and the minimap's tap-teleport were never a separate path — a thumb
+  and a mouse meet at `createContext`, and the whole touch layer went through
+  the same seams. The one hole was the *joystick*: `steerPlayer` called
+  `moveTo` locally with nothing on the wire, so a phone's stick moved only
+  its own screen and reconciliation pulled the champion back — a rubber band,
+  not a dead control, which is why it read as the whole of touch being
+  broken. It now crosses as its own `steer` message (push sampled on the
+  right-click window, release sent unconditionally) — see `protocol.ts` for
+  why it is not a `move`.
 - **Charge spells on *puppets* release instantly** at min charge — the cast
   event still carries no hold duration. The *own champion's* charges are
   real since the press/release wire landed (2026-08-28): the client sends
@@ -241,8 +250,20 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   refusing, the panel's close button had no `unpause()` to resume
   through — a blurred client froze for ever, and a blurred host froze
   everyone's match. A client's *other* panel mutations — rules, world,
-  reset, bots — still edit only the local half and desync; gating those
-  controls on `isNetClient()` is v2 work.
+  map, reset and the practice cheats — **are gated as of 2026-08-28**:
+  `MatchConfigSource.canEditMatchSettings` is `!isNetClient()`, refused in
+  `MatchDirectorSource` itself (not only in the tabs, because `v-tap` binds
+  touch events straight to the element and they still fire on a disabled
+  `<button>`), with the Trận đấu tab rendering its controls disabled — the
+  host's real CDR greyed out rather than a tab that says nothing — and the
+  Đội tab's "Luyện tập" group hidden on the client's own row, the one row
+  there that is not `remote`. Untouched on purpose: the Cài đặt tab (input
+  mode, render quality, FPS, zoom, `revealMap`, debug layers — this screen,
+  not the match), the way out, and kit/side, which cross the wire as a
+  request. `tests/game/config/netClientMatchSettings.test.ts` asserts both
+  halves. **Adding and removing bots is still ungated and still desyncs** —
+  a client's local bot count is forced to 0 at construction, so an added bot
+  is a body only that device can see.
 - **No reconnect, no host migration**: a dropped socket is a dead session.
   A departed client's champion is swept off the host (and, via 'gone', off
   every other client) the moment the transport reports the leave; coming
@@ -301,5 +322,67 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   text (heals still run in the puppets' local sim; gold is unsynced), and
   every panel mutation other than the own-champion loadout.
 - **A stale `?net=` in the address bar re-arms LAN on the next plain Chơi**
-  — the params are deliberately the API; clearing them is the player's (or
-  a future lobby toggle's) job.
+  — the params are deliberately the API. Clearing them was "the player's (or
+  a future lobby toggle's) job"; **the lobby is that toggle as of
+  2026-08-28**, so backing out of it strips `net` and `room` and leaves
+  every other parameter (`signal`, `transport`) alone. A hand-typed link is
+  still honoured verbatim right up until someone opens the lobby and leaves
+  it, which is a deliberate gesture and reads as one.
+- **The lobby is its own scene** (`scenes/LanScene.{ts,vue}`,
+  `styles/lan-scene.css`, `#lan-scene` in `index.html`), reached from the
+  menu's second big button. It was a fold-out drawer on the menu, where
+  "Chơi", "Cấu Hình Trận Đấu" and "Chơi LAN" were three identical
+  `.hextech-btn`s and the drawer produced a fourth for "Tạo phòng LAN" —
+  create and join, the one real choice on the screen, arrived as a flat list
+  of four equal things. Two named sections now, and a room code big enough
+  to read out loud. **Joining waits *in the lobby*, with no deadline**
+  (`game/net/lobbyJoin.ts`): pressing Vào used to arm the URL and go straight
+  to `GameScene`, which connected and gave the host fifteen seconds to
+  answer — and a host that has made a room but not pressed Vào trận is not
+  connected to the broker at all, so the ordinary "make a room, read the code
+  out, then start" flow ended in *"net: WebRTC handshake timed out — is the
+  host still up?"* about a host in the same room. Nothing on the wire was
+  wrong: the `sys:joined` replay above exists precisely so a joiner may
+  arrive first. The fix is `timeoutMs: Infinity` on both halves of the wait
+  (the handshake and the hello) plus moving the wait onto the lobby screen,
+  where it is a spinner beside the host's own code rather than a dead loading
+  screen. `RtcClientTransport.connect` takes `{ timeoutMs, abort }` for it,
+  and **must not hand `Infinity` to `setTimeout`** — a delay past 2^31-1 wraps
+  and fires at once, so the timer is only created when the deadline is
+  finite. The lobby's connection is then **handed over** rather than remade
+  (`takeHeldRoom`): by the time the hello lands the channel already holds the
+  host's opening events, and a second dial would wait for a second hello that
+  is never sent. Cancelling (Huỷ, or Quay lại) aborts and closes, or the
+  broker goes on counting a joiner who walked away. A hand-typed
+  `?net=join&room=…` straight into Chơi is untouched and keeps the ordinary
+  deadlines — there the host *is* supposed to be playing already, and silence
+  is a real failure.
+- **The room has a player list, and the host holds the room open from Tạo
+  phòng** (`game/net/lobbyHost.ts`). The host used to connect to the broker
+  only at Vào trận, so it could not see that anyone had joined — a code on
+  screen and no way to tell an empty room from a full one. Now the wire is up
+  while the code is: a joiner announces itself with `iam` (its configured
+  champion, or "Ngẫu nhiên"), the host broadcasts the whole roster back as
+  `lobby`, and both screens show the same people. Each screen names its own
+  row "Bạn" and the other end "Chủ phòng"; the seats are numbered because the
+  default name is the same word on every row.
+  **The handover is the dangerous part and has two halves, both of which have
+  already bitten.** `HostSession` builds a champion for a client *only* on
+  that client's `joined` event, and `setImmediate` replaces the handler
+  without replaying anything — so (a) peers who joined while the lobby was up
+  must be replayed on subscription, or the match starts believing the room is
+  empty while every waiting client sits on a channel nobody answers; and (b)
+  the lobby's own listener stays installed on the real transport, so once the
+  match has taken over it must **stop consuming** membership and pass it
+  through, or a player joining *after* Vào trận is absorbed into a lobby
+  nobody is looking at and never gets a body. `HeldHostTransport` does both
+  (`live` is the flag); `tests/game/net/lobbyHost.test.ts` is what found (b),
+  and `npm run e2e:lan-flow` drives the whole sequence — host makes a room,
+  client waits, both see the list, host starts, latecomer walks straight in —
+  on three real browsers against the dev relay.
+  **`scenes/lanSignal.ts` is pinned to the `pregame` chunk
+  in `vite.config.ts`**, which is not optional: it is imported from both
+  `LanScene.vue` and `game/net/netRole.ts`, and the first build after the
+  split found Rollup hoisting it into `game` — a 5.6KB lobby with a static
+  edge to the whole match. `chunks:check` has a `LanScene` rule for the
+  compiled half and `tests/scenes/lanBootPath.test.ts` for the source half.

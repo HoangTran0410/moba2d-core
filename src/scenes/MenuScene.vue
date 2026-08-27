@@ -1,20 +1,38 @@
 <script setup lang="ts">
 /**
  * The main menu: background, logo, and the buttons. Scene transitions
- * ("Chơi", "Cấu Hình Trận Đấu", "Giới thiệu", "Nội dung / Pack") are
+ * ("Chơi", "Chơi với bạn", "Cấu hình", "Giới thiệu", "Nội dung / Pack") are
  * lifecycle, not presentation, so this only emits — `MenuScene.ts` maps
- * `play`/`openConfig`/`openAbout`/`openPacks` onto `sceneManager.showScene`,
- * the same split `LoadingScene.vue` uses for its own scene handover.
+ * `play`/`openLan`/`openConfig`/`openAbout`/`openPacks` onto
+ * `sceneManager.showScene`, the same split `LoadingScene.vue` uses for its own
+ * scene handover.
  *
  * The fullscreen toggle is pure view state with no scene-transition involved,
  * so — unlike the buttons above — it stays entirely local to this component
  * instead of being driven from `MenuScene.ts`.
  *
- * **Giới thiệu and Nội dung / Pack are not gated behind `ready`.** Neither
- * opens game code — see `AboutScene.ts` and `PacksScene.ts` — so there is no
- * reason to make a player wait through the warm-up bar to read what the game
- * is, and a player whose pack failed to load (the banner below) is exactly
- * the player who most needs the packs screen *before* the warm-up finishes.
+ * ## Two big buttons, and everything else is a link
+ *
+ * The menu used to carry three identical `.hextech-btn`s — Chơi, Cấu Hình Trận
+ * Đấu, Chơi LAN — of which two started a match and one unfolded a panel, and
+ * the panel then produced a *fourth* identical button inside itself. Nothing on
+ * screen said which press was a mode, which was a setting and which was a
+ * sub-step of another; hosting a LAN game took three presses through three
+ * levels that all looked like one level.
+ *
+ * So the big buttons are now exactly the two ways into a match, and they are
+ * the only two. Cấu hình joined Nội dung and Giới thiệu in `.menu-links`: it is
+ * a screen you visit before a match, like those two, not a third way to start
+ * one. The LAN half moved out entirely, into `LanScene.vue`.
+ *
+ * **Cấu hình, Giới thiệu and Nội dung / Pack are not gated behind `ready`.**
+ * None opens game code — see `AboutScene.ts`, `PacksScene.ts`, and
+ * `pregameBootPath.test.ts` for the pregame chunk's own boundary — so there is
+ * no reason to make a player wait through the warm-up bar to read what the game
+ * is or to build a loadout, and a player whose pack failed to load (the banner
+ * below) is exactly the player who most needs the packs screen *before* the
+ * warm-up finishes. The two match buttons stay behind it, because what the
+ * warm-up fetches is what they need.
  *
  * **The logo and the background are drawn, not fetched.** Both used to be
  * images, and both were Riot's: the Vietnamese *Liên Minh Huyền Thoại*
@@ -44,7 +62,6 @@ import {
   retryPackInstall,
 } from './packBanner';
 import { packHealthDismissed, packProblems } from '@/content/packHealth';
-import { DEFAULT_SIGNAL_URL, fetchLanRooms, randomRoomCode, type LanRoom } from './lanSignal';
 
 /**
  * ## The pack-health notice
@@ -114,93 +131,13 @@ function dismissPackProblem(): void {
   packHealthDismissed.value = true;
 }
 
-const emit = defineEmits<{ play: []; openConfig: []; openAbout: []; openPacks: [] }>();
-
-/**
- * ## The LAN box
- *
- * The lobby writes the same URL parameters a hand-typed
- * `?net=host&room=…` (or the e2e driver) writes, then presses the ordinary
- * play path — so `GameScene.startGame`'s net arming stays the single seam
- * and this component never touches `src/game/` (which would be the banned
- * menu→game chunk edge; `scenes/lanSignal.ts` exists for exactly this
- * boundary). Discovery is the broker's per-network room list — devices
- * behind the same NAT see each other's rooms with no typing; the code field
- * is the fallback for everything else.
- */
-const lanOpen = ref(false);
-const lanRooms = ref<LanRoom[]>([]);
-const lanCode = ref('');
-const hostCode = ref<string | null>(null);
-/** Broker unreachable — one quiet line in the panel, and the poll backs off. */
-const lanUnreachable = ref(false);
-let lanTimer: number | null = null;
-let lanFailures = 0;
-
-const signalUrl = (): string =>
-  new URLSearchParams(window.location.search).get('signal') ?? DEFAULT_SIGNAL_URL;
-
-const stopLanPolling = (): void => {
-  if (lanTimer !== null) {
-    clearInterval(lanTimer);
-    lanTimer = null;
-  }
-};
-
-const refreshLanRooms = async (): Promise<void> => {
-  // A hosting lobby's poll doubles as its advertisement: the broker lists
-  // the room under this very request's IP, so the room exists on the
-  // network the moment the code is on screen — not only once the match has
-  // started — and a second tab on this machine cannot miss it. The list
-  // then hides our own code: "phòng cùng mạng" means somebody else's.
-  const announce = hostCode.value ? { code: hostCode.value, name: 'Trận LAN' } : undefined;
-  const listed = await fetchLanRooms(signalUrl(), announce);
-  if (listed === null) {
-    lanUnreachable.value = true;
-    // Two strikes and the poll stops — an offline machine must not sit
-    // there re-failing a fetch every four seconds. Re-opening the panel
-    // tries again.
-    if (++lanFailures >= 2) stopLanPolling();
-    return;
-  }
-  lanUnreachable.value = false;
-  lanFailures = 0;
-  lanRooms.value = listed.filter(room => room.code !== hostCode.value);
-};
-
-const toggleLan = (): void => {
-  lanOpen.value = !lanOpen.value;
-  stopLanPolling();
-  // While hosting, the poll keeps running behind a collapsed box: it is the
-  // room's advertisement (see `refreshLanRooms`), and folding the panel away
-  // must not silently take the room off the network.
-  if (lanOpen.value || hostCode.value) {
-    lanFailures = 0;
-    void refreshLanRooms();
-    lanTimer = window.setInterval(() => void refreshLanRooms(), 4000);
-  }
-};
-
-/** Arm the URL the way a hand-typed link would — the params ARE the API. */
-const armNet = (mode: 'host' | 'join', room: string): void => {
-  const params = new URLSearchParams(window.location.search);
-  params.set('net', mode);
-  params.set('room', room);
-  history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
-};
-
-const hostLan = (): void => {
-  hostCode.value = hostCode.value ?? randomRoomCode();
-  armNet('host', hostCode.value);
-  // Advertise now, not in four seconds — the next poll keeps it fresh.
-  void refreshLanRooms();
-};
-
-const joinLanRoom = (code: string): void => {
-  if (!code) return;
-  armNet('join', code.toUpperCase());
-  emit('play');
-};
+const emit = defineEmits<{
+  play: [];
+  openLan: [];
+  openConfig: [];
+  openAbout: [];
+  openPacks: [];
+}>();
 
 // Reads real document state rather than always starting from "not
 // fullscreen": this component remounts on every menu entry (see
@@ -244,7 +181,6 @@ onMounted(() => {
 onUnmounted(() => {
   stopWatching?.();
   stopWatching = null;
-  stopLanPolling();
 });
 
 const toggleFullscreen = (): void => {
@@ -361,79 +297,23 @@ const updateState = computed(() => {
     <p class="menu-loading-label">Đang tải tài nguyên trận đấu… {{ percent }}%</p>
   </div>
 
+  <!-- The two ways into a match, and nothing else at this size. Both are
+       gated on `ready` because both are about to need the chunks the warm-up
+       is fetching; everything below them is a screen, not a match, and is
+       offered immediately. -->
   <template v-else>
-    <button id="play-btn" class="hextech-btn" @click="emit('play')">Chơi</button>
-    <button id="config-btn" class="hextech-btn secondary" @click="emit('openConfig')">
-      Cấu Hình Trận Đấu
+    <button id="play-btn" class="hextech-btn" @click="emit('play')" @touchend.prevent="emit('play')">
+      Chơi
     </button>
     <button
       id="lan-btn"
-      class="hextech-btn secondary"
-      @click="toggleLan"
-      @touchend.prevent="toggleLan"
+      class="hextech-btn"
+      @click="emit('openLan')"
+      @touchend.prevent="emit('openLan')"
     >
-      Chơi LAN
+      <i class="fas fa-user-group" aria-hidden="true"></i>
+      Chơi với bạn
     </button>
-    <!-- Same width, height and type as the buttons above it — the panel is
-         more menu, not a dialog shouting over Chơi. Capped list + one-line
-         states keep the expanded column short enough for a landscape phone;
-         the scene root scrolls if a screen is shorter still. -->
-    <div v-if="lanOpen" id="lan-box" class="lan-box">
-      <template v-if="hostCode">
-        <p class="lan-code">
-          Mã phòng: <b>{{ hostCode }}</b> — đang hiện với máy cùng mạng. Bạn bè
-          bấm Vào sẽ chờ tới khi bạn Vào trận.
-        </p>
-        <button
-          id="lan-start-host"
-          class="hextech-btn secondary"
-          @click="emit('play')"
-          @touchend.prevent="emit('play')"
-        >
-          Vào trận
-        </button>
-      </template>
-      <button
-        v-else
-        id="lan-host"
-        class="hextech-btn secondary"
-        @click="hostLan"
-        @touchend.prevent="hostLan"
-      >
-        Tạo phòng LAN
-      </button>
-      <div class="lan-rooms">
-        <p v-if="lanUnreachable" class="lan-empty">Không kết nối được máy chủ ghép trận.</p>
-        <p v-else-if="lanRooms.length === 0" class="lan-empty">Chưa thấy phòng cùng mạng…</p>
-        <button
-          v-for="room in lanRooms"
-          :key="room.code"
-          class="lan-room"
-          @click="joinLanRoom(room.code)"
-          @touchend.prevent="joinLanRoom(room.code)"
-        >
-          <i class="fas fa-wifi" aria-hidden="true"></i>
-          <span class="lan-room-name">{{ room.name }}</span>
-          <span class="lan-room-code">{{ room.code }}</span>
-        </button>
-      </div>
-      <div class="lan-join-code">
-        <input
-          v-model="lanCode"
-          maxlength="8"
-          placeholder="Mã phòng"
-          aria-label="Mã phòng LAN"
-          spellcheck="false"
-        />
-        <button
-          :disabled="!lanCode.trim()"
-          @click="joinLanRoom(lanCode.trim())"
-          @touchend.prevent="joinLanRoom(lanCode.trim())"
-        >
-          Vào
-        </button>
-      </div>
-    </div>
     <p v-if="preload.codeFailed" class="menu-loading-warning">
       Tải dữ liệu chưa xong — bấm Chơi để thử lại.
     </p>
@@ -512,14 +392,30 @@ const updateState = computed(() => {
   </div>
 
   <!-- In the column, under the two buttons above — not pinned to the top-right
-       corner beside the fullscreen toggle, which is where both spent their
-       whole life as unlabelled 1em glyphs. Neither was findable there, and
-       "Nội dung / Pack" is now the screen a player gets a roster from at all,
-       so it cannot also be the least visible control on the menu.
+       corner beside the fullscreen toggle, which is where two of these spent
+       their whole life as unlabelled 1em glyphs. Neither was findable there,
+       and "Nội dung / Pack" is now the screen a player gets a roster from at
+       all, so it cannot also be the least visible control on the menu.
 
-       Still outside the `ready` gate above, for the reason in this file's
-       header: neither opens game code, so neither waits on the warm-up. -->
+       Cấu hình joined them: it was a third full-size button competing with the
+       two that start a match, and it is the same *kind* of thing as these two —
+       a screen you visit between matches. Its id stays `config-btn`, which
+       several e2e scripts address it by.
+
+       All three sit outside the `ready` gate above, for the reason in this
+       file's header: none opens game code, so none waits on the warm-up. -->
   <div class="menu-links">
+    <button
+      id="config-btn"
+      class="menu-link"
+      title="Cấu hình trận đấu"
+      @click="emit('openConfig')"
+      @touchend.prevent="emit('openConfig')"
+    >
+      <i class="fas fa-sliders" aria-hidden="true"></i>
+      <span>Cấu hình</span>
+    </button>
+
     <button
       id="packs-btn"
       class="menu-link"

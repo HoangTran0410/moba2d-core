@@ -20,6 +20,8 @@ import { NetChannel, parseHostFrame, relayUrl } from './NetChannel';
 export interface ClientTransport {
   send(raw: string): void;
   drain(): string[];
+  /** Return frames to the head of the queue — see `NetChannel.pushBack`. */
+  pushBack(raws: string[]): void;
   waitFor<T>(accept: (raw: string) => T | null, timeoutMs?: number): Promise<T>;
   close(): void;
   readonly closed: boolean;

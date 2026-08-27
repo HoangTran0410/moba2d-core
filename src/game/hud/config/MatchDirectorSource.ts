@@ -35,6 +35,7 @@ import {
   type WorldConfig,
 } from '@/game/config/PregameConfig';
 import type { MatchTeamId } from '@/game/config/MatchTeams';
+import { isNetClient } from '@/game/net/netRole';
 import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
 import {
   setTouchModePreference,
@@ -98,8 +99,8 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   constructor(private readonly host: MatchDirectorHost) {
     this.live = {
-      refill: id => this.withUnit(id, unit => this.director.refill(unit)),
-      clearCooldowns: id => this.withUnit(id, unit => this.director.clearCooldowns(unit)),
+      refill: id => this.cheatOnUnit(id, unit => this.director.refill(unit)),
+      clearCooldowns: id => this.cheatOnUnit(id, unit => this.director.clearCooldowns(unit)),
       scoreOf: id => this.scoreOf(id),
       statGroupsOf: id => this.statGroupsOf(id),
       stacksOf: id => this.stacksOf(id),
@@ -111,20 +112,27 @@ export default class MatchDirectorSource implements MatchConfigSource {
       // Straight at the wallet, not through `MatchDirector`, for the same
       // reason `addStacks` above goes straight at the spell: this is an action
       // on a live unit, not a setting the match persists.
-      grantGold: (id, amount) => this.withUnit(id, unit => unit.wallet?.earn(amount)),
+      grantGold: (id, amount) => this.cheatOnUnit(id, unit => unit.wallet?.earn(amount)),
       itemStock: () => shopItems().map(item => ({ id: item.id, name: item.name, cost: item.cost })),
       itemsOf: id => this.itemsOf(id),
       // Straight through: the HUD owns which panel is up, and this adapter's
       // whole job is to be the one file in the config directory that may talk
       // to the match.
-      openShopFor: id => this.host.openShopFor(id),
+      //
+      // Gated with the rest of the cheat group even though the shop charges
+      // gold and refuses like anyone's: on a client the panel hides that whole
+      // section, and a door the UI does not draw should not be open behind it.
+      // The player's *own* shop is a HUD button and is untouched.
+      openShopFor: id => {
+        if (this.canEditMatchSettings) this.host.openShopFor(id);
+      },
       giveItem: (id, itemId) =>
-        this.withUnit(id, unit => {
+        this.cheatOnUnit(id, unit => {
           const def = contentCatalog().item(itemId);
           if (def) grantItem(unit, def);
         }),
       clearItems: id =>
-        this.withUnit(id, unit => {
+        this.cheatOnUnit(id, unit => {
           for (let slot = 0; slot < (unit.items?.length ?? 0); slot++) unit.unequipItem(slot);
         }),
 
@@ -151,6 +159,20 @@ export default class MatchDirectorSource implements MatchConfigSource {
     return this.host.director;
   }
 
+  /**
+   * False on a LAN client — see `MatchConfigSource.canEditMatchSettings` for
+   * what that gates and, just as importantly, what it does not.
+   *
+   * `isNetClient()` is a process-wide read, not a question about `this.host`,
+   * because that is what the role is (`net/netRole.ts` documents why). Reading
+   * it live rather than latching it in the constructor matters: the panel
+   * outlives a session close, which resets the role, and a latched `false`
+   * would leave the controls dead for the rest of the process.
+   */
+  get canEditMatchSettings(): boolean {
+    return !isNetClient();
+  }
+
   private entries(): RosterEntry[] {
     return this.director.roster();
   }
@@ -170,6 +192,20 @@ export default class MatchDirectorSource implements MatchConfigSource {
     if (unit) run(unit);
   }
 
+  /**
+   * `withUnit` for a cheat, which on a LAN client is refused outright.
+   *
+   * Deliberately not folded into `withUnit` itself: `setTeam` and
+   * `setBotBehaviour` go through that too, and đổi phe is one of the two panel
+   * mutations a client is *supposed* to make — it crosses the wire and comes
+   * back as the host's own change. A single gate on the shared helper would
+   * have taken it with the cheats, which is the wrong half.
+   */
+  private cheatOnUnit(id: string, run: (unit: Champion) => void): void {
+    if (!this.canEditMatchSettings) return;
+    this.withUnit(id, run);
+  }
+
   private stackSpells(unit: Champion): Spell[] {
     const spells: Spell[] = [];
     // A hand-rolled loop rather than `filter` with a type predicate: this
@@ -181,8 +217,9 @@ export default class MatchDirectorSource implements MatchConfigSource {
     return spells;
   }
 
+  /** Stack counts are a cheat and have no non-cheat caller, so the gate lives here. */
   private withStack(id: string, spellId: string, run: (spell: Spell) => void): void {
-    this.withUnit(id, unit => {
+    this.cheatOnUnit(id, unit => {
       for (const spell of this.stackSpells(unit)) {
         if (spell.id === spellId) {
           run(spell);
@@ -320,15 +357,23 @@ export default class MatchDirectorSource implements MatchConfigSource {
     return this.director.bots().length;
   }
 
+  /**
+   * The roster is the match's, so on a LAN client it is the host's — a bot
+   * added here would be a body only this device can see. `Game`'s constructor
+   * already forces a client's local bot count to 0 for exactly that reason;
+   * this closes the door the panel left open behind it.
+   */
   canAddBot(): boolean {
-    return this.botCount() < AI_COUNT_MAX;
+    return this.canEditMatchSettings && this.botCount() < AI_COUNT_MAX;
   }
 
   async addBot(team: MatchTeamId): Promise<void> {
+    if (!this.canEditMatchSettings) return;
     await this.director.addBotLoaded(DEFAULT_CHAMPION_LOADOUT, team);
   }
 
   removeBot(id: string): void {
+    if (!this.canEditMatchSettings) return;
     const bot = this.botOf(id);
     if (bot) this.director.removeBot(bot);
   }
@@ -385,6 +430,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
   }
 
   setRules(rules: MatchRulesConfig, persist: boolean): void {
+    if (!this.canEditMatchSettings) return;
     if (persist) this.director.setRules(rules);
     else this.director.seedRules(rules);
   }
@@ -394,6 +440,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
   }
 
   setWorld(world: Partial<WorldConfig>): void {
+    if (!this.canEditMatchSettings) return;
     if (world.jungle !== undefined) this.director.jungleEnabled = world.jungle;
     if (world.minions !== undefined) this.director.minionsEnabled = world.minions;
   }
@@ -413,8 +460,18 @@ export default class MatchDirectorSource implements MatchConfigSource {
     return this.host.activeMapId;
   }
 
-  /** Persists the choice for next time. Does not touch the running world — see `MatchConfigSource.setMap`. */
+  /**
+   * Persists the choice for next time. Does not touch the running world — see
+   * `MatchConfigSource.setMap`.
+   *
+   * Refused on a client even though it only writes a *local* preference for the
+   * next match, and so is the one gated write that cannot desync anything. It
+   * is gated because of what the control says: in a LAN match the next map is
+   * the host's hello (`net/clientBoot.ts`), so a client picking one is being
+   * told it chose something it did not.
+   */
   setMap(id: string): void {
+    if (!this.canEditMatchSettings) return;
     this.director.setMapChoice(id);
   }
 
@@ -439,7 +496,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
   }
 
   setInvulnerable(id: string, on: boolean): void {
-    this.withUnit(id, unit => this.director.setInvulnerable(unit, on));
+    this.cheatOnUnit(id, unit => this.director.setInvulnerable(unit, on));
   }
 
   // ------------------------------------------------------------------ device
@@ -479,7 +536,12 @@ export default class MatchDirectorSource implements MatchConfigSource {
     this.host.setRenderFps(fps);
   }
 
+  /**
+   * Gated: it is the rules, the world, the map and the cheats in one press, so
+   * leaving it open would be a single button that undoes every other refusal.
+   */
   async resetToDefaults(): Promise<void> {
+    if (!this.canEditMatchSettings) return;
     await this.director.resetToDefaults();
   }
 }

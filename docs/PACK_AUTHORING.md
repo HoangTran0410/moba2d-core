@@ -19,7 +19,7 @@ belong to a repository that is not yours. Pick any empty directory.
 
 ```sh
 cd ~/somewhere-that-is-not-core
-npx --package=github:HoangTran0410/moba2d-core moba2d-pack-new my-pack \
+npx --package=github:moba2d-game/core moba2d-pack-new my-pack \
   --id my-pack --name "My Pack"
 ```
 
@@ -121,7 +121,7 @@ node /path/to/moba2d-core/scripts/pack-new.mjs my-pack \
 ```
 
 Anything npm understands is accepted verbatim — a `file:` path, a fork, a
-branch, a tarball. The default is `github:HoangTran0410/moba2d-core#main`.
+branch, a tarball. The default is `github:moba2d-game/core#main`.
 
 If you have both repositories checked out side by side, core can link them for
 you instead — run this **in core**:

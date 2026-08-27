@@ -286,11 +286,18 @@ export default class TerrainMap {
     return this.getObstaclesInArea(area, terrainTypes);
   }
 
-  getObstaclesInChampionSight(champion: any, terrainTypes?: string[]): Obstacle[] {
+  /**
+   * `radius` overrides what the unit sees for itself. A minion or a turret has
+   * `visionRadius = 0` on purpose — no combat sight — yet still grants the team
+   * a circle through `fogRevealRadius`, and the fog casts a polygon inside that
+   * circle. Without the override this query would come back empty for exactly
+   * those units, so their fog would ignore every wall on the map.
+   */
+  getObstaclesInChampionSight(champion: any, terrainTypes?: string[], radius?: number): Obstacle[] {
     const area = new Circle({
       x: champion.position.x,
       y: champion.position.y,
-      r: champion.animatedValues?.visionRadius || champion.visionRadius,
+      r: radius ?? (champion.animatedValues?.visionRadius || champion.visionRadius),
     });
     return this.getObstaclesInArea(area, terrainTypes ?? []);
   }

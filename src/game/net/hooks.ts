@@ -18,6 +18,21 @@ export interface NetGameHooks {
   /** A right-click / pointer order at `point`. */
   interceptPointer(point: Vec2): boolean;
   /**
+   * The virtual joystick's push, as the world point it is steering toward —
+   * or `null` the frame the thumb lifts, which `TouchControls` fires exactly
+   * once. A client forwards it and then lets the local seam run, the way
+   * `interceptPointer` does, so the prediction still steers at full frame
+   * rate while the wire carries a throttled sample.
+   *
+   * Separate from `interceptPointer` because the two orders mean different
+   * things on the host — see the `steer` message in `protocol.ts`. Without
+   * this seam a phone could join a LAN match, cast, recall and tap the
+   * minimap, but every push of the stick moved only its own screen: the host
+   * heard nothing, and reconciliation pulled the champion back to where the
+   * host still had it.
+   */
+  interceptSteer(target: Vec2 | null): boolean;
+  /**
    * The minimap's tap-teleport. Unlike the other intercepts a client answers
    * `true` — wire-only, no local prediction — because the reconciler snaps
    * any locally-jumped position straight back before the host's confirming

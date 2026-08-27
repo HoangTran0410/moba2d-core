@@ -93,6 +93,7 @@
     "e2e:camps": "node tests/e2e/verify-camp-spread.mjs",
     "e2e:lan": "node tests/e2e/drive-lan-sync.mjs",
     "e2e:lan-lobby": "node tests/e2e/drive-lan-lobby.mjs",
+    "e2e:lan-flow": "node tests/e2e/drive-lan-lobby-flow.mjs",
     "e2e:attacks": "node tests/e2e/drive-basic-attacks.mjs",
     "vendor:copy": "node scripts/copy-vendor.mjs",
     "chunks:check": "node scripts/check-chunks.mjs",

@@ -129,7 +129,7 @@ const SLOTS = ['Q', 'W', 'E', 'R'];
  * script, and pretending to validate them here would only reject specs npm
  * accepts.
  */
-const DEFAULT_CORE_SPEC = 'github:HoangTran0410/moba2d-core#main';
+const DEFAULT_CORE_SPEC = 'github:moba2d-game/core#main';
 const coreSpec = flags.core === 'true' || !flags.core ? DEFAULT_CORE_SPEC : flags.core;
 
 const TOKENS = {

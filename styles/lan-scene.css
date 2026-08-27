@@ -1,0 +1,446 @@
+/* =============== LAN lobby (LanScene.vue) ===============
+
+   Was a fold-out box on the menu (`.lan-box` in menu-scene.css, now gone). The
+   whole visual problem there was that every control in it borrowed the menu's
+   own button styles, so "create a room" and "join a room" — the one real
+   choice on this screen — arrived as four more rows of the same shape as Chơi.
+   Here they are two named sections in a panel, and the room code, which is the
+   thing a host has to read out loud, is the biggest element on the screen.
+
+   Built on the same bones as `.about-panel` (about-scene.css): a definite
+   height with one scrolling body inside it, for the reason that file and
+   hud.css both document — a landscape phone can offer as little as 380px of
+   vertical room, and a *definite* height is what keeps a `flex: 1 1 auto`
+   body a real size to scroll inside rather than an intrinsic one that
+   collapses to zero. */
+
+#lan-scene {
+  width: 100vw;
+  height: 100vh;
+  /* Both, in this order — see `.center-page-container > div` in main.css. */
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+}
+
+.lan-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 92vw);
+  /* Raised from 620px when the room's player list landed: the hosting state
+     now carries a code card, a roster and two buttons, and a portrait phone
+     has the room for it — `drive-lan-lobby.mjs` asserts that state fits at
+     390x844 without scrolling. Landscape still scrolls, and must. */
+  max-height: min(700px, 90vh);
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+}
+
+.lan-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.2rem 0.8rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.lan-header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.2em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-gold);
+}
+
+/* Title left, back arrow right — the same header shape About and Pack nội
+   dung use, so the way out of a screen is always in the same place. */
+.lan-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--hextech-muted);
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+.lan-close:hover {
+  color: var(--hextech-text);
+}
+
+/* The one scroll region, like `.about-body`: nothing above it sets
+   `touch-action: none` (this screen is a sibling of `#game-scene`, not inside
+   it), so plain `overflow-y: auto` is the whole of it. */
+.lan-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1.2rem 1.2rem;
+}
+
+/* --- waiting for the host to start ---
+
+   The whole body, not a line under the controls. While this is up there is
+   nothing else to do on the screen, and leaving the room list visible
+   underneath would be inviting the player to abandon a wait they had just
+   started. Centred and short: the two facts are which room and what is being
+   waited for. */
+.lan-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+  /* A floor, so the panel does not visibly shrink to a strip when the body is
+     replaced by four short lines. */
+  min-height: 180px;
+}
+
+.lan-waiting-spinner {
+  font-size: 1.6em;
+  color: var(--hextech-teal);
+  margin-bottom: 0.3rem;
+}
+
+.lan-waiting-room {
+  margin: 0;
+  font-size: 1em;
+}
+
+.lan-waiting-room b {
+  letter-spacing: 0.2em;
+  color: var(--hextech-gold);
+}
+
+.lan-waiting-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.82em;
+  color: var(--hextech-muted);
+}
+
+.lan-waiting .lan-ghost {
+  width: auto;
+  min-width: 120px;
+  margin-top: 0;
+}
+
+/* --- who is in the room ---
+
+   The same markup on both sides of the wire: the host builds the list and
+   broadcasts it, a waiting client receives it, and neither screen has a
+   different idea of who is present. Rows are short and fixed-height so the
+   block does not jump as people come and go. */
+.lan-players-block {
+  margin-top: 0.9rem;
+}
+
+.lan-players-title {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--hextech-muted);
+}
+
+.lan-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  /* Five rows, then it scrolls inside itself rather than pushing Vào trận off
+     a short screen — the one control that must always be reachable here. */
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.lan-player {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 32px;
+  padding: 0.3rem 0.6rem;
+  background: rgba(20, 40, 56, 0.65);
+  border-left: 2px solid rgba(120, 160, 180, 0.5);
+  font-size: 0.88em;
+}
+
+.lan-player .fa-crown {
+  color: var(--hextech-gold);
+}
+
+.lan-player .fa-user {
+  color: rgba(207, 227, 238, 0.65);
+}
+
+/* Who the row *is* — the seat, which is the half that differs. The champion
+   beside it is often the same word on every row ("Ngẫu nhiên" is the
+   default), so the seat leads and the champion follows as detail. */
+.lan-player-role {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lan-player-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86em;
+  color: var(--hextech-muted);
+}
+
+/* In the waiting state the list is centred with everything else, and the rows
+   need a width to be centred *at* — otherwise each one shrinks to its own
+   name and the column reads as ragged. */
+.lan-waiting .lan-players {
+  width: 100%;
+  text-align: left;
+}
+
+/* A join that failed, above the controls it sends the player back to. Louder
+   than `.lan-empty` (which reports an empty network, not a failure). */
+.lan-error {
+  margin: 0 0 0.9rem;
+  padding: 0.5rem 0.7rem;
+  background: rgba(150, 40, 40, 0.2);
+  border: 1px solid rgba(220, 90, 90, 0.5);
+  color: rgb(245, 175, 175);
+  font-size: 0.82em;
+}
+
+/* --- the two sections ---
+
+   A heading each, and that is the point of the redesign: "create" and "join"
+   are two answers to one question, and a player has to be able to see which
+   half they are looking at before reading any control in it. */
+.lan-section + .lan-section {
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--hextech-line);
+}
+
+.lan-section-title {
+  margin: 0 0 0.7rem;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--hextech-muted);
+}
+
+/* One real action per section, full width so it cannot be missed and cannot be
+   confused with the menu's own buttons — same hextech language, its own size. */
+.lan-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 1rem;
+  background: #1e2328;
+  border: 2px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: #f0e6d2;
+  font: inherit;
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.lan-primary:hover {
+  border-color: rgba(192, 252, 253, 0.75);
+  box-shadow: 0 0 10px 2px rgba(192, 252, 253, 0.25);
+}
+
+/* Undo, not a second offer: it has to be reachable and must not read as a
+   choice beside "Vào trận". */
+.lan-ghost {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 0.5rem;
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.lan-ghost:hover {
+  border-color: rgba(220, 90, 90, 0.7);
+  color: rgb(235, 160, 160);
+}
+
+.lan-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.78em;
+  line-height: 1.45;
+  color: var(--hextech-muted);
+}
+
+/* --- the room code ---
+
+   The single largest thing on the screen, because the situation it exists for
+   is reading five characters out loud to someone across a table. Letter-spaced
+   and rendered pre-spaced by the component (`spacedCode`), so the reader
+   naturally says one character at a time instead of trying to pronounce it.
+   A button, not a heading: the whole card copies. */
+.lan-code-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  background: var(--hextech-sunken);
+  border: 1px solid rgba(120, 160, 180, 0.45);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lan-code-card:hover {
+  border-color: var(--hextech-teal);
+}
+
+.lan-code-value {
+  font-size: 2em;
+  font-weight: bold;
+  letter-spacing: 0.35em;
+  /* The spacing is applied on the right of the last glyph too, which shifts
+     the whole string off centre; pulling it back is the standard correction. */
+  text-indent: 0.35em;
+  color: var(--hextech-gold);
+  line-height: 1.1;
+}
+
+.lan-code-hint {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--hextech-muted);
+}
+
+/* --- the room list --- */
+
+.lan-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  /* Roughly four rows, then it scrolls inside itself rather than pushing the
+     code field off a short screen. */
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.lan-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.2rem 0;
+  font-size: 0.82em;
+  color: rgba(214, 202, 182, 0.55);
+}
+
+.lan-room {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 0.8rem;
+  background: rgba(20, 40, 56, 0.9);
+  border: 1px solid rgba(120, 160, 180, 0.4);
+  color: #cfe3ee;
+  font: inherit;
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lan-room:hover {
+  border-color: #6fc3dd;
+}
+
+.lan-room-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lan-room-code {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  letter-spacing: 0.14em;
+  color: rgba(207, 227, 238, 0.65);
+}
+
+/* --- the typed code, one row: the input flexes, Vào keeps its own size --- */
+
+.lan-join-code {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.lan-join-code input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  background: rgba(6, 14, 22, 0.9);
+  border: 1px solid rgba(120, 160, 180, 0.4);
+  color: #e8e2d4;
+  font: inherit;
+  font-size: 0.95em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.lan-join-code input::placeholder {
+  text-transform: none;
+  letter-spacing: normal;
+  color: rgba(214, 202, 182, 0.4);
+}
+
+.lan-join-code button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.5rem 1.1rem;
+  background: rgba(30, 60, 80, 0.9);
+  border: 1px solid rgba(120, 160, 180, 0.5);
+  color: #d6ecf5;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.lan-join-code button:hover:not(:disabled) {
+  border-color: #6fc3dd;
+}
+
+.lan-join-code button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

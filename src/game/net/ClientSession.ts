@@ -21,7 +21,14 @@ import type { Vec2 } from '@/game/spell/runtime/types';
 import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 
-/** Repeated right-clicks fire every tick; the host needs at most a few orders a second. */
+/**
+ * Repeated right-clicks — and a held joystick — fire every tick; the host
+ * needs at most a few orders a second. One window covers both, because they
+ * are the same order arriving two ways and a mixed stream would otherwise
+ * send at twice the rate. At champion speed 120ms of walking is well inside
+ * the reconciler's noise band, so the prediction and the host stay agreed
+ * between samples.
+ */
 const MOVE_ORDER_INTERVAL_MS = 120;
 /** A unit that covered more than this between snapshots blinked — snap, don't glide. */
 const DASH_SNAP_UNITS = 400;
@@ -407,6 +414,24 @@ export class ClientSession implements NetGameHooks {
     if (now - this.lastMoveSentAt >= MOVE_ORDER_INTERVAL_MS) {
       this.lastMoveSentAt = now;
       this.channel.send(JSON.stringify({ t: 'move', x: point.x, y: point.y }));
+    }
+    return false;
+  }
+
+  interceptSteer(target: Vec2 | null): boolean {
+    if (!target) {
+      // The release is never throttled and never dropped: a lost one leaves
+      // the host walking to a point the thumb abandoned. Reopening the window
+      // is part of the same thought — the next push is a new gesture and must
+      // not wait out a sample the previous one paid for.
+      this.lastMoveSentAt = 0;
+      this.channel.send(JSON.stringify({ t: 'steer', to: null }));
+      return false;
+    }
+    const now = performance.now();
+    if (now - this.lastMoveSentAt >= MOVE_ORDER_INTERVAL_MS) {
+      this.lastMoveSentAt = now;
+      this.channel.send(JSON.stringify({ t: 'steer', to: { x: target.x, y: target.y } }));
     }
     return false;
   }

@@ -176,11 +176,30 @@ export class RtcClientTransport implements ClientTransport {
     private readonly reliable: RTCDataChannel
   ) {}
 
+  /**
+   * `timeoutMs` may be `Infinity`, and the LAN lobby passes exactly that.
+   *
+   * A joiner who is *waiting for the host to start* has nothing to time out
+   * against: the broker replays `sys:joined` to a host that connects late (both
+   * the deployed Worker and `scripts/net-relay.mjs` do), so the offer arrives
+   * whenever the host presses Vào trận — a minute later, or ten. The 15-second
+   * default is right for the other caller, `clientBoot`, where the host is
+   * supposed to already be there and silence means something is wrong.
+   *
+   * `setTimeout` is *not* given `Infinity`: a delay above 2^31-1 wraps and the
+   * timer fires immediately, which would turn "wait forever" into "fail at
+   * once". The timer is only created when the deadline is finite.
+   *
+   * `abort` cancels a wait in progress — the lobby's Huỷ button. Without it a
+   * cancelled join leaves an open signaling socket the broker still counts as
+   * a joiner, so the host would see a phantom in the room for ever.
+   */
   static async connect(
     server: string,
     room: string,
-    timeoutMs = 15_000
+    options: { timeoutMs?: number; abort?: AbortSignal } = {}
   ): Promise<RtcClientTransport> {
+    const { timeoutMs = 15_000, abort } = options;
     const signal = new NetChannel(relayUrl(server, room, 'join'));
     await signal.ready();
 
@@ -191,16 +210,42 @@ export class RtcClientTransport implements ClientTransport {
 
     let transport: RtcClientTransport | null = null;
     const channels: RTCDataChannel[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let watchdog: ReturnType<typeof setInterval> | null = null;
+    let onAbort: (() => void) | null = null;
+    const stopWaiting = (): void => {
+      if (timer !== null) clearTimeout(timer);
+      if (watchdog !== null) clearInterval(watchdog);
+      if (onAbort) abort?.removeEventListener('abort', onAbort);
+    };
     const opened = new Promise<RtcClientTransport>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('net: WebRTC handshake timed out — is the host still up?')),
-        timeoutMs
-      );
+      if (Number.isFinite(timeoutMs)) {
+        timer = setTimeout(
+          () => reject(new Error('net: WebRTC handshake timed out — is the host still up?')),
+          timeoutMs
+        );
+      }
+      // An unbounded wait needs *some* way to end other than success, or a
+      // broker that drops the socket leaves the lobby spinning for ever with
+      // nothing to say. The channel reports its own close; poll it rather than
+      // growing `NetChannel` an event for one caller.
+      watchdog = setInterval(() => {
+        if (signal.closed) reject(new Error('net: signaling closed before the host answered'));
+      }, 500);
+      if (abort) {
+        onAbort = () => {
+          signal.close();
+          connection.close();
+          reject(new Error('net: join cancelled'));
+        };
+        if (abort.aborted) onAbort();
+        else abort.addEventListener('abort', onAbort, { once: true });
+      }
       connection.ondatachannel = ({ channel }) => {
         channels.push(channel);
         if (channel.label === 'r') {
           channel.onopen = () => {
-            clearTimeout(timer);
+            stopWaiting();
             transport = new RtcClientTransport(connection, channel);
             for (const each of channels) {
               each.onmessage = event => {
@@ -244,7 +289,15 @@ export class RtcClientTransport implements ClientTransport {
       for (const raw of signal.drain()) handleSignal(raw);
     });
 
-    const ready = await opened;
+    let ready: RtcClientTransport;
+    try {
+      ready = await opened;
+    } catch (error) {
+      stopWaiting();
+      signal.close();
+      connection.close();
+      throw error;
+    }
     // The handshake is done; the DataChannels are the session now, and the
     // host ignores signaling `left` for an open peer by design.
     signal.close();
@@ -264,6 +317,11 @@ export class RtcClientTransport implements ClientTransport {
     const out = this.queue;
     this.queue = [];
     return out;
+  }
+
+  /** See `NetChannel.pushBack` — the lobby reads the stream it does not own. */
+  pushBack(raws: string[]): void {
+    if (raws.length) this.queue.unshift(...raws);
   }
 
   async waitFor<T>(accept: (raw: string) => T | null, timeoutMs = 15_000): Promise<T> {
