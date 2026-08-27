@@ -6,7 +6,19 @@ import BuffAddType from '@/game/enums/BuffAddType';
 import StatusFlags from '@/game/enums/StatusFlags';
 import Buff from '@/game/gameObject/Buff';
 
+/**
+ * Sợ Hãi.
+ *
+ * ## Do not override `image` on an instance of this buff
+ *
+ * `Fear` and `Stun` are the only two buffs whose `draw()` paints `this.image`
+ * **into the world** — here, over the darkened body of whoever is running. Every
+ * other buff's image is HUD-only, where a spell overriding it with its own icon
+ * is an improvement rather than a loss, which is why over a hundred sites in the
+ * content packs do so. See `Stun.ts`'s header for the whole of the rule.
+ */
 export default class Fear extends Buff {
+  /** Drawn on the victim by `draw()` below, not only in the HUD. See the header. */
   image: Buff['image'] = AssetManager.get('buff_fear');
   name = 'Sợ Hãi';
   buffAddType = BuffAddType.REPLACE_EXISTING;

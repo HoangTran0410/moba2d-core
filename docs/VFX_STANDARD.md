@@ -173,6 +173,40 @@ state the cache key does not watch.
 `Dash.prototype.onUpdate`, so an instance assignment replaces the frame rather
 than hooking it and the champion stands still. Use `onDashUpdate`.
 
+## Your icon on a buff, except on the two that wear it in the world
+
+Giving a buff your ability's icon is the house convention and it is a good one:
+
+```ts
+const slowed = new Slow(MS, this.owner, victim);
+slowed.image = this.image;          // right — the HUD row now says which ability
+```
+
+Three simultaneous slows all drawn as `buff_slow` tell the player nothing about
+which one to play around. Over a hundred sites across the content packs do this,
+and buffs with no default of their own — `StatAmp`, `Shield`, `DamageReflect`,
+`Disarm` — *require* it.
+
+**`Stun` and `Fear` are the exceptions, and they are the only two.** Their
+`draw()` paints `this.image` into the world, on the victim, at body size — the
+spinning swirl is how the whole screen answers "who is stunned right now". An
+ability icon is not legible at that size or recognisable to someone who has not
+played your champion, so overriding it trades a global readout for a label
+nobody reads. Legibility outranks looking good, and here the two are in direct
+conflict.
+
+```ts
+const held = new Stun(MS, this.owner, victim);
+held.image = this.image;            // wrong — this is the swirl, not a HUD row
+held.stackId = 'mypack_myspell_stun';
+```
+
+Leave `image` alone on those two; `stackId` and duration are still yours. This
+was found as drift rather than as a decision — three of the dota pack's four
+stuns had overridden it against 24 of 25 in the lol pack that had not, with
+nothing written down either way — so the rule now lives in `buffs/Stun.ts`'s own
+header as well as here.
+
 ## An effect that rides a body
 
 Use `attachTo(unit, buff)`, open `update()` with
