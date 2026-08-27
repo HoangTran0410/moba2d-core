@@ -19,8 +19,11 @@ import {
   type KitPlan,
   type MatchPlan,
 } from '@/game/preset';
-import { allSpellIds, loadSpells, spellClassOfId } from '@/game/spellRegistry';
+import { loadSpells, spellIdOfClass } from '@/game/spellRegistry';
+import { asKitPlan, planFromPreset } from './kitWire';
 import { setNetRole, type NetUrlRequest } from './netRole';
+import type { CastPhase } from '@/game/spell/input/SpellInputController';
+import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
 import { RtcHostTransport } from './RtcTransport';
 import {
@@ -59,8 +62,6 @@ export class HostSession implements NetGameHooks {
   readonly debugStats = { snapshotsSent: 0, eventsSent: 0, castsSeen: 0 };
   private lastSnapshotAt = 0;
   private stopCastListener: () => void;
-  /** class -> catalogue id, for deriving a KitPlan from a live champion. Rebuilt on miss (chunks stream in). */
-  private classIds = new Map<unknown, string>();
 
   constructor(
     private readonly game: Game,
@@ -153,27 +154,19 @@ export class HostSession implements NetGameHooks {
 
   /**
    * A serializable kit for a champion whose original plan is gone — a random
-   * bot after a respawn re-roll. The class -> id reverse map recovers the
-   * spell ids; the tunings fall to defaults and the portrait to a
-   * placeholder, which the spec's own cuts section owns up to.
+   * bot after a respawn re-roll. `spellIdOfClass` recovers the spell ids; the
+   * tunings fall to defaults and the portrait to a placeholder, which the
+   * spec's own cuts section owns up to. A champion whose kit change came
+   * through `onLoadoutApplied` never needs this — that path carries the real
+   * preset.
    */
   private planFromLiveChampion(unit: Champion): KitPlan {
-    for (const spell of unit.spells) {
-      if (!this.classIds.has(spell.constructor)) {
-        this.classIds.clear();
-        for (const id of allSpellIds()) {
-          const spellClass = spellClassOfId(id);
-          if (spellClass) this.classIds.set(spellClass, id);
-        }
-        break;
-      }
-    }
     return {
       name: unit.name,
       avatar: '',
       attack: DEFAULT_CHAMPION_ATTACK,
       defence: DEFAULT_CHAMPION_DEFENCE,
-      spellIds: unit.spells.map(spell => this.classIds.get(spell.constructor) ?? 'BasicAttack'),
+      spellIds: unit.spells.map(spell => spellIdOfClass(spell.constructor) ?? 'BasicAttack'),
     };
   }
 
@@ -296,8 +289,36 @@ export class HostSession implements NetGameHooks {
     }
     const message = decodeMessage(event.raw);
     const champion = this.clients.get(event.peerId);
-    if (!message || !champion || champion.isDead) return;
+    if (!message || !champion) return;
+    // A kit change is legal on a corpse — picking the next champion while
+    // waiting to respawn is half the point of a practice lobby — so it is
+    // routed above the dead-champion gate every *order* stops at.
+    if (message.t === 'loadout') {
+      void this.onClientLoadout(champion, message.plan);
+      return;
+    }
+    if (champion.isDead) return;
     this.applyOrder(champion, message);
+  }
+
+  /**
+   * A client changed its own kit. The mirror of `onLoadoutApplied`'s send:
+   * validate the plan (wire data is `unknown`), fetch the spell chunks this
+   * host may never have seen (a champion the host player never picked), then
+   * apply and re-broadcast so every other client's puppet follows. The full
+   * bars mirror `MatchDirector.applyLoadout`'s own contract — the try-out
+   * starts at full — through the same `refill` the panel uses.
+   */
+  private async onClientLoadout(champion: Champion, raw: unknown): Promise<void> {
+    const plan = asKitPlan(raw);
+    if (!plan) return;
+    await loadSpells(plan.passiveId ? [...plan.spellIds, plan.passiveId] : plan.spellIds);
+    if (champion.toRemove || !this.ids.has(champion)) return;
+    champion.applyPreset(presetFromPlan(plan));
+    this.game.director.refill(champion);
+    this.championNames.set(champion, champion.name);
+    this.championPlans.set(champion, plan);
+    this.pendingEvents.push(this.championEvent(this.ids.get(champion)!, champion));
   }
 
   private applyOrder(champion: Champion, message: NetMessage): void {
@@ -312,12 +333,30 @@ export class HostSession implements NetGameHooks {
         x: message.x,
         y: message.y,
       });
-      if (context) {
-        spell.press(context);
-        // A charge held by a remote thumb has no release wire in v1: fire at
-        // minimum charge, the same shortcut the client's puppets take.
-        if (spell.state === 'CHARGING') spell.release(context);
-      }
+      // Press only. A charge now charges here for as long as the remote
+      // thumb actually holds it — the 'rel' below is the other half — and
+      // a charge the client abandons still resolves by the spell's own max:
+      // `releaseAtMax` fires it, anything else cancels on MAX_DURATION.
+      if (context) spell.press(context);
+      return;
+    }
+    if (message.t === 'rel') {
+      const spell = champion.spells[message.slot];
+      // Guarded on the state, not trusted: the two ends drift (a host-side
+      // stun cancelled the charge the client thinks it is still holding).
+      if (!spell || spell.state !== 'CHARGING') return;
+      const context = this.game.createSpellContext(spell, champion, {
+        x: message.x,
+        y: message.y,
+      });
+      // The release re-aims at where the drag ended; if no context resolves,
+      // the charge keeps running and the max-duration rule settles it.
+      if (context) spell.release(context);
+      return;
+    }
+    if (message.t === 'stop') {
+      const spell = champion.spells[message.slot];
+      if (spell?.state === 'CHARGING') spell.cancel('PLAYER_CANCEL');
       return;
     }
     if (message.t === 'recall') {
@@ -422,11 +461,29 @@ export class HostSession implements NetGameHooks {
   interceptPointer(_point: Vec2): boolean {
     return false;
   }
-  interceptCast(_slot: number, _aim: Vec2): boolean {
+  interceptCast(_slot: number, _aim: Vec2, _phase: CastPhase): boolean {
     return false;
   }
+  interceptCastCancel(_slot: number): void {}
   interceptRecall(): boolean {
     return false;
+  }
+
+  /**
+   * The host's own panel gave a live champion a new kit. Broadcast the real
+   * plan — `discover`'s name check would eventually notice a *renamed*
+   * champion and fall back to the lossy live-champion reverse, but a kit
+   * edit that keeps the name (one swapped slot) it would never see at all,
+   * and the client's copy would fight the host's for the rest of the match.
+   * Updating `championNames` here is also what keeps `discover` from
+   * broadcasting the same change twice.
+   */
+  onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void {
+    const id = this.ids.get(unit);
+    if (!id) return;
+    this.championNames.set(unit, unit.name);
+    this.championPlans.set(unit, planFromPreset(preset));
+    this.pendingEvents.push(this.championEvent(id, unit));
   }
 
   /** Positions of every tracked unit, for the e2e's cross-page comparison. */
@@ -437,13 +494,17 @@ export class HostSession implements NetGameHooks {
   }
 
   /** The first remote client's champion, for the e2e's order assertions. */
-  debugRemote(): { x: number; y: number; cooldowns: number[] } | null {
+  debugRemote(): { x: number; y: number; cooldowns: number[]; name: string; kit: string[] } | null {
     const champion = this.clients.values().next().value as Champion | undefined;
     if (!champion) return null;
     return {
       x: champion.position.x,
       y: champion.position.y,
       cooldowns: champion.spells.map(spell => spell.currentCooldown),
+      // Identity, for the đổi-tướng probe: after a client changes its own
+      // kit, the host's authoritative copy must be running the same classes.
+      name: champion.name,
+      kit: champion.spells.map(spell => spell.constructor.name),
     };
   }
 

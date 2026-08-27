@@ -161,6 +161,12 @@ export interface MatchDirectorContext extends GameObjectRuntimeContext {
   };
   matchRules: MatchRules;
   spawnJungle(): void;
+  /**
+   * The attached LAN session, if any — narrowed to the one thing the director
+   * tells it (`net/hooks.ts` has the full seam). Optional so the unit-test
+   * context never has to build one.
+   */
+  net?: { onLoadoutApplied(unit: Champion, preset: ResolvedChampionPreset): void } | null;
 }
 
 export default class MatchDirector {
@@ -673,6 +679,13 @@ export default class MatchDirector {
     // For the player as readily as for a bot: the editor has to reopen on
     // whatever it last committed, whoever it was committed to.
     this.loadouts.set(unit, loadout);
+
+    // A LAN match has two ends that both need to hear about a kit change: a
+    // host re-broadcasts it to every client's puppet, a client asks the host
+    // to make its own change real. The *applied preset* goes across the seam,
+    // not the loadout — a 'random' loadout re-rolled at both ends is two
+    // different champions.
+    this.game.net?.onLoadoutApplied(unit, preset);
 
     if (unit instanceof AIChampion) {
       unit.setPresetFactory(() => getChampionPresetFromLoadout(loadout));

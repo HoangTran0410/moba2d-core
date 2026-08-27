@@ -194,16 +194,95 @@ await guard(async () => {
   );
 
   // The latency probe above already pressed until a cast committed; the
-  // host's cooldown row is that commit's receipt.
-  const afterCast = await page.evaluate(() => window.__lol2dNet.debugRemote());
-  const onCooldown = (afterCast?.cooldowns ?? []).filter(
+  // host's cooldown row *at that moment* (`before`, read right after the
+  // probe) is that commit's receipt. Deliberately not a fresh read here —
+  // the march above burns ~3s, and a champion rolled with a short-cooldown
+  // spell (Leblanc W, 1s) has ticked back to zero by now, which is a fact
+  // about the roll, not about the wire.
+  const onCooldown = (before?.cooldowns ?? []).filter(
     (cd, slot) => slot >= 1 && slot <= 4 && cd > 0
   );
-  report.remoteCooldowns = afterCast?.cooldowns?.map(Math.round);
+  report.remoteCooldowns = before?.cooldowns?.map(Math.round);
   check(
     'a client cast commits on the host',
     onCooldown.length > 0,
     JSON.stringify(report.remoteCooldowns)
+  );
+
+  // ----------------------------------------- the panel must not pause (§)
+  // Opening the in-game config panel used to `pause()` — on a client that
+  // froze its own view while the host match played on, and the player came
+  // back dead. `Game.pause()` now refuses while a net session is attached;
+  // the snapshots continuing to arrive is the proof the sim never stopped.
+  const pauseProbe = await clientPage.evaluate(
+    () =>
+      new Promise(resolve => {
+        const game = window.__lol2d.scene.oScene.game;
+        const snapsBefore = game.net.debugStats.snapshotsReceived;
+        game.inGameHUD.vueInstance.hud.openSpellPicker();
+        setTimeout(() => {
+          const snapsDuring = game.net.debugStats.snapshotsReceived - snapsBefore;
+          const paused = game.paused;
+          game.inGameHUD.vueInstance.hud.closeSpellPicker();
+          resolve({ paused, snapsDuring });
+        }, 700);
+      })
+  );
+  report.pauseProbe = pauseProbe;
+  check(
+    'config panel does not pause a net client',
+    pauseProbe.paused === false && pauseProbe.snapsDuring > 10,
+    JSON.stringify(pauseProbe)
+  );
+
+  // -------------------------------------------- đổi tướng crosses the wire
+  // The client re-rolls its own champion through the same director the panel
+  // uses. The host must end up running the *same* classes — before this wire
+  // existed the change lived only on the client's screen and the two ends
+  // fought the rest of the match with two different kits.
+  const clientKit = await clientPage.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const kitOf = () => game.player.spells.map(spell => spell.constructor.name);
+    const before = kitOf().join();
+    const current = game.director.loadoutOf(game.player);
+    // All-random custom slots, re-rolled until the kit *actually differs* —
+    // a roll that lands back on the same classes would let a broken wire
+    // pass vacuously (guaranteed in a checkout whose only pack has one
+    // champion, where `championName: 'random'` can only ever re-pick it).
+    for (let attempt = 0; attempt < 5 && kitOf().join() === before; attempt++) {
+      await game.director.applyLoadoutLoaded(game.player, {
+        ...current,
+        mode: 'custom',
+        customSlots: ['random', 'random', 'random', 'random', 'random', 'random', 'random'],
+      });
+    }
+    return {
+      name: game.player.name,
+      kit: kitOf(),
+      changed: kitOf().join() !== before,
+    };
+  });
+  // Wire + the host fetching spell chunks it may never have seen.
+  await page.waitForFunction(
+    expected => {
+      const remote = window.__lol2dNet.debugRemote();
+      return remote && remote.name === expected.name && remote.kit.join() === expected.kit.join();
+    },
+    clientKit,
+    { timeout: 15_000 }
+  ).catch(() => null);
+  const hostKitView = await page.evaluate(() => {
+    const remote = window.__lol2dNet.debugRemote();
+    return remote ? { name: remote.name, kit: remote.kit } : null;
+  });
+  report.loadoutSync = { client: clientKit, host: hostKitView };
+  check(
+    'a client kit change reaches the host, class for class',
+    clientKit.changed &&
+      !!hostKitView &&
+      hostKitView.name === clientKit.name &&
+      hostKitView.kit.join() === clientKit.kit.join(),
+    JSON.stringify(report.loadoutSync)
   );
 
   // ------------------------------------------------------------ liveness

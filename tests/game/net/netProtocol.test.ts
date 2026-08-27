@@ -81,6 +81,20 @@ describe('event and order messages', () => {
       },
       { t: 'move', x: 123, y: 456 },
       { t: 'cast', slot: 4, x: 1, y: 2 },
+      // The other half of a charge: without 'rel' on the wire, the host can
+      // only ever fire a held spell at minimum charge, at press time.
+      { t: 'rel', slot: 4, x: 3, y: 4 },
+      { t: 'stop', slot: 1 },
+      {
+        t: 'loadout',
+        plan: {
+          name: 'Vera',
+          avatar: 'champ_vera',
+          attack: { range: 300 },
+          defence: { health: 100 },
+          spellIds: ['BasicAttack', 'reference:Vera_Q'],
+        },
+      },
       { t: 'recall' },
     ];
     for (const message of messages) {
@@ -93,5 +107,9 @@ describe('event and order messages', () => {
     expect(decodeMessage(JSON.stringify({ hello: 'world' }))).toBeNull();
     expect(decodeMessage(JSON.stringify(null))).toBeNull();
     expect(decodeMessage(42)).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'rel' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'stop', slot: 'Q' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'loadout' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'loadout', plan: 'Vera' }))).toBeNull();
   });
 });

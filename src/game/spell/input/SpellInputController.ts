@@ -29,10 +29,26 @@ interface HeldGesture {
   readonly deferPress: boolean;
 }
 
+/**
+ * Where in the gesture's life a context is being built: the press that starts
+ * a cast, the per-frame hold that re-aims a running charge, the release that
+ * commits it. Local casting never needs the distinction — a context is a
+ * context — but a net client does: it forwards presses and releases to the
+ * host and must not put the 60Hz hold stream on the wire.
+ */
+export type CastPhase = 'press' | 'hold' | 'release';
+
 interface SpellInputControllerOptions {
   keyBindings: readonly number[];
   getSpell(slot: number): InputSpell | undefined;
-  createContext(spell: InputSpell, slot: number, heldMs: number): CastContext | undefined;
+  createContext(
+    spell: InputSpell,
+    slot: number,
+    heldMs: number,
+    phase: CastPhase
+  ): CastContext | undefined;
+  /** A running charge the player called off — after the runtime accepted the cancel. */
+  onCancel?(slot: number): void;
 }
 
 export class SpellInputController {
@@ -52,7 +68,7 @@ export class SpellInputController {
     if (!spell) return;
 
     this.heldKeys.set(keyCode, { slot, heldMs: 0 });
-    const context = this.options.createContext(spell, slot, 0);
+    const context = this.options.createContext(spell, slot, 0, 'press');
     if (context) spell.press(context);
   }
 
@@ -64,7 +80,7 @@ export class SpellInputController {
     const spell = this.options.getSpell(held.slot);
     if (!spell || spell.state !== 'CHARGING') return;
 
-    const context = this.options.createContext(spell, held.slot, held.heldMs);
+    const context = this.options.createContext(spell, held.slot, held.heldMs, 'release');
     if (context) spell.release(context);
   }
 
@@ -93,7 +109,7 @@ export class SpellInputController {
     this.heldPointers.set(slot, { slot, heldMs: 0, deferPress });
     if (deferPress) return true;
 
-    const context = this.options.createContext(spell, slot, 0);
+    const context = this.options.createContext(spell, slot, 0, 'press');
     return context ? spell.press(context) : false;
   }
 
@@ -109,7 +125,12 @@ export class SpellInputController {
     const spell = this.options.getSpell(slot);
     if (!spell) return false;
 
-    const context = this.options.createContext(spell, slot, held.heldMs);
+    const context = this.options.createContext(
+      spell,
+      slot,
+      held.heldMs,
+      held.deferPress ? 'press' : 'release'
+    );
     if (!context) return false;
     if (held.deferPress) return spell.press(context);
     return spell.state === 'CHARGING' ? spell.release(context) : false;
@@ -130,7 +151,10 @@ export class SpellInputController {
     if (held.deferPress) return true;
 
     const spell = this.options.getSpell(slot);
-    return spell ? spell.cancel('PLAYER_CANCEL') : false;
+    if (!spell) return false;
+    const cancelled = spell.cancel('PLAYER_CANCEL');
+    if (cancelled) this.options.onCancel?.(slot);
+    return cancelled;
   }
 
   /** True while a thumb owns this slot — the drawing layer asks. */
@@ -145,7 +169,7 @@ export class SpellInputController {
       const spell = this.options.getSpell(held.slot);
       if (!spell) continue;
 
-      const context = this.options.createContext(spell, held.slot, held.heldMs);
+      const context = this.options.createContext(spell, held.slot, held.heldMs, 'hold');
       if (context) spell.hold(context);
     }
 
@@ -159,7 +183,7 @@ export class SpellInputController {
       const spell = this.options.getSpell(held.slot);
       if (!spell) continue;
 
-      const context = this.options.createContext(spell, held.slot, held.heldMs);
+      const context = this.options.createContext(spell, held.slot, held.heldMs, 'hold');
       if (context) spell.hold(context);
     }
   }
@@ -170,7 +194,7 @@ export class SpellInputController {
       const spell = this.options.getSpell(slot);
       if (spell && !cancelled.has(spell)) {
         cancelled.add(spell);
-        spell.cancel(reason);
+        if (spell.cancel(reason)) this.options.onCancel?.(slot);
       }
     }
     this.heldKeys.clear();

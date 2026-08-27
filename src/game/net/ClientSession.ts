@@ -9,8 +9,11 @@ import type { ClientTransport } from './transport';
 import { decodeMessage, type NetEvent, type NetMessage, type UnitSnap } from './protocol';
 import { InterpolationBuffer } from './InterpolationBuffer';
 import { RECALL_SLOT } from './HostSession';
+import { planFromPreset } from './kitWire';
 import type { NetGameHooks } from './hooks';
 import type { Vec2 } from '@/game/spell/runtime/types';
+import type { CastPhase } from '@/game/spell/input/SpellInputController';
+import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 
 /** Repeated right-clicks fire every tick; the host needs at most a few orders a second. */
 const MOVE_ORDER_INTERVAL_MS = 120;
@@ -177,8 +180,14 @@ export class ClientSession implements NetGameHooks {
     switch (event.k) {
       case 'champ': {
         const existing = this.units.get(event.id);
+        // The own champion's kit is never played back: at boot it was built
+        // from the hello's own plan, and a đổi tướng was applied locally the
+        // moment the player confirmed it (`onLoadoutApplied`) — the echo
+        // arriving here has already happened, like a cast echo.
+        if (existing === this.game.player) return;
         if (existing instanceof Champion) {
-          // A re-broadcast kit (a random bot re-rolled on respawn).
+          // A re-broadcast kit (a random bot re-rolled on respawn, or a
+          // champion the host's own panel just re-kitted).
           existing.applyPreset(presetFromPlan(event.plan as KitPlan));
           return;
         }
@@ -253,14 +262,39 @@ export class ClientSession implements NetGameHooks {
     return false;
   }
 
-  interceptCast(slot: number, aim: Vec2): boolean {
-    this.channel.send(JSON.stringify({ t: 'cast', slot, x: aim.x, y: aim.y }));
+  interceptCast(slot: number, aim: Vec2, phase: CastPhase): boolean {
+    // The hold stream is 60Hz re-aiming — local-only. Press and release each
+    // cross once, which is what lets the host's copy of a charge spell charge
+    // for as long as the real thumb actually held it (the v1 wire had no
+    // release, so the host fired every charge at minimum the instant the key
+    // went down — a charged dash lurching off on press).
+    if (phase === 'hold') return false;
+    this.channel.send(
+      JSON.stringify({ t: phase === 'press' ? 'cast' : 'rel', slot, x: aim.x, y: aim.y })
+    );
     return false;
+  }
+
+  interceptCastCancel(slot: number): void {
+    this.channel.send(JSON.stringify({ t: 'stop', slot }));
   }
 
   interceptRecall(): boolean {
     this.channel.send(JSON.stringify({ t: 'recall' }));
     return false;
+  }
+
+  /**
+   * The player confirmed a new kit in the panel. It was already applied
+   * locally by `MatchDirector` — that is the prediction — so what is left is
+   * making it real: the host applies the same plan to its authoritative
+   * champion and re-broadcasts, and this session drops the echo (`applyEvent`
+   * 'champ'). Without this wire the change lived only on this screen and the
+   * two ends fought with two different kits.
+   */
+  onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void {
+    if (unit !== this.game.player) return;
+    this.channel.send(JSON.stringify({ t: 'loadout', plan: planFromPreset(preset) }));
   }
 
   /** Positions of every known unit, for the e2e's cross-page comparison. */

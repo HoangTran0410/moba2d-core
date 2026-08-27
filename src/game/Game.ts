@@ -359,18 +359,23 @@ export default class Game {
     this.spellInputController = new SpellInputController({
       keyBindings: SpellHotKeys,
       getSpell: slot => this.player.spells[slot],
-      createContext: (_spell, slot) => {
+      createContext: (_spell, slot, _heldMs, phase) => {
         const spell = this.player.spells[slot];
         if (!spell) return undefined;
         // A thumb aims by dragging; a mouse aims by being somewhere. One line
         // decides which, and every spell downstream sees an ordinary context.
         const aim = this.touchAim.get(slot) ?? this.worldMouse;
-        // A net client sends the cast to the host instead of pressing it:
-        // returning undefined is the controller's own "no cast" path, and
-        // the visual comes back as a cast event like every other unit's.
-        if (this.net?.interceptCast(slot, aim)) return undefined;
+        // A net client forwards presses and releases to the host and then
+        // lets the local seam run too — that is the prediction (the session
+        // answers `false`; `true` is the "wire only" path). The phase is what
+        // lets a charge cross as press *and* release instead of firing at
+        // minimum charge, and keeps the per-frame hold stream off the wire.
+        if (this.net?.interceptCast(slot, aim, phase)) return undefined;
         return this.createSpellContext(spell, this.player, aim);
       },
+      // A cancelled charge must be called off on the host too, or it keeps
+      // charging there and fires at max on its own.
+      onCancel: slot => this.net?.interceptCastCancel(slot),
     });
 
     this.itemInputController = new SpellInputController({
@@ -553,6 +558,13 @@ export default class Game {
   }
 
   pause() {
+    // A LAN match stops for nobody: the host's sim is other people's match
+    // and a client's "pause" only freezes its own view while the host plays
+    // on — the desync the panel then mutates. So with a net session attached
+    // the config panel (and `pauseForAway`) opens over the *running* match,
+    // exactly the rule the shop has always had, and this refusal is the one
+    // place that decides it rather than a check at every `pause()` caller.
+    if (this.net) return;
     if (this.paused) return;
     this.paused = true;
     this.onPauseChanged?.(true);

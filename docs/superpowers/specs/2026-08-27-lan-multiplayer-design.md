@@ -218,8 +218,20 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   presentation may lag reality between snapshots.
 - **Touch controls on a net client are not intercepted** (`steerPlayer`
   writes locally); keyboard/mouse only for v1 clients.
-- **Charge spells on puppets release instantly** at min charge — the cast
-  event carries no hold duration yet.
+- **Charge spells on *puppets* release instantly** at min charge — the cast
+  event still carries no hold duration. The *own champion's* charges are
+  real since the press/release wire landed (2026-08-28): the client sends
+  `cast` on press and `rel` on release (`stop` for a called-off charge), so
+  the host's authoritative copy charges for as long as the real thumb held
+  — puppets only mis-time the visual, positions ride snapshots regardless.
+- **A client's kit change syncs; nothing else in the panel does.** Đổi
+  tướng crosses as a `loadout` message carrying the applied plan
+  (`net/kitWire.ts`), the host applies + re-broadcasts, and
+  `Game.pause()` refuses while a net session is attached, so the panel
+  opens over the running match on both ends (the shop's old rule). But a
+  client's *other* panel mutations — rules, world, reset, bots — still
+  edit only the local half and desync; gating those controls on
+  `isNetClient()` is v2 work.
 - **No reconnect, no mid-match join after the first hello race, no host
   migration**: a dropped socket is a dead session.
 - **`UNIT`-targeted casts re-resolve on the client** from the aim point, so

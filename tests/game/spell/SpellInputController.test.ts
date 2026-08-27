@@ -57,8 +57,18 @@ describe('SpellInputController', () => {
     controller.update(30);
 
     expect(spell.hold).toHaveBeenCalledTimes(2);
-    expect(createContext).toHaveBeenCalledWith(spell, 0, 16);
-    expect(createContext).toHaveBeenCalledWith(spell, 0, 36);
+    expect(createContext).toHaveBeenCalledWith(spell, 0, 16, 'hold');
+    expect(createContext).toHaveBeenCalledWith(spell, 0, 36, 'hold');
+  });
+
+  it('labels the phases: press on keydown, hold per frame, release on keyup', () => {
+    const { controller, createContext } = setup('CHARGING');
+
+    controller.keyDown(81, false);
+    controller.update(16);
+    controller.keyUp(81);
+
+    expect(createContext.mock.calls.map(call => call[3])).toEqual(['press', 'hold', 'release']);
   });
 
   it('emits one RELEASE on keyup', () => {
@@ -141,8 +151,10 @@ describe('SpellInputController pointer gestures', () => {
 
     expect(spell.press).toHaveBeenCalledTimes(1);
     expect(spell.press).toHaveBeenCalledWith(context);
-    // The context is built at release, so it carries where the drag ended.
-    expect(createContext).toHaveBeenCalledWith(spell, 0, 120);
+    // The context is built at release, so it carries where the drag ended —
+    // and its phase is 'press': the spell is being pressed for the first
+    // time, however late the finger lifted.
+    expect(createContext).toHaveBeenCalledWith(spell, 0, 120, 'press');
     expect(controller.isPointerHeld(0)).toBe(false);
   });
 
@@ -196,6 +208,46 @@ describe('SpellInputController pointer gestures', () => {
 
     expect(spell.cancel).toHaveBeenCalledWith('PLAYER_CANCEL');
     expect(spell.release).not.toHaveBeenCalled();
+  });
+
+  it('reports an accepted charge cancel through onCancel, and only then', () => {
+    const spell = {
+      state: 'READY' as SpellRuntimeState,
+      castSpec: { activation: 'HOLD_RELEASE' as ActivationPattern },
+      press: vi.fn(() => true),
+      hold: vi.fn(() => true),
+      release: vi.fn(() => true),
+      cancel: vi.fn(() => true),
+    };
+    const onCancel = vi.fn();
+    const controller = new SpellInputController({
+      keyBindings: [81],
+      getSpell: () => spell,
+      createContext: () => context,
+      onCancel,
+    });
+
+    // A deferred press that never happened has nothing to call off — the
+    // net seam must not hear about it either.
+    spell.castSpec.activation = 'PRESS';
+    controller.pointerDown(0);
+    controller.pointerCancel(0);
+    expect(onCancel).not.toHaveBeenCalled();
+
+    // A charge the runtime agreed to cancel is reported with its slot.
+    spell.castSpec.activation = 'HOLD_RELEASE';
+    controller.pointerDown(0);
+    spell.state = 'CHARGING';
+    controller.pointerCancel(0);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledWith(0);
+
+    // A cancel the runtime refused (already committed) stays local.
+    spell.cancel.mockReturnValueOnce(false);
+    controller.pointerDown(0);
+    spell.state = 'CHARGING';
+    controller.pointerCancel(0);
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it('never holds a slot whose press was deferred', () => {

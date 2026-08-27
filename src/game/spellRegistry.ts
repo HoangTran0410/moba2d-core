@@ -90,6 +90,28 @@ export const isSpellLoaded = (id: string): boolean =>
 export const spellClassOfId = (id: string): SpellClass | null =>
   contentRegistry().spellClass(qualifySpellId(id));
 
+let classIdCache = new Map<SpellClass, string>();
+
+/**
+ * The reverse lookup: which catalogue id names this class. What the net layer
+ * uses to turn a live kit (classes) back into a serializable `KitPlan` (ids)
+ * — see `net/kitWire.ts`. Rebuilt from scratch on a miss because spell
+ * modules stream in as chunks, so the map is only ever as current as the last
+ * time somebody asked; `null` after a rebuild means the class genuinely is
+ * not in the display population (e.g. `Recall`, or a test double).
+ */
+export const spellIdOfClass = (spellClass: SpellClass): string | null => {
+  const hit = classIdCache.get(spellClass);
+  if (hit) return hit;
+  classIdCache = new Map();
+  const registry = contentRegistry();
+  for (const id of registry.spellDisplayIds()) {
+    const resolved = registry.spellClass(id);
+    if (resolved) classIdCache.set(resolved, id);
+  }
+  return classIdCache.get(spellClass) ?? null;
+};
+
 /** Every id currently in memory, primarily for diagnostics and tests. */
 export const loadedSpellIds = (): string[] => {
   const registry = contentRegistry();
@@ -198,6 +220,7 @@ export function randomLoadedId(): string | null {
 export function resetSpellRegistryForTests(): void {
   resetContentRegistryForTests();
   everythingRequested = false;
+  classIdCache = new Map();
 }
 
 /**

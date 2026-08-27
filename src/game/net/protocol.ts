@@ -77,6 +77,12 @@ export type NetMessage =
     }
   | { t: 'move'; x: number; y: number }
   | { t: 'cast'; slot: number; x: number; y: number }
+  /** Release the charge `cast` started, aimed where the drag ended. Without it, min-charge only. */
+  | { t: 'rel'; slot: number; x: number; y: number }
+  /** The player called a running charge off — mirror of the local cancel. */
+  | { t: 'stop'; slot: number }
+  /** The client changed its own kit (đổi tướng); `plan` is a `KitPlan` (`kitWire.ts` validates). */
+  | { t: 'loadout'; plan: unknown }
   | { t: 'recall' };
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
@@ -159,7 +165,14 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
         ? (parsed as NetMessage)
         : null;
     case 'cast':
+    case 'rel':
       return typeof message.slot === 'number' ? (parsed as NetMessage) : null;
+    case 'stop':
+      return typeof message.slot === 'number' ? { t: 'stop', slot: message.slot } : null;
+    case 'loadout':
+      return typeof message.plan === 'object' && message.plan !== null
+        ? (parsed as NetMessage)
+        : null;
     case 'recall':
       return { t: 'recall' };
     default:
