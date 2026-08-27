@@ -4,6 +4,7 @@ import AttackableUnit, {
 } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
+import Pet from '@/game/gameObject/attackableUnits/Pet';
 import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
@@ -314,21 +315,37 @@ export class ClientSession implements NetGameHooks {
     const plan = event.plan as KitPlan;
     await loadSpells(plan.passiveId ? [...plan.spellIds, plan.passiveId] : plan.spellIds);
     if (!this.pendingChamps.delete(event.id)) return; // 'gone' raced the fetch
-    const champion = attachRecall(
-      new Champion({
+    let champion: Champion;
+    if (event.pet) {
+      // A real `Pet`, so the puppet wears the pet's own chrome — compact
+      // frame, life-timer bar — instead of a full champion frame. Its sim
+      // half is gated (`Pet.update` keeps only the clock on a net client);
+      // `lifeMs` is the life *remaining* at broadcast, so the bar agrees
+      // with the host's. The owner is display-book-keeping here (the gated
+      // update never reads it), so an untracked summoner safely falls to
+      // the local player.
+      const owner = (event.pet.ownerId && this.units.get(event.pet.ownerId)) || this.game.player;
+      const puppet = new Pet({
         game: this.game,
         position: createVector(event.x, event.y),
         teamId: event.team,
         preset: presetFromPlan(plan),
-      })
-    );
-    // A summoned pet's puppet: the real body size (a subclass constructor
-    // fact no plan carries), and remembered so the Đội tab skips it — its
-    // *local* twin never got into the world (`ObjectManager.addObject`
-    // refuses `isSummonedPet` on a net client).
-    if (event.pet) {
-      champion.stats.size.baseValue = event.pet.size;
-      this.petUnits.add(champion);
+        ownerUnit: owner,
+        lifeTimeMs: event.pet.lifeMs,
+      });
+      puppet.isNetPuppet = true; // through `addObject`'s local-pet gate
+      puppet.stats.size.baseValue = event.pet.size;
+      this.petUnits.add(puppet);
+      champion = puppet;
+    } else {
+      champion = attachRecall(
+        new Champion({
+          game: this.game,
+          position: createVector(event.x, event.y),
+          teamId: event.team,
+          preset: presetFromPlan(plan),
+        })
+      );
     }
     this.game.objectManager.addObject(champion);
     this.units.set(event.id, champion);

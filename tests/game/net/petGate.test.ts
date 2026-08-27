@@ -41,10 +41,17 @@ describe('the net-client pet gate', () => {
     game.objectManager.addObject(summon);
     expect(game.objectManager._objectToBeAdd).not.toContain(summon);
 
-    // A champion (the puppet the client builds from the host's spawn event)
-    // still enters — the gate reads the pet marker, not the class tree.
+    // A champion (an ordinary puppet) still enters — the gate reads the pet
+    // marker, not the class tree.
     game.objectManager.addObject(owner);
     expect(game.objectManager._objectToBeAdd).toContain(owner);
+
+    // And the one pet a client does hold — the host's rebuilt summon,
+    // flagged by `ClientSession` — passes.
+    const puppet = pet();
+    puppet.isNetPuppet = true;
+    game.objectManager.addObject(puppet);
+    expect(game.objectManager._objectToBeAdd).toContain(puppet);
   });
 
   it('changes nothing offline and on a host', () => {

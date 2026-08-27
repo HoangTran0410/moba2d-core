@@ -20,6 +20,7 @@ import {
   minionMusterSlotsFrom,
   monsterBodyPreset,
   monsterFillingSlot,
+  loadoutFromPlan,
   planLoadout,
   planMatchKits,
   presetFromPlan,
@@ -410,7 +411,15 @@ export default class Game {
     // practice panel's editor needs it to open on a unit's real kit rather than
     // on a default (see `MatchDirector.loadoutOf`).
     const loadoutsInPlay: { unit: Champion; loadout: ChampionLoadout }[] = [
-      { unit: this.player, loadout: pregameConfig.player },
+      {
+        unit: this.player,
+        // A net client's champion came from the host's hello plan, so the
+        // editor must open on *that* — the stored config is this device's
+        // last local loadout, and on a two-tab machine it is literally the
+        // host's (both tabs persist into one localStorage key). See
+        // `loadoutFromPlan`.
+        loadout: isNetClient() ? loadoutFromPlan(kits.player) : pregameConfig.player,
+      },
     ];
 
     // A net client fields no bots of its own: the host's champions — bots

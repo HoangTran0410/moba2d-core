@@ -235,6 +235,33 @@ await guard(async () => {
     JSON.stringify(pauseProbe)
   );
 
+  // --------------------------------- the editor opens on the client's kit
+  // `loadoutOf(player)` used to be seeded from this device's stored
+  // pregameConfig — and two tabs on one machine share localStorage, which
+  // the host tab persists its own loadout into on every panel mutation: the
+  // client's đổi-tướng modal opened showing the *host's* kit. The seed now
+  // comes from the hello plan, so resolving it must reproduce the exact
+  // classes the client is standing there holding.
+  const seededLoadout = await clientPage.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const loadout = game.director.loadoutOf(game.player);
+    const { getChampionPresetFromLoadout } = await import('/src/game/preset.ts');
+    const preset = getChampionPresetFromLoadout(loadout);
+    return {
+      mode: loadout.mode,
+      championName: loadout.championName,
+      matches:
+        preset.spells.map(cls => cls.name).join() ===
+        game.player.spells.map(spell => spell.constructor.name).join(),
+    };
+  });
+  report.seededLoadout = seededLoadout;
+  check(
+    "the client's editor opens on its own hello kit",
+    seededLoadout.matches,
+    JSON.stringify(seededLoadout)
+  );
+
   // -------------------------------------------- đổi tướng crosses the wire
   // The client re-rolls its own champion through the same director the panel
   // uses. The host must end up running the *same* classes — before this wire
@@ -501,7 +528,15 @@ await guard(async () => {
         const game = window.__lol2d.scene.oScene.game;
         const copies = [];
         for (const object of game.objectManager.objects) {
-          if (object.name === 'Gấu Kiểm Thử') copies.push(object.stats.size.baseValue);
+          if (object.name === 'Gấu Kiểm Thử') {
+            copies.push({
+              size: object.stats.size.baseValue,
+              // A real Pet puppet, not a champion-framed stand-in — the pet
+              // chrome (compact bar, life timer) is the class's own draw.
+              kind: object.constructor.name,
+              timerLive: typeof object.remainingMs === 'number' && object.remainingMs > 0,
+            });
+          }
         }
         return copies.length > 0 ? copies : false;
       },
@@ -529,8 +564,13 @@ await guard(async () => {
   );
   report.petSync = { copies: petView, localPetRefused, rosterBeforePet, rosterAfterPet };
   check(
-    'a summoned pet stands exactly once on the client, real size, off the roster',
-    petView.length === 1 && petView[0] === 111 && localPetRefused && rosterAfterPet === rosterBeforePet,
+    'a summoned pet stands exactly once on the client, as a real sized Pet, off the roster',
+    petView.length === 1 &&
+      petView[0].size === 111 &&
+      petView[0].kind === 'Pet' &&
+      petView[0].timerLive &&
+      localPetRefused &&
+      rosterAfterPet === rosterBeforePet,
     JSON.stringify(report.petSync)
   );
 

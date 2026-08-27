@@ -7,6 +7,7 @@ import type AttackableUnit from './AttackableUnit';
 import type { UnitDeathData } from './AttackableUnit';
 import Invisible from '@/game/gameObject/buffs/Invisible';
 import Untargetable from '@/game/gameObject/buffs/Untargetable';
+import { isNetClient } from '@/game/net/netRole';
 
 /** How often a pet re-picks its target. Cheaper than a query per frame, and it also stops it twitching between two equidistant enemies. */
 export const PET_SCAN_INTERVAL_MS = 250;
@@ -77,6 +78,15 @@ export default class Pet extends Champion {
    * `PredefinedFilters`, and the reverse import would be a cycle.
    */
   readonly isSummonedPet = true;
+
+  /**
+   * True on the one pet a net client *does* hold: the host's authoritative
+   * summon, rebuilt by `ClientSession` so it wears the real pet chrome (the
+   * compact frame, the life-timer bar) instead of a full champion frame.
+   * Lets it through `ObjectManager.addObject`'s gate; `update` below keys
+   * off the net role instead, since on a client every living pet is one.
+   */
+  isNetPuppet = false;
 
   /**
    * Overrides `Champion`'s `'champion'`. A summon is not a takedown: without
@@ -185,6 +195,11 @@ export default class Pet extends Champion {
     super.update();
 
     this.age += deltaTime;
+    // A puppet keeps only the clock (the timer bar reads `age`): its brain,
+    // leash and expiry are the host's — expiring here on the local clock
+    // would race the authoritative 'gone', and a scan that issued attack
+    // orders would double every swing the host already forwards.
+    if (isNetClient()) return;
     // Timed out or outlived its summoner. Being killed is handled in `die`,
     // which the damage pipeline reaches before this ever runs — all three are
     // the end of the same life and all three owe the pet its parting effect

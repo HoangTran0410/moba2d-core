@@ -597,6 +597,29 @@ export const planMatchKits = (config: {
   ),
 });
 
+/**
+ * The loadout the in-game editor should open on, reconstructed from a plan.
+ *
+ * A net client's champion is built from the host's hello plan, not from this
+ * device's stored `pregameConfig` — but `loadoutOf` used to be seeded from
+ * the stored config anyway, so the editor opened on whatever this machine
+ * last persisted. Two tabs on one machine share `localStorage`, and the host
+ * tab persists its own loadout into the same key on every panel mutation:
+ * the client's "đổi tướng" modal opened showing the *host's* kit.
+ *
+ * Champion mode when the plan's name is a catalogue champion (the hello kit
+ * is `planRandomKit`, which always rolls one), so the editor opens with that
+ * champion selected; anything else falls to a custom kit carrying the exact
+ * slots. Either way the summoners are the plan's own.
+ */
+export const loadoutFromPlan = (plan: KitPlan): ChampionLoadout => ({
+  mode: playableKits().some(kit => kit.name === plan.name) ? 'champion' : 'custom',
+  championName: plan.name,
+  summonerD: plan.spellIds[5] ?? '',
+  summonerF: plan.spellIds[6] ?? '',
+  customSlots: [...plan.spellIds],
+});
+
 /** The flat, deduplicated id list a plan needs loaded — what `GameScene` awaits. */
 export const plannedSpellIds = (plan: MatchPlan): string[] => [
   // Passives ride along: they are ordinary spell modules and `presetFromPlan`

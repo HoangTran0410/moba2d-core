@@ -225,7 +225,12 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   the host's authoritative copy charges for as long as the real thumb held
   — puppets only mis-time the visual, positions ride snapshots regardless.
 - **A client's kit and side changes sync; the rest of the panel does
-  not.** Đổi tướng crosses as a `loadout` message carrying the applied
+  not.** The editor also *opens* on the client's real kit: `loadoutOf` is
+  seeded from the hello plan (`preset.loadoutFromPlan`), not from this
+  device's stored pregameConfig — two tabs on one machine share
+  `localStorage`, which the host tab persists its own loadout into, so the
+  client's đổi-tướng modal used to open showing the host's kit. Đổi tướng
+  crosses as a `loadout` message carrying the applied
   plan (`net/kitWire.ts`), đổi phe as a `team` message (both through
   `MatchDirector`'s own methods, whose net hooks re-broadcast — the champ
   event always carries the current team). `Game.pause()` refuses while a
@@ -278,10 +283,12 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   on their own local timers at both ends and are deliberately not
   forwarded), **summoned pets** (a `Pet` is a `Champion`, so the host was
   already broadcasting it — as an avatar-less default-sized puppet beside
-  the client's own locally-played summon, i.e. two Tibbers of which only
-  the ugly one was real; now `ObjectManager.addObject` refuses
-  `isSummonedPet` on a net client, the champ event carries `pet.size` and
-  the live avatar key, and the puppet stays off the Đội tab), and every
+  the client's own locally-played summon, i.e. two bears of which only the
+  ugly one was real; now `ObjectManager.addObject` refuses `isSummonedPet`
+  on a net client unless `isNetPuppet`, the champ event carries
+  `pet.{size, lifeMs, ownerId}` plus the live avatar key, and the client
+  rebuilds a *real* `Pet` — compact frame and life-timer chrome — whose
+  sim half `Pet.update` gates on the net role, off the Đội tab), and every
   floating damage number (`dmg` events in the ordinary
   flush — `AttackableUnit.takeDamage` announces the post-mitigation figure
   on `EventType.ON_TAKE_DAMAGE` in the same breath it floats it, and the

@@ -625,7 +625,8 @@ export default class ObjectManager {
     // local one in put two Tibbers on screen, and only the ugly one was
     // real. The marker, not `instanceof Pet`, because `Pet` imports this
     // module (`PredefinedFilters`) and the reverse would be a cycle.
-    if ((object as { isSummonedPet?: boolean }).isSummonedPet && isNetClient()) return;
+    const marked = object as { isSummonedPet?: boolean; isNetPuppet?: boolean };
+    if (marked.isSummonedPet && !marked.isNetPuppet && isNetClient()) return;
     this._objectToBeAdd.push(object);
   }
 

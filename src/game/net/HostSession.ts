@@ -179,9 +179,18 @@ export class HostSession implements NetGameHooks {
       x: unit.position.x,
       y: unit.position.y,
       plan: this.championPlans.get(unit) ?? this.planFromLiveChampion(unit),
-      // A summon carries its body size — the one look a plan cannot: size is
-      // the pet subclass's own constructor fact, not a tuning any kit names.
-      ...(unit instanceof Pet ? { pet: { size: unit.stats.size.baseValue } } : {}),
+      // A summon carries its looks and its clock — the facts a plan cannot:
+      // body size is the pet subclass's own constructor decision, and the
+      // remaining life is what keeps the client's timer bar honest.
+      ...(unit instanceof Pet
+        ? {
+            pet: {
+              size: unit.stats.size.baseValue,
+              lifeMs: unit.remainingMs,
+              ownerId: this.ids.get(unit.ownerUnit),
+            },
+          }
+        : {}),
     };
   }
 
