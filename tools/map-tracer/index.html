@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Tracer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font: 13px/1.5 system-ui, sans-serif;
+        background: #14181d;
+        color: #d8d4c8;
+        display: flex;
+        height: 100vh;
+      }
+      #sidebar {
+        width: 320px;
+        flex: 0 0 auto;
+        padding: 12px;
+        overflow-y: auto;
+        background: #1a2027;
+        border-right: 1px solid #2c3540;
+      }
+      #stage {
+        flex: 1;
+        overflow: auto;
+        display: grid;
+        place-items: center;
+      }
+      #canvas {
+        cursor: crosshair;
+        image-rendering: pixelated;
+        background: #000;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      fieldset {
+        border: 1px solid #2c3540;
+        margin: 0 0 10px;
+        padding: 8px;
+      }
+      legend {
+        padding: 0 6px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        color: #9aa4ae;
+      }
+      label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 0;
+      }
+      input[type='range'] {
+        flex: 1;
+      }
+      input[type='number'] {
+        width: 70px;
+        background: #10151a;
+        color: inherit;
+        border: 1px solid #2c3540;
+        padding: 2px 4px;
+      }
+      .class-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
+      .class-tabs button {
+        flex: 1;
+        padding: 4px 0;
+        background: #10151a;
+        color: inherit;
+        border: 1px solid #2c3540;
+        cursor: pointer;
+      }
+      .class-tabs button.active {
+        border-color: currentColor;
+        font-weight: 600;
+      }
+      .class-tabs button[data-class='wall'] {
+        color: #e08a8a;
+      }
+      .class-tabs button[data-class='bush'] {
+        color: #8ad08a;
+      }
+      .class-tabs button[data-class='water'] {
+        color: #8ab4e0;
+      }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        min-height: 22px;
+      }
+      .swatches button {
+        width: 22px;
+        height: 22px;
+        border: 1px solid #555;
+        cursor: pointer;
+        padding: 0;
+      }
+      #export {
+        width: 100%;
+        height: 160px;
+        background: #10151a;
+        color: #c5d0c5;
+        border: 1px solid #2c3540;
+        font: 11px/1.4 ui-monospace, monospace;
+        white-space: pre;
+      }
+      #stats {
+        color: #9aa4ae;
+        margin: 6px 0;
+      }
+      button.wide {
+        width: 100%;
+        padding: 6px 0;
+        margin-top: 4px;
+        background: #23303c;
+        color: inherit;
+        border: 1px solid #3a4a58;
+        cursor: pointer;
+      }
+      #drop-hint {
+        color: #9aa4ae;
+        text-align: center;
+        padding: 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sidebar">
+      <h1>Map Tracer</h1>
+      <fieldset>
+        <legend>Image</legend>
+        <input type="file" id="file" accept="image/*" />
+        <div id="image-info"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Classes — click the image to sample</legend>
+        <div class="class-tabs" id="tabs"></div>
+        <div class="swatches" id="swatches"></div>
+        <label>tolerance <input type="range" id="tolerance" min="4" max="140" value="48" /><span id="tolerance-value"></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Trace</legend>
+        <label>downsample <input type="range" id="downsample" min="1" max="8" value="2" /><span id="downsample-value"></span></label>
+        <label>simplify px <input type="range" id="epsilon" min="0" max="8" step="0.5" value="1.5" /><span id="epsilon-value"></span></label>
+        <label>min area <input type="range" id="min-area" min="1" max="200" value="16" /><span id="min-area-value"></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Export</legend>
+        <label>map size <input type="number" id="map-size" value="6400" min="100" /></label>
+        <div id="stats"></div>
+        <textarea id="export" readonly spellcheck="false"></textarea>
+        <button class="wide" id="copy">Copy terrain literal</button>
+      </fieldset>
+    </div>
+    <div id="stage">
+      <div id="drop-hint">Drop a top-down map image here<br />(or use the file picker)</div>
+      <canvas id="canvas" hidden></canvas>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
