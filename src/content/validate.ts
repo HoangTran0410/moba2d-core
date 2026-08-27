@@ -173,6 +173,32 @@ function checkChampions(pack: Record<string, unknown>, errors: string[]): void {
         }
       }
     }
+    if (entry.defence !== undefined) {
+      if (!isObject(entry.defence)) {
+        errors.push(`champions.${entry.id}.defence: must be an object`);
+      } else {
+        // Every field optional — a pack may raise health alone and leave the
+        // resistances to core's default, which is the smallest useful step.
+        // Present and unreadable is still an error: a `NaN` health pool is a
+        // champion whose bar never draws and who cannot be damaged or killed.
+        for (const field of ['health', 'healthRegen', 'armor', 'magicResist'] as const) {
+          const value = entry.defence[field];
+          if (value !== undefined && !isFiniteNumber(value)) {
+            errors.push(`champions.${entry.id}.defence.${field}: must be a finite number`);
+          }
+        }
+        // A pool is the one field with a floor. Zero health is a champion that
+        // is dead on the frame it spawns, and negative is worse — nothing in
+        // the damage path ever brings it back above zero, so it respawns into
+        // the same state for the whole match. Resistances are deliberately not
+        // checked this way: negative is meaningful there (shred), and
+        // `combat/Mitigation.ts` mirrors its own curve to stay safe at any
+        // depth.
+        if (entry.defence.health !== undefined && (entry.defence.health as number) <= 0) {
+          errors.push(`champions.${entry.id}.defence.health: must be greater than zero`);
+        }
+      }
+    }
     if (!Array.isArray(entry.spells)) {
       errors.push(`champions.${entry.id}.spells: must be an array`);
       continue;
@@ -270,6 +296,70 @@ function checkSpellDisplay(pack: Record<string, unknown>, errors: string[]): voi
  * equip and **take it back on sale**, which is a shop that can kill you. See
  * `ITEM_STAT_KEYS`.
  */
+/**
+ * The roles a hand-built kit may pick from.
+ *
+ * Core never names one — a taxonomy is the roster's vocabulary — so the only
+ * things worth checking are that a picker can render the list and that a saved
+ * choice can find its way back:
+ *
+ *   - a **duplicate or missing `id`** is a stored loadout that resolves to the
+ *     wrong role, or to none, and the player's kit silently changes body
+ *     between sessions;
+ *   - a **missing `name`** is a blank row in the picker;
+ *   - a **malformed profile** is the same failure `checkChampions` guards for a
+ *     champion, one screen earlier.
+ */
+function checkArchetypes(pack: Record<string, unknown>, errors: string[]): void {
+  if (pack.archetypes === undefined) return;
+  if (!Array.isArray(pack.archetypes)) {
+    errors.push('archetypes: must be an array');
+    return;
+  }
+  const seen = new Set<string>();
+  for (const [index, value] of pack.archetypes.entries()) {
+    const path = `archetypes[${index}]`;
+    if (!isObject(value)) {
+      errors.push(`${path}: must be an object`);
+      continue;
+    }
+    const entry = value as Record<string, unknown>;
+    const id = entry.id;
+    if (typeof id !== 'string' || id.length === 0) {
+      errors.push(`${path}.id: must be a non-empty string`);
+    } else if (seen.has(id)) {
+      errors.push(`${path}.id: "${id}" is declared twice`);
+    } else {
+      seen.add(id);
+    }
+    if (typeof entry.name !== 'string' || entry.name.length === 0) {
+      errors.push(`${path}.name: must be a non-empty string`);
+    }
+    if (!isObject(entry.attack)) {
+      errors.push(`${path}.attack: must be an object`);
+    } else {
+      for (const field of ['damage', 'attacksPerSecond', 'range'] as const) {
+        if (!isFiniteNumber((entry.attack as Record<string, unknown>)[field])) {
+          errors.push(`${path}.attack.${field}: must be a finite number`);
+        }
+      }
+    }
+    if (!isObject(entry.defence)) {
+      errors.push(`${path}.defence: must be an object`);
+    } else {
+      const defence = entry.defence as Record<string, unknown>;
+      for (const field of ['health', 'healthRegen', 'armor', 'magicResist'] as const) {
+        if (defence[field] !== undefined && !isFiniteNumber(defence[field])) {
+          errors.push(`${path}.defence.${field}: must be a finite number`);
+        }
+      }
+      if (defence.health !== undefined && (defence.health as number) <= 0) {
+        errors.push(`${path}.defence.health: must be greater than zero`);
+      }
+    }
+  }
+}
+
 function checkItems(pack: Record<string, unknown>, errors: string[]): void {
   if (pack.items === undefined) return;
   if (!isObject(pack.items)) {
@@ -672,6 +762,7 @@ export function validatePack(candidate: unknown): ValidationResult {
   checkMonsterAbilities(candidate, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkArchetypes(candidate, errors);
   checkItems(candidate, errors);
   checkMonsters(candidate, errors);
   checkMaps(candidate, errors);
@@ -702,6 +793,7 @@ export function validatePackData(candidate: unknown): DataValidationResult {
   checkManifest(candidate.manifest, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkArchetypes(candidate, errors);
   checkItems(candidate, errors);
   checkMonsters(candidate, errors);
   checkMaps(candidate, errors);

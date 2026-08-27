@@ -75,6 +75,37 @@ export const DEFAULT_CHAMPION_ATTACK: ChampionAttackTuning = {
   boltUnitsPerSecond: 1000,
 };
 
+/** A champion's durability profile. See `content/ContentPack.ts`'s `ChampionDefence`. */
+export interface ChampionDefenceTuning {
+  health: number;
+  healthRegen: number;
+  armor: number;
+  magicResist: number;
+}
+
+/**
+ * Durability for a champion with no profile of its own — **today's numbers,
+ * written down.**
+ *
+ * Every one of these is what `Stats` already constructs a champion with, so
+ * the day this file grew a defence profile not one champion in any pack
+ * changed. That is the whole point of the default existing: a pack opts into
+ * a durability spread the way it opted into an attack spread, and a pack that
+ * says nothing keeps the game it shipped.
+ *
+ * The numbers are also a fair record of the problem. 100 health is *less than
+ * a minion's* 140, and it was tuned — see `DEFAULT_CHAMPION_ATTACK` above —
+ * against about 15 damage a second, back when nothing could be bought. Zero of
+ * both resistances is `Stats.armor`'s own migration story: they shipped inert
+ * so that adding damage types moved no existing number.
+ */
+export const DEFAULT_CHAMPION_DEFENCE: ChampionDefenceTuning = {
+  health: 100,
+  healthRegen: 0.06,
+  armor: 0,
+  magicResist: 0,
+};
+
 export interface ChampionPresetData {
   name?: string;
   /**
@@ -99,6 +130,8 @@ export interface ChampionPresetData {
   /** Overrides DEFAULT_CHAMPION_ATTACK. Drop `range` below the melee threshold
    *  and the champion swings instead of shooting; nothing else changes. */
   attack?: ChampionAttackTuning;
+  /** Overrides DEFAULT_CHAMPION_DEFENCE. */
+  defence?: ChampionDefenceTuning;
 }
 
 export interface ChampionOptions extends Omit<AttackableUnitOptions, 'avatar'> {
@@ -331,7 +364,10 @@ export default class Champion extends AttackableUnit {
     // A champion with no preset at all is still a champion: it gets the default
     // attack profile rather than a unit that cannot swing.
     if (preset) this.applyPreset(preset);
-    else this.applyAttackTuning(DEFAULT_CHAMPION_ATTACK);
+    else {
+      this.applyAttackTuning(DEFAULT_CHAMPION_ATTACK);
+      this.applyDefenceTuning(DEFAULT_CHAMPION_DEFENCE);
+    }
   }
 
   /**
@@ -370,6 +406,7 @@ export default class Champion extends AttackableUnit {
     );
     this.applyPassive(preset.passive);
     this.applyAttackTuning(preset.attack ?? DEFAULT_CHAMPION_ATTACK);
+    this.applyDefenceTuning(preset.defence ?? DEFAULT_CHAMPION_DEFENCE);
   }
 
   /**
@@ -394,6 +431,49 @@ export default class Champion extends AttackableUnit {
     // Nothing to clear from `_armedPassives`: it is keyed by instance, and the
     // outgoing instance is gone. The incoming one has never been armed, so the
     // next frame arms it.
+  }
+
+  /**
+   * Applies a durability profile, **keeping the champion exactly as hurt as it
+   * was.**
+   *
+   * The health *pool* is tuning and is written straight through. Current health
+   * is a resource, and this method runs in more places than a spawn: the
+   * practice panel's loadout editor commits a whole loadout on every single
+   * edit, and `MatchDirector` swaps a champion under a unit already standing on
+   * the map. Writing `health = maxHealth` here would make the editor a full
+   * heal on tap, mid-fight, for free.
+   *
+   * So the fraction is preserved rather than the amount. A champion at half
+   * health whose pool goes from 100 to 220 comes out at 110 — still half. On a
+   * fresh unit the fraction is 1 and it fills, which is what a spawn wants
+   * without this method having to know it is one. `applyPreset`'s own comment
+   * says health and mana are not its business; this is the narrow exception,
+   * and it moves nobody's health *bar* even while it moves the pool under it.
+   *
+   * **An unchanged pool is not rescaled at all**, rather than multiplied by a
+   * ratio that happens to be one. `7 / 100 * 100` is `7.000000000000001` in
+   * binary floating point, and the editor commits a loadout on every keystroke
+   * — so the round trip alone would have walked a champion's health off a whole
+   * number and kept walking. Which is also the only case that matters in
+   * practice: swapping a kit almost never changes the pool.
+   */
+  private applyDefenceTuning(defence: ChampionDefenceTuning): void {
+    const pool = this.stats.maxHealth.baseValue;
+
+    this.stats.maxHealth.baseValue = defence.health;
+    this.stats.healthRegen.baseValue = defence.healthRegen;
+    this.stats.armor.baseValue = defence.armor;
+    this.stats.magicResist.baseValue = defence.magicResist;
+
+    if (defence.health === pool) return;
+
+    // Whole points, like every other write to a health pool — see `takeDamage`.
+    const filled = pool > 0 ? this.stats.health.baseValue / pool : 1;
+    this.stats.health.baseValue = Math.min(
+      this.stats.maxHealth.value,
+      Math.max(0, Math.round(defence.health * filled))
+    );
   }
 
   private applyAttackTuning(attack: ChampionAttackTuning): void {

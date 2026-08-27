@@ -51,6 +51,12 @@
 /** Anything that can own a hit. `Spell` and `Buff` both already are one. */
 export interface DamageAttributable {
   readonly name?: string;
+  /**
+   * Whether damage landing under this attribution is *ability* damage, and so
+   * whether `Stats.abilityPower` amplifies it. See `abilityPowerScales` below
+   * for why the ambient answers this rather than `takeDamage` guessing.
+   */
+  readonly damageScalesWithAbilityPower?: boolean;
 }
 
 let current: DamageAttributable | null = null;
@@ -77,6 +83,31 @@ export function endAttribution(previous: DamageAttributable | null): void {
 /** What is running right now, for a spell object to stamp onto itself. */
 export function currentAttribution(): DamageAttributable | null {
   return current;
+}
+
+/**
+ * Whether what is running right now is an ability, for `Stats.abilityPower`.
+ *
+ * `takeDamage` cannot work this out on its own. It sees a number, an attacker
+ * and a damage type, and none of the three separates a swing from a cast — a
+ * basic attack is `PHYSICAL`, but so are a third of the abilities in the
+ * installed packs since they started declaring their types. The ambient
+ * already knows, because it is bracketing the call into the code that *is* the
+ * ability.
+ *
+ * **Opt-in, not opt-out.** Nothing running at all — core's own periodic
+ * effects, a hazard, anything a future caller adds — answers `false` and is
+ * amplified by nothing. `Spell` opts every ability in with a default of `true`
+ * and the two things that are not abilities opt back out by hand
+ * (`coreSpells/BasicAttack` and, in `economy/ItemShop`, an item's own
+ * abilities — those already scale on `attackDamage` and must not draw from
+ * both stats at once). A spell object inherits it through the attribution
+ * stamped on it at construction, and a buff through the same, so a damage-over-time
+ * an ability applied is amplified and one an item applied is not, with no pack
+ * ever naming the stat.
+ */
+export function abilityPowerScales(): boolean {
+  return current?.damageScalesWithAbilityPower === true;
 }
 
 /**

@@ -280,6 +280,10 @@ export function buildHeldItem(champion: Champion, def: QualifiedItem): HeldItem 
     // "after casting a spell" empowerment would let one item power another —
     // see `Spell.countsAsAbilityCast`.
     spell.countsAsAbilityCast = false;
+    // Nor is an item's damage ability damage. Every one of them already reads
+    // the wearer's `attackDamage`, so amplifying it by `abilityPower` too would
+    // pay a single purchase out of two stats.
+    spell.damageScalesWithAbilityPower = false;
     return spell;
   };
 

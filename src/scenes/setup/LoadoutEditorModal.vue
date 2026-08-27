@@ -84,6 +84,7 @@ import {
   matchesQuery,
   resolveCatalogEntry,
   type KitShelf,
+  archetypeOptions,
 } from './pregameCatalog';
 import KitRoster from './KitRoster.vue';
 import SpellDetailPane from './SpellDetailPane.vue';
@@ -342,6 +343,30 @@ const rosterBody = ref<HTMLElement | null>(null);
 
 const isCustomKit = computed(() => draft.value.mode === 'custom');
 
+/**
+ * The roles a hand-built kit may play as — whatever the installed packs
+ * published. Read once: a pack cannot be installed while this modal is open.
+ *
+ * A champion kit does not offer this and must not: it already *is* a role, and
+ * letting a player give a marksman a tank's body would make the roster's own
+ * tuning advisory.
+ */
+const archetypes = archetypeOptions();
+const chosenArchetype = computed(() =>
+  archetypes.find(option => option.id === draft.value.archetypeId)
+);
+
+/**
+ * Picking the same role twice clears it, which is the only way back to "no
+ * choice" — and that is a real state rather than a gap: it plays the average
+ * of the installed roster, which is what this mode has always been.
+ */
+const chooseArchetype = (id: string): void => {
+  const next = draft.value.archetypeId === id ? undefined : id;
+  const { archetypeId: _dropped, ...rest } = draft.value;
+  draft.value = next ? { ...rest, archetypeId: next } : rest;
+};
+
 watch(isCustomKit, custom => {
   if (!custom) {
     naming.value = false;
@@ -534,6 +559,7 @@ const hasChanges = computed(() => {
       draft.value.summonerF !== props.loadout.summonerF
     );
   }
+  if (draft.value.archetypeId !== props.loadout.archetypeId) return true;
   if (draft.value.customSlots.length !== props.loadout.customSlots.length) return true;
   return draft.value.customSlots.some((slot, i) => slot !== props.loadout.customSlots[i]);
 });
@@ -677,6 +703,29 @@ const hint = computed(() => {
         </div>
       </div>
 
+      <!-- A hand-built kit has no champion to inherit a body from. This is
+           where it picks one; with nothing picked it plays the roster average. -->
+      <div v-if="isCustomKit && archetypes.length > 0" class="archetype-bar">
+        <span class="archetype-label">Chất tướng</span>
+        <div class="archetype-pills">
+          <button
+            v-for="option in archetypes"
+            :key="option.id"
+            type="button"
+            class="archetype-pill"
+            :class="{ active: draft.archetypeId === option.id }"
+            :title="option.summary"
+            :aria-pressed="draft.archetypeId === option.id"
+            @click="chooseArchetype(option.id)"
+          >
+            {{ option.name }}
+          </button>
+        </div>
+        <span class="archetype-summary">{{
+          chosenArchetype ? chosenArchetype.summary : 'Chưa chọn — lấy trung bình của roster'
+        }}</span>
+      </div>
+
       <div v-if="naming && isCustomKit" class="saved-kit-form">
         <input
           ref="nameInput"
@@ -794,22 +843,15 @@ const hint = computed(() => {
             Thay đổi chưa xác nhận
           </h4>
           <p class="kit-unsaved-text">
-            Bạn đã thay đổi bộ chiêu nhưng chưa bấm <strong>Xác nhận</strong>. Bạn có muốn áp dụng các thay đổi này không?
+            Bạn đã thay đổi bộ chiêu nhưng chưa bấm <strong>Xác nhận</strong>. Bạn có muốn áp dụng
+            các thay đổi này không?
           </p>
           <div class="kit-unsaved-actions">
-            <button
-              type="button"
-              class="hextech-btn kit-unsaved-apply"
-              @click="confirm"
-            >
+            <button type="button" class="hextech-btn kit-unsaved-apply" @click="confirm">
               <i class="fas fa-check" aria-hidden="true"></i>
               Áp dụng & Lưu
             </button>
-            <button
-              type="button"
-              class="hextech-btn secondary kit-unsaved-discard"
-              @click="cancel"
-            >
+            <button type="button" class="hextech-btn secondary kit-unsaved-discard" @click="cancel">
               <i class="fas fa-rotate-left" aria-hidden="true"></i>
               Bỏ thay đổi
             </button>

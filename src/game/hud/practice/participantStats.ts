@@ -129,6 +129,25 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
       ],
     },
     {
+      title: 'Phép thuật',
+      rows: [
+        // Untinted, like every row but the two resistances. A tint here reads
+        // as "this row is a damage type", and the panel spends that signal on
+        // `Giáp`/`Kháng phép` alone so a player can find them at a glance —
+        // `participantStats.test.ts` holds it to exactly those two.
+        {
+          icon: 'fa-wand-sparkles',
+          label: 'Sức mạnh phép',
+          value: percent(stats.abilityPower.value),
+        },
+        {
+          icon: 'fa-clock-rotate-left',
+          label: 'Giảm hồi chiêu',
+          value: percent(stats.cooldownReduction.value),
+        },
+      ],
+    },
+    {
       title: 'Cơ động',
       rows: [
         { icon: 'fa-person-running', label: 'Tốc chạy', value: whole(stats.speed.value) },

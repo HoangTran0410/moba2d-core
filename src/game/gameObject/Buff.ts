@@ -4,6 +4,7 @@ import type { GameObjectRuntimeContext } from './GameObject';
 import type AttackableUnit from './attackableUnits/AttackableUnit';
 import type { OnHitEvent } from '@/game/combat/OnHit';
 import type Spell from './Spell';
+import { currentAttribution } from '@/game/combat/DamageAttribution';
 
 export type BuffConstructorArgs = [
   duration: number,
@@ -17,6 +18,23 @@ export type BuffStackId = string | BuffConstructor;
 
 export default class Buff {
   name = this.constructor.name;
+
+  /**
+   * Whether damage this buff deals is amplified by its owner's
+   * `Stats.abilityPower` — inherited, once, from whatever was running when the
+   * buff was constructed.
+   *
+   * A buff is its own attribution while it ticks (`combat/DamageAttribution.ts`
+   * brackets `update` and `onDamageTaken` with it, so a damage-over-time names
+   * itself in the death recap). That is the right answer for the *name* and
+   * the wrong one for the *scaling*: by the time it ticks, the cast that
+   * applied it returned frames ago and there is nothing left to ask. Reading it
+   * here — in a field initialiser, so it runs inside the applying spell's own
+   * bracket — is what makes a poison an ability applied amplified and a poison
+   * an item applied not, without either of them knowing the stat exists.
+   */
+  readonly damageScalesWithAbilityPower: boolean =
+    currentAttribution()?.damageScalesWithAbilityPower === true;
   description: string | null = null;
   image: AssetHandle | null | undefined = null;
 

@@ -55,6 +55,11 @@ export default class BasicAttack extends Spell {
   // a spell, your next attack…" must never be armed by the attack itself.
   countsAsAbilityCast = false;
 
+  // Nor is a swing ability damage: it scales on `attackDamage`, which items
+  // already pay for handsomely, and drawing from `abilityPower` as well would
+  // make one build buy both halves — see `Spell.damageScalesWithAbilityPower`.
+  damageScalesWithAbilityPower = false;
+
   /** How far from the cursor a press reaches. Override for a per-champion feel. */
   get acquisitionRadius(): number {
     return CURSOR_ACQUISITION_RADIUS;

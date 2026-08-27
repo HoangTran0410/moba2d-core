@@ -10,6 +10,7 @@ import type {
   MapGeometrySource,
   MapSummary,
   MonsterAbility,
+  ArchetypeDef,
   ItemDef,
   MonsterDef,
   SpellClass,
@@ -66,6 +67,15 @@ export interface QualifiedItem extends Omit<ItemDef, 'id' | 'passive' | 'active'
   buildsFrom?: string[];
 }
 
+/**
+ * An installed role, with its id qualified like every other installed thing.
+ * Two packs may each ship a `tank` and neither author should have to know.
+ */
+export interface QualifiedArchetype extends Omit<ArchetypeDef, 'id'> {
+  id: string;
+  packId: string;
+}
+
 export const qualify = (packId: string, localId: string): string => `${packId}:${localId}`;
 
 export class PackRegistry {
@@ -82,6 +92,8 @@ export class PackRegistry {
   private readonly championList: QualifiedChampion[] = [];
   /** Installed items, by qualified id — the shop's whole catalogue. */
   private readonly itemsById = new Map<string, QualifiedItem>();
+  /** Installed roles, in declaration order — a pack chooses how its picker reads. */
+  private readonly archetypeList: QualifiedArchetype[] = [];
   private readonly mapList: QualifiedMapSummary[] = [];
   /** A map's geometry source, by qualified id — mirrors `sources` for spells. */
   private readonly mapGeometrySources = new Map<string, MapGeometrySource>();
@@ -300,6 +312,9 @@ export class PackRegistry {
         recall: entry.recall === undefined ? undefined : qualify(packId, entry.recall),
       });
     }
+    for (const def of data.archetypes ?? []) {
+      this.archetypeList.push({ ...def, packId, id: qualify(packId, def.id) });
+    }
     for (const [localId, def] of Object.entries(data.items ?? {})) {
       const qualifiedId = qualify(packId, localId);
       this.itemsById.set(qualifiedId, {
@@ -425,6 +440,16 @@ export class PackRegistry {
   /** Every installed item, across every pack — what a shop lists. */
   items(): readonly QualifiedItem[] {
     return [...this.itemsById.values()];
+  }
+
+  /** Every role a hand-built kit may choose, across every pack. */
+  archetypes(): readonly QualifiedArchetype[] {
+    return [...this.archetypeList];
+  }
+
+  /** One role by qualified id, or `null` for an id nobody declared. */
+  archetype(qualifiedId: string): QualifiedArchetype | null {
+    return this.archetypeList.find(entry => entry.id === qualifiedId) ?? null;
   }
 
   /** One item by qualified id, or `null` for an id nobody declared. */

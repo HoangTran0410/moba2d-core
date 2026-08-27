@@ -73,6 +73,29 @@ export default class Spell {
   countsAsAbilityCast = true;
 
   /**
+   * Whether damage this ability deals is amplified by the caster's
+   * `Stats.abilityPower`. True for every kit ability, which is the whole point
+   * — 308 abilities across the installed packs scale off a build without one
+   * of them being edited.
+   *
+   * **A separate flag from `countsAsAbilityCast` above, and not an oversight.**
+   * That one answers "did the player just use an ability", which is a question
+   * about the *cast*; this one answers "is this ability damage", which is a
+   * question about the *hit*. They disagree in both directions and the cases
+   * are real: a champion's own passive is not a cast (`Champion.armPassives`
+   * switches it off) but the damage it deals is unmistakably ability damage,
+   * while Hồi Thành is switched off in both and deals no damage at all.
+   * Folding them together would have quietly excluded every passive in the
+   * game from scaling, with nothing to look at.
+   *
+   * Core switches it off in two places: `coreSpells/BasicAttack`, whose damage
+   * is a swing and already scales on `attackDamage`, and `economy/ItemShop`,
+   * because an item's own abilities scale on the wearer's attack damage and
+   * must not draw from both stats at once.
+   */
+  damageScalesWithAbilityPower = true;
+
+  /**
    * What this ability *does*, for the bot brain — see `src/game/ai/SpellRole.ts`.
    * Optional on purpose: an untagged spell is classified from its `castSpec`,
    * so tagging is an improvement a champion can opt into, never a gate on
@@ -500,7 +523,29 @@ export default class Spell {
    * multiplier would keep the rule the match was booted with.
    */
   private get cooldownMultiplier(): number {
-    return this.game?.matchRules?.cooldownMultiplier ?? 1;
+    const rule = this.game?.matchRules?.cooldownMultiplier ?? 1;
+    // **Only real ability casts.** `countsAsAbilityCast` is already the flag
+    // that means "the player used an ability" rather than "a spell object ran",
+    // which is exactly the question a cooldown-reduction stat is asking, so it
+    // is reused here rather than a second flag being invented beside it. It
+    // keeps the three casts that merely ride the spell machinery out: the basic
+    // attack, whose rhythm is `stats.attackSpeed` and whose timer belongs to
+    // its controller; Hồi Thành, which is a fixed channel and not an ability;
+    // and a held item's own passive and active, so one purchase cannot shorten
+    // another's.
+    //
+    // Note this is the opposite reuse decision from
+    // `damageScalesWithAbilityPower`, which needed a flag of its own — and for
+    // the reason given there: that one is a question about a *hit*, and this one
+    // is a question about a *cast*, which is what `countsAsAbilityCast` has
+    // always answered.
+    if (!this.countsAsAbilityCast) return rule;
+    const reduction = this.owner?.stats?.cooldownReduction?.value;
+    if (!Number.isFinite(reduction) || reduction <= 0) return rule;
+    // `Stats.cooldownReduction` is capped at `MAX_COOLDOWN_REDUCTION` and
+    // floored at 0, so this cannot reach a zero or negative duration; the guard
+    // above is for a hand-built stat block in a pack's own tests.
+    return rule * Math.max(0, 1 - (reduction as number));
   }
 
   /**

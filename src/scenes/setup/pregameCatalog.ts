@@ -442,3 +442,44 @@ export function packShelvesVisible(
   if (searching) return true;
   return expandedPacks.has(packId);
 }
+
+/**
+ * The roles a hand-built kit may choose from, ready for a picker.
+ *
+ * Whatever the installed packs published and nothing else — core names no role
+ * and never will, because a taxonomy is the roster's vocabulary rather than the
+ * engine's (see `ContentPack.ts`'s `ArchetypeDef`). A pack that publishes none
+ * simply yields an empty list, and the picker hides itself.
+ *
+ * `summary` is built here rather than asked of the pack: it is the same four
+ * numbers every role carries, and a pack writing its own prose for them would
+ * be free to describe a body it does not have.
+ */
+export interface ArchetypeOption {
+  id: string;
+  name: string;
+  description?: string;
+  /** The body, in one line — what the pill's tooltip shows. */
+  summary: string;
+}
+
+export const archetypeOptions = (): ArchetypeOption[] =>
+  contentCatalog()
+    .archetypes()
+    .map(archetype => {
+      const defence = archetype.defence;
+      const parts = [
+        `${Math.round(defence.health ?? 0)} máu`,
+        `${Math.round(defence.armor ?? 0)} giáp`,
+        `${Math.round(defence.magicResist ?? 0)} kháng phép`,
+        `${archetype.attack.damage} sát thương`,
+        `${archetype.attack.attacksPerSecond} đòn/giây`,
+        `tầm ${archetype.attack.range}`,
+      ];
+      return {
+        id: archetype.id,
+        name: archetype.name,
+        description: archetype.description,
+        summary: parts.join(' · '),
+      };
+    });

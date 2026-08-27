@@ -81,10 +81,16 @@ describe('Champion spell presentation lifecycle', () => {
       // not just the spells, so the attack stats have to be here too.
       stats: {
         health: { baseValue: 0 },
-        maxHealth: { value: 100 },
+        maxHealth: { value: 100, baseValue: 100 },
         attackDamage: { baseValue: 0 },
         attackSpeed: { baseValue: 0 },
         attackRange: { baseValue: 0 },
+        // And the durability stats, for the same reason the attack ones are
+        // here: `applyPreset` restores the whole preset, and it now carries a
+        // defence profile too.
+        healthRegen: { baseValue: 0 },
+        armor: { baseValue: 0 },
+        magicResist: { baseValue: 0 },
       },
       deathData: { reviveAfter: 0 },
       game: { randomSpawnPoint: () => ({ x: 5, y: 6 }) },

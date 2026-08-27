@@ -130,6 +130,8 @@ export class StatsModifier {
   healthRegen = new StatModifier(0);
   visionRadius = new StatModifier(0);
   attackDamage = new StatModifier(0);
+  abilityPower = new StatModifier(0);
+  cooldownReduction = new StatModifier(0);
   attackSpeed = new StatModifier(0);
   attackRange = new StatModifier(0);
   omnivamp = new StatModifier(0);
@@ -152,6 +154,8 @@ export class StatsModifier {
     this.healthRegen.add(modifier.healthRegen);
     this.visionRadius.add(modifier.visionRadius);
     this.attackDamage.add(modifier.attackDamage);
+    this.abilityPower.add(modifier.abilityPower);
+    this.cooldownReduction.add(modifier.cooldownReduction);
     this.attackSpeed.add(modifier.attackSpeed);
     this.attackRange.add(modifier.attackRange);
     this.omnivamp.add(modifier.omnivamp);
@@ -175,6 +179,8 @@ export class StatsModifier {
     this.healthRegen.remove(modifier.healthRegen);
     this.visionRadius.remove(modifier.visionRadius);
     this.attackDamage.remove(modifier.attackDamage);
+    this.abilityPower.remove(modifier.abilityPower);
+    this.cooldownReduction.remove(modifier.cooldownReduction);
     this.attackSpeed.remove(modifier.attackSpeed);
     this.attackRange.remove(modifier.attackRange);
     this.omnivamp.remove(modifier.omnivamp);
@@ -217,6 +223,32 @@ export const MAX_ATTACK_SPEED = 3.0;
 /** Default crit multiplier — League's, so "+75%" reads the way a player expects. */
 export const CRIT_MULTIPLIER = 1.75;
 
+/**
+ * The floor under `abilityPower`, and it is load-bearing rather than tidy.
+ *
+ * The stat is read as `1 + value`, so -1 is exactly "this unit's abilities deal
+ * nothing" and anything below it is a *negative multiplier* — an ability
+ * suppression strong enough that casting on the victim would heal them. That is
+ * the same trap `combat/Mitigation.ts` documents at length for shred, and the
+ * same answer: put the limit where the value is read, not in the hope that no
+ * pack ever stacks two reductions.
+ */
+export const MIN_ABILITY_POWER = -1;
+
+/**
+ * Ceiling on cooldown reduction. Required for the same reason
+ * `MAX_ATTACK_SPEED` is: the stat is a fraction and reductions add, so two
+ * items and a buff reach 1.0 without anybody intending it — and 1.0 is not
+ * "very short", it is a cooldown of zero, which is a key that can be held down.
+ * Past 1.0 the duration goes negative and the ability is off cooldown before it
+ * is cast.
+ *
+ * 0.6 rather than a rounder number because it is the point where a 10-second
+ * ultimate becomes a 4-second one; beyond that an ultimate stops being a
+ * decision and the cooldown stops being the thing that separates the kits.
+ */
+export const MAX_COOLDOWN_REDUCTION = 0.6;
+
 export default class Stats {
   maxHealth = new Stat(100);
   health = new Stat(100);
@@ -232,6 +264,51 @@ export default class Stats {
 
   /** Damage of one basic attack. */
   attackDamage = new Stat(0);
+
+  /* ----------------------------------------------- making a build matter
+     Two stats that exist so buying items improves the half of a champion
+     that is not its right-click. Both are fractions, both are read in
+     exactly one place, and both default to a no-op. */
+
+  /**
+   * How much more this unit's **abilities** hit for, as a fraction: `0.35` is
+   * +35%. Read once, in `takeDamage`, against the ability damage core can see
+   * is being dealt — see `combat/DamageAttribution.ts` for how it knows.
+   *
+   * **A fraction, deliberately, and not flat points.** Flat ability power is
+   * the more expressive design and it is unreachable from here: a flat point
+   * value means nothing until each ability declares what share of it to take,
+   * and there are 308 abilities across the two installed packs, none of which
+   * reads a single stat of its caster today. A multiplier is the only form
+   * that can be applied *once*, at the funnel every hit already passes
+   * through, and have all 308 scale without one of them being edited. An
+   * ability that later wants a scaling of its own is not blocked by this: it
+   * reads `owner.stats` and adds to its own number, exactly as the item
+   * abilities already do with `attackDamage`.
+   *
+   * It also puts it in company it already keeps — `omnivamp`, `critChance` and
+   * `critDamage` on this same class are fractions too, so `0.35` reading as
+   * "+35%" is this file's existing convention rather than a new one.
+   *
+   * **Zero by default**, so the multiplier is exactly 1 for every ability in
+   * the game on the day it lands and not one tuning number moves — the
+   * migration argument `armor` makes below, for the same reason. Floored at
+   * `MIN_ABILITY_POWER`; negative is a real effect (ability damage reduction)
+   * and is supported, but it may never turn a cast into a heal.
+   */
+  abilityPower = new Stat(0, Infinity, MIN_ABILITY_POWER);
+
+  /**
+   * How much sooner this unit's abilities come back, as a fraction: `0.15` is
+   * a cooldown 15% shorter. Read once, in `Spell.reducedCooldown`, which is
+   * already the single seam every countdown in the game starts from — its own
+   * doc comment says so, and it was already multiplying by a match-wide rule,
+   * so this stat joins that expression rather than adding a second one.
+   *
+   * Zero by default and capped at `MAX_COOLDOWN_REDUCTION`; see there for why
+   * the cap is not optional.
+   */
+  cooldownReduction = new Stat(0, MAX_COOLDOWN_REDUCTION, 0);
   /**
    * Basic attacks per second, not the period between them. A rate is what buffs
    * actually modify — "+30% attack speed" is a 1.3x on this number and composes
@@ -300,6 +377,8 @@ export default class Stats {
     this.healthRegen.addModifier(modifier.healthRegen);
     this.visionRadius.addModifier(modifier.visionRadius);
     this.attackDamage.addModifier(modifier.attackDamage);
+    this.abilityPower.addModifier(modifier.abilityPower);
+    this.cooldownReduction.addModifier(modifier.cooldownReduction);
     this.attackSpeed.addModifier(modifier.attackSpeed);
     this.attackRange.addModifier(modifier.attackRange);
     this.omnivamp.addModifier(modifier.omnivamp);
@@ -323,6 +402,8 @@ export default class Stats {
     this.healthRegen.removeModifier(modifier.healthRegen);
     this.visionRadius.removeModifier(modifier.visionRadius);
     this.attackDamage.removeModifier(modifier.attackDamage);
+    this.abilityPower.removeModifier(modifier.abilityPower);
+    this.cooldownReduction.removeModifier(modifier.cooldownReduction);
     this.attackSpeed.removeModifier(modifier.attackSpeed);
     this.attackRange.removeModifier(modifier.attackRange);
     this.omnivamp.removeModifier(modifier.omnivamp);

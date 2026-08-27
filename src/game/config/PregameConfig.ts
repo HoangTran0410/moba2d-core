@@ -106,6 +106,20 @@ export interface ChampionLoadout {
   summonerF: string;
   /** One choice per slot (length `SLOT_COUNT`). `mode: 'custom'` only. */
   customSlots: readonly SlotChoice[];
+  /**
+   * Qualified id of the role a hand-built kit plays as — its attack profile
+   * and its body. `mode: 'custom'` only.
+   *
+   * Optional, and stays optional: every config saved before this field existed
+   * has none, and an id whose pack has since been uninstalled resolves to
+   * nothing. Both fall back to the average of the installed roster rather than
+   * to a constant — see `preset.ts`'s `averageDefence` for why a constant
+   * would make this mode the thinnest body in the game.
+   *
+   * Core never checks this against a list of role *names*: a taxonomy belongs
+   * to the pack, and this is only ever the id that came back from one.
+   */
+  archetypeId?: string;
 }
 
 /** @deprecated Renamed to `ChampionLoadout` — a bot uses the same shape. Kept as an alias so older call sites still type-check. */
@@ -461,6 +475,14 @@ export const sanitizeChampionLoadout = (raw: unknown): ChampionLoadout => {
     summonerD: asNonEmptyString(source.summonerD, DEFAULT_CHAMPION_LOADOUT.summonerD),
     summonerF: asNonEmptyString(source.summonerF, DEFAULT_CHAMPION_LOADOUT.summonerF),
     customSlots,
+    // Kept only when it is a usable string, and dropped entirely otherwise
+    // rather than defaulted to one. There is no id core could invent: the list
+    // belongs to whichever pack is installed, and an invented id would name a
+    // role in a pack that may not be there. Absent is the honest value and
+    // `planLoadout` already answers it.
+    ...(typeof source.archetypeId === 'string' && source.archetypeId.length > 0
+      ? { archetypeId: source.archetypeId }
+      : {}),
   };
 };
 

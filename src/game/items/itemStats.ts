@@ -17,6 +17,14 @@
  * a champion's body radius would silently change every ability range measured
  * against it (`combat/Reach.ts`).
  *
+ * **Two of these are fractions and the rest are points.** `abilityPower: 0.35`
+ * is +35% ability damage and `cooldownReduction: 0.15` is a cooldown 15%
+ * shorter, the same convention `critChance`, `critDamage` and `omnivamp`
+ * already use; `attackDamage: 35` is thirty-five points of damage. An item
+ * written with the wrong one of those is not a type error and never will be —
+ * both are numbers — so it is worth reading twice. `abilityPower: 35` is a
+ * champion whose abilities hit for thirty-six times normal.
+ *
  * `inventory.test.ts` checks every key here is a real `StatsModifier` field —
  * this file cannot import `Stats` to check it itself, and a typo would be an
  * item that silently grants nothing, forever, with nothing to look at.
@@ -28,6 +36,8 @@ export const ITEM_STAT_KEYS = [
   'manaRegen',
   'speed',
   'attackDamage',
+  'abilityPower',
+  'cooldownReduction',
   'attackSpeed',
   'attackRange',
   'armor',

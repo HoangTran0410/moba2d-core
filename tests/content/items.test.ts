@@ -57,12 +57,17 @@ describe('validating a pack’s items', () => {
   });
 
   it('names the stat key that is not a stat', () => {
+    // `abilityHaste` rather than `abilityPower`: this test used to reach for
+    // the latter as its example of a plausible-looking non-stat, and then
+    // `abilityPower` became a real one. Its neighbour is the same shape of
+    // mistake a pack author actually makes — the *other* game's word for
+    // cooldown reduction, which this engine deliberately does not have.
     const result = validatePack({
       manifest,
-      items: { boots: item({ stats: { speed: 25, abilityPower: 40 } }) },
+      items: { boots: item({ stats: { speed: 25, abilityHaste: 40 } }) },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.join(' ')).toMatch(/abilityPower/);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/abilityHaste/);
   });
 
   it('refuses a stat the shop must never grant, however real the field is', () => {

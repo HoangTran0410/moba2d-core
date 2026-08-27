@@ -3,6 +3,7 @@ import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fix
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import SpellObject from '../../../src/game/gameObject/SpellObject';
 import {
+  abilityPowerScales,
   beginAttribution,
   currentAttribution,
   currentAttributionName,
@@ -66,6 +67,42 @@ describe('damage attribution', () => {
       expect(currentAttributionName(), 'the outer attribution did not come back').toBe('Hỏa Cầu');
       endAttribution(outer);
       expect(currentAttributionName()).toBeUndefined();
+    });
+
+    it('answers whether an ability is running, opt-in and never by default', () => {
+      // The second question the ambient answers, for `Stats.abilityPower`.
+      // Opt-in is the load-bearing half: anything core adds later that deals
+      // damage without saying it is an ability is amplified by nothing, rather
+      // than silently inheriting a champion's whole build.
+      expect(abilityPowerScales(), 'nothing running').toBe(false);
+
+      const bare = beginAttribution({ name: 'Hỏa Cầu' });
+      expect(abilityPowerScales(), 'a claimant that says nothing').toBe(false);
+      endAttribution(bare);
+
+      const swing = beginAttribution({ name: 'Đánh thường', damageScalesWithAbilityPower: false });
+      expect(abilityPowerScales()).toBe(false);
+      endAttribution(swing);
+
+      const ability = beginAttribution({ name: 'Hỏa Cầu', damageScalesWithAbilityPower: true });
+      expect(abilityPowerScales()).toBe(true);
+      endAttribution(ability);
+
+      expect(abilityPowerScales(), 'the ambient did not come back down').toBe(false);
+    });
+
+    it('unwinds the ability answer with the name, so a nested hit is judged on its own', () => {
+      // An item's damage reflect re-enters `takeDamage` from inside the
+      // victim's own pass. The inner hit is the item's and must not be
+      // amplified by the ability that provoked it, and the outer hit must not
+      // lose its amplification on the way back out.
+      const outer = beginAttribution({ name: 'Hỏa Cầu', damageScalesWithAbilityPower: true });
+      const inner = beginAttribution({ name: 'Giáp Gai', damageScalesWithAbilityPower: false });
+      expect(abilityPowerScales()).toBe(false);
+      endAttribution(inner);
+
+      expect(abilityPowerScales()).toBe(true);
+      endAttribution(outer);
     });
 
     it('treats a nameless claimant as no claim at all', () => {

@@ -14,7 +14,9 @@ import type { FountainPresetData } from './gameObject/structures/Fountain';
 import type Champion from './gameObject/attackableUnits/Champion';
 import {
   DEFAULT_CHAMPION_ATTACK,
+  DEFAULT_CHAMPION_DEFENCE,
   type ChampionAttackTuning,
+  type ChampionDefenceTuning,
 } from './gameObject/attackableUnits/Champion';
 import type { ChampionPresetData } from './gameObject/attackableUnits/Champion';
 import type { ChampionLoadout, MatchRules, SlotChoice } from './config/PregameConfig';
@@ -142,6 +144,7 @@ export interface PlayableChampionKit {
   /** Local id of this champion's passive, or absent. See `ChampionEntry.passive`. */
   passive?: string;
   attack: ChampionAttackTuning;
+  defence: ChampionDefenceTuning;
 }
 
 let playableCache: PlayableChampionKit[] | null = null;
@@ -206,6 +209,7 @@ export const playableKits = (): PlayableChampionKit[] => {
       spells: champion.spells,
       passive: champion.passive,
       attack: champion.attack ?? DEFAULT_CHAMPION_ATTACK,
+      defence: { ...DEFAULT_CHAMPION_DEFENCE, ...champion.defence },
     });
   }
   playableCache = out;
@@ -216,6 +220,43 @@ export const playableKits = (): PlayableChampionKit[] => {
 
 const randomChampionKit = (): PlayableChampionKit => random(playableKits());
 const randomAvatar = (): string => randomChampionKit().image;
+
+/**
+ * The durability of the average champion on the installed roster — what a kit
+ * the player assembled by hand is worth.
+ *
+ * A custom kit has no archetype to read a profile off; `planLoadout` says so
+ * and hands it `DEFAULT_CHAMPION_ATTACK` for the same reason. Doing the same
+ * with `DEFAULT_CHAMPION_DEFENCE` would have been the obvious move and a bad
+ * one: that constant is *the state before any pack declared a profile* — 100
+ * health, no resistances — so the moment a pack spreads its champions from 125
+ * to 220 health, the hand-built kit stops being the average and becomes the
+ * single squishiest body in the game, thinner than the marksman. The mode
+ * would be unplayable, and nothing in it would say why.
+ *
+ * Averaging the roster keeps it in the middle by construction and keeps it
+ * there: a pack that raises everyone raises this too, with nothing to
+ * remember. It also mirrors what the mode already does for its face —
+ * `randomAvatar` borrows one from the same pool.
+ *
+ * Falls back to the default when no champion declares a profile, which is both
+ * the honest answer for such a pack and exactly its current behaviour.
+ */
+const averageDefence = (): ChampionDefenceTuning => {
+  const kits = playableKits();
+  if (kits.length === 0) return DEFAULT_CHAMPION_DEFENCE;
+
+  const mean = (read: (kit: PlayableChampionKit) => number): number =>
+    kits.reduce((sum, kit) => sum + read(kit), 0) / kits.length;
+
+  return {
+    // Rounded, because a health pool is drawn as a number and 163.4 is not one.
+    health: Math.round(mean(kit => kit.defence.health)),
+    healthRegen: mean(kit => kit.defence.healthRegen),
+    armor: Math.round(mean(kit => kit.defence.armor)),
+    magicResist: Math.round(mean(kit => kit.defence.magicResist)),
+  };
+};
 
 /**
  * A wholly random champion — the AI's respawn re-roll, and what a loadout on
@@ -250,6 +291,8 @@ export const spellGroups = (): {
   spells: SpellClass[];
   /** The champion's basic-attack profile — `packs/riot/data.ts`'s own `ATTACK` picks one per row. */
   attack?: ChampionAttackTuning;
+  /** And its durability profile — the same row's `DEFENCE` pick. */
+  defence?: ChampionDefenceTuning;
 }[] =>
   contentRegistry()
     .champions()
@@ -258,6 +301,7 @@ export const spellGroups = (): {
       image: champion.image,
       spells: champion.spells.map(classForId),
       attack: champion.attack,
+      defence: champion.defence ? { ...DEFAULT_CHAMPION_DEFENCE, ...champion.defence } : undefined,
     }));
 
 // ---------------------------------------------------------------------------
@@ -381,6 +425,8 @@ export interface KitPlan {
   avatar: string;
   /** The same catalogue row's basic-attack tuning; custom kits use the engine default. */
   attack: ChampionAttackTuning;
+  /** The same row's durability; custom kits use the roster's average — see `averageDefence`. */
+  defence: ChampionDefenceTuning;
   /** Exactly `SLOT_COUNT` ids, in A/Q/W/E/R/D/F order. */
   spellIds: string[];
   /**
@@ -455,6 +501,7 @@ const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan => {
     name: kit.name,
     avatar: kit.image,
     attack: kit.attack,
+    defence: kit.defence,
     passiveId: kit.passive,
     spellIds: [
       // Slot 0 is the internal slot and SpellHotKeys[0] is `A`, so whatever sits
@@ -490,10 +537,18 @@ const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan => {
 export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
   if (loadout.mode === 'custom') {
     const slots = Array.from({ length: SLOT_COUNT }, (_, i) => loadout.customSlots[i] ?? 'random');
+    const chosen = loadout.archetypeId ? contentRegistry().archetype(loadout.archetypeId) : null;
     return {
-      name: 'Tự Ghép Chiêu',
+      name: chosen ? `Tự Ghép Chiêu — ${chosen.name}` : 'Tự Ghép Chiêu',
       avatar: randomAvatar(),
-      attack: DEFAULT_CHAMPION_ATTACK,
+      // A role the player picked decides both halves of the body. With none —
+      // an older saved config, or an id whose pack is gone — core's default
+      // attack profile stands, and durability falls back to the roster's
+      // average rather than to `DEFAULT_CHAMPION_DEFENCE`; see
+      // `averageDefence` for why a constant would make this mode the thinnest
+      // body in the game.
+      attack: chosen?.attack ?? DEFAULT_CHAMPION_ATTACK,
+      defence: chosen ? { ...DEFAULT_CHAMPION_DEFENCE, ...chosen.defence } : averageDefence(),
       spellIds: slots.map(planSlot),
     };
   }
@@ -509,6 +564,7 @@ export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
     name: kit.name,
     avatar: kit.image,
     attack: kit.attack,
+    defence: kit.defence,
     spellIds: [
       BASIC_ATTACK_ID,
       ...kit.spells,
@@ -547,6 +603,7 @@ export const presetFromPlan = (plan: KitPlan): ChampionPresetData & { avatar: st
   name: plan.name,
   avatar: plan.avatar,
   attack: plan.attack,
+  defence: plan.defence,
   spells: plan.spellIds.map(classForId),
   // `classForId` has fallbacks for a miss (a stale slot, a catalogue still
   // warming) and answers with core's own basic attack. That is right for a

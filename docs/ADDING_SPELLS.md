@@ -589,3 +589,24 @@ Three consequences for a new spell:
 - **`cooldownLocksOut` splits a wait from a rhythm** in the HUD. Leave it alone unless the countdown runs on its own the way the swing timer does.
 
 A champion-specific attack is a subclass of `BasicAttack` in that champion's preset. It must still only issue an order: `landBasicAttack` is the one place a basic attack becomes damage and the only thing that emits `ON_ATTACK_HIT`, so a spell that applies its own damage silently switches every on-hit passive off for that route.
+
+## 10. Your damage numbers scale with the caster's build, and you write none of it
+
+`coolDown = 10_000` and `takeDamage(26, this.owner, 'MAGIC')` are still the whole story from inside a spell file. Two stats on the caster now move both, and **no spell reads either one**:
+
+- **`stats.abilityPower`** amplifies the damage. It is a *fraction* — `0.35` is +35% — applied once in `AttackableUnit.takeDamage`, before the victim's resistances, the same way `attackDamage` swells a swing before armour sees it. `combat/Amplification.ts` is the arithmetic.
+- **`stats.cooldownReduction`** shortens the cooldown, also a fraction, applied in `Spell.reducedCooldown` alongside the match-wide rule. Capped at `MAX_COOLDOWN_REDUCTION`, because 1.0 is not a short cooldown, it is a key that can be held down.
+
+Both default to 0, so an ability that was tuned before they existed deals and waits exactly what it did.
+
+**How core knows a hit is yours.** It does not look at the number, the attacker or the damage type — none of those separate a swing from a cast, and a third of the abilities in the shipped packs are `PHYSICAL`. It asks the ambient that already brackets your code for the death recap (`combat/DamageAttribution.ts`). `Spell.damageScalesWithAbilityPower` defaults to `true`, and a spell object or a buff you create during your cast inherits it, so a missile that lands four frames later and a poison that ticks for six seconds are both amplified without carrying a reference to you.
+
+**Two things deliberately do not scale**, and neither is a bug to fix in a pack: core's basic attack, and a held item's own passive and active. Both already scale on `attackDamage`, and paying one purchase out of two stats is how a single build ends up buying both halves of a champion.
+
+**If your ability wants a scaling of its own**, nothing here is in the way — read the stat and add to your number, exactly as the item abilities already do with `attackDamage`:
+
+```ts
+const damage = BASE_DAMAGE + this.owner.stats.attackDamage.value * AD_RATIO;
+```
+
+That composes with the amplification above rather than replacing it, so keep the ratio modest. A spell whose damage must **not** be amplified at all (rare — a fixed cost, a self-inflicted price) sets `damageScalesWithAbilityPower = false` on itself.

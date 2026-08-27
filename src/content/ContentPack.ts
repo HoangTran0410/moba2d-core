@@ -222,6 +222,12 @@ export interface ChampionEntry {
   /** Basic-attack profile. Omitted means core's `DEFAULT_CHAMPION_ATTACK`. */
   attack?: ChampionAttack;
   /**
+   * How much punishment this champion takes before it dies. Absent means
+   * core's default, which is what every champion was before this field —
+   * see `ChampionDefence`.
+   */
+  defence?: ChampionDefence;
+  /**
    * True for the one roster row whose `spells` are this pack's own D/F
    * options — the summoner-spell shelf, not a champion. `playable: false`
    * cannot mark it on its own: every partial champion stub (a one-ability
@@ -273,6 +279,42 @@ export interface ChampionAttack {
    * doc comment for the scale this number lives on.
    */
   boltUnitsPerSecond?: number;
+}
+
+/**
+ * A champion's durability profile — the twin of `ChampionAttack`, and for a
+ * long time the missing one.
+ *
+ * A pack could say a champion swings for 17 at 1.1/s from 130 away, and could
+ * say nothing at all about what happens when it is swung at. Every champion in
+ * every pack was 100 health, no armour, no magic resist, so a bruiser and a
+ * marksman were the same body — while a *minion* was 140 health. The shop then
+ * multiplied damage without touching either number, and the profile a
+ * teamfight actually needed did not exist to be tuned.
+ *
+ * Every field is optional and absent means core's `DEFAULT_CHAMPION_DEFENCE`,
+ * which is exactly what champions had before this existed — so a pack that
+ * declares nothing plays exactly as it did.
+ *
+ * **Resistances are the lever this is mostly for, not `health`.** A pack has
+ * one flat health pool and two multipliers over it, and the two behave
+ * differently for everything that heals or shields: 45 abilities across the
+ * shipped packs restore a flat number, and those keep their worth behind
+ * armour (a 40-point shield behind 100 armour is 80 effective points, exactly
+ * the multiplier the pool itself gets) while a raised pool quietly shrinks all
+ * 45 of them and nothing in core can compensate. Resistances also cannot run
+ * away: `100 / (100 + r)` is asymptotic, so no amount of armour is immunity,
+ * whereas health is linear and has no brake at all.
+ */
+export interface ChampionDefence {
+  /** Maximum health. Absent, core's default pool applies. */
+  health?: number;
+  /** Health regenerated per frame, the scale `Stats.healthRegen` uses. */
+  healthRegen?: number;
+  /** Resistance to `PHYSICAL` damage, on `combat/Mitigation.ts`'s curve. */
+  armor?: number;
+  /** Resistance to `MAGIC` damage, same curve. */
+  magicResist?: number;
 }
 
 /**
@@ -492,9 +534,39 @@ export type ActiveMap = MapSummary & MapGeometry;
  * installs only this — see that module's own header for why that closure
  * matters.
  */
+/**
+ * One role a pack offers a player who builds a kit by hand.
+ *
+ * A hand-assembled kit — Q from one champion, R from another — has no champion
+ * to inherit a body from, and core cannot invent one: it does not know what a
+ * "tank" is and deliberately never will. A role taxonomy is the roster's
+ * vocabulary, not the engine's, which is why the table that holds one lives in
+ * a pack and was moved *out* of core once already.
+ *
+ * So the pack publishes its taxonomy and core lists whatever came back,
+ * storing nothing but the chosen `id`. Core names no role, and a pack with a
+ * completely different set of them — or none — works the same way.
+ */
+export interface ArchetypeDef {
+  /** Local, stable id. This is what a saved loadout keeps. */
+  id: string;
+  /** What the picker shows. The pack's own language. */
+  name: string;
+  /** One-line description, if the pack wants the picker to say more. */
+  description?: string;
+  attack: ChampionAttack;
+  defence: ChampionDefence;
+}
+
 export interface ContentPackData {
   manifest: PackManifest;
   champions?: ChampionEntry[];
+  /**
+   * The roles a hand-built kit may choose from. Absent for a pack with no
+   * taxonomy to offer, in which case core falls back to the average of the
+   * installed roster — see `preset.ts`'s `averageDefence`.
+   */
+  archetypes?: ArchetypeDef[];
   /** Keyed by *local* spell id — the same keys as `ContentPackCode.spells`. */
   spellDisplay?: Record<string, SpellDisplayData>;
   /**

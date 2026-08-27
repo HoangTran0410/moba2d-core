@@ -44,6 +44,8 @@ const STAT_LABEL: Record<ItemStatKey, string> = {
   manaRegen: 'Hồi năng lượng',
   speed: 'Tốc chạy',
   attackDamage: 'Sát thương',
+  abilityPower: 'Sức mạnh phép',
+  cooldownReduction: 'Giảm hồi chiêu',
   attackSpeed: 'Tốc đánh',
   attackRange: 'Tầm đánh',
   armor: 'Giáp',
@@ -56,7 +58,13 @@ const STAT_LABEL: Record<ItemStatKey, string> = {
 };
 
 /** Stats a player reads as a percentage rather than as points. */
-const AS_PERCENT = new Set<ItemStatKey>(['critChance', 'critDamage', 'omnivamp']);
+const AS_PERCENT = new Set<ItemStatKey>([
+  'critChance',
+  'critDamage',
+  'omnivamp',
+  'abilityPower',
+  'cooldownReduction',
+]);
 
 /** Why the shop said no, in the player's own language. */
 export const REFUSAL_TEXT: Record<ShopRefusal | SellRefusal, string> = {

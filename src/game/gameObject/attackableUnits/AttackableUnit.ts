@@ -19,10 +19,12 @@ import { NAV_MAX_TERRAIN_RADIUS } from '@/game/nav/NavGrid';
 import type Buff from '@/game/gameObject/Buff';
 import type { BuffConstructor, BuffStackId } from '@/game/gameObject/Buff';
 import {
+  abilityPowerScales,
   beginAttribution,
   currentAttributionName,
   endAttribution,
 } from '@/game/combat/DamageAttribution';
+import { amplifiedAbilityDamage } from '@/game/combat/Amplification';
 
 export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
   game: GameObjectRuntimeContext;
@@ -613,6 +615,16 @@ export default class AttackableUnit extends GameObject {
     source?: string
   ): void {
     if (this.isDead) return;
+
+    // **The attacker's build, before anything else touches the number.**
+    // `abilityPower` amplifies an ability the way `attackDamage` swells a
+    // swing: at the source, so the victim's resistances then apply to the
+    // amplified hit exactly as armour applies to an item-fed basic attack. Two
+    // modules answer the two halves and neither guesses at the other's —
+    // `combat/DamageAttribution.ts` says whether this is ability damage at all,
+    // `combat/Amplification.ts` says what it is worth. Both are inert for a
+    // unit nobody has bought anything for.
+    if (abilityPowerScales()) damage = amplifiedAbilityDamage(damage, attacker);
 
     // Whole points, in and out. Damage is built from lerps, percentages and
     // unit-type multipliers, so it arrives as things like 23.799999999999997 —
