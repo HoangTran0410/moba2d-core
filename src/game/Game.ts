@@ -797,6 +797,13 @@ export default class Game {
         // Read the destination before collapsing — the transform is
         // parameterised by the rect, and collapsing changes it.
         const target = this.minimap.worldAt(point);
+        // A net client asks the host to make the jump — teleporting only its
+        // local body gets snapped straight back by reconciliation, which is
+        // how "bấm minimap dịch chuyển" read as broken in a LAN match.
+        if (this.net?.interceptTeleport(target)) {
+          this.minimap.expanded = false;
+          return true;
+        }
         // `teleportTo` is the whole job: markDisplaced(), pathAgent.clear(),
         // and both position and destination. It does not check terrain and
         // does not need to — `TerrainMap.update()` pushes a body out of a wall

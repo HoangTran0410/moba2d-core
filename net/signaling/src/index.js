@@ -35,6 +35,15 @@ const CORS = {
 const HEARTBEAT_MS = 30_000;
 /** A room whose host has not heartbeated for this long is gone from listings. */
 const STALE_MS = 90_000;
+/**
+ * An announce-sourced listing's own, much shorter leash. The lobby announces
+ * on its 4s `/rooms` poll while the LAN box is open — before any match, or
+ * any WebSocket, exists — so a closed tab must fall out of everyone's list in
+ * seconds, not in `STALE_MS`. The WS-sourced entries keep the long leash: the
+ * room DO heartbeats them every 30s and explicitly unregisters on host
+ * disconnect.
+ */
+const ANNOUNCE_STALE_MS = 15_000;
 
 export default {
   async fetch(request, env) {
@@ -45,6 +54,29 @@ export default {
     if (url.pathname === '/rooms') {
       const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
       const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName(`ip:${ip}`));
+      // `?announce=<code>&name=<n>`: the caller is *hosting* this room and
+      // wants it listed for its network while it polls. Riding the same
+      // request as the listing is the point, twice over: the lobby needs no
+      // second timer, and — the bug this fixed — registration lands under the
+      // *same* IP the listers on this machine/network query. The old design
+      // registered only from the WebSocket at match start, so a room whose
+      // host was still sitting in the menu did not exist anywhere, and a
+      // dual-stack host could register under its IPv6 while a neighbour
+      // listed under IPv4. (The WS registration remains, so an in-match room
+      // can live in up to two per-family directories at once.)
+      const announce = url.searchParams.get('announce');
+      if (announce && announce.length <= 32) {
+        await directory
+          .fetch('https://directory/register', {
+            method: 'POST',
+            body: JSON.stringify({
+              code: announce,
+              name: url.searchParams.get('name') ?? 'LAN game',
+              ttlMs: ANNOUNCE_STALE_MS,
+            }),
+          })
+          .catch(() => undefined);
+      }
       const listed = await directory.fetch('https://directory/list');
       return new Response(await listed.text(), {
         headers: { 'content-type': 'application/json', ...CORS },
@@ -103,6 +135,14 @@ export class SignalRoom {
           this.directory('unregister');
         }
       });
+      // Joiners who arrived before this host did — the lobby lets a friend
+      // press Vào while the host is still in the menu, and a refreshed
+      // hosting tab reclaims a room its joiners never left. Without the
+      // replay, a host socket only ever hears about *future* arrivals and
+      // the early ones sit invisible forever.
+      for (const id of this.joiners.keys()) {
+        this.safeSend(server, JSON.stringify({ sys: 'joined', id }));
+      }
       await this.directory('register');
       await this.state.storage.setAlarm(Date.now() + HEARTBEAT_MS);
     } else {
@@ -183,7 +223,7 @@ export class RoomDirectory {
     if (url.pathname === '/list') {
       const now = Date.now();
       const listed = [...this.rooms.entries()]
-        .filter(([, room]) => now - room.ts < STALE_MS)
+        .filter(([, room]) => now - room.ts < (room.ttlMs ?? STALE_MS))
         .map(([code, room]) => ({ code, name: room.name, ageMs: now - room.ts }));
       return new Response(JSON.stringify(listed), {
         headers: { 'content-type': 'application/json' },
@@ -192,7 +232,15 @@ export class RoomDirectory {
     const body = await request.json().catch(() => null);
     if (body?.code) {
       if (url.pathname === '/register') {
-        this.rooms.set(body.code, { name: body.name ?? 'LAN game', ts: Date.now() });
+        // A WS registration (no ttlMs, the long leash) must not be shortened
+        // by a menu announce for the same room racing it — keep the longest
+        // leash either writer asked for.
+        const previous = this.rooms.get(body.code);
+        const ttlMs =
+          previous && (previous.ttlMs ?? STALE_MS) > (body.ttlMs ?? STALE_MS)
+            ? previous.ttlMs
+            : body.ttlMs;
+        this.rooms.set(body.code, { name: body.name ?? 'LAN game', ts: Date.now(), ttlMs });
       } else if (url.pathname === '/unregister') {
         this.rooms.delete(body.code);
       }

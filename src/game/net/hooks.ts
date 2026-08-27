@@ -18,6 +18,13 @@ export interface NetGameHooks {
   /** A right-click / pointer order at `point`. */
   interceptPointer(point: Vec2): boolean;
   /**
+   * The minimap's tap-teleport. Unlike the other intercepts a client answers
+   * `true` — wire-only, no local prediction — because the reconciler snaps
+   * any locally-jumped position straight back before the host's confirming
+   * snapshot could arrive; the jump lands from the snapshot instead (~50ms).
+   */
+  interceptTeleport(point: Vec2): boolean;
+  /**
    * A kit-slot gesture aimed at `aim`. `phase` is the input's own life — the
    * press that starts a cast (and starts a charge charging), the per-frame
    * hold that re-aims it, and the release that commits a charge. A charge
@@ -37,6 +44,14 @@ export interface NetGameHooks {
    * it, a client to ask the host to make the change real.
    */
   onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void;
+  /**
+   * The net-borne champions the local `MatchDirector` knows nothing about —
+   * remote players on a host, everything remote on a client. The Đội tab
+   * appends them as read-only rows (`MatchDirectorSource.roster`), which is
+   * the only reason the seam exists: the director's own roster is local units
+   * it can mutate, and these are precisely the units it must not.
+   */
+  netRosterUnits(): Champion[];
   /** Tear down: close the socket, clear `Game.net`, reset the net role. */
   close(): void;
 }

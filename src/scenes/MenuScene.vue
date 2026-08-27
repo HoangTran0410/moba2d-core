@@ -148,7 +148,13 @@ const stopLanPolling = (): void => {
 };
 
 const refreshLanRooms = async (): Promise<void> => {
-  const listed = await fetchLanRooms(signalUrl());
+  // A hosting lobby's poll doubles as its advertisement: the broker lists
+  // the room under this very request's IP, so the room exists on the
+  // network the moment the code is on screen — not only once the match has
+  // started — and a second tab on this machine cannot miss it. The list
+  // then hides our own code: "phòng cùng mạng" means somebody else's.
+  const announce = hostCode.value ? { code: hostCode.value, name: 'Trận LAN' } : undefined;
+  const listed = await fetchLanRooms(signalUrl(), announce);
   if (listed === null) {
     lanUnreachable.value = true;
     // Two strikes and the poll stops — an offline machine must not sit
@@ -159,13 +165,16 @@ const refreshLanRooms = async (): Promise<void> => {
   }
   lanUnreachable.value = false;
   lanFailures = 0;
-  lanRooms.value = listed;
+  lanRooms.value = listed.filter(room => room.code !== hostCode.value);
 };
 
 const toggleLan = (): void => {
   lanOpen.value = !lanOpen.value;
   stopLanPolling();
-  if (lanOpen.value) {
+  // While hosting, the poll keeps running behind a collapsed box: it is the
+  // room's advertisement (see `refreshLanRooms`), and folding the panel away
+  // must not silently take the room off the network.
+  if (lanOpen.value || hostCode.value) {
     lanFailures = 0;
     void refreshLanRooms();
     lanTimer = window.setInterval(() => void refreshLanRooms(), 4000);
@@ -183,6 +192,8 @@ const armNet = (mode: 'host' | 'join', room: string): void => {
 const hostLan = (): void => {
   hostCode.value = hostCode.value ?? randomRoomCode();
   armNet('host', hostCode.value);
+  // Advertise now, not in four seconds — the next poll keeps it fresh.
+  void refreshLanRooms();
 };
 
 const joinLanRoom = (code: string): void => {
@@ -370,7 +381,8 @@ const updateState = computed(() => {
     <div v-if="lanOpen" id="lan-box" class="lan-box">
       <template v-if="hostCode">
         <p class="lan-code">
-          Mã phòng: <b>{{ hostCode }}</b> — bạn bè cùng mạng sẽ tự thấy
+          Mã phòng: <b>{{ hostCode }}</b> — đang hiện với máy cùng mạng. Bạn bè
+          bấm Vào sẽ chờ tới khi bạn Vào trận.
         </p>
         <button
           id="lan-start-host"

@@ -285,6 +285,133 @@ await guard(async () => {
     JSON.stringify(report.loadoutSync)
   );
 
+  // ------------------------------------------- minimap teleport, by wire
+  // The one wire-only intercept: a locally-jumped body would be snapped
+  // straight back by reconciliation (the reported bug), so the client only
+  // asks and the jump comes back in a snapshot.
+  const tpTarget = { x: 2000, y: 2000 };
+  await clientPage.evaluate(target => {
+    window.__lol2d.scene.oScene.game.net.interceptTeleport(target);
+  }, tpTarget);
+  await clientPage
+    .waitForFunction(
+      target => {
+        const game = window.__lol2d.scene.oScene.game;
+        return Math.hypot(game.player.position.x - target.x, game.player.position.y - target.y) < 400;
+      },
+      tpTarget,
+      { timeout: 5_000 }
+    )
+    .catch(() => null);
+  const tpAfter = await clientPage.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    return { x: Math.round(game.player.position.x), y: Math.round(game.player.position.y) };
+  });
+  const tpMiss = Math.hypot(tpAfter.x - tpTarget.x, tpAfter.y - tpTarget.y);
+  report.teleport = { ...tpAfter, miss: Math.round(tpMiss) };
+  // 400 units of slack: `teleportTo` ignores terrain and the map pushes the
+  // body out of any wall it landed in.
+  check('minimap teleport crosses the wire', tpMiss < 400, JSON.stringify(report.teleport));
+
+  // --------------------------------------- a host-added bot, kit and all
+  // The Đội tab's addBot mid-match. The client must not only *see* it (the
+  // discover diff always sent the spawn) but run its real classes — its
+  // chunks may never have been fetched there, and `presetFromPlan` would
+  // silently degrade every slot to a basic attack.
+  const hostBot = await page.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const bot = await game.director.addBotLoaded({
+      mode: 'champion',
+      championName: 'random',
+      summonerD: 'Flash',
+      summonerF: 'Heal',
+      customSlots: [],
+    });
+    return bot
+      ? { name: bot.name, kit: bot.spells.map(spell => spell.constructor.name) }
+      : null;
+  });
+  await clientPage
+    .waitForFunction(
+      expected => {
+        for (const unit of window.__lol2dNet.units.values()) {
+          if (
+            unit.name === expected.name &&
+            unit.spells &&
+            unit.spells.map(spell => spell.constructor.name).join() === expected.kit.join()
+          ) {
+            return true;
+          }
+        }
+        return false;
+      },
+      hostBot,
+      { timeout: 15_000 }
+    )
+    .catch(() => null);
+  const clientSeesBot = await clientPage.evaluate(expected => {
+    for (const unit of window.__lol2dNet.units.values()) {
+      if (unit.name === expected.name) {
+        return { name: unit.name, kit: unit.spells?.map(spell => spell.constructor.name) ?? [] };
+      }
+    }
+    return null;
+  }, hostBot);
+  report.botSync = { host: hostBot, client: clientSeesBot };
+  check(
+    'a host-added bot reaches the client with its real kit',
+    !!hostBot && !!clientSeesBot && clientSeesBot.kit.join() === hostBot.kit.join(),
+    JSON.stringify(report.botSync)
+  );
+
+  // ------------------------------------------------- the Đội tab's rows
+  // Both ends' rosters must know the net-borne champions the local director
+  // does not own: the host lists its remote player, the client lists
+  // everything remote (host player + both bots by now).
+  const rosterCounts = await Promise.all([
+    page.evaluate(() => window.__lol2d.scene.oScene.game.net.netRosterUnits().length),
+    clientPage.evaluate(() => window.__lol2d.scene.oScene.game.net.netRosterUnits().length),
+  ]);
+  report.netRoster = { host: rosterCounts[0], client: rosterCounts[1] };
+  check(
+    'both rosters list the LAN champions',
+    rosterCounts[0] === 1 && rosterCounts[1] >= 3,
+    JSON.stringify(report.netRoster)
+  );
+
+  // -------------------------------------------------- death recap, told
+  // A client's own `takeDamage` is gated, so its death ledger is empty by
+  // construction — the recap must arrive from the host's sim or the death
+  // screen has nothing to say (the reported bug).
+  await page.evaluate(() => {
+    const session = window.__lol2dNet;
+    const champion = session.clients.values().next().value;
+    champion.takeDamage(999_999, session.game?.player, 'PHYSICAL', 'Đòn kiểm thử');
+  });
+  const recap = await clientPage
+    .waitForFunction(
+      () => {
+        const player = window.__lol2d.scene.oScene.game.player;
+        return player.isDead && player.deathRecap && player.deathRecap.entries.length > 0
+          ? {
+              killer: player.deathRecap.killerName,
+              entries: player.deathRecap.entries.length,
+              amount: player.deathRecap.entries[0].amount,
+            }
+          : false;
+      },
+      null,
+      { timeout: 8_000 }
+    )
+    .then(handle => handle.jsonValue())
+    .catch(() => null);
+  report.deathRecap = recap;
+  check(
+    "the client's death recap carries the host's ledger",
+    !!recap && recap.entries > 0 && recap.amount > 0,
+    JSON.stringify(recap)
+  );
+
   // ------------------------------------------------------------ liveness
   const hostStats = await page.evaluate(() => window.__lol2dNet.debugStats);
   const clientStats = await clientPage.evaluate(() => window.__lol2dNet.debugStats);

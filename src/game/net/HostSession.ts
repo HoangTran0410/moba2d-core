@@ -57,6 +57,8 @@ export class HostSession implements NetGameHooks {
   private championPlans = new Map<Champion, KitPlan>();
   private nextId = 1;
   private clients = new Map<string, Champion>();
+  /** Last `deathRecap.seq` forwarded per client champion — see `forwardClientDeaths`. */
+  private sentRecapSeq = new WeakMap<Champion, number>();
   private pendingEvents: NetEvent[] = [];
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsSent: 0, eventsSent: 0, castsSeen: 0 };
@@ -175,6 +177,7 @@ export class HostSession implements NetGameHooks {
   update(): void {
     this.applyClientFrames();
     this.discover();
+    this.forwardClientDeaths();
     // Events flush every tick (and casts flush inside `onCast` the moment
     // they commit) — holding them to the snapshot cadence was measured as
     // the largest slice of the v1 input latency (66ms of a 67ms total).
@@ -243,6 +246,22 @@ export class HostSession implements NetGameHooks {
       units.push(snap);
     }
     return units;
+  }
+
+  /**
+   * A dead client deserves to know what killed it. The recap ledger is
+   * written only where damage actually resolves — here, `takeDamage` being
+   * gated on clients — so each client champion's `deathRecap` is forwarded
+   * the tick it changes, and the client overlays it on its own (empty) one.
+   * `seq` is the dedupe: one message per death, not one per tick spent dead.
+   */
+  private forwardClientDeaths(): void {
+    for (const [clientId, champion] of this.clients) {
+      const recap = champion.deathRecap;
+      if (!recap || this.sentRecapSeq.get(champion) === recap.seq) continue;
+      this.sentRecapSeq.set(champion, recap.seq);
+      this.sendTo(clientId, { t: 'died', recap });
+    }
   }
 
   private onCast(spell: Spell): void {
@@ -359,6 +378,13 @@ export class HostSession implements NetGameHooks {
       if (spell?.state === 'CHARGING') spell.cancel('PLAYER_CANCEL');
       return;
     }
+    if (message.t === 'tp') {
+      // The minimap's practice-tool jump, exactly as the host player has it —
+      // `teleportTo` clears path state and `TerrainMap.update()` pushes a
+      // body out of any wall on the next tick.
+      champion.teleportTo(message.x, message.y);
+      return;
+    }
     if (message.t === 'recall') {
       const spell = champion.recall;
       if (!spell) return;
@@ -465,8 +491,16 @@ export class HostSession implements NetGameHooks {
     return false;
   }
   interceptCastCancel(_slot: number): void {}
+  interceptTeleport(_point: Vec2): boolean {
+    return false;
+  }
   interceptRecall(): boolean {
     return false;
+  }
+
+  /** The remote players' champions — the Đội tab's read-only LAN rows. */
+  netRosterUnits(): Champion[] {
+    return [...this.clients.values()];
   }
 
   /**

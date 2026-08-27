@@ -243,8 +243,29 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   cast the host refused (a silence landed first, death raced the key) shows
   a ghost animation; authoritative state overwrites within a snapshot.
 - **The lobby's room list needs the broker reachable**: a fully offline LAN
-  (no internet at all) needs the dev relay pointed at by `?signal=`; room
-  codes still work against any reachable broker.
+  (no internet at all) needs the dev relay pointed at by `?signal=` — which
+  now serves the same `GET /rooms` listing+announce endpoint the Worker
+  does, so discovery works offline too.
+- **A room exists the moment its code is on screen** (2026-08-28): the
+  lobby's 4s `/rooms` poll carries `?announce=<code>`, so the broker lists
+  the room under the *poll's own* IP — before any match or WebSocket
+  exists. This is what fixed "tạo phòng mà tab bên cạnh không thấy": the
+  old sole registrar was the match-start WebSocket, and a dual-stack host
+  could even register under IPv6 while a neighbour listed under IPv4.
+  Announced entries live 15s past their last poll; WS entries keep the 90s
+  heartbeat leash, and an in-match room may sit in both per-family
+  directories at once. The room DO also **replays `sys:joined`** to a host
+  that connects late, so a friend can press Vào while the host is still in
+  the menu and simply waits at the loading screen for the hello.
+- **Synced since 2026-08-28, beyond the original cuts**: the minimap's
+  tap-teleport (`tp`, the one wire-only intercept — predicting it locally
+  just got snapped back), each client's own death recap (`died`, host →
+  that client, since a client's damage ledger is gated empty), the Đội
+  tab's read-only LAN rows on both ends (`NetGameHooks.netRosterUnits`),
+  and a host-added mid-match champion's spell chunks (the client fetches
+  before building the puppet instead of degrading every slot to a basic
+  attack). Still local-only: score tallies on a client (snapshots carry no
+  KDA), and every panel mutation other than the own-champion loadout.
 - **A stale `?net=` in the address bar re-arms LAN on the next plain Chơi**
   — the params are deliberately the API; clearing them is the player's (or
   a future lobby toggle's) job.

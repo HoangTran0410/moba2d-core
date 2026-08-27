@@ -83,6 +83,14 @@ export type NetMessage =
   | { t: 'stop'; slot: number }
   /** The client changed its own kit (đổi tướng); `plan` is a `KitPlan` (`kitWire.ts` validates). */
   | { t: 'loadout'; plan: unknown }
+  /** The minimap's tap-teleport — wire-only on a client, or reconciliation just snaps it back. */
+  | { t: 'tp'; x: number; y: number }
+  /**
+   * Host → one client: your champion died, and this is its recap — killer
+   * plus the last seconds' damage ledger, which only the host's sim ever
+   * wrote (`AttackableUnit.deathRecap`; a client's `takeDamage` is gated).
+   */
+  | { t: 'died'; recap: unknown }
   | { t: 'recall' };
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
@@ -161,7 +169,12 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
         ? (parsed as NetMessage)
         : null;
     case 'move':
+    case 'tp':
       return typeof message.x === 'number' && typeof message.y === 'number'
+        ? (parsed as NetMessage)
+        : null;
+    case 'died':
+      return typeof message.recap === 'object' && message.recap !== null
         ? (parsed as NetMessage)
         : null;
     case 'cast':

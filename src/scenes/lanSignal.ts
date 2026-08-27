@@ -37,15 +37,39 @@ export interface LanRoom {
   ageMs: number;
 }
 
+/** What a hosting lobby asks the poll to advertise alongside the listing. */
+export interface LanAnnounce {
+  code: string;
+  name: string;
+}
+
 /**
  * The open rooms on this network — the broker groups by public IP, so this
  * answers "ai đang mở phòng cùng mạng với mình". `null` (never a throw)
  * when the broker is unreachable, so the lobby can tell an empty network
  * from a dead connection and say so in one quiet line.
+ *
+ * `announce` makes the same request also *advertise* the caller's room:
+ * the broker registers it under this request's own IP before answering.
+ * Riding the poll is the fix for two real failures — a room used to exist
+ * on the broker only once its match had started (the WebSocket at `Chơi`
+ * was the sole registrar, so a host sitting in the menu with a code on
+ * screen was invisible even to a second tab on the same machine), and a
+ * dual-stack host could register over IPv6 while a neighbour listed over
+ * IPv4 into a different per-IP directory. Announce and listing share one
+ * request, so on one machine they cannot disagree.
  */
-export const fetchLanRooms = async (signalUrl: string): Promise<LanRoom[] | null> => {
+export const fetchLanRooms = async (
+  signalUrl: string,
+  announce?: LanAnnounce
+): Promise<LanRoom[] | null> => {
   try {
-    const response = await fetch(roomsUrlOf(signalUrl));
+    const url = new URL(roomsUrlOf(signalUrl));
+    if (announce) {
+      url.searchParams.set('announce', announce.code);
+      url.searchParams.set('name', announce.name);
+    }
+    const response = await fetch(url);
     if (!response.ok) return null;
     const listed = (await response.json()) as LanRoom[];
     return Array.isArray(listed) ? listed : null;

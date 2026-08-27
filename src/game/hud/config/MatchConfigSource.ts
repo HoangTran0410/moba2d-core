@@ -104,6 +104,14 @@ export interface ConfigRosterEntry {
    */
   behaviour?: BotBehaviour;
   invulnerable: boolean;
+  /**
+   * A LAN-borne unit the local director cannot mutate — a remote player on a
+   * host, everything remote on a client. The row renders (name, side, kit,
+   * live stats) and offers no controls: its loadout, team and behaviour
+   * belong to whoever is actually driving it, on the other machine. Only
+   * `MatchDirectorSource` ever sets it; pregame has no network.
+   */
+  remote?: boolean;
 }
 
 export interface RosterStack {

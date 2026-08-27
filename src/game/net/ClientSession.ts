@@ -1,9 +1,12 @@
 import type Game from '@/game/Game';
-import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import AttackableUnit, {
+  type DeathRecap,
+} from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
+import { loadSpells } from '@/game/spellRegistry';
 import { setNetRole } from './netRole';
 import type { ClientTransport } from './transport';
 import { decodeMessage, type NetEvent, type NetMessage, type UnitSnap } from './protocol';
@@ -45,6 +48,16 @@ const RECONCILE_PULL_RATE = 0.15;
 export class ClientSession implements NetGameHooks {
   private units = new Map<string, AttackableUnit>();
   private buffer = new InterpolationBuffer();
+  /** Champion spawns whose spell chunks are still in flight — see the 'champ' case. */
+  private pendingChamps = new Set<string>();
+  /**
+   * The host's recap for our own champion's latest death, until the local
+   * `die()` has run so it can be applied *after* it — `die` snapshots the
+   * local (gated, therefore empty) damage ledger over `deathRecap`, so
+   * whichever of the death snapshot and the 'died' message lands first, the
+   * host's answer must be the one standing when the HUD reads it.
+   */
+  private pendingRecap: DeathRecap | null = null;
   private lastMoveSentAt = 0;
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsReceived: 0, eventsApplied: 0 };
@@ -89,9 +102,19 @@ export class ClientSession implements NetGameHooks {
       } else if (message.t === 'ev') {
         this.debugStats.eventsApplied += message.ev.length;
         for (const event of message.ev) this.applyEvent(event);
+      } else if (message.t === 'died') {
+        this.onDied(message.recap);
       }
     }
     this.applyInterpolated();
+  }
+
+  /** The host's recap for our own death — apply now if the corpse is already here, else hold. */
+  private onDied(raw: unknown): void {
+    const recap = raw as DeathRecap;
+    if (typeof recap?.seq !== 'number' || !Array.isArray(recap.entries)) return;
+    if (this.game.player.isDead) this.game.player.deathRecap = recap;
+    else this.pendingRecap = recap;
   }
 
   private applyInterpolated(): void {
@@ -126,8 +149,17 @@ export class ClientSession implements NetGameHooks {
     }
     if (!snap) return;
 
-    if (snap.dead && !player.isDead) player.die({ reviveAfter: 3_600_000 });
-    else if (!snap.dead && player.isDead) player.respawn();
+    if (snap.dead && !player.isDead) {
+      player.die({ reviveAfter: 3_600_000 });
+      // `die` just published a recap of the local ledger, which the damage
+      // gate keeps empty — the host's real one replaces it (see `onDied`).
+      if (this.pendingRecap) {
+        player.deathRecap = this.pendingRecap;
+        this.pendingRecap = null;
+      }
+    } else if (!snap.dead && player.isDead) {
+      player.respawn();
+    }
 
     player.stats.maxHealth.baseValue = snap.maxHp;
     player.stats.health.baseValue = snap.hp;
@@ -191,17 +223,15 @@ export class ClientSession implements NetGameHooks {
           existing.applyPreset(presetFromPlan(event.plan as KitPlan));
           return;
         }
-        if (existing) return;
-        const champion = attachRecall(
-          new Champion({
-            game: this.game,
-            position: createVector(event.x, event.y),
-            teamId: event.team,
-            preset: presetFromPlan(event.plan as KitPlan),
-          })
-        );
-        this.game.objectManager.addObject(champion);
-        this.units.set(event.id, champion);
+        if (existing || this.pendingChamps.has(event.id)) return;
+        // A champion the host added mid-match (a bot from the Đội tab, a
+        // late joiner) can name spell chunks this client has never fetched —
+        // the boot only loaded the hello roster's. `presetFromPlan` is
+        // synchronous and falls back to a basic attack for a class not in
+        // memory, so building immediately would put a puppet on the map
+        // whose kit is permanently wrong. Fetch first, build after.
+        this.pendingChamps.add(event.id);
+        void this.buildChampion(event);
         return;
       }
       case 'minion': {
@@ -221,6 +251,9 @@ export class ClientSession implements NetGameHooks {
         return;
       }
       case 'gone': {
+        // A spawn still fetching its chunks: dropping the pending mark is the
+        // abort — `buildChampion` refuses to finish without it.
+        this.pendingChamps.delete(event.id);
         const unit = this.units.get(event.id);
         if (!unit) return;
         this.units.delete(event.id);
@@ -244,6 +277,24 @@ export class ClientSession implements NetGameHooks {
         return;
       }
     }
+  }
+
+  private async buildChampion(event: Extract<NetEvent, { k: 'champ' }>): Promise<void> {
+    const plan = event.plan as KitPlan;
+    await loadSpells(plan.passiveId ? [...plan.spellIds, plan.passiveId] : plan.spellIds);
+    if (!this.pendingChamps.delete(event.id)) return; // 'gone' raced the fetch
+    const champion = attachRecall(
+      new Champion({
+        game: this.game,
+        position: createVector(event.x, event.y),
+        teamId: event.team,
+        preset: presetFromPlan(plan),
+      })
+    );
+    this.game.objectManager.addObject(champion);
+    this.units.set(event.id, champion);
+    // Snapshots that arrived during the fetch were skipped for this id; the
+    // next one places the puppet, tens of milliseconds away.
   }
 
   // ----------------------------------------------------------- intercepts
@@ -279,6 +330,15 @@ export class ClientSession implements NetGameHooks {
     this.channel.send(JSON.stringify({ t: 'stop', slot }));
   }
 
+  interceptTeleport(point: Vec2): boolean {
+    this.channel.send(JSON.stringify({ t: 'tp', x: point.x, y: point.y }));
+    // `true` — wire-only, the one intercept that is. A locally-jumped body
+    // sits >RECONCILE_SNAP_UNITS from the freshest snapshot and would be
+    // snapped straight back on the next tick; the jump instead arrives in
+    // the host's next snapshot, one interpolation delay away.
+    return true;
+  }
+
   interceptRecall(): boolean {
     this.channel.send(JSON.stringify({ t: 'recall' }));
     return false;
@@ -295,6 +355,15 @@ export class ClientSession implements NetGameHooks {
   onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void {
     if (unit !== this.game.player) return;
     this.channel.send(JSON.stringify({ t: 'loadout', plan: planFromPreset(preset) }));
+  }
+
+  /** Everything remote — the host's own champion, its bots, other clients — for the Đội tab. */
+  netRosterUnits(): Champion[] {
+    const remote: Champion[] = [];
+    for (const unit of this.units.values()) {
+      if (unit instanceof Champion && unit !== this.game.player) remote.push(unit);
+    }
+    return remote;
   }
 
   /** Positions of every known unit, for the e2e's cross-page comparison. */

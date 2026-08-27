@@ -86,6 +86,8 @@ export interface MatchDirectorHost {
   /** Opens the shop panel aimed at a roster unit — `HudInteractions.openShopFor`. */
   openShopFor(id: string): void;
   requestExit(): void;
+  /** The attached LAN session, if any (`Game.net`) — the Đội tab's read-only LAN rows. */
+  readonly net?: { netRosterUnits(): Champion[] } | null;
 }
 
 /** `spells` is indexed by `SpellHotKeys` — `[A, Q, W, E, R, D, F]` — so abilities are 1‑4. */
@@ -155,6 +157,11 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   private unitOf(id: string): Champion | null {
     for (const entry of this.entries()) if (entry.unit.id === id) return entry.unit;
+    // The Đội tab's LAN rows resolve here too, for their live *reads* — the
+    // stat sheet, the wallet, the bag. Mutations aimed at one of these are
+    // unreachable from the tab (`ConfigRosterEntry.remote` hides the
+    // controls), so extending the lookup does not extend what can be done.
+    for (const unit of this.host.net?.netRosterUnits() ?? []) if (unit.id === id) return unit;
     return null;
   }
 
@@ -270,7 +277,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
   // ------------------------------------------------------------------ roster
 
   roster(): ConfigRosterEntry[] {
-    return this.entries().map((entry, index) => ({
+    const local = this.entries().map((entry, index) => ({
       id: entry.unit.id,
       index,
       label: index === 0 ? 'Bạn' : `Bot ${index}`,
@@ -285,6 +292,28 @@ export default class MatchDirectorSource implements MatchConfigSource {
       behaviour: entry.behaviour,
       invulnerable: this.director.isInvulnerable(entry.unit),
     }));
+    // The LAN-borne champions the director does not own — remote players on
+    // a host, everything remote on a client (`NetGameHooks.netRosterUnits`).
+    // Read-only rows: every mutation this source offers resolves its unit
+    // through `entries()`, so a control aimed at one of these ids no-ops by
+    // construction, and the tab hides those controls off `remote` besides.
+    const netUnits = this.host.net?.netRosterUnits() ?? [];
+    return local.concat(
+      netUnits.map((unit, i) => ({
+        id: unit.id,
+        index: local.length + i,
+        label: `LAN ${i + 1}`,
+        isPlayer: false,
+        team: unit.teamId as MatchTeamId,
+        title: unit.name || 'Không tên',
+        avatarUrl: unit.avatar?.url ?? null,
+        abilities: this.abilitiesOf(unit),
+        loadout: DEFAULT_CHAMPION_LOADOUT,
+        behaviour: undefined,
+        invulnerable: false,
+        remote: true,
+      }))
+    );
   }
 
   botCount(): number {

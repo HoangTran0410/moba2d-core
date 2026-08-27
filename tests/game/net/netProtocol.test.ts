@@ -85,6 +85,15 @@ describe('event and order messages', () => {
       // only ever fire a held spell at minimum charge, at press time.
       { t: 'rel', slot: 4, x: 3, y: 4 },
       { t: 'stop', slot: 1 },
+      { t: 'tp', x: 2000, y: 2000 },
+      {
+        t: 'died',
+        recap: {
+          seq: 2,
+          killerName: 'Vera',
+          entries: [{ atMs: 1000, amount: 55, type: 'PHYSICAL', attackerName: 'Vera' }],
+        },
+      },
       {
         t: 'loadout',
         plan: {
@@ -111,5 +120,8 @@ describe('event and order messages', () => {
     expect(decodeMessage(JSON.stringify({ t: 'stop', slot: 'Q' }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'loadout' }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'loadout', plan: 'Vera' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'tp', x: 5 }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'died' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'died', recap: 7 }))).toBeNull();
   });
 });

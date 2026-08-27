@@ -18,14 +18,54 @@
  * a phone on the same Wi-Fi can reach it — print shows the LAN addresses.)
  */
 import { WebSocketServer } from 'ws';
+import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8790);
-const server = new WebSocketServer({ port, host: '0.0.0.0' });
 
 /** room -> { host: ws|null, joiners: Map<id, ws> } */
 const rooms = new Map();
 let nextClientId = 1;
+
+/**
+ * `GET /rooms` — the same listing+announce endpoint the Cloudflare broker
+ * serves, minus the per-IP directories: this relay *is* one LAN, so one flat
+ * list is the correct grouping. `?announce=<code>&name=<n>` lists the
+ * caller's room while it keeps polling; an entry the polls stop refreshing
+ * falls out in `ANNOUNCE_STALE_MS`, while a room whose host socket is live
+ * stays listed as long as the socket does.
+ */
+const ANNOUNCE_STALE_MS = 15_000;
+const announced = new Map(); // code -> { name, ts }
+
+const httpServer = createServer((request, response) => {
+  const url = new URL(request.url ?? '/', 'http://relay');
+  const cors = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json' };
+  if (url.pathname !== '/rooms') {
+    response.writeHead(404, cors).end('{}');
+    return;
+  }
+  const announce = url.searchParams.get('announce');
+  if (announce && announce.length <= 32) {
+    announced.set(announce, { name: url.searchParams.get('name') ?? 'LAN game', ts: Date.now() });
+  }
+  const now = Date.now();
+  const listed = new Map();
+  for (const [code, entry] of announced) {
+    if (now - entry.ts < ANNOUNCE_STALE_MS) {
+      listed.set(code, { code, name: entry.name, ageMs: now - entry.ts });
+    } else {
+      announced.delete(code);
+    }
+  }
+  for (const [code, room] of rooms) {
+    if (room.host) listed.set(code, { code, name: room.hostName ?? 'LAN game', ageMs: 0 });
+  }
+  response.writeHead(200, cors).end(JSON.stringify([...listed.values()]));
+});
+
+const server = new WebSocketServer({ server: httpServer });
+httpServer.listen(port, '0.0.0.0');
 
 const roomOf = name => {
   if (!rooms.has(name)) rooms.set(name, { host: null, joiners: new Map() });
@@ -46,7 +86,11 @@ server.on('connection', (socket, request) => {
     // Last host wins: a refreshed hosting tab reclaims its room.
     if (room.host) room.host.close();
     room.host = socket;
+    room.hostName = url.searchParams.get('name') ?? 'LAN game';
     console.log(`[relay] host connected to room "${roomName}"`);
+    // Joiners who arrived before the host did (the lobby allows it) — replay
+    // them, or this host only ever hears about future arrivals.
+    for (const id of room.joiners.keys()) send(socket, JSON.stringify({ sys: 'joined', id }));
     socket.on('message', data => {
       let frame;
       try {

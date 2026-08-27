@@ -393,6 +393,7 @@ defineExpose({
                only things stacked over it are the kit icons. -->
           <div class="practice-roster-identity">
             <button
+              v-if="!row.remote"
               type="button"
               class="practice-roster-open"
               :aria-label="`Đổi tướng của ${row.label}`"
@@ -506,7 +507,11 @@ defineExpose({
             ></i>
           </button>
 
+          <!-- Both hidden on a LAN row: its side and its existence belong to
+               the machine actually driving it, and a control that no-ops is
+               worse than none. -->
           <button
+            v-if="!row.remote"
             type="button"
             class="practice-team-switch"
             :aria-label="`Chuyển ${row.label} sang ${teamNameOf(otherTeam(row.team))}`"
@@ -517,7 +522,7 @@ defineExpose({
           </button>
 
           <button
-            v-if="!row.isPlayer"
+            v-if="!row.isPlayer && !row.remote"
             type="button"
             class="practice-remove-bot"
             :aria-label="`Xoá ${row.label}`"
@@ -568,7 +573,9 @@ defineExpose({
             </section>
           </div>
 
-          <section class="practice-cheat-group">
+          <!-- No cheats on a LAN row — the drawer keeps the stat sheet, which
+               is the half a spectator can actually use. -->
+          <section v-if="!row.remote" class="practice-cheat-group">
             <h4 class="practice-stat-title">Luyện tập</h4>
 
             <!-- Bots only: how the AI plays this champion. The player drives its
