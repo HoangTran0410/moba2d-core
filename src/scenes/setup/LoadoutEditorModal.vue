@@ -705,25 +705,34 @@ const hint = computed(() => {
 
       <!-- A hand-built kit has no champion to inherit a body from. This is
            where it picks one; with nothing picked it plays the roster average. -->
+      <!-- A hand-built kit has no champion to inherit a body from. This is
+           where it picks one; with nothing picked it plays the roster average.
+           Deliberately one line that scrolls sideways rather than a block that
+           wraps: it sits inside the modal's sticky header, and every row added
+           there is a row taken off the champion list below. The body's numbers
+           live in each pill's tooltip for the same reason. -->
       <div v-if="isCustomKit && archetypes.length > 0" class="archetype-bar">
-        <span class="archetype-label">Chất tướng</span>
-        <div class="archetype-pills">
-          <button
-            v-for="option in archetypes"
-            :key="option.id"
-            type="button"
-            class="archetype-pill"
-            :class="{ active: draft.archetypeId === option.id }"
-            :title="option.summary"
-            :aria-pressed="draft.archetypeId === option.id"
-            @click="chooseArchetype(option.id)"
-          >
-            {{ option.name }}
-          </button>
-        </div>
-        <span class="archetype-summary">{{
-          chosenArchetype ? chosenArchetype.summary : 'Chưa chọn — lấy trung bình của roster'
-        }}</span>
+        <span
+          class="archetype-label"
+          :title="
+            chosenArchetype
+              ? chosenArchetype.summary
+              : 'Chưa chọn — bộ chiêu lấy trung bình của roster'
+          "
+          >Chất tướng</span
+        >
+        <button
+          v-for="option in archetypes"
+          :key="option.id"
+          type="button"
+          class="archetype-pill"
+          :class="{ active: draft.archetypeId === option.id }"
+          :title="option.summary"
+          :aria-pressed="draft.archetypeId === option.id"
+          @click="chooseArchetype(option.id)"
+        >
+          {{ option.name }}
+        </button>
       </div>
 
       <div v-if="naming && isCustomKit" class="saved-kit-form">

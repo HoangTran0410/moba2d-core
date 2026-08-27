@@ -25,19 +25,22 @@
   box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
 }
 
+/* Padding kept to what the row needs rather than to what looks roomy: the
+   close button inside is already a 44px thumb target, so it sets the height
+   on its own and every extra rem here is a row of the pack list below. */
 .packs-header {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.2rem 0.8rem;
+  gap: 0.6rem;
+  padding: 0.2rem 1.2rem;
   border-bottom: 1px solid var(--hextech-line);
 }
 
 .packs-header h1 {
   flex: 1;
   margin: 0;
-  font-size: 1.3em;
+  font-size: 1.05em;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--hextech-gold);
@@ -94,7 +97,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 1rem 1.2rem 1.4rem;
+  padding: 0.7rem 1.2rem 1.4rem;
 }
 
 /* -------------------------------------------------------------------- Tabs
@@ -111,7 +114,8 @@
 }
 
 /* 44px, because these are the screen's primary navigation and the first thing
-   a thumb reaches for. */
+   a thumb reaches for. Relaxed to 32 under `pointer: fine` below — a mouse
+   does not need the target and this panel is short on vertical room. */
 .packs-tab {
   flex: 1 1 0;
   display: inline-flex;
@@ -129,6 +133,17 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   cursor: pointer;
+}
+
+/* A mouse hits a 32px tab as reliably as a 44px one, and the twelve pixels
+   are worth more to the list. Written as a relaxation of the touch rule
+   rather than the other way round, so a device that reports nothing keeps the
+   thumb-sized target. */
+@media (pointer: fine) {
+  .packs-tab {
+    min-height: 32px;
+    padding: 0.3rem 0.6rem;
+  }
 }
 
 .packs-tab:hover {
