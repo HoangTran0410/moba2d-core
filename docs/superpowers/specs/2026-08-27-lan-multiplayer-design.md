@@ -224,16 +224,24 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   `cast` on press and `rel` on release (`stop` for a called-off charge), so
   the host's authoritative copy charges for as long as the real thumb held
   — puppets only mis-time the visual, positions ride snapshots regardless.
-- **A client's kit change syncs; nothing else in the panel does.** Đổi
-  tướng crosses as a `loadout` message carrying the applied plan
-  (`net/kitWire.ts`), the host applies + re-broadcasts, and
-  `Game.pause()` refuses while a net session is attached, so the panel
-  opens over the running match on both ends (the shop's old rule). But a
-  client's *other* panel mutations — rules, world, reset, bots — still
-  edit only the local half and desync; gating those controls on
-  `isNetClient()` is v2 work.
-- **No reconnect, no mid-match join after the first hello race, no host
-  migration**: a dropped socket is a dead session.
+- **A client's kit and side changes sync; the rest of the panel does
+  not.** Đổi tướng crosses as a `loadout` message carrying the applied
+  plan (`net/kitWire.ts`), đổi phe as a `team` message (both through
+  `MatchDirector`'s own methods, whose net hooks re-broadcast — the champ
+  event always carries the current team). `Game.pause()` refuses while a
+  net session is attached, so the panel opens over the running match on
+  both ends (the shop's old rule) — and the **away-handler is skipped
+  entirely in a net match** (`GameScene._leavePage`): it used to suspend
+  the runtime unconditionally and open the panel, and with `pause()`
+  refusing, the panel's close button had no `unpause()` to resume
+  through — a blurred client froze for ever, and a blurred host froze
+  everyone's match. A client's *other* panel mutations — rules, world,
+  reset, bots — still edit only the local half and desync; gating those
+  controls on `isNetClient()` is v2 work.
+- **No reconnect, no host migration**: a dropped socket is a dead session.
+  A departed client's champion is swept off the host (and, via 'gone', off
+  every other client) the moment the transport reports the leave; coming
+  back is an ordinary new join with a fresh champion.
 - **`UNIT`-targeted casts re-resolve on the client** from the aim point, so
   the puppet may visually strike a different-but-nearby target than the
   host did; damage is host-truth either way.

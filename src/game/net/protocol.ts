@@ -123,6 +123,8 @@ export type NetMessage =
   | { t: 'loadout'; plan: unknown }
   /** The minimap's tap-teleport — wire-only on a client, or reconciliation just snaps it back. */
   | { t: 'tp'; x: number; y: number }
+  /** The client switched its own side (Đội tab). Host validates against its own team ids. */
+  | { t: 'team'; team: string }
   /**
    * Host → one client: your champion died, and this is its recap — killer
    * plus the last seconds' damage ledger, which only the host's sim ever
@@ -215,6 +217,8 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
       return typeof message.recap === 'object' && message.recap !== null
         ? (parsed as NetMessage)
         : null;
+    case 'team':
+      return typeof message.team === 'string' ? { t: 'team', team: message.team } : null;
     case 'cast':
     case 'rel':
       return typeof message.slot === 'number' ? (parsed as NetMessage) : null;

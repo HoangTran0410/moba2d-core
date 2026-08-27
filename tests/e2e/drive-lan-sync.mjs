@@ -285,6 +285,32 @@ await guard(async () => {
     JSON.stringify(report.loadoutSync)
   );
 
+  // -------------------------------------------- đổi phe crosses the wire
+  // Hostility is computed independently at both ends, so an unsynced side
+  // switch is the worst kind of desync: the client "fights" people its own
+  // host copy is allied to, and nobody loses health.
+  const teamSwitch = await clientPage.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const { MatchTeam } = await import('/src/game/config/MatchTeams.ts');
+    const next = game.player.teamId === MatchTeam.BLUE ? MatchTeam.RED : MatchTeam.BLUE;
+    game.director.setTeam(game.player, next);
+    return { local: game.player.teamId };
+  });
+  await page
+    .waitForFunction(
+      expected => window.__lol2dNet.debugRemote()?.team === expected.local,
+      teamSwitch,
+      { timeout: 5_000 }
+    )
+    .catch(() => null);
+  const hostTeamView = await page.evaluate(() => window.__lol2dNet.debugRemote()?.team);
+  report.teamSwitch = { client: teamSwitch.local, host: hostTeamView };
+  check(
+    "a client side switch reaches the host",
+    hostTeamView === teamSwitch.local,
+    JSON.stringify(report.teamSwitch)
+  );
+
   // ------------------------------------------- minimap teleport, by wire
   // The one wire-only intercept: a locally-jumped body would be snapped
   // straight back by reconciliation (the reported bug), so the client only
@@ -491,6 +517,53 @@ await guard(async () => {
   report.damageTexts = damageTexts;
   check('damage numbers float on the client', damageTexts > 0, `${damageTexts} shown`);
 
+  // ------------------------------------------------ blur must not freeze
+  // The away-handler (blur/visibilitychange) used to suspend the runtime
+  // unconditionally and open the panel; with `pause()` refusing in a net
+  // match, closing that panel had no `unpause()` to resume through and the
+  // scene froze for ever. Now a LAN match ignores the away-handler entirely:
+  // frames keep coming, and no panel pops open uninvited.
+  const blurProbe = await clientPage.evaluate(
+    () =>
+      new Promise(resolve => {
+        const game = window.__lol2d.scene.oScene.game;
+        const framesBefore = frameCount;
+        const snapsBefore = game.net.debugStats.snapshotsReceived;
+        window.dispatchEvent(new Event('blur'));
+        setTimeout(() => {
+          resolve({
+            frames: frameCount - framesBefore,
+            snaps: game.net.debugStats.snapshotsReceived - snapsBefore,
+            panelOpened: game.inGameHUD.vueInstance.hud.showSpellsPicker,
+            paused: game.paused,
+          });
+        }, 700);
+      })
+  );
+  report.blurProbe = blurProbe;
+  check(
+    'a blurred client keeps rendering, panel stays shut',
+    blurProbe.frames > 10 && blurProbe.snaps > 10 && !blurProbe.panelOpened && !blurProbe.paused,
+    JSON.stringify(blurProbe)
+  );
+
+  // The host half matters more: a suspended host sim is everyone's match
+  // frozen. Blur it and watch the snapshots keep arriving on the client.
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  const hostBlur = await clientPage.evaluate(
+    () =>
+      new Promise(resolve => {
+        const game = window.__lol2d.scene.oScene.game;
+        const snapsBefore = game.net.debugStats.snapshotsReceived;
+        setTimeout(
+          () => resolve({ snaps: game.net.debugStats.snapshotsReceived - snapsBefore }),
+          700
+        );
+      })
+  );
+  report.hostBlur = hostBlur;
+  check('a blurred host keeps serving snapshots', hostBlur.snaps > 10, JSON.stringify(hostBlur));
+
   // ------------------------------------------------------------ liveness
   const hostStats = await page.evaluate(() => window.__lol2dNet.debugStats);
   const clientStats = await clientPage.evaluate(() => window.__lol2dNet.debugStats);
@@ -505,8 +578,27 @@ await guard(async () => {
 
   // The WS pages keep running as the RTC leg boots two more matches in the
   // same browser; closing the WS client trims one full game's CPU out of the
-  // latency measurements below.
+  // latency measurements below. It doubles as the leave test: the socket
+  // drop must sweep the departed player's champion off the host ("thoát
+  // phòng mà champ vẫn đứng chỗ cũ" was v1's deliberate cut, now closed).
+  const departedName = clientKit.name;
   await clientContext.close();
+  const swept = await page
+    .waitForFunction(
+      name => {
+        if (window.__lol2dNet.debugRemote() !== null) return false;
+        for (const object of window.__lol2d.scene.oScene.game.objectManager.objects) {
+          if (object.name === name && !object.toRemove && !object.isDead) return false;
+        }
+        return true;
+      },
+      departedName,
+      { timeout: 8_000 }
+    )
+    .then(() => true)
+    .catch(() => false);
+  report.leaveSwept = swept;
+  check("a departed client's champion is swept from the host", swept, `${swept}`);
 
   // ================================================== the WebRTC leg
   // Same match shape, fresh pages, `transport=rtc`: the relay carries only

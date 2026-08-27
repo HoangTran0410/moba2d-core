@@ -166,7 +166,10 @@ export interface MatchDirectorContext extends GameObjectRuntimeContext {
    * tells it (`net/hooks.ts` has the full seam). Optional so the unit-test
    * context never has to build one.
    */
-  net?: { onLoadoutApplied(unit: Champion, preset: ResolvedChampionPreset): void } | null;
+  net?: {
+    onLoadoutApplied(unit: Champion, preset: ResolvedChampionPreset): void;
+    onTeamChanged(unit: Champion): void;
+  } | null;
 }
 
 export default class MatchDirector {
@@ -732,6 +735,11 @@ export default class MatchDirector {
     if (unit.teamId === teamId) return;
     this.invalidatePendingReset();
     unit.setTeamId(teamId);
+    // The same two-ended seam a kit change rides (`onLoadoutApplied`): a host
+    // re-broadcasts the side so every puppet repaints, a client asks the host
+    // to make its own switch real — without it the two sims disagree about
+    // who is hostile to whom, which is "đánh nhau mà không mất máu".
+    this.game.net?.onTeamChanged(unit);
     this.persist();
   }
 

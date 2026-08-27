@@ -88,6 +88,7 @@ describe('event and order messages', () => {
       { t: 'rel', slot: 4, x: 3, y: 4 },
       { t: 'stop', slot: 1 },
       { t: 'tp', x: 2000, y: 2000 },
+      { t: 'team', team: 'team-red' },
       {
         t: 'died',
         recap: {
@@ -125,5 +126,7 @@ describe('event and order messages', () => {
     expect(decodeMessage(JSON.stringify({ t: 'tp', x: 5 }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'died' }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'died', recap: 7 }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'team' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'team', team: 9 }))).toBeNull();
   });
 });

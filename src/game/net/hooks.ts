@@ -45,6 +45,14 @@ export interface NetGameHooks {
    */
   onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void;
   /**
+   * `MatchDirector.setTeam` moved a live champion to the other side. A host
+   * re-broadcasts (the side rides in the champ event); a client asks the
+   * host to make its own switch real — hostility is computed independently
+   * at both ends, so an unsynced side is two sims disagreeing about who can
+   * hurt whom.
+   */
+  onTeamChanged(unit: Champion): void;
+  /**
    * The net-borne champions the local `MatchDirector` knows nothing about —
    * remote players on a host, everything remote on a client. The Đội tab
    * appends them as read-only rows (`MatchDirectorSource.roster`), which is

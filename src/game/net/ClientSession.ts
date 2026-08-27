@@ -220,8 +220,10 @@ export class ClientSession implements NetGameHooks {
         // arriving here has already happened, like a cast echo.
         if (existing === this.game.player) return;
         if (existing instanceof Champion) {
-          // A re-broadcast kit (a random bot re-rolled on respawn, or a
-          // champion the host's own panel just re-kitted).
+          // A re-broadcast: a re-rolled or re-kitted champion, or one that
+          // just switched sides — the event always carries the current team,
+          // and `setTeamId` runs the same ripple the host's own switch ran.
+          if (existing.teamId !== event.team) existing.setTeamId(event.team);
           existing.applyPreset(presetFromPlan(event.plan as KitPlan));
           return;
         }
@@ -382,6 +384,12 @@ export class ClientSession implements NetGameHooks {
   onLoadoutApplied(unit: Champion, preset: ChampionPresetData & { avatar?: string }): void {
     if (unit !== this.game.player) return;
     this.channel.send(JSON.stringify({ t: 'loadout', plan: planFromPreset(preset) }));
+  }
+
+  /** Our own side switch, predicted by the local director — ask the host to make it real. */
+  onTeamChanged(unit: Champion): void {
+    if (unit !== this.game.player) return;
+    this.channel.send(JSON.stringify({ t: 'team', team: unit.teamId }));
   }
 
   /** Everything remote — the host's own champion, its bots, other clients — for the Đội tab. */

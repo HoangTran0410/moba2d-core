@@ -1157,6 +1157,10 @@ export default class Game {
    * show.
    */
   pauseForAway(): void {
+    // Not in a LAN match: the match runs on without this player, so there is
+    // no held state to make visible — only a panel popping open uninvited on
+    // every blur. `GameScene._leavePage` already skips the runtime half.
+    if (this.net) return;
     if (this.paused) return;
     const hud = this.inGameHUD?.vueInstance?.hud;
     if (hud) hud.openSpellPicker();

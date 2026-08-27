@@ -23,6 +23,7 @@ import {
 } from '@/game/preset';
 import { loadSpells, spellIdOfClass } from '@/game/spellRegistry';
 import { asKitPlan, planFromPreset } from './kitWire';
+import { isMatchTeamId } from '@/game/config/MatchTeams';
 import { setNetRole, type NetUrlRequest } from './netRole';
 import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
@@ -328,8 +329,17 @@ export class HostSession implements NetGameHooks {
       return;
     }
     if (event.kind === 'left') {
-      // v1: the champion stays, idle — a rejoin story is future work.
+      // The champion leaves with its player: marked for the ordinary sweep,
+      // which `discover()` then notices and broadcasts as 'gone', so every
+      // other client's puppet disappears too. A returning player is simply a
+      // new joiner with a fresh champion — v1's whole rejoin story.
+      const champion = this.clients.get(event.peerId);
       this.clients.delete(event.peerId);
+      if (champion) {
+        champion.toRemove = true;
+        this.championNames.delete(champion);
+        this.championPlans.delete(champion);
+      }
       return;
     }
     const message = decodeMessage(event.raw);
@@ -402,6 +412,12 @@ export class HostSession implements NetGameHooks {
     if (message.t === 'stop') {
       const spell = champion.spells[message.slot];
       if (spell?.state === 'CHARGING') spell.cancel('PLAYER_CANCEL');
+      return;
+    }
+    if (message.t === 'team') {
+      // Through the director — the same single writer the panel uses — whose
+      // `onTeamChanged` hook then re-broadcasts the side to every client.
+      if (isMatchTeamId(message.team)) this.game.director.setTeam(champion, message.team);
       return;
     }
     if (message.t === 'tp') {
@@ -529,6 +545,12 @@ export class HostSession implements NetGameHooks {
     return [...this.clients.values()];
   }
 
+  /** A live side switch — the champ event carries the team, so re-broadcast it. */
+  onTeamChanged(unit: Champion): void {
+    const id = this.ids.get(unit);
+    if (id) this.pendingEvents.push(this.championEvent(id, unit));
+  }
+
   /**
    * The host's own panel gave a live champion a new kit. Broadcast the real
    * plan — `discover`'s name check would eventually notice a *renamed*
@@ -554,17 +576,25 @@ export class HostSession implements NetGameHooks {
   }
 
   /** The first remote client's champion, for the e2e's order assertions. */
-  debugRemote(): { x: number; y: number; cooldowns: number[]; name: string; kit: string[] } | null {
+  debugRemote(): {
+    x: number;
+    y: number;
+    cooldowns: number[];
+    name: string;
+    kit: string[];
+    team: string;
+  } | null {
     const champion = this.clients.values().next().value as Champion | undefined;
     if (!champion) return null;
     return {
       x: champion.position.x,
       y: champion.position.y,
       cooldowns: champion.spells.map(spell => spell.currentCooldown),
-      // Identity, for the đổi-tướng probe: after a client changes its own
-      // kit, the host's authoritative copy must be running the same classes.
+      // Identity, for the đổi-tướng/đổi-phe probes: after a client changes
+      // its own kit or side, the host's authoritative copy must match.
       name: champion.name,
       kit: champion.spells.map(spell => spell.constructor.name),
+      team: champion.teamId,
     };
   }
 

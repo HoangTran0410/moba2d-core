@@ -149,6 +149,14 @@ export default class GameScene extends Scene {
    * still has to stop either way.
    */
   private _leavePage(): void {
+    // A LAN match stops for nobody — least of all for a blur. Suspending here
+    // is what froze net matches solid: `Game.pause()` refuses while a session
+    // is attached, so the away-panel's close button had no `unpause()` to
+    // fire `onPauseChanged(false)` through, and nothing ever called
+    // `resumeRuntime()` again. A blurred host must also keep serving — its
+    // sim is other people's match (`updateLoop` is a timeout, so it survives
+    // a hidden tab at the browser's throttled rate).
+    if (this.game?.net) return;
     this.suspendRuntime();
     this.game?.pauseForAway();
   }
