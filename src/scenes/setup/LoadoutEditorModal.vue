@@ -299,12 +299,26 @@ const pickRandom = (): void => {
  * real summoner spell (see `ChampionLoadout.summonerD`), so leaving it to
  * chance turns the loadout custom through the same path a non-summoner pick
  * does.
+ *
+ * Slot A is the special case, in the other direction: the match never rolls
+ * it — a `'random'` there resolves to the one basic attack (`planSlot`),
+ * because whatever sits in slot 0 is what `BasicAttackController` drives and
+ * a rolled ability in it means no auto-attack at all. So the dice write that
+ * fixed outcome instead of showing a dice glyph over it, which also makes
+ * this button the way back to đánh thường for an A slot a stale save filled
+ * with something else.
  */
 const randomizeSlot = (): void => {
-  writeSlots(draft.value, [{ index: activeSlot.value, id: 'random' }]);
+  const index = activeSlot.value;
+  writeSlots(draft.value, [{ index, id: index === 0 ? BASIC_ATTACK_ID : 'random' }]);
 };
 
-const activeSlotIsRandom = computed(() => draftSlots.value[activeSlot.value] === null);
+/** Already what the dice would produce: random for Q–F, the basic attack for A. */
+const diceDisabled = computed(() =>
+  activeSlot.value === 0
+    ? activeEntryId.value === BASIC_ATTACK_ID
+    : draftSlots.value[activeSlot.value] === null
+);
 
 /* ------------------------------------------------------------ saved kits */
 
@@ -664,8 +678,12 @@ const hint = computed(() => {
         <button
           type="button"
           class="kit-slot-pill kit-slot-random"
-          :disabled="activeSlotIsRandom"
-          :title="`Bốc thăm ô ${SLOT_LABELS[activeSlot]} khi vào trận`"
+          :disabled="diceDisabled"
+          :title="
+            activeSlot === 0
+              ? 'Ô A luôn là đòn đánh thường — bấm để đặt lại'
+              : `Bốc thăm ô ${SLOT_LABELS[activeSlot]} khi vào trận`
+          "
           @click="randomizeSlot"
         >
           <i class="fas fa-random"></i>
@@ -701,38 +719,6 @@ const hint = computed(() => {
             <span class="kit-bar-label">Xác nhận</span>
           </button>
         </div>
-      </div>
-
-      <!-- A hand-built kit has no champion to inherit a body from. This is
-           where it picks one; with nothing picked it plays the roster average. -->
-      <!-- A hand-built kit has no champion to inherit a body from. This is
-           where it picks one; with nothing picked it plays the roster average.
-           Deliberately one line that scrolls sideways rather than a block that
-           wraps: it sits inside the modal's sticky header, and every row added
-           there is a row taken off the champion list below. The body's numbers
-           live in each pill's tooltip for the same reason. -->
-      <div v-if="isCustomKit && archetypes.length > 0" class="archetype-bar">
-        <span
-          class="archetype-label"
-          :title="
-            chosenArchetype
-              ? chosenArchetype.summary
-              : 'Chưa chọn — bộ chiêu lấy trung bình của roster'
-          "
-          >Chất tướng</span
-        >
-        <button
-          v-for="option in archetypes"
-          :key="option.id"
-          type="button"
-          class="archetype-pill"
-          :class="{ active: draft.archetypeId === option.id }"
-          :title="option.summary"
-          :aria-pressed="draft.archetypeId === option.id"
-          @click="chooseArchetype(option.id)"
-        >
-          {{ option.name }}
-        </button>
       </div>
 
       <div v-if="naming && isCustomKit" class="saved-kit-form">
@@ -802,6 +788,37 @@ const hint = computed(() => {
       </p>
 
       <div ref="rosterBody" class="pregame-modal-body">
+        <!-- A hand-built kit has no champion to inherit a body from. This is
+             where it picks one; with nothing picked it plays the roster average.
+             Top of the scrolling body, not the sticky header: up there every
+             row it needed was a row taken off the champion list below, which
+             squeezed it into a clipped sideways-scrolling sliver. Down here it
+             wraps freely, reads at full height, and scrolls away once the role
+             is picked. The body's numbers live in each pill's tooltip. -->
+        <div v-if="isCustomKit && archetypes.length > 0" class="archetype-bar">
+          <span
+            class="archetype-label"
+            :title="
+              chosenArchetype
+                ? chosenArchetype.summary
+                : 'Chưa chọn — bộ chiêu lấy trung bình của roster'
+            "
+            >Chất tướng</span
+          >
+          <button
+            v-for="option in archetypes"
+            :key="option.id"
+            type="button"
+            class="archetype-pill"
+            :class="{ active: draft.archetypeId === option.id }"
+            :title="option.summary"
+            :aria-pressed="draft.archetypeId === option.id"
+            @click="chooseArchetype(option.id)"
+          >
+            {{ option.name }}
+          </button>
+        </div>
+
         <KitRoster
           :shelves="visibleShelves"
           :pack-labels="packLabels"

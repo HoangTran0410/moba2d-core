@@ -474,9 +474,21 @@ const summonerIdOr = (choice: string): string => {
   return ids[0] ?? choice;
 };
 
-/** A slot's stored choice with 'random' — and any id this build dropped — rolled out. */
-const planSlot = (choice: SlotChoice): string =>
-  choice !== 'random' && isSpellId(choice) ? choice : randomSpellId();
+/**
+ * A slot's stored choice with 'random' — and any id this build dropped —
+ * rolled out.
+ *
+ * Slot 0 never rolls. It is the A key and the basic-attack input path (see
+ * `planRandomKit`'s slot comment): whatever sits there is what
+ * `BasicAttackController` drives, so a rolled ability in it leaves the
+ * champion unable to auto-attack at all — which is exactly what a custom kit
+ * whose A was left to chance used to spawn with. Its dice land on the one
+ * basic attack instead.
+ */
+const planSlot = (choice: SlotChoice, slotIndex: number): string => {
+  if (choice !== 'random' && isSpellId(choice)) return choice;
+  return slotIndex === 0 ? BASIC_ATTACK_ID : randomSpellId();
+};
 
 /**
  * A random champion: one complete catalogue row, kept coherent all the way

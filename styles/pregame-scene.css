@@ -1909,30 +1909,28 @@ body.touch-ui .spell-peek .spell-detail-body {
 /* --- the role a hand-built kit plays as ------------------------------------
    Only the custom-kit editor shows this: a champion kit already is a role, and
    letting a player give a marksman a tank's body would make the roster's own
-   tuning advisory. */
+   tuning advisory. It leads the scrolling roster, framed like the saved-kit
+   shelf beneath it. In the sticky header — where it used to live — every row
+   it needed was a row taken off the list below, so it was pinned to one
+   clipped sideways-scrolling line; inside the scroller it may wrap. */
 .archetype-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
-  margin-top: 6px;
-  /* One line, always. Wrapping was the bug: this bar lives in the modal's
-     sticky header, so a second row is a row taken off the champion list that
-     scrolls below it. Six pills fit at this size; a narrower viewport or a
-     pack with more roles scrolls sideways instead of growing downwards. */
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.archetype-bar::-webkit-scrollbar {
-  display: none;
+  gap: 4px 5px;
+  padding: 0.35rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--hextech-line);
+  background: var(--hextech-panel);
 }
 
 .archetype-label {
   flex: 0 0 auto;
+  margin-right: 3px;
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(240, 230, 210, 0.5);
+  color: var(--hextech-muted);
 }
 
 .archetype-pill {
