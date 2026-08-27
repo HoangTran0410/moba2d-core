@@ -63,11 +63,29 @@
   z-index: 10;
 }
 
+/* One column, one width, one beat. The three stacked buttons share a fixed
+   width so the stack reads as a column rather than a staircase of three
+   different label lengths, and every step down the column is the same 14px —
+   #lan-btn shipped without any margin at all, which is what glued it to
+   Cấu Hình Trận Đấu in the report that prompted this. --menu-col-w is also
+   what the LAN panel's rows align to below. */
+#menu-scene {
+  --menu-col-w: 230px;
+}
+
+#play-btn,
+#config-btn,
+#lan-btn {
+  width: var(--menu-col-w);
+  box-sizing: border-box;
+}
+
 #play-btn {
   margin-top: 15px;
 }
 
-#config-btn {
+#config-btn,
+#lan-btn {
   margin-top: 14px;
 }
 
@@ -508,11 +526,10 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  /* No border, no background, no fixed width: the LAN controls are menu
-     rows, not a dialog, and nothing in them may grow wider than Cấu Hình
-     Trận Đấu (~197px at the menu's own type size — the 190px caps below
-     leave margin for font rendering spread). */
-  margin-top: 8px;
+  /* No border, no background: the LAN controls are menu rows, not a
+     dialog. Every row is exactly --menu-col-w wide — the same width the
+     three buttons above share — so the whole column reads as one shape. */
+  margin-top: 14px;
 }
 
 /* The panel's own buttons keep the menu buttons' intrinsic sizing — the flex
@@ -520,14 +537,13 @@
    deliberately shorter than Cấu Hình Trận Đấu. */
 .lan-box .hextech-btn {
   align-self: center;
-  width: auto;
-  max-width: 190px;
+  width: var(--menu-col-w);
   box-sizing: border-box;
 }
 
 .lan-code {
   margin: 0;
-  max-width: 190px;
+  max-width: var(--menu-col-w);
   font-size: 11px;
   line-height: 1.35;
   color: rgba(214, 202, 182, 0.75);
@@ -537,7 +553,7 @@
 .lan-rooms {
   display: flex;
   flex-direction: column;
-  width: 190px;
+  width: var(--menu-col-w);
   gap: 4px;
   max-height: 84px; /* ~3 rows */
   overflow-y: auto;
@@ -585,7 +601,7 @@
 /* One row: the input flexes, Vào keeps its own size. */
 .lan-join-code {
   display: flex;
-  width: 190px;
+  width: var(--menu-col-w);
   gap: 6px;
 }
 
