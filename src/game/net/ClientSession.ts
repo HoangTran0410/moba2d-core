@@ -52,6 +52,8 @@ export class ClientSession implements NetGameHooks {
   private buffer = new InterpolationBuffer();
   /** Champion spawns whose spell chunks are still in flight — see the 'champ' case. */
   private pendingChamps = new Set<string>();
+  /** Puppets that are the host's summoned pets — sized by the event, hidden from the Đội tab. */
+  private petUnits = new WeakSet<AttackableUnit>();
   /**
    * The host's recap for our own champion's latest death, until the local
    * `die()` has run so it can be applied *after* it — `die` snapshots the
@@ -320,6 +322,14 @@ export class ClientSession implements NetGameHooks {
         preset: presetFromPlan(plan),
       })
     );
+    // A summoned pet's puppet: the real body size (a subclass constructor
+    // fact no plan carries), and remembered so the Đội tab skips it — its
+    // *local* twin never got into the world (`ObjectManager.addObject`
+    // refuses `isSummonedPet` on a net client).
+    if (event.pet) {
+      champion.stats.size.baseValue = event.pet.size;
+      this.petUnits.add(champion);
+    }
     this.game.objectManager.addObject(champion);
     this.units.set(event.id, champion);
     // Snapshots that arrived during the fetch were skipped for this id; the
@@ -396,7 +406,10 @@ export class ClientSession implements NetGameHooks {
   netRosterUnits(): Champion[] {
     const remote: Champion[] = [];
     for (const unit of this.units.values()) {
-      if (unit instanceof Champion && unit !== this.game.player) remote.push(unit);
+      // Not the pets: a summon is an effect with a lifespan, not a roster row.
+      if (unit instanceof Champion && unit !== this.game.player && !this.petUnits.has(unit)) {
+        remote.push(unit);
+      }
     }
     return remote;
   }

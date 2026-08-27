@@ -35,6 +35,16 @@ export interface ChampionSpawnEvent {
   y: number;
   /** A `KitPlan` — already plain serializable data (`preset.ts`). Typed loose here so the protocol stays dependency-free. */
   plan: unknown;
+  /**
+   * Present when the unit is a summoned `Pet` (Tibbers, a decoy clone). The
+   * client builds the same plain-champion puppet — a pet's brain, leash and
+   * expiry are all host facts arriving as snapshots and 'gone' — but at the
+   * pet's real body size, excluded from the Đội tab, and its *local* twin is
+   * suppressed: the summoning spell also plays out in the client's own sim,
+   * and without the gate every summon stood twice (the real-looking local
+   * ghost the host knew nothing about, beside an avatar-less puppet).
+   */
+  pet?: { size: number };
 }
 
 export interface MinionSpawnEvent {

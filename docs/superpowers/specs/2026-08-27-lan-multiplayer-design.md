@@ -276,7 +276,13 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   `BasicAttackController.replayLaunch` — a champion's controller only fires
   on orders, which puppets never hold, while minions/monsters/turrets swing
   on their own local timers at both ends and are deliberately not
-  forwarded), and every floating damage number (`dmg` events in the ordinary
+  forwarded), **summoned pets** (a `Pet` is a `Champion`, so the host was
+  already broadcasting it — as an avatar-less default-sized puppet beside
+  the client's own locally-played summon, i.e. two Tibbers of which only
+  the ugly one was real; now `ObjectManager.addObject` refuses
+  `isSummonedPet` on a net client, the champ event carries `pet.size` and
+  the live avatar key, and the puppet stays off the Đội tab), and every
+  floating damage number (`dmg` events in the ordinary
   flush — `AttackableUnit.takeDamage` announces the post-mitigation figure
   on `EventType.ON_TAKE_DAMAGE` in the same breath it floats it, and the
   client replays it through the same `CombatText.show`; a client's gated

@@ -8,6 +8,7 @@ import Champion, {
 import type { DamageNumberEvent } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { AttackLaunchEvent } from '@/game/combat/BasicAttackController';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
+import Pet from '@/game/gameObject/attackableUnits/Pet';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
 import Turret from '@/game/gameObject/structures/Turret';
 import type Spell from '@/game/gameObject/Spell';
@@ -178,6 +179,9 @@ export class HostSession implements NetGameHooks {
       x: unit.position.x,
       y: unit.position.y,
       plan: this.championPlans.get(unit) ?? this.planFromLiveChampion(unit),
+      // A summon carries its body size — the one look a plan cannot: size is
+      // the pet subclass's own constructor fact, not a tuning any kit names.
+      ...(unit instanceof Pet ? { pet: { size: unit.stats.size.baseValue } } : {}),
     };
   }
 
@@ -192,7 +196,10 @@ export class HostSession implements NetGameHooks {
   private planFromLiveChampion(unit: Champion): KitPlan {
     return {
       name: unit.name,
-      avatar: '',
+      // The live handle keeps its pack asset key, so the puppet gets the real
+      // portrait — a pet used to cross as `''` and stand there as "1 tướng
+      // không avatar". `null` (core's own default body) still falls to ''.
+      avatar: unit.avatar?.key ?? '',
       attack: DEFAULT_CHAMPION_ATTACK,
       defence: DEFAULT_CHAMPION_DEFENCE,
       spellIds: unit.spells.map(spell => spellIdOfClass(spell.constructor) ?? 'BasicAttack'),

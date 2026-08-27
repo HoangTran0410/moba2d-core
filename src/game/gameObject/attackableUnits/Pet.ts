@@ -69,6 +69,16 @@ export interface PetOptions extends ChampionOptions {
  */
 export default class Pet extends Champion {
   /**
+   * The marker `ObjectManager.addObject` reads to refuse a locally-born pet
+   * on a LAN client (its summoning spell plays out in the client's sim too,
+   * and the host's authoritative copy arrives as a spawn event — without the
+   * refusal every summon stood twice). A field rather than `instanceof
+   * Pet` at the gate because `Pet` already imports `ObjectManager` for
+   * `PredefinedFilters`, and the reverse import would be a cycle.
+   */
+  readonly isSummonedPet = true;
+
+  /**
    * Overrides `Champion`'s `'champion'`. A summon is not a takedown: without
    * this, every decoy clone and shadow pet killed would land on someone's kill
    * count, because a `Pet` *is* a `Champion` as far as `instanceof` goes.

@@ -473,6 +473,67 @@ await guard(async () => {
   report.remoteSwings = swingCount;
   check("a host champion's swings are visible on the client", swingCount > 0, `${swingCount}`);
 
+  // ----------------------------------------------- exactly one pet each
+  // A summon exists once per world: the host's pet crosses as a sized spawn
+  // event, and a client's locally-played summon is refused at `addObject` —
+  // the pair of bugs was one real-looking local ghost the host knew nothing
+  // about beside an avatar-less default-sized puppet.
+  const rosterBeforePet = await clientPage.evaluate(
+    () => window.__lol2d.scene.oScene.game.net.netRosterUnits().length
+  );
+  await page.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const { default: Pet } = await import('/src/game/gameObject/attackableUnits/Pet.ts');
+    const summon = new Pet({
+      game,
+      position: createVector(game.player.position.x + 100, game.player.position.y),
+      teamId: game.player.teamId,
+      ownerUnit: game.player,
+      lifeTimeMs: 60_000,
+      preset: { name: 'Gấu Kiểm Thử' },
+    });
+    summon.stats.size.baseValue = 111;
+    game.objectManager.addObject(summon);
+  });
+  const petView = await clientPage
+    .waitForFunction(
+      () => {
+        const game = window.__lol2d.scene.oScene.game;
+        const copies = [];
+        for (const object of game.objectManager.objects) {
+          if (object.name === 'Gấu Kiểm Thử') copies.push(object.stats.size.baseValue);
+        }
+        return copies.length > 0 ? copies : false;
+      },
+      null,
+      { timeout: 10_000 }
+    )
+    .then(handle => handle.jsonValue())
+    .catch(() => []);
+  const localPetRefused = await clientPage.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const { default: Pet } = await import('/src/game/gameObject/attackableUnits/Pet.ts');
+    const ghost = new Pet({
+      game,
+      position: createVector(0, 0),
+      teamId: game.player.teamId,
+      ownerUnit: game.player,
+      lifeTimeMs: 60_000,
+      preset: { name: 'Bóng Ma' },
+    });
+    game.objectManager.addObject(ghost);
+    return !game.objectManager._objectToBeAdd.includes(ghost);
+  });
+  const rosterAfterPet = await clientPage.evaluate(
+    () => window.__lol2d.scene.oScene.game.net.netRosterUnits().length
+  );
+  report.petSync = { copies: petView, localPetRefused, rosterBeforePet, rosterAfterPet };
+  check(
+    'a summoned pet stands exactly once on the client, real size, off the roster',
+    petView.length === 1 && petView[0] === 111 && localPetRefused && rosterAfterPet === rosterBeforePet,
+    JSON.stringify(report.petSync)
+  );
+
   // -------------------------------------------------- death recap, told
   // A client's own `takeDamage` is gated, so its death ledger is empty by
   // construction — the recap must arrive from the host's sim or the death
