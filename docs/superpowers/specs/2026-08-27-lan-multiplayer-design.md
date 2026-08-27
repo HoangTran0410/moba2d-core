@@ -86,7 +86,7 @@ host browser ◄════ RTCDataChannels, peer-to-peer ════► clien
   one interface, and the sessions cannot tell them apart.
 - **Signaling is a Cloudflare Worker + two Durable Object classes**
   (`net/signaling/`, deployed at
-  `wss://lol2d-signal.99-hoangtran.workers.dev`, baked as the production
+  `wss://moba2d-signal.99-hoangtran.workers.dev`, baked as the production
   default in `src/scenes/lanSignal.ts` and overridable with `?signal=`).
   `SignalRoom` speaks **exactly `scripts/net-relay.mjs`'s protocol** — one
   host, N joiners, `{from}`/`{to}` envelopes, join/leave notices — so the

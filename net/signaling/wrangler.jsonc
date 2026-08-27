@@ -9,7 +9,7 @@
  * `src/scenes/lanSignal.ts`'s DEFAULT_SIGNAL_URL.
  */
 {
-  "name": "lol2d-signal",
+  "name": "moba2d-signal",
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
   "observability": { "enabled": true },

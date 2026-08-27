@@ -17,7 +17,7 @@
  */
 export const DEFAULT_SIGNAL_URL = import.meta.env.DEV
   ? 'ws://localhost:8790'
-  : 'wss://lol2d-signal.99-hoangtran.workers.dev';
+  : 'wss://moba2d-signal.99-hoangtran.workers.dev';
 
 /** 5 chars of A-Z2-9 (no 0/O/1/I): ~33M codes, plenty for rooms that live minutes. */
 export const randomRoomCode = (): string => {
