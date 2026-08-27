@@ -43,26 +43,6 @@ process.on('exit', () => relay.kill());
 
 const { url, page, report, check, guard, openPage } = await startHarness();
 
-/**
- * In-page cast: aim the cursor-world at a live enemy champion (a random kit
- * may hold UNIT-targeted spells that refuse empty ground), then press the
- * slot through the same controller seam the keyboard uses. Returns the
- * press stamp.
- */
-const pressAimedAt = (targetPage, keyCode) =>
-  targetPage.evaluate(code => {
-    const game = window.__lol2d.scene.oScene.game;
-    const enemies = game.objectManager.objects.filter(
-      o => o.constructor?.name?.includes('Champion') && o.teamId !== game.player.teamId && !o.isDead
-    );
-    const target = enemies[0] ?? game.player;
-    game.worldMouse.set(target.position.x, target.position.y);
-    const stamp = Date.now();
-    game.spellInputController.keyDown(code, false);
-    game.spellInputController.keyUp(code);
-    return stamp;
-  }, keyCode);
-
 const withParams = (mode, transport, room) =>
   `${url}${url.includes('?') ? '&' : '?'}net=${mode}&transport=${transport}` +
   `&signal=ws://localhost:${RELAY_PORT}&room=${room}`;
@@ -116,6 +96,81 @@ await guard(async () => {
   );
   check('median position error < 50 units', median < 50, `${report.medianErrorUnits}`);
 
+  // ------------------------------------------------- latency measurements
+  // One act measures both numbers: arm the host-side watcher, then the
+  // client presses its slots in order until one commits locally (a random
+  // kit can hold UNIT-targeted spells that refuse when every enemy is
+  // across the map — a refusal says nothing about latency). Own latency is
+  // keypress to local state change; remote latency is the same press's
+  // commit appearing on the host. Runs before any marching, at the spawn,
+  // where the champion cannot already be dead.
+  const ownCastProbe = `new Promise(resolve => {
+    const game = window.__lol2d.scene.oScene.game;
+    const enemies = game.objectManager.objects.filter(
+      o => o.constructor?.name?.includes('Champion') && o.teamId !== game.player.teamId && !o.isDead
+    );
+    const target = enemies[0] ?? game.player;
+    game.worldMouse.set(target.position.x, target.position.y);
+    const slots = [
+      [87, 2],
+      [81, 1],
+      [69, 3],
+      [82, 4],
+    ]; // W, Q, E, R
+    const tryNext = () => {
+      const next = slots.shift();
+      if (!next) {
+        resolve({ latencyMs: -1, stamp: Date.now() });
+        return;
+      }
+      const [keyCode, slot] = next;
+      const spell = game.player.spells[slot];
+      const t0 = Date.now();
+      game.spellInputController.keyDown(keyCode, false);
+      game.spellInputController.keyUp(keyCode);
+      const timer = setInterval(() => {
+        if (spell.currentCooldown > 0 || spell.state !== 'READY') {
+          clearInterval(timer);
+          resolve({ latencyMs: Date.now() - t0, stamp: t0 });
+        } else if (Date.now() - t0 > 700) {
+          clearInterval(timer);
+          tryNext();
+        }
+      }, 2);
+    };
+    tryNext();
+  })`;
+  const hostStampProbe = `new Promise(resolve => {
+    const session = window.__lol2dNet;
+    const armedAt = Date.now();
+    const timer = setInterval(() => {
+      const remote = session.debugRemote();
+      if (remote && remote.cooldowns.slice(1, 5).some(cd => cd > 0)) {
+        clearInterval(timer);
+        resolve(Date.now());
+      } else if (Date.now() - armedAt > 8000) {
+        clearInterval(timer);
+        resolve(-1);
+      }
+    }, 2);
+  })`;
+
+  const hostStampPromise = page.evaluate(hostStampProbe);
+  const ownCast = await clientPage.evaluate(ownCastProbe);
+  const hostCommitStamp = await hostStampPromise;
+  report.ownCastLatencyMs = ownCast.latencyMs;
+  report.remoteCommitLatencyMs = hostCommitStamp > 0 ? hostCommitStamp - ownCast.stamp : -1;
+  check(
+    'own cast visible under 50ms',
+    ownCast.latencyMs >= 0 && ownCast.latencyMs < 50,
+    `${ownCast.latencyMs}ms`
+  );
+  check(
+    'remote cast commits under 150ms',
+    report.remoteCommitLatencyMs >= 0 && report.remoteCommitLatencyMs < 150,
+    `${report.remoteCommitLatencyMs}ms`
+  );
+
   // ------------------------------------------------ client orders -> host
   const before = await page.evaluate(() => window.__lol2dNet.debugRemote());
   check('host spawned a champion for the client', !!before, JSON.stringify(before));
@@ -138,12 +193,8 @@ await guard(async () => {
     `${report.remoteMarchUnits} units`
   );
 
-  // A cast, aimed at a real enemy: Q then R (two rolls of the random kit —
-  // at least one must commit host-side; W and E stay for the latency probes).
-  await pressAimedAt(clientPage, 81); // Q
-  await clientPage.waitForTimeout(400);
-  await pressAimedAt(clientPage, 82); // R
-  await clientPage.waitForTimeout(1_000);
+  // The latency probe above already pressed until a cast committed; the
+  // host's cooldown row is that commit's receipt.
   const afterCast = await page.evaluate(() => window.__lol2dNet.debugRemote());
   const onCooldown = (afterCast?.cooldowns ?? []).filter(
     (cd, slot) => slot >= 1 && slot <= 4 && cd > 0
@@ -153,65 +204,6 @@ await guard(async () => {
     'a client cast commits on the host',
     onCooldown.length > 0,
     JSON.stringify(report.remoteCooldowns)
-  );
-
-  // ------------------------------------------------- latency measurements
-  // In-page injection (not CDP keyboard), so the number is the game's own
-  // chain and not the test harness's input pipeline. Date.now() is one
-  // machine clock across both pages.
-  const ownCastProbe = `new Promise(resolve => {
-    const game = window.__lol2d.scene.oScene.game;
-    const enemies = game.objectManager.objects.filter(
-      o => o.constructor?.name?.includes('Champion') && o.teamId !== game.player.teamId && !o.isDead
-    );
-    const target = enemies[0] ?? game.player;
-    game.worldMouse.set(target.position.x, target.position.y);
-    const spell = game.player.spells[2]; // W
-    const t0 = Date.now();
-    game.spellInputController.keyDown(87, false);
-    game.spellInputController.keyUp(87);
-    const timer = setInterval(() => {
-      if (spell.currentCooldown > 0 || spell.state !== 'READY') {
-        clearInterval(timer);
-        resolve(Date.now() - t0);
-      } else if (Date.now() - t0 > 3000) {
-        clearInterval(timer);
-        resolve(-1);
-      }
-    }, 2);
-  })`;
-  const ownCastLatency = await clientPage.evaluate(ownCastProbe);
-  report.ownCastLatencyMs = ownCastLatency;
-  check(
-    'own cast visible under 50ms',
-    ownCastLatency >= 0 && ownCastLatency < 50,
-    `${ownCastLatency}ms`
-  );
-
-  // Remote-action latency: client presses E; the host page polls its copy of
-  // the remote champion every frame and stamps the commit.
-  const hostStampProbe = `new Promise(resolve => {
-    const session = window.__lol2dNet;
-    const armedAt = Date.now();
-    const timer = setInterval(() => {
-      const remote = session.debugRemote();
-      if (remote && remote.cooldowns.slice(1, 5).some(cd => cd > 0)) {
-        clearInterval(timer);
-        resolve(Date.now());
-      } else if (Date.now() - armedAt > 5000) {
-        clearInterval(timer);
-        resolve(-1);
-      }
-    }, 2);
-  })`;
-  const hostStampPromise = page.evaluate(hostStampProbe);
-  const clientPressStamp = await pressAimedAt(clientPage, 69); // E
-  const hostCommitStamp = await hostStampPromise;
-  report.remoteCommitLatencyMs = hostCommitStamp - clientPressStamp;
-  check(
-    'remote cast commits under 150ms',
-    report.remoteCommitLatencyMs < 150,
-    `${report.remoteCommitLatencyMs}ms`
   );
 
   // ------------------------------------------------------------ liveness
@@ -271,16 +263,19 @@ await guard(async () => {
     `${report.rtcMedianErrorUnits}`
   );
 
-  const rtcOwnCast = await rtcClient.evaluate(ownCastProbe);
-  report.rtcOwnCastLatencyMs = rtcOwnCast;
-  check('rtc: own cast under 50ms', rtcOwnCast >= 0 && rtcOwnCast < 50, `${rtcOwnCast}ms`);
-
   const rtcHostStamp = rtcHost.evaluate(hostStampProbe);
-  const rtcPressStamp = await pressAimedAt(rtcClient, 69); // E
-  report.rtcRemoteCommitLatencyMs = (await rtcHostStamp) - rtcPressStamp;
+  const rtcOwnCast = await rtcClient.evaluate(ownCastProbe);
+  const rtcHostCommit = await rtcHostStamp;
+  report.rtcOwnCastLatencyMs = rtcOwnCast.latencyMs;
+  report.rtcRemoteCommitLatencyMs = rtcHostCommit > 0 ? rtcHostCommit - rtcOwnCast.stamp : -1;
+  check(
+    'rtc: own cast under 50ms',
+    rtcOwnCast.latencyMs >= 0 && rtcOwnCast.latencyMs < 50,
+    `${rtcOwnCast.latencyMs}ms`
+  );
   check(
     'rtc: remote cast commits under 150ms',
-    report.rtcRemoteCommitLatencyMs < 150,
+    report.rtcRemoteCommitLatencyMs >= 0 && report.rtcRemoteCommitLatencyMs < 150,
     `${report.rtcRemoteCommitLatencyMs}ms`
   );
 

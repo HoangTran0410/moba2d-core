@@ -132,23 +132,43 @@ const lanOpen = ref(false);
 const lanRooms = ref<LanRoom[]>([]);
 const lanCode = ref('');
 const hostCode = ref<string | null>(null);
+/** Broker unreachable — one quiet line in the panel, and the poll backs off. */
+const lanUnreachable = ref(false);
 let lanTimer: number | null = null;
+let lanFailures = 0;
 
 const signalUrl = (): string =>
   new URLSearchParams(window.location.search).get('signal') ?? DEFAULT_SIGNAL_URL;
 
+const stopLanPolling = (): void => {
+  if (lanTimer !== null) {
+    clearInterval(lanTimer);
+    lanTimer = null;
+  }
+};
+
 const refreshLanRooms = async (): Promise<void> => {
-  lanRooms.value = await fetchLanRooms(signalUrl());
+  const listed = await fetchLanRooms(signalUrl());
+  if (listed === null) {
+    lanUnreachable.value = true;
+    // Two strikes and the poll stops — an offline machine must not sit
+    // there re-failing a fetch every four seconds. Re-opening the panel
+    // tries again.
+    if (++lanFailures >= 2) stopLanPolling();
+    return;
+  }
+  lanUnreachable.value = false;
+  lanFailures = 0;
+  lanRooms.value = listed;
 };
 
 const toggleLan = (): void => {
   lanOpen.value = !lanOpen.value;
+  stopLanPolling();
   if (lanOpen.value) {
+    lanFailures = 0;
     void refreshLanRooms();
     lanTimer = window.setInterval(() => void refreshLanRooms(), 4000);
-  } else if (lanTimer !== null) {
-    clearInterval(lanTimer);
-    lanTimer = null;
   }
 };
 
@@ -213,10 +233,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopWatching?.();
   stopWatching = null;
-  if (lanTimer !== null) {
-    clearInterval(lanTimer);
-    lanTimer = null;
-  }
+  stopLanPolling();
 });
 
 const toggleFullscreen = (): void => {
@@ -346,25 +363,36 @@ const updateState = computed(() => {
     >
       Chơi LAN
     </button>
+    <!-- Same width, height and type as the buttons above it — the panel is
+         more menu, not a dialog shouting over Chơi. Capped list + one-line
+         states keep the expanded column short enough for a landscape phone;
+         the scene root scrolls if a screen is shorter still. -->
     <div v-if="lanOpen" id="lan-box" class="lan-box">
       <template v-if="hostCode">
         <p class="lan-code">
-          Mã phòng: <b>{{ hostCode }}</b>
+          Mã phòng: <b>{{ hostCode }}</b> — bạn bè cùng mạng sẽ tự thấy
         </p>
         <button
           id="lan-start-host"
-          class="hextech-btn"
+          class="hextech-btn secondary"
           @click="emit('play')"
           @touchend.prevent="emit('play')"
         >
-          Vào trận — bạn bè cùng mạng sẽ thấy phòng
+          Vào trận
         </button>
       </template>
-      <button v-else id="lan-host" class="hextech-btn" @click="hostLan" @touchend.prevent="hostLan">
+      <button
+        v-else
+        id="lan-host"
+        class="hextech-btn secondary"
+        @click="hostLan"
+        @touchend.prevent="hostLan"
+      >
         Tạo phòng LAN
       </button>
       <div class="lan-rooms">
-        <p v-if="lanRooms.length === 0" class="lan-empty">Chưa thấy phòng nào cùng mạng…</p>
+        <p v-if="lanUnreachable" class="lan-empty">Không kết nối được máy chủ ghép trận.</p>
+        <p v-else-if="lanRooms.length === 0" class="lan-empty">Chưa thấy phòng cùng mạng…</p>
         <button
           v-for="room in lanRooms"
           :key="room.code"
@@ -373,7 +401,8 @@ const updateState = computed(() => {
           @touchend.prevent="joinLanRoom(room.code)"
         >
           <i class="fas fa-wifi" aria-hidden="true"></i>
-          {{ room.name }} · {{ room.code }}
+          <span class="lan-room-name">{{ room.name }}</span>
+          <span class="lan-room-code">{{ room.code }}</span>
         </button>
       </div>
       <div class="lan-join-code">

@@ -11,13 +11,13 @@
 
 /**
  * The deployed broker (`net/signaling/`, a Cloudflare Worker + Durable
- * Objects speaking `scripts/net-relay.mjs`'s protocol). Dev builds default
- * to the local relay instead so `npm run e2e:lan` and offline development
- * never touch the internet; both are overridable with `?signal=…`.
+ * Objects speaking `scripts/net-relay.mjs`'s protocol) — the default in dev
+ * and production alike, so a fresh `npm run dev` never spams connection
+ * errors at a relay nobody started. The local relay is opt-in:
+ * `?signal=ws://localhost:8790`, which is exactly what `npm run e2e:lan`
+ * passes to stay offline-runnable.
  */
-export const DEFAULT_SIGNAL_URL = import.meta.env.DEV
-  ? 'ws://localhost:8790'
-  : 'wss://moba2d-signal.99-hoangtran.workers.dev';
+export const DEFAULT_SIGNAL_URL = 'wss://moba2d-signal.99-hoangtran.workers.dev';
 
 /** 5 chars of A-Z2-9 (no 0/O/1/I): ~33M codes, plenty for rooms that live minutes. */
 export const randomRoomCode = (): string => {
@@ -39,16 +39,17 @@ export interface LanRoom {
 
 /**
  * The open rooms on this network — the broker groups by public IP, so this
- * answers "ai đang mở phòng cùng mạng với mình". Empty (never a throw) when
- * the broker is unreachable, which is also the dev default with no relay up.
+ * answers "ai đang mở phòng cùng mạng với mình". `null` (never a throw)
+ * when the broker is unreachable, so the lobby can tell an empty network
+ * from a dead connection and say so in one quiet line.
  */
-export const fetchLanRooms = async (signalUrl: string): Promise<LanRoom[]> => {
+export const fetchLanRooms = async (signalUrl: string): Promise<LanRoom[] | null> => {
   try {
     const response = await fetch(roomsUrlOf(signalUrl));
-    if (!response.ok) return [];
+    if (!response.ok) return null;
     const listed = (await response.json()) as LanRoom[];
-    return Array.isArray(listed) ? listed : [];
+    return Array.isArray(listed) ? listed : null;
   } catch {
-    return [];
+    return null;
   }
 };

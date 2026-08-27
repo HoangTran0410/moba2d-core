@@ -86,12 +86,15 @@ host browser ◄════ RTCDataChannels, peer-to-peer ════► clien
   one interface, and the sessions cannot tell them apart.
 - **Signaling is a Cloudflare Worker + two Durable Object classes**
   (`net/signaling/`, deployed at
-  `wss://moba2d-signal.99-hoangtran.workers.dev`, baked as the production
-  default in `src/scenes/lanSignal.ts` and overridable with `?signal=`).
-  `SignalRoom` speaks **exactly `scripts/net-relay.mjs`'s protocol** — one
-  host, N joiners, `{from}`/`{to}` envelopes, join/leave notices — so the
-  dev relay remains a drop-in signaling (and `transport=ws` full-transport)
-  stand-in and `npm run e2e:lan` never touches the internet. `RoomDirectory`
+  `wss://moba2d-signal.99-hoangtran.workers.dev`, baked as the default in
+  dev **and** production by `src/scenes/lanSignal.ts` — a fresh
+  `npm run dev` must not spray connection refusals at a relay nobody
+  started — and overridable with `?signal=`). `SignalRoom` speaks **exactly
+  `scripts/net-relay.mjs`'s protocol** — one host, N joiners,
+  `{from}`/`{to}` envelopes, join/leave notices — so the dev relay remains
+  a drop-in signaling (and `transport=ws` full-transport) stand-in behind
+  an explicit `?signal=ws://localhost:8790`, which is what
+  `npm run e2e:lan` passes to never touch the internet. `RoomDirectory`
   is one instance per public IP (`CF-Connecting-IP`): a room registers with
   its host's network directory while the host stays connected (DO-alarm
   heartbeat, unregister on disconnect), and `GET /rooms` answers the open
