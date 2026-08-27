@@ -1,5 +1,5 @@
 import type { SeamCheckOf, SeamCheckOptions, SeamViolation } from './types';
-import { codeOnly, parsePinnedLine, pinnedLineFor, readSource, walkTsFiles } from './shared';
+import { codeOnly, pinnedLedger, readSource, walkTsFiles } from './shared';
 
 /**
  * Current health and current mana are resources, not stats. `Stats` exposes
@@ -44,7 +44,7 @@ export const checkStatResourceModifier: SeamCheckOf<StatResourceModifierOptions>
   options
 ) => {
   const pinnedResourceLines = options?.pinnedResourceLines ?? new Set<string>();
-  const consumed = new Set<string>();
+  const ledger = pinnedLedger(pinnedResourceLines);
   const violations: SeamViolation[] = [];
 
   for (const file of walkTsFiles(root, options)) {
@@ -54,23 +54,18 @@ export const checkStatResourceModifier: SeamCheckOf<StatResourceModifierOptions>
       if (!RESOURCE_AS_STAT.test(code)) return;
       // Computed regardless of the exemption: the exemption's own staleness
       // depends on knowing whether it would have mattered.
-      const entry = pinnedLineFor(pinnedResourceLines, file, index + 1, line);
-      if (entry !== undefined) {
-        consumed.add(entry);
-      } else {
-        violations.push({ file, message: `${index + 1}: ${line.trim()}` });
-      }
+      if (ledger.claim(file, line)) return;
+      violations.push({ file, message: `${index + 1}: ${line.trim()}` });
     });
   }
 
-  for (const entry of pinnedResourceLines) {
-    if (consumed.has(entry)) continue;
+  for (const { entry, reason } of ledger.unspent()) {
     violations.push({
       file: entry,
       message:
-        parsePinnedLine(entry) === null
-          ? 'pinnedResourceLines exemption is not a "<file>:<line>:<code>" entry, so it can never match a line'
-          : 'pinnedResourceLines exemption matched no scanned line shaping health:/mana: as a plain stat',
+        reason === 'malformed'
+          ? 'pinnedResourceLines exemption is not a "<file>:x<count>:<code>" entry, so it can never match a line'
+          : 'pinnedResourceLines exemption licenses more lines touching a resource stat than the scan found with that file and code',
       kind: 'stale-exemption',
     });
   }

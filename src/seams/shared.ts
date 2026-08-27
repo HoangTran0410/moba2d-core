@@ -44,58 +44,114 @@ export function pathMatches(entry: string, relativePath: string): boolean {
 }
 
 /**
- * A line-level exemption entry, `"<file>:<1-indexed line>:<the line's own
- * code, trimmed>"` — the shape `pinned` (`worldMouseInSpellCode.ts`) and
- * `pinnedManaLines` (`manaSpend.ts`) both use.
+ * A line-level exemption entry, `"<file>:x<count>:<the line's own code,
+ * trimmed>"` — the shape `pinned` (`worldMouseInSpellCode.ts`),
+ * `pinnedManaLines` (`manaSpend.ts`) and `pinnedResourceLines`
+ * (`statResourceModifier.ts`) all use.
  *
- * The trailing code is what makes it an exemption for a *line* rather than
- * for a line *number* (fix round 4). Keyed on the number alone, a licence
- * issued for one line was inherited by whatever different code was later
- * written at that same number — proven on the real tree: replacing
- * the pack's one pinned line with an entirely new `this.game.worldMouse` read left
- * `check-seams` reporting `scanned 237 file(s), clean`. Both halves are
- * checked now, so the entry reads as the violation the CLI would have
- * printed, with the file in front: an author copies the reported line into
- * the debt file rather than counting lines.
+ * The code text is what makes it an exemption for a *line* rather than for a
+ * line *number* (fix round 4). Keyed on a number alone, a licence issued for
+ * one line was inherited by whatever different code was later written at that
+ * same number — proven on the real tree: replacing the pack's one pinned line
+ * with an entirely new `this.game.worldMouse` read left `check-seams` reporting
+ * `scanned 237 file(s), clean`.
  *
- * A malformed entry (no `:<digits>:` at all) matches nothing and is
- * therefore reported stale by its seam, which is the right outcome for a
- * licence nobody can act on.
+ * ## Why a count and not the line number
+ *
+ * The entry used to carry the 1-indexed line, and every edit above a licensed
+ * line made the licence stale — a `STALE-EXEMPTION` failure whose only fix was
+ * to hand-copy a new number into this file. Measured across the three debt
+ * files this repository and its packs ship: **eight such repairs in a single
+ * afternoon's work**, none of which said anything about the code.
+ *
+ * The number was never the point. Since the code text has to match too, all
+ * the position bought was a *cap*: `result.stats.mana.baseValue = 100;` appears
+ * twice in one file and each occurrence was licensed separately, so that a
+ * third one somebody adds tomorrow is not licensed by the same entry. A count
+ * states that directly and cannot drift — and on the real data it loses
+ * nothing: of 104 (file, code) groups across the three files, **104 licensed
+ * every occurrence**, and not one licensed a subset.
+ *
+ * So: moving licensed code around is silent, adding another occurrence of it
+ * fails as a fresh violation, and removing it all fails as a stale exemption.
+ * All three of those are what the seam is for; none of them is bookkeeping.
+ *
+ * A malformed entry (no `:x<digits>:` at all — including the old numeric form)
+ * matches nothing and is reported stale by its seam, which is the right
+ * outcome for a licence nobody can act on.
  */
 export interface PinnedLine {
   file: string;
-  line: number;
+  /** How many occurrences of `code` in `file` this entry licenses. */
+  count: number;
   code: string;
 }
 
-const PINNED_LINE = /^([^:]*):(\d+):([\s\S]*)$/;
+const PINNED_LINE = /^([^:]*):x(\d+):([\s\S]*)$/;
 
 export function parsePinnedLine(entry: string): PinnedLine | null {
   const match = PINNED_LINE.exec(entry);
   if (!match) return null;
-  return { file: match[1], line: Number(match[2]), code: match[3] };
+  const count = Number(match[2]);
+  if (!Number.isInteger(count) || count < 1) return null;
+  return { file: match[1], count, code: match[3] };
+}
+
+/** What a licence had left over when the scan finished. */
+export interface UnspentPin {
+  entry: string;
+  /** `malformed`: unparseable. `unspent`: fewer matching lines than licensed. */
+  reason: 'malformed' | 'unspent';
 }
 
 /**
- * The `pinned`-shaped entry that exempts this exact line, or `undefined`.
- * All three of file, line number and code text have to agree; see
- * `PinnedLine` for why the third one is not optional.
+ * The spend side of a set of pinned entries.
+ *
+ * Stateful on purpose, and one per scan: a seam walks every line once, asking
+ * `claim` whether this exact line is already licensed, and asks `unspent` at
+ * the end which licences went unused. The old shape returned the matching
+ * entry and left each seam to keep its own `consumed` set — which worked while
+ * the key was unique per line, and cannot express "two of these three are
+ * licensed" at all.
  */
-export function pinnedLineFor(
-  entries: Set<string>,
-  relativePath: string,
-  lineNumber: number,
-  line: string
-): string | undefined {
-  const code = line.trim();
+export interface PinnedLedger {
+  /** Spends one licence for this line. `false` when none is left to spend. */
+  claim(relativePath: string, line: string): boolean;
+  unspent(): UnspentPin[];
+}
+
+export function pinnedLedger(entries: Set<string>): PinnedLedger {
+  const budgets: { entry: string; file: string; code: string; left: number }[] = [];
+  const malformed: string[] = [];
+
   for (const entry of entries) {
     const parsed = parsePinnedLine(entry);
-    if (!parsed) continue;
-    if (parsed.line !== lineNumber || parsed.code !== code) continue;
-    if (!pathMatches(parsed.file, relativePath)) continue;
-    return entry;
+    if (!parsed) {
+      malformed.push(entry);
+      continue;
+    }
+    budgets.push({ entry, file: parsed.file, code: parsed.code, left: parsed.count });
   }
-  return undefined;
+
+  return {
+    claim(relativePath, line) {
+      const code = line.trim();
+      for (const budget of budgets) {
+        if (budget.left <= 0) continue;
+        if (budget.code !== code) continue;
+        if (!pathMatches(budget.file, relativePath)) continue;
+        budget.left -= 1;
+        return true;
+      }
+      return false;
+    },
+    unspent() {
+      return [
+        ...malformed.map(entry => ({ entry, reason: 'malformed' as const })),
+        ...budgets.filter(b => b.left > 0).map(b => ({ entry: b.entry, reason: 'unspent' as const })),
+      ];
+    },
+  };
 }
 
 /**

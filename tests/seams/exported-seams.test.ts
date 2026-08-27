@@ -207,7 +207,7 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
     });
 
     const result = checkStatResourceModifier(dir, {
-      pinnedResourceLines: new Set(['Unit.ts:1:stats: { mana: { value: 100 }, health: { value: 100 } },']),
+      pinnedResourceLines: new Set(['Unit.ts:x1:stats: { mana: { value: 100 }, health: { value: 100 } },']),
     });
 
     expect(result).toEqual([
@@ -221,13 +221,13 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
     const dir = tempTree({ 'Unit.ts': `const nothing = 1;\n` });
 
     const result = checkStatResourceModifier(dir, {
-      pinnedResourceLines: new Set(['Unit.ts:1:health: { value: 100 },']),
+      pinnedResourceLines: new Set(['Unit.ts:x1:health: { value: 100 },']),
     });
 
     expect(result).toEqual([
       expect.objectContaining({
         kind: 'stale-exemption',
-        file: 'Unit.ts:1:health: { value: 100 },',
+        file: 'Unit.ts:x1:health: { value: 100 },',
       }),
     ]);
   });
@@ -287,7 +287,7 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
 
     const withPin = checkWorldMouseInSpellCode(dir, {
       pinned: new Set([
-        'Bad.ts:2:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+        'Bad.ts:x1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
       ]),
     });
     expect(withPin.map(v => v.message)).toEqual(['3: const other = this.game.worldMouse;']);
@@ -434,7 +434,7 @@ describe('an exemption entry that matches nothing is reported, distinctly, and f
     ]);
   });
 
-  it('world-mouse-in-spell-code: a pinned entry is checked against its exact line, not just its file', () => {
+  it('world-mouse-in-spell-code: a pinned entry is checked against its exact code, not just its file', () => {
     // The sharpest staleness case (the brief's own words): the file still
     // reads worldMouse, but not on the pinned line any more — a file-level
     // check would miss this entirely.
@@ -445,7 +445,7 @@ describe('an exemption entry that matches nothing is reported, distinctly, and f
     });
 
     const result = checkWorldMouseInSpellCode(dir, {
-      pinned: new Set(['Drifted.ts:1:const a = 1;']),
+      pinned: new Set(['Drifted.ts:x1:const a = 1;']),
     });
 
     // The real offense on line 2 is still caught, as an ordinary violation
@@ -454,7 +454,7 @@ describe('an exemption entry that matches nothing is reported, distinctly, and f
     expect(result[0].kind).toBeUndefined();
     // ...and the stale pin on line 1 is reported separately.
     expect(result[1]).toEqual(
-      expect.objectContaining({ file: 'Drifted.ts:1:const a = 1;', kind: 'stale-exemption' })
+      expect.objectContaining({ file: 'Drifted.ts:x1:const a = 1;', kind: 'stale-exemption' })
     );
     expect(result).toHaveLength(2);
   });
@@ -466,7 +466,7 @@ describe('an exemption entry that matches nothing is reported, distinctly, and f
 
     const result = checkWorldMouseInSpellCode(dir, {
       pinned: new Set([
-        'Pinned.ts:1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+        'Pinned.ts:x1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
       ]),
     });
 
@@ -564,14 +564,14 @@ describe('a pinned line is a licence for a line, not for a line number', () => {
   // `this.game.worldMouse` read left the pack's `check-seams` printing
   // `scanned 237 file(s), clean`.
 
-  it('different code at the pinned line number is caught, and the pin reports stale', () => {
+  it('different code where a pinned line used to be is caught, and the pin reports stale', () => {
     const dir = tempTree({
       'Moved.ts': `const zzzNewCode = this.game.worldMouse.copy();\n`,
     });
 
     const result = checkWorldMouseInSpellCode(dir, {
       pinned: new Set([
-        'Moved.ts:1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+        'Moved.ts:x1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
       ]),
     });
 
@@ -584,7 +584,48 @@ describe('a pinned line is a licence for a line, not for a line number', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('an entry that is not <file>:<line>:<code> can never match, and says so', () => {
+  it('the pinned line having moved is not staleness — that was the whole repair', () => {
+    // The behaviour this format exists for. Before it, an edit *above* a
+    // licensed line failed the run and the only fix was to hand-copy a new
+    // number into a debt file; eight such repairs happened in one afternoon,
+    // none of them saying anything about the code.
+    const dir = tempTree({
+      'Shifted.ts':
+        `// a comment somebody added today\n` +
+        `// and another\n` +
+        `const angle = getAngle(this.owner.position, this.game.worldMouse);\n`,
+    });
+
+    const result = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set([
+        'Shifted.ts:x1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      ]),
+    });
+
+    expect(result, 'a licensed line moving down two lines failed the run').toEqual([]);
+  });
+
+  it('a second copy of a licensed line is a fresh violation, not a free ride', () => {
+    // The other half, and the one that has to be right: a count caps what the
+    // licence covers, so code nobody has looked at can never inherit it.
+    const dir = tempTree({
+      'Twice.ts':
+        `const angle = getAngle(this.owner.position, this.game.worldMouse);\n` +
+        `const angle = getAngle(this.owner.position, this.game.worldMouse);\n`,
+    });
+
+    const result = checkWorldMouseInSpellCode(dir, {
+      pinned: new Set([
+        'Twice.ts:x1:const angle = getAngle(this.owner.position, this.game.worldMouse);',
+      ]),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].kind, 'the second copy was licensed by an entry written for one').toBeUndefined();
+    expect(result[0]).toMatchObject({ file: 'Twice.ts' });
+  });
+
+  it('an entry that is not <file>:x<count>:<code> can never match, and says so', () => {
     const dir = tempTree({ 'Bad.ts': `const a = this.game.worldMouse;\n` });
 
     const result = checkWorldMouseInSpellCode(dir, { pinned: new Set(['Bad.ts']) });
@@ -614,7 +655,7 @@ describe("core's own attackableUnits exceptions are stated one line at a time", 
 
     const result = checkManaSpend(dir, {
       pinnedManaLines: new Set([
-        'Unit.ts:1:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
+        'Unit.ts:x1:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
       ]),
     });
 
@@ -627,13 +668,13 @@ describe("core's own attackableUnits exceptions are stated one line at a time", 
     const dir = tempTree({ 'Unit.ts': `const nothing = 1;\n` });
 
     const result = checkManaSpend(dir, {
-      pinnedManaLines: new Set(['Unit.ts:1:this.stats.mana.baseValue = 0;']),
+      pinnedManaLines: new Set(['Unit.ts:x1:this.stats.mana.baseValue = 0;']),
     });
 
     expect(result).toEqual([
       expect.objectContaining({
         kind: 'stale-exemption',
-        file: 'Unit.ts:1:this.stats.mana.baseValue = 0;',
+        file: 'Unit.ts:x1:this.stats.mana.baseValue = 0;',
       }),
     ]);
   });

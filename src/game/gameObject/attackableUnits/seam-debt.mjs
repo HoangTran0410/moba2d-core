@@ -46,8 +46,8 @@
  *   charge, and this is the one place in core where that matters.
  */
 const PINNED_MANA_LINES = new Set([
-  'AttackableUnit.ts:568:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
-  'Champion.ts:667:let mana = this.stats.mana.value;',
+  'AttackableUnit.ts:x1:this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);',
+  'Champion.ts:x1:let mana = this.stats.mana.value;',
 ]);
 
 /**
@@ -68,8 +68,8 @@ const GRANDFATHERED_FOG_READS = new Set(['AttackableUnit.ts']);
  * and it is a draw, not an acquisition.
  */
 const PINNED = new Set([
-  'AttackableUnit.ts:347:if (!this.isDead && this.game.worldMouse) {',
-  'AttackableUnit.ts:352:let mouseDir = p5.Vector.sub(this.game.worldMouse, pos).setMag(size / 2 + 2);',
+  'AttackableUnit.ts:x1:if (!this.isDead && this.game.worldMouse) {',
+  'AttackableUnit.ts:x1:let mouseDir = p5.Vector.sub(this.game.worldMouse, pos).setMag(size / 2 + 2);',
 ]);
 
 export const seamDebt = {

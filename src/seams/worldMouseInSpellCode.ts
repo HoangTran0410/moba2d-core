@@ -1,5 +1,5 @@
 import type { SeamCheckOf, SeamCheckOptions, SeamViolation } from './types';
-import { codeOnly, parsePinnedLine, pinnedLineFor, readSource, walkTsFiles } from './shared';
+import { codeOnly, pinnedLedger, readSource, walkTsFiles } from './shared';
 
 /**
  * A bot aims at the target it chose, never at `game.worldMouse` — on a phone
@@ -64,7 +64,7 @@ export const checkWorldMouseInSpellCode: SeamCheckOf<WorldMouseInSpellCodeOption
   const pinned = options?.pinned ?? new Set<string>();
   // Which declared `pinned` entries actually named a real `worldMouse`
   // line this run — the rest are stale (fix round 3).
-  const consumed = new Set<string>();
+  const ledger = pinnedLedger(pinned);
   const violations: SeamViolation[] = [];
 
   for (const file of walkTsFiles(root, options)) {
@@ -75,23 +75,18 @@ export const checkWorldMouseInSpellCode: SeamCheckOf<WorldMouseInSpellCodeOption
       // Computed regardless of the exemption, unlike the old early
       // `return` — the exemption's own staleness depends on knowing
       // whether it would have mattered.
-      const entry = pinnedLineFor(pinned, file, lineNumber, line);
-      if (entry !== undefined) {
-        consumed.add(entry);
-      } else {
-        violations.push({ file, message: `${lineNumber}: ${line.trim()}` });
-      }
+      if (ledger.claim(file, line)) return;
+      violations.push({ file, message: `${lineNumber}: ${line.trim()}` });
     });
   }
 
-  for (const entry of pinned) {
-    if (consumed.has(entry)) continue;
+  for (const { entry, reason } of ledger.unspent()) {
     violations.push({
       file: entry,
       message:
-        parsePinnedLine(entry) === null
-          ? 'pinned exemption is not a "<file>:<line>:<code>" entry, so it can never match a line'
-          : 'pinned exemption matched no scanned line reading worldMouse with that file, line number and code',
+        reason === 'malformed'
+          ? 'pinned exemption is not a "<file>:x<count>:<code>" entry, so it can never match a line'
+          : 'pinned exemption licenses more lines reading worldMouse than the scan found with that file and code',
       kind: 'stale-exemption',
     });
   }

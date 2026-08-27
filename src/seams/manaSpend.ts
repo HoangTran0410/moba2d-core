@@ -1,5 +1,5 @@
 import type { SeamCheckOf, SeamCheckOptions, SeamViolation } from './types';
-import { codeOnly, parsePinnedLine, pinnedLineFor, readSource, walkTsFiles } from './shared';
+import { codeOnly, pinnedLedger, readSource, walkTsFiles } from './shared';
 
 /**
  * URF (`matchRules.manaFree`) is meant to be a single flip, not a per-spell
@@ -52,7 +52,7 @@ export interface ManaSpendOptions extends SeamCheckOptions {
 
 export const checkManaSpend: SeamCheckOf<ManaSpendOptions> = (root, options) => {
   const pinnedManaLines = options?.pinnedManaLines ?? new Set<string>();
-  const consumed = new Set<string>();
+  const ledger = pinnedLedger(pinnedManaLines);
   const violations: SeamViolation[] = [];
 
   for (const file of walkTsFiles(root, options)) {
@@ -62,23 +62,18 @@ export const checkManaSpend: SeamCheckOf<ManaSpendOptions> = (root, options) => 
       if (!TOUCHES_MANA.test(code) || SANCTIONED.test(code)) return;
       // Computed regardless of the exemption: the exemption's own staleness
       // depends on knowing whether it would have mattered.
-      const entry = pinnedLineFor(pinnedManaLines, file, index + 1, line);
-      if (entry !== undefined) {
-        consumed.add(entry);
-      } else {
-        violations.push({ file, message: `${index + 1}: ${line.trim()}` });
-      }
+      if (ledger.claim(file, line)) return;
+      violations.push({ file, message: `${index + 1}: ${line.trim()}` });
     });
   }
 
-  for (const entry of pinnedManaLines) {
-    if (consumed.has(entry)) continue;
+  for (const { entry, reason } of ledger.unspent()) {
     violations.push({
       file: entry,
       message:
-        parsePinnedLine(entry) === null
-          ? 'pinnedManaLines exemption is not a "<file>:<line>:<code>" entry, so it can never match a line'
-          : 'pinnedManaLines exemption matched no scanned line naming a mana stat with that file, line number and code',
+        reason === 'malformed'
+          ? 'pinnedManaLines exemption is not a "<file>:x<count>:<code>" entry, so it can never match a line'
+          : 'pinnedManaLines exemption licenses more lines naming a mana stat than the scan found with that file and code',
       kind: 'stale-exemption',
     });
   }
