@@ -15,6 +15,7 @@ import { contentCatalog } from '@/content/catalog';
 import { resolveMapId } from '@/content/defaultMap';
 import { notePackSpellFailures } from '@/content/runtimePacks';
 import { hideMatchStartFailure, showMatchStartFailure } from './matchStartFailure';
+import { guardUpdate } from '@/managers/RenderGuard';
 
 let previousTime: number;
 
@@ -83,6 +84,19 @@ export default class GameScene extends Scene {
   canvas!: any;
   game: Game | null = null;
   private _animationFrameId: number | null = null;
+  /**
+   * One simulation tick, wrapped so it cannot end the match.
+   *
+   * `updateLoop` arms its next tick *after* this returns, exactly the way p5's
+   * `_draw` re-arms its frame — so an uncaught throw here does not cost a tick,
+   * it costs every tick from then on, and the draw loop keeps painting the last
+   * good frame on top of a match that has stopped. See `RenderGuard.ts`, which
+   * exists for the p5 half of the same mistake.
+   *
+   * Per instance, so the failure tally belongs to this match rather than to the
+   * session.
+   */
+  private readonly runTick = guardUpdate(() => this.game?.update());
   /** Set by `stopGame`, so a slow kit load that resolves after an exit is dropped. */
   private _exited = false;
   /** How far this match's kits have got, for the screen `draw` paints while waiting. */
@@ -375,7 +389,7 @@ export default class GameScene extends Scene {
     const interval = 1000 / this.game.fps;
     if (elapsedTime > interval) {
       previousTime = currentTime - (elapsedTime % interval);
-      this.game.update();
+      this.runTick();
     }
 
     this._animationFrameId = window.setTimeout(() => {

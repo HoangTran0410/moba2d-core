@@ -15,6 +15,7 @@ import LoadingScene from './scenes/LoadingScene';
 import { registerServiceWorker } from './pwa/updates';
 import AssetManager from './managers/AssetManager';
 import { contentRegistry } from './content/registry';
+import { installGlobalErrorReporter } from './managers/RenderGuard';
 
 /*
  * No `import { System } from './libs/detect-collisions'` here.
@@ -27,6 +28,21 @@ import { contentRegistry } from './content/registry';
  * itself, which is what actually needs it, and that lands in the game chunk
  * where it belongs. `tests/scenes/menuBootPath.test.ts` holds the line.
  */
+
+/*
+ * First, and deliberately at module scope rather than inside `setup()`.
+ *
+ * It binds two `window` listeners and touches no p5 global, so the rule in the
+ * header above does not apply to it — and the errors most worth catching are
+ * the ones thrown *before* `setup()` ever runs, when a rejected pack load or a
+ * bad asset leaves a player looking at a loading screen that never moves.
+ *
+ * This is the outermost of three layers and the weakest by design: it can only
+ * report. `guardDraw` (p5's frame chain) and `guardUpdate` (the match tick) are
+ * what keep the game running through a bad frame; by the time an event reaches
+ * here the stack is already unwound. See `managers/RenderGuard.ts`.
+ */
+installGlobalErrorReporter();
 
 // Patch Math.hypot with fast 2D scalar implementation
 Math.hypot = fastHypot;

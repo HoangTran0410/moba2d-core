@@ -28,6 +28,35 @@
  * to a crash in draw — the guard would have bought a live loop by hiding the
  * thing that killed it. Throwing from a `setTimeout` reaches `window.onerror`
  * without ever returning to p5's frame chain, so both properties hold at once.
+ *
+ * ## The simulation loop has the same shape, and had none of this
+ *
+ * `GameScene.updateLoop` arms its next tick with
+ *
+ *     this._animationFrameId = window.setTimeout(() => this.updateLoop(), interval / 2);
+ *
+ * at the *bottom*, after `this.game.update()`. That is p5's mistake again in
+ * our own code: a throw inside `update()` means the line never runs and the
+ * tick chain is never re-armed. What it looks like is worse than a dead draw,
+ * because the draw loop is a separate chain and keeps painting: the game
+ * freezes mid-match with a canvas that is still redrawing the last good frame
+ * and a HUD that still answers. Pressing Escape opens the settings modal
+ * normally, and closing it calls `resumeRuntime()`, which re-arms the chain —
+ * so the match twitches forward a few ticks and stops again. It reads as a
+ * hang. It is a crash.
+ *
+ * Found exactly that way: `VengefulSpirit_E` in the dota pack queried allies
+ * filtered on `teamId` alone, `SpellObject` copies its owner's `teamId`, and
+ * the aura paid *itself* — `addBuff` on a `SpellObject`. `guardUpdate` is what
+ * turns that class of bug back into a bad tick with a message on screen.
+ *
+ * ## And everything that is in neither loop
+ *
+ * `installGlobalErrorReporter` puts the same overlay behind `window.onerror`
+ * and `unhandledrejection`, so a throw from an event handler, a timer or a
+ * rejected pack load is not a silent nothing either. It deliberately skips
+ * errors the guards above already surfaced, since those reach `window.onerror`
+ * by design.
  */
 
 export interface RenderGuardOptions {
@@ -44,6 +73,26 @@ export interface RenderGuardOptions {
   rethrow?: (error: Error) => void;
 }
 
+/** The shape both `error` and `unhandledrejection` arrive in, narrowed to what is read. */
+type ErrorEventish = { error?: unknown; message?: string; reason?: unknown };
+type ErrorListener = (event: ErrorEventish) => void;
+
+/**
+ * Just enough of `window` to listen on.
+ *
+ * Injectable for the same reason `report` and `rethrow` are: this suite runs on
+ * `environment: 'node'`, where there is no `window` to dispatch against.
+ */
+export interface ErrorEventSource {
+  addEventListener(type: string, listener: ErrorListener): void;
+  removeEventListener(type: string, listener: ErrorListener): void;
+}
+
+export interface GlobalErrorReporterOptions extends RenderGuardOptions {
+  /** Defaults to `window`. A test passes its own. */
+  source?: ErrorEventSource;
+}
+
 const asError = (value: unknown): Error =>
   value instanceof Error ? value : new Error(String(value));
 
@@ -53,6 +102,19 @@ const rethrowAsync = (error: Error): void => {
   }, 0);
 };
 
+const DRAW_LABEL = 'Lỗi khi vẽ khung hình';
+const UPDATE_LABEL = 'Lỗi khi cập nhật trận đấu';
+const GLOBAL_LABEL = 'Lỗi trong game';
+
+/**
+ * Errors a guard has already put on screen and re-raised.
+ *
+ * `rethrowAsync` throws the very same object, so it arrives at
+ * `window.onerror` a moment later — and without this the global reporter would
+ * count one bad frame twice and claim it as a second, unrelated crash.
+ */
+const alreadyReported = new WeakSet<Error>();
+
 /**
  * Wraps a draw function so it can never break p5's frame chain.
  *
@@ -60,21 +122,82 @@ const rethrowAsync = (error: Error): void => {
  * fact about this loop rather than a module-wide tally.
  */
 export function guardDraw(draw: () => void, options: RenderGuardOptions = {}): () => void {
-  const report = options.report ?? showCrashOverlay;
+  return guardLoop(draw, DRAW_LABEL, options);
+}
+
+/**
+ * The same guarantee for the simulation tick — see this module's own header on
+ * why `GameScene.updateLoop` needs it just as badly as p5's `_draw` did.
+ *
+ * Separate from `guardDraw` only so the overlay can say which half died. A
+ * frozen match and a black canvas are different symptoms and the player is
+ * reading the message to tell someone what they saw.
+ */
+export function guardUpdate(update: () => void, options: RenderGuardOptions = {}): () => void {
+  return guardLoop(update, UPDATE_LABEL, options);
+}
+
+function guardLoop(work: () => void, label: string, options: RenderGuardOptions): () => void {
+  const report = options.report ?? ((error, count) => showCrashOverlay(error, count, label));
   const rethrow = options.rethrow ?? rethrowAsync;
   let failures = 0;
 
   return () => {
     try {
-      draw();
+      work();
     } catch (thrown) {
       const error = asError(thrown);
       failures += 1;
-      // Once. A draw that throws every frame would otherwise raise sixty errors
+      // Once. A loop that throws every frame would otherwise raise sixty errors
       // a second, and the first one is the one that says what happened.
-      if (failures === 1) rethrow(error);
+      if (failures === 1) {
+        alreadyReported.add(error);
+        rethrow(error);
+      }
       report(error, failures);
     }
+  };
+}
+
+/**
+ * Puts the overlay behind the two events that catch everything else: a throw
+ * from an event handler or a timer (`error`), and a promise nobody awaited
+ * (`unhandledrejection`).
+ *
+ * Additive, not a replacement: the loop guards above are what keep the game
+ * *running* through a bad frame, and nothing here can do that — by the time
+ * these fire the stack is already unwound. This exists so that a crash outside
+ * both loops is still something the player can read and report, rather than a
+ * screen that quietly stops responding.
+ *
+ * Returns its own undo, so a test can install it without leaking a listener
+ * into the next one.
+ */
+export function installGlobalErrorReporter(options: GlobalErrorReporterOptions = {}): () => void {
+  const source =
+    options.source ?? (typeof window === 'undefined' ? undefined : (window as ErrorEventSource));
+  if (!source) return () => undefined;
+
+  const report = options.report ?? ((error, count) => showCrashOverlay(error, count, GLOBAL_LABEL));
+  let failures = 0;
+
+  const surface = (thrown: unknown): void => {
+    const error = asError(thrown);
+    // Already on screen and already re-raised by a loop guard — this is that
+    // same throw arriving by its scheduled route, not a new one.
+    if (alreadyReported.has(error)) return;
+    failures += 1;
+    report(error, failures);
+  };
+
+  const onError: ErrorListener = event => surface(event.error ?? event.message);
+  const onRejection: ErrorListener = event => surface(event.reason);
+
+  source.addEventListener('error', onError);
+  source.addEventListener('unhandledrejection', onRejection);
+  return () => {
+    source.removeEventListener('error', onError);
+    source.removeEventListener('unhandledrejection', onRejection);
   };
 }
 
@@ -89,7 +212,7 @@ const OVERLAY_ID = 'render-crash';
  * must not depend on anything the game does. Built once and then only updated,
  * since the frame that threw is very likely to throw again immediately.
  */
-function showCrashOverlay(error: Error, count: number): void {
+function showCrashOverlay(error: Error, count: number, label: string): void {
   if (typeof document === 'undefined') return;
 
   const existing = document.getElementById(OVERLAY_ID);
@@ -120,7 +243,7 @@ function showCrashOverlay(error: Error, count: number): void {
   ].join(';');
 
   const title = document.createElement('strong');
-  title.textContent = 'Lỗi khi vẽ khung hình';
+  title.textContent = label;
   title.style.cssText = 'display:block;color:#f0a860;margin-bottom:4px';
 
   const message = document.createElement('div');
@@ -139,7 +262,7 @@ function showCrashOverlay(error: Error, count: number): void {
   tally.textContent = String(count);
   const tallyLabel = document.createElement('span');
   tallyLabel.style.cssText = 'opacity:0.66';
-  tallyLabel.append('khung hình lỗi: ', tally);
+  tallyLabel.append('số lần lỗi: ', tally);
 
   const reload = document.createElement('button');
   reload.type = 'button';
