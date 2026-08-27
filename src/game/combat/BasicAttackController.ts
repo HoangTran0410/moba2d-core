@@ -21,6 +21,12 @@ import {
  */
 export type AttackOrderEnd = 'KILLED' | 'LOST' | 'CLEARED' | 'DISABLED';
 
+/** `EventType.ON_ATTACK_LAUNCH`'s payload: one committed swing, both ends of it. */
+export interface AttackLaunchEvent {
+  attacker: AttackableUnit;
+  target: AttackableUnit;
+}
+
 /** The sweep's cadence — the same beat the bot brain thinks on. */
 export const ATTACK_MOVE_SCAN_INTERVAL_MS = 250;
 /** Close enough to an attack-move point to call the order done. */
@@ -305,6 +311,20 @@ export default class BasicAttackController {
   }
 
   /**
+   * One committed swing, replayed on a LAN client from the host's
+   * `ON_ATTACK_LAUNCH` — the wind-up and the carrier object, nothing else.
+   * No order, no cooldown bookkeeping, no `canAttack` question: the host
+   * already answered all of that when it committed the swing, and this
+   * controller's own decision path never runs on a puppet (it holds no
+   * orders). The carrier's damage then dies in the client's gated
+   * `takeDamage`, which is what makes a pure visual replay safe.
+   */
+  replayLaunch(target: AttackableUnit): void {
+    this.windupMs = this.isRanged ? this.windupFor() : MELEE_WINDUP_MS;
+    this.launch(target, this.reachTo(target));
+  }
+
+  /**
    * Fires one swing. ON_ATTACK is emitted here, at the start, with the attacker
    * as its payload — that is the shape one channel-breaking ultimate already listens for, and
    * "the unit committed to a swing" is exactly when a channel should break.
@@ -315,6 +335,13 @@ export default class BasicAttackController {
     const ranged = this.isRanged;
 
     this.owner.game?.eventManager?.emit(EventType.ON_ATTACK, this.owner);
+    // The richer twin, for the LAN host to forward (see the enum's comment):
+    // a client's puppet champions hold no orders, so this controller never
+    // fires there and every champion swing a client sees is a replay.
+    this.owner.game?.eventManager?.emit(EventType.ON_ATTACK_LAUNCH, {
+      attacker: this.owner,
+      target,
+    } satisfies AttackLaunchEvent);
 
     if (ranged) {
       const bolt = new BasicAttackBolt(this.owner);

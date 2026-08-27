@@ -78,6 +78,7 @@ describe('event and order messages', () => {
           { k: 'gone', id: 'u9' },
           { k: 'cast', id: 'u2', slot: 1, x: 500, y: 600 },
           { k: 'dmg', id: 'u2', a: 44, ty: 'MAGIC' },
+          { k: 'atk', id: 'u1', tid: 'u2' },
         ],
       },
       { t: 'move', x: 123, y: 456 },

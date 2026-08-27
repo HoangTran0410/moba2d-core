@@ -379,6 +379,74 @@ await guard(async () => {
     JSON.stringify(report.netRoster)
   );
 
+  // --------------------------------------- the Đội tab itself, rendered
+  // The seam count above is necessary and was not sufficient: the tab reads
+  // `net` through the hudInteractions adapter (`MatchDirectorHost.net`), an
+  // *optional* member a forgotten getter satisfies as `undefined` — which is
+  // exactly what shipped. Only the rendered DOM proves the whole path.
+  const rosterDom = await clientPage.evaluate(
+    () =>
+      new Promise(resolve => {
+        const hud = window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud;
+        hud.openRoster();
+        setTimeout(() => {
+          const text = document.body.innerText;
+          hud.closeSpellPicker();
+          resolve({ lan1: text.includes('LAN 1'), lan3: text.includes('LAN 3') });
+        }, 600);
+      })
+  );
+  report.rosterDom = rosterDom;
+  check(
+    "the client's Đội tab renders the LAN rows",
+    rosterDom.lan1 && rosterDom.lan3,
+    JSON.stringify(rosterDom)
+  );
+
+  // ------------------------------------- champion swings become visible
+  // A champion's basic attack lives in `BasicAttackController`, which never
+  // fires on an order-less puppet — so a host champion could beat a client
+  // half to death with nothing on screen. The host walks over and attacks;
+  // the client must see carrier objects (bolt or melee swing) appear.
+  await page.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    // An *enemy* of the host champion — the client's champion may well be an
+    // ally (the joiner lands on the smaller team), and a right-click on an
+    // ally is a walk, not a swing.
+    const victim = game.director.bots().find(bot => bot.teamId !== game.player.teamId);
+    game.player.teleportTo(victim.position.x + 150, victim.position.y);
+    // The ordinary right-click seam: resolves the enemy, walks into reach,
+    // swings on the interval — exactly what a real host player does.
+    const { issuePointerOrder } = await import('/src/game/input/PointerOrders.ts');
+    issuePointerOrder(game.player, game.objectManager, {
+      x: victim.position.x,
+      y: victim.position.y,
+    });
+  });
+  const swingCount = await clientPage
+    .waitForFunction(
+      () => {
+        const game = window.__lol2d.scene.oScene.game;
+        let seen = 0;
+        for (const object of game.objectManager.objects) {
+          const kind = object.constructor?.name;
+          if (
+            (kind === 'BasicAttackBolt' || kind === 'BasicAttackSwing') &&
+            object.owner !== game.player
+          ) {
+            seen++;
+          }
+        }
+        return seen > 0 ? seen : false;
+      },
+      null,
+      { timeout: 10_000 }
+    )
+    .then(handle => handle.jsonValue())
+    .catch(() => 0);
+  report.remoteSwings = swingCount;
+  check("a host champion's swings are visible on the client", swingCount > 0, `${swingCount}`);
+
   // -------------------------------------------------- death recap, told
   // A client's own `takeDamage` is gated, so its death ledger is empty by
   // construction — the recap must arrive from the host's sim or the death

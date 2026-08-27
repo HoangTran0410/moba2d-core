@@ -70,6 +70,21 @@ export interface DamageNumberNetEvent {
   ty: string;
 }
 
+/**
+ * A champion committed a basic attack on `tid`. Champions only: their swings
+ * come from `BasicAttackController`, which never fires on a client's
+ * order-less puppets — while minions, monsters and turrets run their own
+ * local swing timers on both ends and need no forwarding (forwarding them
+ * would double every bolt). The client replays through
+ * `BasicAttackController.replayLaunch`; the carrier's damage dies in the
+ * gated funnel.
+ */
+export interface AttackLaunchNetEvent {
+  k: 'atk';
+  id: string;
+  tid: string;
+}
+
 /** A committed cast — the client plays the spell's visual half from this. */
 export interface CastEvent {
   k: 'cast';
@@ -84,7 +99,8 @@ export type NetEvent =
   | MinionSpawnEvent
   | GoneEvent
   | CastEvent
-  | DamageNumberNetEvent;
+  | DamageNumberNetEvent
+  | AttackLaunchNetEvent;
 
 export type NetMessage =
   | { t: 'snap'; tm: number; units: UnitSnap[] }

@@ -275,6 +275,18 @@ export class ClientSession implements NetGameHooks {
         CombatText.show(unit, 'damage', event.a, [...color]);
         return;
       }
+      case 'atk': {
+        // A champion's committed swing, replayed as pure visual — see
+        // `AttackLaunchNetEvent` for why champions only. The own champion's
+        // swings are predicted locally (its controller holds real orders),
+        // so its echo is dropped like a cast echo.
+        const attacker = this.units.get(event.id);
+        const target = this.units.get(event.tid);
+        if (!(attacker instanceof Champion) || attacker === this.game.player) return;
+        if (attacker.isDead || !target || target.isDead) return;
+        attacker.basicAttack.replayLaunch(target);
+        return;
+      }
       case 'cast': {
         const unit = this.units.get(event.id);
         if (!(unit instanceof Champion)) return;

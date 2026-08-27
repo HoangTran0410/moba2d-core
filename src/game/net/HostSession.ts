@@ -6,6 +6,7 @@ import Champion, {
   DEFAULT_CHAMPION_DEFENCE,
 } from '@/game/gameObject/attackableUnits/Champion';
 import type { DamageNumberEvent } from '@/game/gameObject/attackableUnits/AttackableUnit';
+import type { AttackLaunchEvent } from '@/game/combat/BasicAttackController';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
 import Turret from '@/game/gameObject/structures/Turret';
@@ -66,6 +67,7 @@ export class HostSession implements NetGameHooks {
   private lastSnapshotAt = 0;
   private stopCastListener: () => void;
   private stopDamageListener: () => void;
+  private stopAttackListener: () => void;
 
   constructor(
     private readonly game: Game,
@@ -93,6 +95,18 @@ export class HostSession implements NetGameHooks {
       (hit: DamageNumberEvent) => {
         const id = this.ids.get(hit.unit);
         if (id) this.pendingEvents.push({ k: 'dmg', id, a: hit.amount, ty: hit.type });
+      }
+    );
+    // Champion swings, forwarded — the one attack the client cannot produce
+    // locally: minions/monsters/turrets swing on their own timers there, but
+    // a champion's controller fires only on orders, which puppets never hold.
+    this.stopAttackListener = game.eventManager.on(
+      EventType.ON_ATTACK_LAUNCH,
+      (swing: AttackLaunchEvent) => {
+        if (!(swing.attacker instanceof Champion)) return;
+        const id = this.ids.get(swing.attacker);
+        const tid = this.ids.get(swing.target);
+        if (id && tid) this.pendingEvents.push({ k: 'atk', id, tid });
       }
     );
 
@@ -557,6 +571,7 @@ export class HostSession implements NetGameHooks {
   close(): void {
     this.stopCastListener();
     this.stopDamageListener();
+    this.stopAttackListener();
     this.transport.close();
     this.game.net = null;
     setNetRole('off');

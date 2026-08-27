@@ -29,6 +29,7 @@ import type { RenderQuality } from '@/game/managers/ObjectManager';
 import { removeAccents } from '@/utils/index';
 import type { AssetKey } from '@/managers/AssetManager';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
+import type { NetGameHooks } from '@/game/net/hooks';
 import { atOwnFountain, buyItem, sellItem, type ShopMode } from '@/game/economy/ItemShop';
 import { sellRows, shopRows, type SellRow, type ShopRow } from '@/game/hud/shop/shopState';
 import { contentCatalog } from '@/content/catalog';
@@ -107,6 +108,15 @@ export interface HudInteractions {
    * not one of its mutable settings.
    */
   readonly activeMapId: string;
+  /**
+   * The attached LAN session, or null offline — `Game.net`, read lazily
+   * because the session attaches *after* the game (the transport connect is
+   * async), so a value captured at construction would be null for ever. The
+   * Đội tab's LAN rows read it through `MatchDirectorSource`
+   * (`MatchDirectorHost.net`) — forgetting this getter was exactly why those
+   * rows compiled fine (the member is optional) and never appeared.
+   */
+  readonly net: NetGameHooks | null;
   readonly renderQuality: RenderQuality;
   readonly renderFps: RenderFps;
   setRenderQuality(quality: RenderQuality): void;
@@ -381,6 +391,9 @@ export function createHudInteractions(game: Game): HudInteractions {
     touchUi: false,
     get activeMapId(): string {
       return game.activeMapId;
+    },
+    get net(): NetGameHooks | null {
+      return game.net;
     },
     get renderQuality(): RenderQuality {
       return game.renderQuality;

@@ -264,7 +264,11 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
   tab's read-only LAN rows on both ends (`NetGameHooks.netRosterUnits`),
   a host-added mid-match champion's spell chunks (the client fetches
   before building the puppet instead of degrading every slot to a basic
-  attack), and every floating damage number (`dmg` events in the ordinary
+  attack), **champion basic-attack visuals** (`atk` events replayed through
+  `BasicAttackController.replayLaunch` — a champion's controller only fires
+  on orders, which puppets never hold, while minions/monsters/turrets swing
+  on their own local timers at both ends and are deliberately not
+  forwarded), and every floating damage number (`dmg` events in the ordinary
   flush — `AttackableUnit.takeDamage` announces the post-mitigation figure
   on `EventType.ON_TAKE_DAMAGE` in the same breath it floats it, and the
   client replays it through the same `CombatText.show`; a client's gated
