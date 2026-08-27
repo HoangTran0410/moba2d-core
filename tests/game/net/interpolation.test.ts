@@ -89,6 +89,17 @@ describe('InterpolationBuffer', () => {
     expect(buffer.sample(5150)?.has('b')).toBe(false);
   });
 
+  it('hands back the newest raw snapshot for reconciliation', () => {
+    const buffer = new InterpolationBuffer();
+    expect(buffer.latest()).toBeNull();
+    buffer.push({ tm: 1000, units: [snap('a', 0, 0)] }, 5000);
+    buffer.push({ tm: 1100, units: [snap('a', 100, 40)] }, 5100);
+    const latest = buffer.latest();
+    expect(latest?.tm).toBe(1100);
+    // Raw, not interpolated: the newest position verbatim.
+    expect(latest?.units.get('a')?.x).toBe(100);
+  });
+
   it('answers null before two snapshots exist, and forgets old ones', () => {
     const buffer = new InterpolationBuffer();
     expect(buffer.sample(0)).toBeNull();

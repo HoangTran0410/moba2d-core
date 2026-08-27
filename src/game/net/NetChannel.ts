@@ -23,12 +23,15 @@ export interface HostFrame {
 export class NetChannel {
   private socket: WebSocket;
   private queue: string[] = [];
+  private immediate: ((raw: string) => void) | null = null;
   closed = false;
 
   constructor(url: string) {
     this.socket = new WebSocket(url);
     this.socket.onmessage = event => {
-      if (typeof event.data === 'string') this.queue.push(event.data);
+      if (typeof event.data !== 'string') return;
+      if (this.immediate) this.immediate(event.data);
+      else this.queue.push(event.data);
     };
     this.socket.onclose = () => {
       this.closed = true;
@@ -52,6 +55,15 @@ export class NetChannel {
         reject(new Error('net: relay connection failed'));
       });
     });
+  }
+
+  /**
+   * Deliver every future frame straight to `handler` instead of the queue —
+   * the host's order path. Frames already queued stay queued; the caller
+   * drains them once.
+   */
+  setImmediate(handler: (raw: string) => void): void {
+    this.immediate = handler;
   }
 
   send(raw: string): void {

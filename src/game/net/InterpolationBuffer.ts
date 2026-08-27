@@ -51,6 +51,17 @@ export class InterpolationBuffer {
   }
 
   /**
+   * The newest raw snapshot, un-interpolated — what reconciliation of a
+   * locally-predicted unit compares itself against (a predicted champion
+   * never rides the playback delay, so it wants the freshest truth, not the
+   * smoothed past).
+   */
+  latest(): { tm: number; units: Map<string, UnitSnap> } | null {
+    const newest = this.snapshots[this.snapshots.length - 1];
+    return newest ? { tm: newest.tm, units: newest.units } : null;
+  }
+
+  /**
    * Every unit the newest snapshot knows, at its interpolated position for
    * local time `nowMs` — or `null` before two snapshots exist. Units the
    * older snapshot does not know appear at their newest position outright;

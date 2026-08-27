@@ -118,14 +118,12 @@ await guard(async () => {
     `${report.remoteMarchUnits} units`
   );
 
-  // A cast: press Q/W/E aimed at the world — at least one must commit host-side.
-  for (const key of ['q', 'w', 'e']) {
-    await clientPage.keyboard.down(key);
-    await clientPage.waitForTimeout(120);
-    await clientPage.keyboard.up(key);
-    await clientPage.waitForTimeout(250);
-  }
-  await clientPage.waitForTimeout(1_000);
+  // A cast: press Q aimed at the world — it must commit host-side. (W and E
+  // stay off cooldown; the latency probes below spend them.)
+  await clientPage.keyboard.down('q');
+  await clientPage.waitForTimeout(120);
+  await clientPage.keyboard.up('q');
+  await clientPage.waitForTimeout(1_200);
   const afterCast = await page.evaluate(() => window.__lol2dNet.debugRemote());
   const onCooldown = (afterCast?.cooldowns ?? []).filter(
     (cd, slot) => slot >= 1 && slot <= 4 && cd > 0
@@ -135,6 +133,62 @@ await guard(async () => {
     'a client cast commits on the host',
     onCooldown.length > 0,
     JSON.stringify(report.remoteCooldowns)
+  );
+
+  // ------------------------------------------------- latency measurements
+  // In-page injection (not CDP keyboard), so the number is the game's own
+  // chain and not the test harness's input pipeline. Date.now() is one
+  // machine clock across both pages.
+  const ownCastLatency = await clientPage.evaluate(
+    () =>
+      new Promise(resolve => {
+        const game = window.__lol2d.scene.oScene.game;
+        const spell = game.player.spells[2]; // W
+        const t0 = Date.now();
+        game.spellInputController.keyDown(87, false);
+        game.spellInputController.keyUp(87);
+        const poll = () => {
+          if (spell.currentCooldown > 0 || spell.state !== 'READY') resolve(Date.now() - t0);
+          else if (Date.now() - t0 > 3000) resolve(-1);
+          else requestAnimationFrame(poll);
+        };
+        poll();
+      })
+  );
+  report.ownCastLatencyMs = ownCastLatency;
+  check(
+    'own cast visible under 50ms',
+    ownCastLatency >= 0 && ownCastLatency < 50,
+    `${ownCastLatency}ms`
+  );
+
+  // Remote-action latency: client presses E; the host page polls its copy of
+  // the remote champion every frame and stamps the commit.
+  const hostStampPromise = page.evaluate(
+    () =>
+      new Promise(resolve => {
+        const session = window.__lol2dNet;
+        const poll = () => {
+          const remote = session.debugRemote();
+          if (remote && remote.cooldowns[3] > 0) resolve(Date.now());
+          else requestAnimationFrame(poll);
+        };
+        poll();
+      })
+  );
+  const clientPressStamp = await clientPage.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    const stamp = Date.now();
+    game.spellInputController.keyDown(69, false); // E
+    game.spellInputController.keyUp(69);
+    return stamp;
+  });
+  const hostCommitStamp = await hostStampPromise;
+  report.remoteCommitLatencyMs = hostCommitStamp - clientPressStamp;
+  check(
+    'remote cast commits under 150ms',
+    report.remoteCommitLatencyMs < 150,
+    `${report.remoteCommitLatencyMs}ms`
   );
 
   // ------------------------------------------------------------ liveness
