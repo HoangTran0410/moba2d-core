@@ -137,6 +137,50 @@ describe('event and order messages', () => {
     expect(decodeMessage(JSON.stringify({ t: 'steer', to: 5 }))).toBeNull();
   });
 
+  it('packs gold and cooldowns as one tail, for the champions that get either', () => {
+    // The tail is the whole "this is a client's own champion" signal, so the
+    // two travel together and are read back positionally: gold first.
+    const withTail: NetMessage = {
+      t: 'snap',
+      tm: 1,
+      units: [unit({ gold: 1275, cds: [0, 4200, 0, 9000] })],
+    };
+    expect(encodeMessage(withTail)).toBe(
+      '{"t":"snap","tm":1,"u":[["u1",100,200,50,100,30,0,3,1275,0,4200,0,9000]]}'
+    );
+    const back = decodeMessage(encodeMessage(withTail));
+    if (back?.t !== 'snap') throw new Error('wrong type');
+    expect(back.units[0].gold).toBe(1275);
+    expect(back.units[0].cds).toEqual([0, 4200, 0, 9000]);
+
+    // A minion has neither, and pays for neither: the row stops at 8.
+    expect(encodeMessage({ t: 'snap', tm: 1, units: [unit()] })).toBe(
+      '{"t":"snap","tm":1,"u":[["u1",100,200,50,100,30,0,3]]}'
+    );
+    const bare = decodeMessage(encodeMessage({ t: 'snap', tm: 1, units: [unit()] }));
+    if (bare?.t !== 'snap') throw new Error('wrong type');
+    expect(bare.units[0].gold).toBeUndefined();
+    expect(bare.units[0].cds).toBeUndefined();
+  });
+
+  it('carries a bag by id per slot, and the shop orders that change one', () => {
+    const messages: NetMessage[] = [
+      { t: 'ev', ev: [{ k: 'bag', id: 'c1', items: ['lol:dorans-blade', null, 'lol:boots'] }] },
+      { t: 'buy', itemId: 'lol:bf-sword' },
+      { t: 'sell', slot: 2 },
+      { t: 'swap', a: 0, b: 5 },
+      // An item active is the kit's message with the other bar named.
+      { t: 'cast', slot: 1, x: 10, y: 20, row: 'item' },
+      { t: 'rel', slot: 1, x: 11, y: 21, row: 'item' },
+      { t: 'stop', slot: 1, row: 'item' },
+      // …and without `row` it is still the kit, unchanged.
+      { t: 'stop', slot: 1 },
+    ];
+    for (const message of messages) {
+      expect(decodeMessage(encodeMessage(message))).toEqual(message);
+    }
+  });
+
   it('refuses garbage rather than throwing', () => {
     expect(decodeMessage('not json at all {{{')).toBeNull();
     expect(decodeMessage(JSON.stringify({ hello: 'world' }))).toBeNull();
@@ -151,5 +195,9 @@ describe('event and order messages', () => {
     expect(decodeMessage(JSON.stringify({ t: 'died', recap: 7 }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'team' }))).toBeNull();
     expect(decodeMessage(JSON.stringify({ t: 'team', team: 9 }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'buy' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'buy', itemId: 7 }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'sell' }))).toBeNull();
+    expect(decodeMessage(JSON.stringify({ t: 'swap', a: 1 }))).toBeNull();
   });
 });

@@ -22,8 +22,19 @@ export interface UnitSnap {
   dead: boolean;
   /** `Stats.actionState` verbatim — the movement/combat bitmask the HUD and draw paths read. */
   actionState: number;
-  /** Champions only: `currentCooldown` per kit slot, ms. Absent for everything else. */
+  /**
+   * Champions a *client* is playing, only: `currentCooldown` per kit slot, ms.
+   * Every other champion's were being sent to be thrown away — puppet
+   * cooldowns run locally off cast events.
+   */
   cds?: number[];
+  /**
+   * The same champions' wallet balance. It rides with `cds` and is packed
+   * beside it because the two have exactly one audience — the player whose
+   * champion it is, reading their own HUD. Nobody is shown anyone else's gold,
+   * so there is no reason for it to cross for anyone else.
+   */
+  gold?: number;
 }
 
 /** A champion entering the world — enough for a client to construct the real thing. */
@@ -70,6 +81,23 @@ export interface MinionSpawnEvent {
   kind: string;
   x: number;
   y: number;
+}
+
+/**
+ * What is in a champion's bag, by qualified item id, one entry per slot and
+ * `null` for an empty one.
+ *
+ * An event rather than a snapshot field because a bag changes on a purchase
+ * and then not again for a minute, while a snapshot is thirty frames a second
+ * of things that move. The client rebuilds the real `HeldItem` from the id —
+ * the same `buildHeldItem` a purchase uses — so the icons, the passives, the
+ * actives and the stat modifiers are the genuine articles rather than a
+ * picture of them.
+ */
+export interface BagEvent {
+  k: 'bag';
+  id: string;
+  items: (string | null)[];
 }
 
 /** The unit left the world entirely (corpse swept, not merely dead). */
@@ -123,6 +151,7 @@ export type NetEvent =
   | ChampionSpawnEvent
   | MinionSpawnEvent
   | GoneEvent
+  | BagEvent
   | CastEvent
   | DamageNumberNetEvent
   | AttackLaunchNetEvent;
@@ -172,11 +201,27 @@ export type NetMessage =
    * and the champion would keep going.
    */
   | { t: 'steer'; to: { x: number; y: number } | null }
-  | { t: 'cast'; slot: number; x: number; y: number }
+  /**
+   * `row` picks which bar the slot indexes: the kit by default, the bag when
+   * it says `'item'`. Both rows count from zero, so without it an item active
+   * in slot 1 fires the champion's Q — which is what a LAN client's item
+   * actives did, for as long as they were purely local and therefore did
+   * nothing at all.
+   */
+  | { t: 'cast'; slot: number; x: number; y: number; row?: 'item' }
   /** Release the charge `cast` started, aimed where the drag ended. Without it, min-charge only. */
-  | { t: 'rel'; slot: number; x: number; y: number }
+  | { t: 'rel'; slot: number; x: number; y: number; row?: 'item' }
   /** The player called a running charge off — mirror of the local cancel. */
-  | { t: 'stop'; slot: number }
+  | { t: 'stop'; slot: number; row?: 'item' }
+  /**
+   * The shop, from a client. All three go to the host and come back as
+   * facts — a `bag` event and the wallet in the next snapshot — because the
+   * gold and the fountain rule are the host's, and a client that spent its
+   * own copy of either would be shopping in a shop that does not exist.
+   */
+  | { t: 'buy'; itemId: string }
+  | { t: 'sell'; slot: number }
+  | { t: 'swap'; a: number; b: number }
   /** The client changed its own kit (đổi tướng); `plan` is a `KitPlan` (`kitWire.ts` validates). */
   | { t: 'loadout'; plan: unknown }
   /** The minimap's tap-teleport — wire-only on a client, or reconciliation just snaps it back. */
@@ -234,7 +279,14 @@ const packUnit = (unit: UnitSnap): UnitRow => {
     unit.dead ? 1 : 0,
     unit.actionState,
   ];
-  if (unit.cds) row.push(...unit.cds.map(cd => Math.round(cd)));
+  // The tail is "this is a client's own champion": gold first, then one
+  // cooldown per kit slot. They are written and read together because they are
+  // sent together — for exactly the champions a client is playing — which is
+  // what keeps a variable-length tail unambiguous without a length field.
+  if (unit.cds || unit.gold !== undefined) {
+    row.push(Math.round(unit.gold ?? 0));
+    if (unit.cds) row.push(...unit.cds.map(cd => Math.round(cd)));
+  }
   return row;
 };
 
@@ -252,7 +304,10 @@ const unpackUnit = (row: unknown): UnitSnap | null => {
     dead: row[6] === 1,
     actionState: row[7],
   };
-  if (row.length > 8) unit.cds = row.slice(8) as number[];
+  if (row.length > 8) {
+    unit.gold = row[8] as number;
+    if (row.length > 9) unit.cds = row.slice(9) as number[];
+  }
   return unit;
 };
 
@@ -332,7 +387,17 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
     case 'rel':
       return typeof message.slot === 'number' ? (parsed as NetMessage) : null;
     case 'stop':
-      return typeof message.slot === 'number' ? { t: 'stop', slot: message.slot } : null;
+      return typeof message.slot === 'number'
+        ? { t: 'stop', slot: message.slot, ...(message.row === 'item' ? { row: 'item' } : {}) }
+        : null;
+    case 'buy':
+      return typeof message.itemId === 'string' ? { t: 'buy', itemId: message.itemId } : null;
+    case 'sell':
+      return typeof message.slot === 'number' ? { t: 'sell', slot: message.slot } : null;
+    case 'swap':
+      return typeof message.a === 'number' && typeof message.b === 'number'
+        ? { t: 'swap', a: message.a, b: message.b }
+        : null;
     case 'loadout':
       return typeof message.plan === 'object' && message.plan !== null
         ? (parsed as NetMessage)

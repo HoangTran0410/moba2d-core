@@ -382,15 +382,21 @@ export default class Game {
     this.itemInputController = new SpellInputController({
       keyBindings: ItemHotKeys,
       getSpell: slot => this.player.items[slot]?.active ?? undefined,
-      createContext: (_spell, slot) => {
+      createContext: (_spell, slot, _heldMs, phase) => {
         const spell = this.player.items[slot]?.active;
         if (!spell) return undefined;
         // `itemTouchAim`, never `touchAim`: both rows index from 0, so the
         // kit's map would have item slot 2 aim at whatever the thumb last did
         // to the champion's W.
         const aim = this.itemTouchAim.get(slot) ?? this.worldMouse;
+        // The bag is a second bar of castable things and needs the same wire
+        // the kit has, tagged so the host indexes the right one — until this
+        // existed a LAN client's item actives ran purely locally, which on a
+        // client means they resolved into the gated funnel and did nothing.
+        if (this.net?.interceptCast(slot, aim, phase, 'item')) return undefined;
         return this.createSpellContext(spell, this.player, aim);
       },
+      onCancel: slot => this.net?.interceptCastCancel(slot, 'item'),
     });
 
     this.touchControls = new TouchControls(this.touchControlsHost(), this.touchUi);

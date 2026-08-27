@@ -47,9 +47,24 @@ export interface NetGameHooks {
    * fire it at minimum charge — the v1 shortcut that made every charge spell
    * dash the instant the key went down.
    */
-  interceptCast(slot: number, aim: Vec2, phase: CastPhase): boolean;
+  interceptCast(slot: number, aim: Vec2, phase: CastPhase, row?: 'item'): boolean;
   /** The player called a running charge off — the pointer left the button, or the scene cancelled. */
-  interceptCastCancel(slot: number): void;
+  interceptCastCancel(slot: number, row?: 'item'): void;
+  /**
+   * The shop, from the panel. Unlike a cast this answers **`true`** on a
+   * client — wire-only, no local half. A cast is predicted because the player
+   * must see their own spell leave instantly; a purchase has nothing to
+   * predict and everything to get wrong, since the gold, the fountain rule and
+   * the component maths are all the host's. Spending a client's own copy of a
+   * wallet the host has never heard of buys an item that vanishes on the next
+   * `bag` event.
+   */
+  interceptShop(
+    order:
+      | { kind: 'buy'; itemId: string }
+      | { kind: 'sell'; slot: number }
+      | { kind: 'swap'; a: number; b: number }
+  ): boolean;
   /** The B key / recall button. */
   interceptRecall(): boolean;
   /**

@@ -94,6 +94,20 @@ export default class Wallet {
     return Math.floor(this._gold);
   }
 
+  /**
+   * Overwrite the balance outright — the LAN client's only write.
+   *
+   * A client's wallet is not a wallet: nothing it does earns or spends,
+   * because every purchase crosses to the host and every bounty is paid into
+   * the host's copy. What arrives is a number, and `earn`/`spend` are the
+   * wrong doors for it — `earn` would inflate `earnedTotal` (a scoreboard
+   * figure the host already owns) and `spend` would refuse the very case that
+   * matters, a balance correcting downwards past what this copy thinks it has.
+   */
+  syncTo(balance: number): void {
+    this._gold = balance;
+  }
+
   get earnedTotal(): number {
     return Math.floor(this._earnedTotal);
   }

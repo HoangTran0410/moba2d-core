@@ -209,11 +209,26 @@ prediction with reconciliation, 30Hz snapshots, the menu lobby. Ahead:
 
 ## 7. Unfinished in v1 (deliberate cuts, in the open)
 
-- **Shop/gold are not synced**: the client's shop UI operates on local,
-  meaningless gold; host-side purchases do sync their stat effects via
-  snapshots (health/mana) but item icons/actives do not appear on the
-  client. Cut because the economy rides `MatchDirector` paths v1 does not
-  touch.
+- ~~Shop/gold are not synced~~ — **landed 2026-08-28.** The bag crosses as a
+  `bag` event (qualified ids per slot, diffed hook-free in `discover` the way
+  the world itself is, and carried in the hello so a joiner sees boots bought
+  before it arrived); the client rebuilds the real `HeldItem` through the same
+  `buildHeldItem` a purchase uses, slot by slot through `equipItem`/
+  `unequipItem`, so icons, passives, actives and stat modifiers are genuine.
+  Gold rides the snapshot beside `cds`, for the champions a client is actually
+  playing and nobody else. Buying, selling and dragging go to the host as
+  `buy`/`sell`/`swap` and have **no local half** — the gold and the fountain
+  rule are the host's. Item actives cross as an ordinary `cast`/`rel`/`stop`
+  with `row: 'item'`, which is what the wire had been missing: the slot used
+  to index `champion.spells` only, so a client's item actives ran locally and
+  therefore did nothing.
+
+  The one thing this forced elsewhere: a client's champion now carries
+  modifiers of its own, so the snapshot's composed stat can no longer be
+  written straight into `baseValue` — the belt would be added twice.
+  `ClientSession.setComposedValue` inverts the composition instead, which
+  keeps the documented invariant (the client shows the host's number, never
+  one it computed) and closes the same latent hole for buffs.
 - **StatusFlags are not transmitted** (only `actionState`): client-side CC
   presentation may lag reality between snapshots.
 - **Touch controls are intercepted** as of 2026-08-28. The claim they were

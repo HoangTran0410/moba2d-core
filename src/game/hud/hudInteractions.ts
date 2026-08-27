@@ -529,17 +529,26 @@ export function createHudInteractions(game: Game): HudInteractions {
      * platform.
      */
     buy(itemId: string): void {
+      // On a LAN client the order goes to the host and nothing happens here —
+      // the gold and the fountain rule are its, and the answer comes back as a
+      // `bag` event with a wallet beside it. A host answers `false` and buys
+      // outright, for its own champion and for its clients' alike.
+      if (game.net?.interceptShop({ kind: 'buy', itemId })) return;
       const subject = shopSubject();
       const def = contentCatalog().item(itemId);
       if (subject && def) buyItem(subject.champion, def, game, subject.mode);
     },
 
     sell(slot: number): void {
+      if (game.net?.interceptShop({ kind: 'sell', slot })) return;
       const subject = shopSubject();
       if (subject) sellItem(subject.champion, slot, game, subject.mode);
     },
 
     moveItem(from: number, to: number): void {
+      // A drag is a bag change like any other: the host owns the arrangement,
+      // or the next `bag` event puts the item back where the host still has it.
+      if (game.net?.interceptShop({ kind: 'swap', a: from, b: to })) return;
       game.player?.moveItem(from, to);
     },
 

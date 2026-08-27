@@ -28,6 +28,8 @@ import { isMatchTeamId } from '@/game/config/MatchTeams';
 import { setNetRole, type NetUrlRequest } from './netRole';
 import { disarmNetUrl } from '@/scenes/lanSignal';
 import { readInstalledPacks } from '@/content/installedPackStore';
+import { buyItem, sellItem } from '@/game/economy/ItemShop';
+import { contentCatalog } from '@/content/catalog';
 import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
 import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
@@ -45,6 +47,17 @@ import type { Vec2 } from '@/game/spell/runtime/types';
 
 /** 30Hz — LoL's own simulation quantum; LAN bandwidth makes the doubling free. */
 const SNAPSHOT_INTERVAL_MS = 33;
+/** The bar a wire slot indexes — the kit unless the message says the bag. */
+const spellOnRow = (champion: Champion, slot: number, row: 'item' | undefined): Spell | undefined =>
+  row === 'item' ? (champion.items[slot]?.active ?? undefined) : champion.spells[slot];
+
+/** A bag as it goes on the wire: one qualified id per slot, `null` for empty. */
+const bagOf = (champion: Champion): (string | null)[] => {
+  const ids: (string | null)[] = [];
+  for (const held of champion.items) ids.push(held?.def.id ?? null);
+  return ids;
+};
+
 /** What this host has installed, so a joiner can install the same. */
 const installedManifestUrls = (): string[] => {
   const urls: string[] = [];
@@ -82,6 +95,8 @@ export class HostSession implements NetGameHooks {
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsSent: 0, eventsSent: 0, castsSeen: 0 };
   private lastSnapshotAt = 0;
+  /** Bag contents at last broadcast, per champion — see `discover`. */
+  private bagSignatures = new WeakMap<Champion, string>();
   /** The champion whose side change is a client's own doing — see `onTeamChanged`. */
   private teamEchoFor: Champion | null = null;
   /** Per-unit "what we last put on the wire, and when" — see `snapshotUnits`. */
@@ -288,6 +303,17 @@ export class HostSession implements NetGameHooks {
         this.championPlans.set(object, this.planFromLiveChampion(object));
         this.pendingEvents.push(this.championEvent(this.ids.get(object)!, object));
       }
+      // And the bag, diffed the same hook-free way the world itself is: a
+      // purchase, a sale, a combine and a drag all end as a different list of
+      // ids in the same slots, and none of them has to know a socket exists.
+      if (object instanceof Champion) {
+        const bag = bagOf(object);
+        const signature = bag.join('|');
+        if (this.bagSignatures.get(object) !== signature) {
+          this.bagSignatures.set(object, signature);
+          this.pendingEvents.push({ k: 'bag', id: this.ids.get(object)!, items: bag });
+        }
+      }
     }
     for (const [unit, id] of this.ids) {
       const attackable = unit as AttackableUnit;
@@ -348,6 +374,7 @@ export class HostSession implements NetGameHooks {
       };
       if (unit instanceof Champion && clientChampions.has(unit)) {
         snap.cds = unit.spells.map(spell => spell.currentCooldown);
+        snap.gold = unit.wallet?.balance ?? 0;
       }
       const row = JSON.stringify(snap);
       const last = this.lastRowSent.get(id);
@@ -478,7 +505,7 @@ export class HostSession implements NetGameHooks {
       return;
     }
     if (message.t === 'cast') {
-      const spell = champion.spells[message.slot];
+      const spell = spellOnRow(champion, message.slot, message.row);
       if (!spell) return;
       const context = this.game.createSpellContext(spell, champion, {
         x: message.x,
@@ -492,7 +519,7 @@ export class HostSession implements NetGameHooks {
       return;
     }
     if (message.t === 'rel') {
-      const spell = champion.spells[message.slot];
+      const spell = spellOnRow(champion, message.slot, message.row);
       // Guarded on the state, not trusted: the two ends drift (a host-side
       // stun cancelled the charge the client thinks it is still holding).
       if (!spell || spell.state !== 'CHARGING') return;
@@ -506,8 +533,25 @@ export class HostSession implements NetGameHooks {
       return;
     }
     if (message.t === 'stop') {
-      const spell = champion.spells[message.slot];
+      const spell = spellOnRow(champion, message.slot, message.row);
       if (spell?.state === 'CHARGING') spell.cancel('PLAYER_CANCEL');
+      return;
+    }
+    if (message.t === 'buy') {
+      // Every rule re-checked here and nowhere else: `buyItem` is the same
+      // door the host's own panel presses, so a client cannot buy from the
+      // river, out of gold it does not have, or into a full bag.
+      // A client may name an id this host has never loaded; the catalog says so.
+      const def = contentCatalog().item(message.itemId);
+      if (def) buyItem(champion, def, this.game, 'PLAYER');
+      return;
+    }
+    if (message.t === 'sell') {
+      sellItem(champion, message.slot, this.game, 'PLAYER');
+      return;
+    }
+    if (message.t === 'swap') {
+      champion.moveItem(message.a, message.b);
       return;
     }
     if (message.t === 'team') {
@@ -573,8 +617,19 @@ export class HostSession implements NetGameHooks {
 
     const roster: NetEvent[] = [];
     for (const [unitId, unit] of this.tracked) {
-      if (unit instanceof Champion) roster.push(this.championEvent(unitId, unit));
-      else if (unit instanceof Minion) {
+      if (unit instanceof Champion) {
+        roster.push(this.championEvent(unitId, unit));
+        // The bag has to be in the hello, not left to `discover`'s diff: the
+        // diff only speaks when something *changes*, and a champion that
+        // bought its boots before this client arrived would never change
+        // again — the joiner would spend the match looking at an empty bar.
+        const bag = bagOf(unit);
+        for (const id of bag) {
+          if (id === null) continue;
+          roster.push({ k: 'bag', id: unitId, items: bag });
+          break;
+        }
+      } else if (unit instanceof Minion) {
         roster.push({
           k: 'minion',
           id: unitId,
@@ -636,10 +691,13 @@ export class HostSession implements NetGameHooks {
   interceptSteer(_target: Vec2 | null): boolean {
     return false;
   }
-  interceptCast(_slot: number, _aim: Vec2, _phase: CastPhase): boolean {
+  interceptCast(_slot: number, _aim: Vec2, _phase: CastPhase, _row?: 'item'): boolean {
     return false;
   }
-  interceptCastCancel(_slot: number): void {}
+  interceptCastCancel(_slot: number, _row?: 'item'): void {}
+  interceptShop(): boolean {
+    return false;
+  }
   interceptTeleport(_point: Vec2): boolean {
     return false;
   }

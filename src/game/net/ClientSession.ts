@@ -9,6 +9,8 @@ import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
+import { buildHeldItem } from '@/game/economy/ItemShop';
+import { contentCatalog } from '@/content/catalog';
 import { loadSpells } from '@/game/spellRegistry';
 import { setNetRole } from './netRole';
 import { disarmNetUrl } from '@/scenes/lanSignal';
@@ -50,6 +52,40 @@ const RECONCILE_PULL_UNITS = 60;
 const RECONCILE_SNAP_UNITS = 300;
 /** Per-tick fraction of the remaining drift a gentle reconcile closes (per-time at 60Hz ticks). */
 const RECONCILE_PULL_RATE = 0.15;
+
+/**
+ * A stat the snapshot owns, written so its **computed** value lands exactly on
+ * the host's.
+ *
+ * The snapshot carries `stats.health.value` — the composed number, after every
+ * modifier — and the client used to store it straight into `baseValue`. That
+ * was right for as long as a client's champion had no modifiers of its own,
+ * and stopped being right the moment items synced: a Giant's Belt now adds its
+ * health on the host *and* on the client, so the client's bar read the host's
+ * total plus the belt again. Nudging the base instead keeps the documented
+ * invariant — the client shows the number the host reported, never one it
+ * computed — whatever local modifiers exist. It also closes the same latent
+ * hole for buffs, which a client has always replayed locally.
+ */
+interface ComposedStat {
+  baseValue: number;
+  baseBonus: number;
+  percentBaseBonus: number;
+  flatBonus: number;
+  percentBonus: number;
+}
+export const setComposedValue = (stat: ComposedStat, target: number): void => {
+  const outer = 1 + stat.percentBonus;
+  const inner = 1 + stat.percentBaseBonus;
+  // A -100% modifier makes the value independent of the base, so there is no
+  // base that produces the target. Fall back to the old write rather than
+  // divide by zero — a champion whose stat is pinned at zero either way.
+  if (outer === 0 || inner === 0) {
+    stat.baseValue = target;
+    return;
+  }
+  stat.baseValue = (target / outer - stat.flatBonus) / inner - stat.baseBonus;
+};
 
 /**
  * The renderer end of a LAN match. The local `Game` is sim-gated (spec §4)
@@ -186,9 +222,11 @@ export class ClientSession implements NetGameHooks {
       player.respawn();
     }
 
-    player.stats.maxHealth.baseValue = snap.maxHp;
-    player.stats.health.baseValue = snap.hp;
-    player.stats.mana.baseValue = snap.mp;
+    setComposedValue(player.stats.maxHealth, snap.maxHp);
+    setComposedValue(player.stats.health, snap.hp);
+    setComposedValue(player.stats.mana, snap.mp);
+    // The wallet is the host's ledger; this copy only displays it.
+    if (snap.gold !== undefined) player.wallet?.syncTo(snap.gold);
     if (snap.cds) {
       snap.cds.forEach((cd, slot) => {
         const spell = player.spells[slot];
@@ -222,9 +260,9 @@ export class ClientSession implements NetGameHooks {
     // own motion.
     unit.destination?.set(snap.x, snap.y);
 
-    unit.stats.maxHealth.baseValue = snap.maxHp;
-    unit.stats.health.baseValue = snap.hp;
-    unit.stats.mana.baseValue = snap.mp;
+    setComposedValue(unit.stats.maxHealth, snap.maxHp);
+    setComposedValue(unit.stats.health, snap.hp);
+    setComposedValue(unit.stats.mana, snap.mp);
     unit.stats.actionState = snap.actionState;
 
     // Puppet cooldowns run locally from cast events; the own champion's are
@@ -232,6 +270,34 @@ export class ClientSession implements NetGameHooks {
   }
 
   // -------------------------------------------------------------- events
+
+  /**
+   * The host's bag, made real.
+   *
+   * Slot by slot rather than wholesale, because `equipItem`/`unequipItem` are
+   * the *ownership* seam — they add and take back the stat modifier, arm and
+   * retire the passive, register and remove the item's spells — and a slot
+   * whose id did not change must not be run through them (`Champion.moveItem`
+   * documents exactly what that costs: armour taken off and put back on, a
+   * passive armed twice). A drag on the host therefore arrives here as two
+   * slots that changed, which is what it is.
+   */
+  private applyBag(champion: Champion, ids: readonly (string | null)[]): void {
+    for (let slot = 0; slot < champion.items.length; slot++) {
+      const wanted = ids[slot] ?? null;
+      const held = champion.items[slot];
+      if ((held?.def.id ?? null) === wanted) continue;
+      if (held) champion.unequipItem(slot);
+      if (!wanted) continue;
+      const def = contentCatalog().item(wanted);
+      // An id this client's packs do not carry: leave the slot empty rather
+      // than guess. The host still owns the stats that item grants, and they
+      // arrive in the snapshot regardless — the bar is what goes missing.
+      if (!def) continue;
+      const built = buildHeldItem(champion, def);
+      if (built) champion.equipItem(built, slot);
+    }
+  }
 
   private applyEvent(event: NetEvent): void {
     switch (event.k) {
@@ -296,6 +362,11 @@ export class ClientSession implements NetGameHooks {
         });
         this.game.objectManager.addObject(minion);
         this.units.set(event.id, minion);
+        return;
+      }
+      case 'bag': {
+        const unit = this.units.get(event.id);
+        if (unit instanceof Champion) this.applyBag(unit, event.items);
         return;
       }
       case 'gone': {
@@ -452,7 +523,23 @@ export class ClientSession implements NetGameHooks {
     return false;
   }
 
-  interceptCast(slot: number, aim: Vec2, phase: CastPhase): boolean {
+  interceptShop(
+    order:
+      | { kind: 'buy'; itemId: string }
+      | { kind: 'sell'; slot: number }
+      | { kind: 'swap'; a: number; b: number }
+  ): boolean {
+    if (order.kind === 'buy') this.channel.send(JSON.stringify({ t: 'buy', itemId: order.itemId }));
+    else if (order.kind === 'sell') this.channel.send(JSON.stringify({ t: 'sell', slot: order.slot }));
+    else this.channel.send(JSON.stringify({ t: 'swap', a: order.a, b: order.b }));
+    // Wire-only. There is nothing here worth predicting and a great deal worth
+    // getting wrong: the gold, the fountain rule and the component maths are
+    // the host's, and the answer comes back as a `bag` event and a wallet in
+    // the next snapshot — one frame, on a LAN.
+    return true;
+  }
+
+  interceptCast(slot: number, aim: Vec2, phase: CastPhase, row?: 'item'): boolean {
     // The hold stream is 60Hz re-aiming — local-only. Press and release each
     // cross once, which is what lets the host's copy of a charge spell charge
     // for as long as the real thumb actually held it (the v1 wire had no
@@ -460,13 +547,19 @@ export class ClientSession implements NetGameHooks {
     // went down — a charged dash lurching off on press).
     if (phase === 'hold') return false;
     this.channel.send(
-      JSON.stringify({ t: phase === 'press' ? 'cast' : 'rel', slot, x: aim.x, y: aim.y })
+      JSON.stringify({
+        t: phase === 'press' ? 'cast' : 'rel',
+        slot,
+        x: aim.x,
+        y: aim.y,
+        ...(row === 'item' ? { row } : {}),
+      })
     );
     return false;
   }
 
-  interceptCastCancel(slot: number): void {
-    this.channel.send(JSON.stringify({ t: 'stop', slot }));
+  interceptCastCancel(slot: number, row?: 'item'): void {
+    this.channel.send(JSON.stringify({ t: 'stop', slot, ...(row === 'item' ? { row } : {}) }));
   }
 
   interceptTeleport(point: Vec2): boolean {
