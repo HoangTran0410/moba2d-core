@@ -1,22 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGame, stubGameGlobals, type TestGame } from '@/testing';
-import Pet from '@/game/gameObject/attackableUnits/Pet';
+import { createGame, indexObjects, stubGameGlobals, type TestGame } from '@/testing';
+import Pet, { NET_PET_ADOPT_GRACE_MS } from '@/game/gameObject/attackableUnits/Pet';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import { setNetRole } from '@/game/net/netRole';
 
 /**
- * `ObjectManager.addObject`'s pet gate: a LAN client's world holds no
- * locally-born pets. The summoning spell plays out in the client's sim too,
- * but the authoritative summon arrives from the host as a spawn event —
- * without the refusal every summon stood twice ("client hiện 1 pet + 1 tướng
- * không avatar, host chỉ có pet").
+ * A LAN client's pets: the summoning replay spawns the pack subclass locally
+ * (its custom draw is the whole reason it is kept), `ClientSession` adopts it
+ * for the host's spawn event, and `Pet.update` keeps only the clock — brain,
+ * leash and expiry are host facts. A local pet the host never claims within
+ * the grace was a misprediction, removed quietly with no parting gift.
  */
-describe('the net-client pet gate', () => {
+describe('a pet on a net client', () => {
   let game: TestGame;
   let owner: Champion;
+  let expired: number;
 
-  const pet = (): Pet =>
-    new Pet({
+  class PartingGift extends Pet {
+    onExpire(): void {
+      expired++;
+    }
+  }
+
+  const pet = (): PartingGift =>
+    new PartingGift({
       game,
       position: createVector(0, 0),
       teamId: 'blue',
@@ -28,6 +35,9 @@ describe('the net-client pet gate', () => {
     stubGameGlobals();
     game = createGame();
     owner = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(owner);
+    indexObjects(game, [owner]);
+    expired = 0;
   });
 
   afterEach(() => {
@@ -35,33 +45,40 @@ describe('the net-client pet gate', () => {
     vi.unstubAllGlobals();
   });
 
-  it('refuses a pet on a net client, and only a pet', () => {
+  it('removes an unclaimed local pet after the grace, without its parting gift', () => {
     setNetRole('client', { playerTeam: 'blue' });
-    const summon = pet();
-    game.objectManager.addObject(summon);
-    expect(game.objectManager._objectToBeAdd).not.toContain(summon);
+    const ghost = pet();
 
-    // A champion (an ordinary puppet) still enters — the gate reads the pet
-    // marker, not the class tree.
-    game.objectManager.addObject(owner);
-    expect(game.objectManager._objectToBeAdd).toContain(owner);
+    ghost.age = NET_PET_ADOPT_GRACE_MS - 100; // > one stubbed frame from the line
+    ghost.update();
+    expect(ghost.toRemove).toBe(false);
 
-    // And the one pet a client does hold — the host's rebuilt summon,
-    // flagged by `ClientSession` — passes.
-    const puppet = pet();
-    puppet.isNetPuppet = true;
-    game.objectManager.addObject(puppet);
-    expect(game.objectManager._objectToBeAdd).toContain(puppet);
+    ghost.age = NET_PET_ADOPT_GRACE_MS;
+    ghost.update();
+    expect(ghost.toRemove).toBe(true);
+    // A misprediction owes nobody an explosion.
+    expect(expired).toBe(0);
   });
 
-  it('changes nothing offline and on a host', () => {
-    const offline = pet();
-    game.objectManager.addObject(offline);
-    expect(game.objectManager._objectToBeAdd).toContain(offline);
+  it('keeps an adopted puppet alive at any age, brain off', () => {
+    setNetRole('client', { playerTeam: 'blue' });
+    const puppet = pet();
+    puppet.isNetPuppet = true;
 
-    setNetRole('host');
-    const hosted = pet();
-    game.objectManager.addObject(hosted);
-    expect(game.objectManager._objectToBeAdd).toContain(hosted);
+    puppet.age = NET_PET_ADOPT_GRACE_MS * 10; // far past both grace and lifetime
+    puppet.update();
+
+    // Expiry is the host's call, arriving as 'gone' — never the local clock's.
+    expect(puppet.toRemove).toBe(false);
+    expect(expired).toBe(0);
+  });
+
+  it('expires normally offline, parting gift included', () => {
+    const summon = pet();
+    summon.age = summon.lifeTimeMs;
+    summon.update();
+
+    expect(summon.toRemove).toBe(true);
+    expect(expired).toBe(1);
   });
 });

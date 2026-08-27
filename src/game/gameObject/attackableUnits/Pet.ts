@@ -15,6 +15,13 @@ export const PET_SCAN_INTERVAL_MS = 250;
 export const PET_LEASH_RANGE = 700;
 /** How close it tries to sit when it has nothing to kill. */
 export const PET_FOLLOW_DISTANCE = 90;
+/**
+ * How long a locally-spawned pet on a LAN client waits to be claimed by the
+ * host's spawn event (`ClientSession.adoptLocalPet`) before it is judged a
+ * misprediction and removed. The claim normally lands within a tick or two
+ * of the cast replay; seconds of slack cover a stalled event flush.
+ */
+export const NET_PET_ADOPT_GRACE_MS = 2_500;
 
 export interface PetOptions extends ChampionOptions {
   /** The unit this pet belongs to. Its death is the pet's death. */
@@ -70,21 +77,14 @@ export interface PetOptions extends ChampionOptions {
  */
 export default class Pet extends Champion {
   /**
-   * The marker `ObjectManager.addObject` reads to refuse a locally-born pet
-   * on a LAN client (its summoning spell plays out in the client's sim too,
-   * and the host's authoritative copy arrives as a spawn event — without the
-   * refusal every summon stood twice). A field rather than `instanceof
-   * Pet` at the gate because `Pet` already imports `ObjectManager` for
-   * `PredefinedFilters`, and the reverse import would be a cycle.
-   */
-  readonly isSummonedPet = true;
-
-  /**
-   * True on the one pet a net client *does* hold: the host's authoritative
-   * summon, rebuilt by `ClientSession` so it wears the real pet chrome (the
-   * compact frame, the life-timer bar) instead of a full champion frame.
-   * Lets it through `ObjectManager.addObject`'s gate; `update` below keys
-   * off the net role instead, since on a client every living pet is one.
+   * True once this pet is the host's authoritative summon on a LAN client —
+   * either *adopted*: the summoning spell plays out in the client's sim too,
+   * spawning the pack subclass with its own draw, and `ClientSession` claims
+   * that local body for the host's spawn event instead of building a
+   * lookalike; or built fresh by `ClientSession` for a summon with no local
+   * twin (one that predates the join). An unclaimed local pet past
+   * `NET_PET_ADOPT_GRACE_MS` was a misprediction the host never committed —
+   * removed quietly in `update`, no parting gift.
    */
   isNetPuppet = false;
 
@@ -195,11 +195,16 @@ export default class Pet extends Champion {
     super.update();
 
     this.age += deltaTime;
-    // A puppet keeps only the clock (the timer bar reads `age`): its brain,
-    // leash and expiry are the host's — expiring here on the local clock
-    // would race the authoritative 'gone', and a scan that issued attack
-    // orders would double every swing the host already forwards.
-    if (isNetClient()) return;
+    // A LAN client's pet keeps only the clock (the timer bar reads `age`):
+    // its brain, leash and expiry are the host's — expiring here on the
+    // local clock would race the authoritative 'gone', and a scan that
+    // issued attack orders would double every swing the host forwards. A pet
+    // the host never claims within the grace was a misprediction: removed
+    // quietly — no `expire()`, because a ghost owes nobody a parting gift.
+    if (isNetClient()) {
+      if (!this.isNetPuppet && this.age >= NET_PET_ADOPT_GRACE_MS) this.toRemove = true;
+      return;
+    }
     // Timed out or outlived its summoner. Being killed is handled in `die`,
     // which the damage pipeline reaches before this ever runs — all three are
     // the end of the same life and all three owe the pet its parting effect

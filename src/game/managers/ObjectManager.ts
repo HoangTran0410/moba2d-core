@@ -8,7 +8,6 @@ import ParticleSystem from '@/game/gameObject/helpers/ParticleSystem';
 import GameObject from '@/game/gameObject/GameObject';
 import UnitCollisionSystem from './UnitCollisionSystem';
 import { canSee, type Seeable as VisionObserver } from '@/game/combat/Vision';
-import { isNetClient } from '@/game/net/netRole';
 import { blend, isContinuousStep } from '@/game/render/Interpolation';
 import {
   beginAttribution,
@@ -619,14 +618,6 @@ export default class ObjectManager {
   }
 
   addObject(object: GameObject): void {
-    // A LAN client births no pets of its own: the summoning spell plays out
-    // in the local sim too (that is the prediction), but the authoritative
-    // summon arrives from the host as a champion spawn event — letting the
-    // local one in put two Tibbers on screen, and only the ugly one was
-    // real. The marker, not `instanceof Pet`, because `Pet` imports this
-    // module (`PredefinedFilters`) and the reverse would be a cycle.
-    const marked = object as { isSummonedPet?: boolean; isNetPuppet?: boolean };
-    if (marked.isSummonedPet && !marked.isNetPuppet && isNetClient()) return;
     this._objectToBeAdd.push(object);
   }
 

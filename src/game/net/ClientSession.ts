@@ -231,6 +231,24 @@ export class ClientSession implements NetGameHooks {
           return;
         }
         if (existing || this.pendingChamps.has(event.id)) return;
+        // A summon first tries to *claim* the local twin the spell replay
+        // just spawned — the pack's own Pet subclass, custom draw and all —
+        // rather than building a core-Pet lookalike beside it. Synchronous
+        // on purpose: the twin's spells are already in memory, and the
+        // adoption grace (`NET_PET_ADOPT_GRACE_MS`) is ticking.
+        if (event.pet) {
+          const adopted = this.adoptLocalPet(event);
+          if (adopted) {
+            adopted.isNetPuppet = true;
+            adopted.stats.size.baseValue = event.pet.size;
+            // Re-anchor the timer on the host's remaining life, keeping the
+            // age already shown — the bar must not jump backwards.
+            adopted.lifeTimeMs = adopted.age + event.pet.lifeMs;
+            this.petUnits.add(adopted);
+            this.units.set(event.id, adopted);
+            return;
+          }
+        }
         // A champion the host added mid-match (a bot from the Đội tab, a
         // late joiner) can name spell chunks this client has never fetched —
         // the boot only loaded the hello roster's. `presetFromPlan` is
@@ -309,6 +327,30 @@ export class ClientSession implements NetGameHooks {
         return;
       }
     }
+  }
+
+  /**
+   * The local pet nearest the spawn event, unclaimed and on the right team —
+   * the body the summoning replay just put in the world. Both ends computed
+   * the spawn from the same cast aim, so the two positions agree to within
+   * noise; 300 units of slack covers an interpolated caster. `_objectToBeAdd`
+   * too: a pet summoned this very tick has not been flushed into `objects`.
+   */
+  private adoptLocalPet(event: Extract<NetEvent, { k: 'champ' }>): Pet | null {
+    let best: Pet | null = null;
+    let bestDistance = 300;
+    const consider = (object: unknown): void => {
+      if (!(object instanceof Pet) || object.isNetPuppet || object.toRemove) return;
+      if (object.teamId !== event.team) return;
+      const distance = Math.hypot(object.position.x - event.x, object.position.y - event.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = object;
+      }
+    };
+    for (const object of this.game.objectManager.objects) consider(object);
+    for (const object of this.game.objectManager._objectToBeAdd) consider(object);
+    return best;
   }
 
   private async buildChampion(event: Extract<NetEvent, { k: 'champ' }>): Promise<void> {

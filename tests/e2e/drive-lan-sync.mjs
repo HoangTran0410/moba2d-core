@@ -21,6 +21,13 @@
  * The relay is a `spawn`, not a `createServer` — the harness rule
  * (`tests/scripts/e2eHarness.test.ts`) is about not booting a second Vite
  * or browser, and both of those still come from the harness.
+ *
+ * Known flake, not worth chasing (CLAUDE.md's own category): the WS leg's
+ * "remote cast commits under 150ms" occasionally reports 0.5-4s on a loaded
+ * machine — three-plus pages in one headless browser starve the host page's
+ * event loop. It has never reproduced twice in a row, and the RTC leg's
+ * identical measurement stays at 2-4ms in the same runs; re-run before
+ * believing it.
  */
 import { spawn } from 'node:child_process';
 import { startHarness } from './harness.mjs';
@@ -545,33 +552,97 @@ await guard(async () => {
     )
     .then(handle => handle.jsonValue())
     .catch(() => []);
-  const localPetRefused = await clientPage.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
-    const { default: Pet } = await import('/src/game/gameObject/attackableUnits/Pet.ts');
-    const ghost = new Pet({
-      game,
-      position: createVector(0, 0),
-      teamId: game.player.teamId,
-      ownerUnit: game.player,
-      lifeTimeMs: 60_000,
-      preset: { name: 'Bóng Ma' },
-    });
-    game.objectManager.addObject(ghost);
-    return !game.objectManager._objectToBeAdd.includes(ghost);
-  });
   const rosterAfterPet = await clientPage.evaluate(
     () => window.__lol2d.scene.oScene.game.net.netRosterUnits().length
   );
-  report.petSync = { copies: petView, localPetRefused, rosterBeforePet, rosterAfterPet };
+  report.petSync = { copies: petView, rosterBeforePet, rosterAfterPet };
   check(
     'a summoned pet stands exactly once on the client, as a real sized Pet, off the roster',
     petView.length === 1 &&
       petView[0].size === 111 &&
       petView[0].kind === 'Pet' &&
       petView[0].timerLive &&
-      localPetRefused &&
       rosterAfterPet === rosterBeforePet,
     JSON.stringify(report.petSync)
+  );
+
+  // --------------------------------------- a pack summon keeps its body
+  // The probe above covers the *fallback* (a core-Pet puppet for a summon
+  // with no local twin). The real path is adoption: the cast replay spawns
+  // the pack's own Pet subclass — its custom draw is why the client keeps
+  // it — and the host's spawn event must claim that body, not build a
+  // core-Pet lookalike beside it ("tibber phía client vẫn render dạng
+  // champion").
+  await clientPage.evaluate(async () => {
+    const game = window.__lol2d.scene.oScene.game;
+    await game.director.applyLoadoutLoaded(game.player, {
+      mode: 'champion',
+      championName: 'Annie',
+      summonerD: 'Flash',
+      summonerF: 'Heal',
+      customSlots: [],
+    });
+  });
+  // The host must be running Annie before the R lands there, or the cast
+  // applies to the old kit's slot and no host summon ever exists.
+  await page
+    .waitForFunction(() => window.__lol2dNet.debugRemote()?.kit?.includes('Annie_R'), null, {
+      timeout: 15_000,
+    })
+    .catch(() => null);
+  await clientPage.evaluate(() => {
+    const game = window.__lol2d.scene.oScene.game;
+    game.worldMouse.set(game.player.position.x + 120, game.player.position.y);
+    game.spellInputController.keyDown(82, false);
+    game.spellInputController.keyUp(82);
+  });
+  const countSummons = () => {
+    const game = window.__lol2d.scene.oScene.game;
+    const descendsFromPet = object => {
+      let ctor = object.constructor;
+      while (ctor) {
+        if (ctor.name === 'Pet') return true;
+        ctor = Object.getPrototypeOf(ctor);
+      }
+      return false;
+    };
+    const summons = [];
+    for (const object of game.objectManager.objects) {
+      if (object.name !== 'Gấu Kiểm Thử' && !object.toRemove && descendsFromPet(object)) {
+        summons.push({ kind: object.constructor.name, adopted: !!object.isNetPuppet });
+      }
+    }
+    return summons;
+  };
+  // Filtered to the Tibbers class by name: a live match legitimately holds
+  // other summons (a bot's voidlings were on this very probe's first run),
+  // so "exactly one pet anywhere" was the wrong question — exactly one
+  // *Tibbers*, adopted, is the right one.
+  // "Adopted" is waited for, not asserted on first sight: the local body
+  // legitimately exists a beat before the host's claiming event arrives.
+  const adoptedPet = await clientPage
+    .waitForFunction(
+      body => {
+        const bears = new Function(`return (${body})()`)().filter(s => s.kind === 'Tibbers');
+        return bears.length > 0 && bears.every(bear => bear.adopted) ? bears : false;
+      },
+      `${countSummons.toString()}`,
+      { timeout: 10_000 }
+    )
+    .then(handle => handle.jsonValue())
+    .catch(() => []);
+  // Past the adoption grace: a lingering unclaimed ghost or a late-built
+  // lookalike would both show up as a second bear here.
+  await clientPage.waitForTimeout(3_000);
+  const lateBears = await clientPage.evaluate(
+    body => new Function(`return (${body})()`)().filter(s => s.kind === 'Tibbers'),
+    `${countSummons.toString()}`
+  );
+  report.petAdoption = { onCast: adoptedPet, afterGrace: lateBears };
+  check(
+    'a pack summon keeps its own subclass body, adopted, one only',
+    adoptedPet.length === 1 && adoptedPet[0].adopted && lateBears.length === 1,
+    JSON.stringify(report.petAdoption)
   );
 
   // -------------------------------------------------- death recap, told
