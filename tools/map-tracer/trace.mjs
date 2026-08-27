@@ -19,9 +19,8 @@
  * Boundary edges are emitted with the filled region on the *left* of the
  * walk, which makes every outer boundary wind one way and every hole wind
  * the other — `loopArea`'s sign is how `tracePolygons` tells them apart
- * without a nesting test. Core's even-odd `pointInPolygon` treats any point
- * inside an outer wall polygon as blocked regardless of holes, so holes are
- * dropped by default: emitting them would add vertices that change nothing.
+ * without a nesting test, and what lets `bridgeHoles`' keyhole cuts read
+ * correctly under the nonzero fill rule as well as the even-odd one.
  */
 
 /**
@@ -73,6 +72,48 @@ export function downsampleMask(mask, w, h, k) {
     }
   }
   return { mask: out, w: outW, h: outH };
+}
+
+/**
+ * The 4-connected component of the mask containing the seed cell — every
+ * other filled cell drops. This is how a *walkable* classification survives
+ * a decorated source image: the map border art shares colors with the floor
+ * (grays, blues), but only the floor is connected to a point the player can
+ * stand on, so classify the walkable colors, keep the component under the
+ * map's centre, and invert the result into the wall mask.
+ */
+export function componentFrom(mask, w, h, seedX, seedY) {
+  const out = new Uint8Array(mask.length);
+  const seed = seedY * w + seedX;
+  if (!mask[seed]) return out;
+  const queue = [seed];
+  out[seed] = 1;
+  while (queue.length > 0) {
+    const index = queue.pop();
+    const x = index % w;
+    const y = (index - x) / w;
+    for (const [nx, ny] of [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const next = ny * w + nx;
+      if (mask[next] && !out[next]) {
+        out[next] = 1;
+        queue.push(next);
+      }
+    }
+  }
+  return out;
+}
+
+/** Filled where `mask` is empty — the wall side of a walkable classification. */
+export function invertMask(mask) {
+  const out = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i++) out[i] = mask[i] ? 0 : 1;
+  return out;
 }
 
 /**
@@ -223,21 +264,94 @@ export function simplifyLoop(points, epsilon) {
   return [...half1.slice(0, -1), ...half2.slice(0, -1)];
 }
 
+const pointInLoop = (px, py, loop) => {
+  let inside = false;
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const a = loop[i];
+    const b = loop[j];
+    if (a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
+
+/**
+ * An outer loop with its holes folded in as one simple polygon, via the
+ * keyhole cut font glyphs use: walk the outer to its closest vertex to the
+ * hole, walk the whole hole (wound the opposite way, which `traceContours`
+ * already guarantees), and walk back along a zero-width bridge. Both the
+ * even-odd rule (`pointInPolygon`, `NavGrid`'s rasteriser) and the nonzero
+ * rule (canvas `fill()`) then agree the hole's inside is outside.
+ *
+ * This exists because a hole cannot be its own polygon in a `MapGeometry`:
+ * core blocks a point inside *any* wall polygon, so a separately-emitted
+ * hole changes nothing and a dropped one walls the courtyard it described.
+ */
+export function bridgeHoles(outer, holes) {
+  let merged = outer.slice();
+  for (const hole of holes) {
+    let bestOuter = 0;
+    let bestHole = 0;
+    let best = Infinity;
+    for (let i = 0; i < merged.length; i++) {
+      for (let j = 0; j < hole.length; j++) {
+        const d =
+          (merged[i].x - hole[j].x) * (merged[i].x - hole[j].x) +
+          (merged[i].y - hole[j].y) * (merged[i].y - hole[j].y);
+        if (d < best) {
+          best = d;
+          bestOuter = i;
+          bestHole = j;
+        }
+      }
+    }
+    const rotated = [...hole.slice(bestHole), ...hole.slice(0, bestHole)];
+    merged = [
+      ...merged.slice(0, bestOuter + 1),
+      ...rotated,
+      rotated[0],
+      ...merged.slice(bestOuter),
+    ];
+  }
+  return merged;
+}
+
 /**
  * The whole pipeline below classification: loops, hole handling, the speck
  * filter (in cell² — area is measured before simplification, on the exact
  * traced outline), then simplification.
+ *
+ * Holes above `minArea` are bridged into their innermost containing outer
+ * loop (see `bridgeHoles`); holes below it are filled — a pit too small to
+ * stand in is noise. Pass `dropHoles: true` to discard them all instead,
+ * for masks where every walkable region touches the map edge's own hole.
  */
-export function tracePolygons(mask, w, h, { epsilon = 1.5, minArea = 8, dropHoles = true } = {}) {
+export function tracePolygons(mask, w, h, { epsilon = 1.5, minArea = 8, dropHoles = false } = {}) {
   const loops = traceContours(mask, w, h);
-  const polygons = [];
+  const outers = [];
+  const holes = [];
   for (const loop of loops) {
     const area = loopArea(loop);
-    if (dropHoles && area > 0) continue;
     if (Math.abs(area) < minArea) continue;
-    polygons.push(simplifyLoop(loop, epsilon));
+    const simplified = simplifyLoop(loop, epsilon);
+    if (area <= 0) outers.push({ loop: simplified, area: -area });
+    else if (!dropHoles) holes.push(simplified);
   }
-  return polygons;
+  // Innermost containment: among outers containing the hole, the smallest.
+  const holesFor = new Map();
+  for (const hole of holes) {
+    let owner = null;
+    for (let i = 0; i < outers.length; i++) {
+      if (!pointInLoop(hole[0].x, hole[0].y, outers[i].loop)) continue;
+      if (owner === null || outers[i].area < outers[owner].area) owner = i;
+    }
+    if (owner !== null) {
+      if (!holesFor.has(owner)) holesFor.set(owner, []);
+      holesFor.get(owner).push(hole);
+    }
+  }
+  return outers.map(({ loop }, i) => (holesFor.has(i) ? bridgeHoles(loop, holesFor.get(i)) : loop));
 }
 
 /** Mask/corner coordinates into map units. */

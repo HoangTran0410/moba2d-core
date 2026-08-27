@@ -8,6 +8,8 @@ import {
   tracePolygons,
   scaleLoops,
   geometrySnippet,
+  componentFrom,
+  invertMask,
 } from '../../tools/map-tracer/trace.mjs';
 
 /**
@@ -141,12 +143,52 @@ describe('tracePolygons', () => {
     ).toBe(true);
   });
 
-  it('keeps holes when asked to', () => {
+  it('bridges a hole into its outer loop as one simple polygon, by default', () => {
+    // The keyhole cut: core blocks a point inside *any* wall polygon, so a
+    // ring's courtyard can only stay open if the hole is folded into the
+    // outer boundary. One polygon, and the even-odd test the engine
+    // rasterises with must call the hole's inside *outside*.
     const ringCells = rect(2, 2, 6, 6).filter(([x, y]) => x === 2 || x === 6 || y === 2 || y === 6);
     const mask = maskOf(10, 10, ringCells);
-    expect(
-      tracePolygons(mask, 10, 10, { epsilon: 0.5, minArea: 2, dropHoles: false })
-    ).toHaveLength(2);
+    const polygons = tracePolygons(mask, 10, 10, { epsilon: 0.5, minArea: 2 });
+    expect(polygons).toHaveLength(1);
+    const [ring] = polygons;
+    // Outer 4 corners + hole 4 corners + the two bridge duplicates.
+    expect(ring.length).toBe(10);
+    const inside = (x: number, y: number) => {
+      let hit = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i];
+        const b = ring[j];
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+      }
+      return hit;
+    };
+    expect(inside(4.5, 2.5), 'the band itself must stay wall').toBe(true);
+    expect(inside(4.5, 4.5), 'the courtyard must read as open').toBe(false);
+    expect(inside(8.5, 4.5), 'outside the ring stays open').toBe(false);
+  });
+});
+
+describe('componentFrom + invertMask', () => {
+  it('keeps only the region connected to the seed, and inverts cleanly', () => {
+    // Two blobs; the seed sits in the left one, so the right one drops.
+    const mask = maskOf(12, 8, [...rect(1, 1, 3, 3), ...rect(7, 4, 9, 6)]);
+    const kept = componentFrom(mask, 12, 8, 2, 2);
+    expect(Array.from(kept).reduce((a, b) => a + b, 0)).toBe(9);
+    expect(kept[2 * 12 + 2]).toBe(1);
+    expect(kept[5 * 12 + 8]).toBe(0);
+
+    const walls = invertMask(kept);
+    expect(walls[2 * 12 + 2]).toBe(0);
+    expect(walls[5 * 12 + 8]).toBe(1);
+    expect(Array.from(walls).reduce((a, b) => a + b, 0)).toBe(12 * 8 - 9);
+  });
+
+  it('returns an empty mask for a seed on an empty cell', () => {
+    const mask = maskOf(6, 6, rect(0, 0, 1, 1));
+    const kept = componentFrom(mask, 6, 6, 4, 4);
+    expect(Array.from(kept).every(v => v === 0)).toBe(true);
   });
 });
 

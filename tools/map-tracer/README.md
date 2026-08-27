@@ -32,11 +32,13 @@ static server works; vite is already in this repo's dev dependencies.)
 
 ## What it deliberately does not do
 
-- **Holes in walls are dropped.** Core's even-odd `pointInPolygon` treats
-  any point inside an outer wall polygon as blocked regardless, so emitting
-  hole loops would add vertices that change nothing. A walkable courtyard
-  *inside* a wall ring therefore needs the ring drawn as bands, not traced
-  as one donut — check the overlay before shipping.
+- **Holes are bridged, not kept as loops.** Core blocks a point inside
+  *any* wall polygon, so a walkable courtyard inside a wall ring cannot be
+  its own polygon — the tracer folds each hole into its outer boundary
+  with a zero-width keyhole cut (the technique font glyphs use), which
+  both the even-odd rule and canvas' nonzero fill read correctly. Holes
+  under `min area` are filled instead: a pit too small to stand in is
+  noise.
 - **Slots and lanes stay yours.** Spawn points, turrets, camps, muster
   slots and lane waypoints are gameplay decisions, not pixels — place them
   by hand (see `packs/reference/provingGroundsGeometry.ts` for the shape,

@@ -168,7 +168,6 @@ const run = () => {
     const polygons = tracePolygons(down.mask, down.w, down.h, {
       epsilon: epsilon / k,
       minArea: Math.max(1, minAreaCells),
-      dropHoles: true,
     });
     // Back to full-image pixel coordinates for the preview.
     state.traced[cls.id] = scaleLoops(polygons, k, false);
