@@ -262,11 +262,37 @@ if (invokedDirectly()) {
       console.log('links ok: no pack is linked for development');
       process.exit(0);
     }
-    console.error(`\n  Linked for development: ${linked.map(pack => pack.name).join(', ')}`);
-    for (const pack of linked) console.error(`    ${pack.name} -> ${pack.target}`);
-    console.error(`\n  src/generated/installedPacks.ts names ${linked.length > 1 ? 'them' : 'it'} and is tracked —`);
-    console.error(`  committing that gives everyone else an unresolvable import.`);
-    console.error(`\n  Run \`npm run pack:unlink -- --all\` first.\n`);
+
+    // A link whose target is gone gets its own message, because it is a
+    // different mistake with a different repair — and because it is the state
+    // nothing else in the gate describes. `packs:check` stops the run one step
+    // later, but says "the barrel is out of date, run `packs:generate`", which
+    // would drop the pack instead of telling anyone a directory moved; running
+    // vitest directly says `Failed to load url @moba2d/content-<name>/pack`
+    // about every test file in the suite. Both are true and neither is the
+    // fact. See `lib/devLinks.mjs`'s header for how this was met.
+    const dangling = linked.filter(pack => pack.missing);
+    const live = linked.filter(pack => !pack.missing);
+
+    if (dangling.length) {
+      console.error(`\n  Broken pack link — the target is gone:`);
+      for (const pack of dangling) console.error(`    ${pack.name} -> ${pack.target}  (missing)`);
+      console.error(`\n  The pack was moved, renamed or deleted. Until this is settled,`);
+      console.error(`  src/generated/installedPacks.ts names a package nothing can resolve,`);
+      console.error(`  and every test file fails to collect. Two ways out:`);
+      console.error(`\n    npm run pack:link -- <new path to the pack>   re-point it`);
+      console.error(`    npm run pack:unlink -- --all                  drop it\n`);
+    }
+
+    if (live.length) {
+      console.error(`\n  Linked for development: ${live.map(pack => pack.name).join(', ')}`);
+      for (const pack of live) console.error(`    ${pack.name} -> ${pack.target}`);
+      console.error(
+        `\n  src/generated/installedPacks.ts names ${live.length > 1 ? 'them' : 'it'} and is tracked —`
+      );
+      console.error(`  committing that gives everyone else an unresolvable import.`);
+      console.error(`\n  Run \`npm run pack:unlink -- --all\` first.\n`);
+    }
     process.exit(1);
   }
 
@@ -289,7 +315,10 @@ if (invokedDirectly()) {
         // A name may also be a path the caller still has; both are accepted,
         // and only the path form can restore the pack's own `@moba2d/core`.
         const asPath = existsSync(resolve(name)) ? resolve(name) : undefined;
-        await unlinkPack({ name: asPath ? localName(await readPackageName(asPath)) : name, packDir: asPath });
+        await unlinkPack({
+          name: asPath ? localName(await readPackageName(asPath)) : name,
+          packDir: asPath,
+        });
         console.log(`  unlinked ${name}`);
       }
       regenerate();

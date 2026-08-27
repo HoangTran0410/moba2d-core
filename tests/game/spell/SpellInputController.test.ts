@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SpellInputController } from '../../../src/game/spell/input/SpellInputController';
+import {
+  SpellInputController,
+  type CastPhase,
+} from '../../../src/game/spell/input/SpellInputController';
 import type {
   ActivationPattern,
   CastContext,
@@ -24,7 +27,15 @@ const setup = (state: SpellRuntimeState = 'READY') => {
     release: vi.fn(() => true),
     cancel: vi.fn(() => true),
   };
-  const createContext = vi.fn(() => context);
+  // The parameters are declared even though the body ignores them: `vi.fn`
+  // takes the mock's call signature from the implementation, so a bare
+  // `() => context` types `mock.calls` as `[][]` and the phase assertions
+  // read `call[3]` off a zero-length tuple. Ordinary `tsc` lets that pass;
+  // `typecheck:core` (`tsconfig.strict-core.json`, which covers
+  // `tests/game/spell/`) does not.
+  const createContext = vi.fn(
+    (_spell: unknown, _slot: number, _heldMs: number, _phase: CastPhase) => context
+  );
   const controller = new SpellInputController({
     keyBindings: [81],
     getSpell: () => spell,
@@ -121,7 +132,15 @@ const touchSetup = (activation: ActivationPattern, state: SpellRuntimeState = 'R
     release: vi.fn(() => true),
     cancel: vi.fn(() => true),
   };
-  const createContext = vi.fn(() => context);
+  // The parameters are declared even though the body ignores them: `vi.fn`
+  // takes the mock's call signature from the implementation, so a bare
+  // `() => context` types `mock.calls` as `[][]` and the phase assertions
+  // read `call[3]` off a zero-length tuple. Ordinary `tsc` lets that pass;
+  // `typecheck:core` (`tsconfig.strict-core.json`, which covers
+  // `tests/game/spell/`) does not.
+  const createContext = vi.fn(
+    (_spell: unknown, _slot: number, _heldMs: number, _phase: CastPhase) => context
+  );
   const controller = new SpellInputController({
     keyBindings: [81],
     getSpell: () => spell,

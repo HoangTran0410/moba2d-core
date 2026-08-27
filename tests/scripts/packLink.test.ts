@@ -135,7 +135,7 @@ describe('moba2d-pack-link', () => {
     ).toBe(true);
   });
 
-  it('tells a development link from npm\'s own by where it points, not by name', async () => {
+  it("tells a development link from npm's own by where it points, not by name", async () => {
     // The distinction that matters is *outside the checkout*, not a list of
     // names: a pack npm linked from `packs/` is a committed, ordinary part of
     // this repository, and a pack linked from a sibling directory is one
@@ -159,15 +159,64 @@ describe('moba2d-pack-link', () => {
     ]);
   });
 
+  /**
+   * The state the gate was blind to, and the one that cost an afternoon: the
+   * pack directory is renamed out from under the link.
+   *
+   * `devLinkedPacks` used to skip a dangling link, so `links:check` — the one
+   * line in `verify` whose entire job is to notice a link — printed *"links
+   * ok: no pack is linked for development"* about a checkout where every test
+   * file failed to collect on `@moba2d/content-my-pack/pack`. And because
+   * `--all` asks this same function what to unlink, the documented repair
+   * could not clean it up either.
+   */
+  it('reports a link whose pack has been renamed away, and can still unlink it', async () => {
+    const { coreRoot, packDir } = await workspace();
+    await linkPack({ coreRoot, packDir });
+    // The rename, which is exactly what happened: the sibling checkout kept
+    // its contents and changed its name.
+    await rm(packDir, { recursive: true, force: true });
+
+    const [dangling] = devLinkedPacks(coreRoot) as {
+      name: string;
+      target: string;
+      missing: boolean;
+    }[];
+    expect(dangling, 'a dangling link read as no link at all').toBeDefined();
+    expect(dangling.name).toBe('my-pack');
+    expect(dangling.missing).toBe(true);
+    // Where it *meant* to point — the whole clue, and the only place the old
+    // path survives once the directory is gone.
+    expect(await realpath(dangling.target).catch(() => dangling.target)).toBe(packDir);
+
+    // And `--all` can reach it, which it could not while this read as nothing.
+    expect(await linkedPacks(coreRoot)).toEqual(['my-pack']);
+    await unlinkPack({ coreRoot, name: 'my-pack' });
+    expect(await linkedPacks(coreRoot)).toEqual([]);
+  });
+
+  it('still ignores a broken link that points inside the checkout', async () => {
+    // A deleted `packs/…` is a repository problem, not one person's working
+    // state — a different question, with a different answer, and not this
+    // function's. Without the distinction, a half-finished in-tree pack would
+    // start failing `links:check` with advice about unlinking it.
+    const { coreRoot } = await workspace();
+    await symlink(
+      join(coreRoot, 'packs', 'gone'),
+      join(coreRoot, 'node_modules', '@moba2d', 'content-gone'),
+      'dir'
+    );
+
+    expect(devLinkedPacks(coreRoot)).toEqual([]);
+  });
+
   it('refuses a directory that is not a content pack, by name', async () => {
     const { coreRoot } = await workspace();
     const stranger = await mkdtemp(join(tmpdir(), 'not-a-pack-'));
     made.push(stranger);
     await writeFile(join(stranger, 'package.json'), JSON.stringify({ name: 'some-app' }));
 
-    await expect(linkPack({ coreRoot, packDir: stranger })).rejects.toThrow(
-      /@moba2d\/content-/
-    );
+    await expect(linkPack({ coreRoot, packDir: stranger })).rejects.toThrow(/@moba2d\/content-/);
   });
 
   it('refuses a pack missing a file the barrel will need, naming the file', async () => {
