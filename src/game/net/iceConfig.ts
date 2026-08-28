@@ -138,19 +138,46 @@ const iceUrlOf = (signalUrl: string): string =>
  */
 let asked: { url: string; servers: Promise<RTCIceServer[]> } | null = null;
 
+/**
+ * How long the broker gets to answer before the join stops waiting on it.
+ *
+ * This fetch is on the critical path *before* an `RTCPeerConnection` exists —
+ * `rtcConfig` awaits it, and servers cannot be added once gathering has begun,
+ * which is the whole reason it is awaited rather than raced. So a broker that
+ * accepts the connection and then never answers is not a degraded join, it is
+ * no join at all: no peer connection, no candidate, nothing on the wire, and
+ * the client sits until `lobbyJoin.ts`'s 25s handshake deadline with nothing
+ * to report. `docs/TRAPS.md` already carries this rule for the two lobby waits
+ * ("Neither wait may reach `setTimeout` with `Infinity`"); this is the same
+ * rule on the same path.
+ *
+ * Short on purpose, and the trade is deliberate: losing this answer costs the
+ * TURN tier (tier 2 still stands, `DEFAULT_ICE_SERVERS`), while waiting on it
+ * costs the whole match. Three seconds is a slow mobile round trip and still
+ * an eighth of the handshake budget.
+ */
+const ICE_FETCH_TIMEOUT_MS = 3_000;
+
 const brokerIceServers = (signalUrl: string): Promise<RTCIceServer[]> => {
   if (asked?.url === signalUrl) return asked.servers;
   const servers = (async () => {
+    // `AbortController` + `setTimeout` rather than `AbortSignal.timeout`, so a
+    // test can drive the deadline with fake timers.
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), ICE_FETCH_TIMEOUT_MS);
     try {
-      const response = await fetch(iceUrlOf(signalUrl));
+      const response = await fetch(iceUrlOf(signalUrl), { signal: controller.signal });
       if (!response.ok) return [];
       const body: unknown = await response.json();
       return Array.isArray(body) ? (body as RTCIceServer[]) : [];
     } catch {
       // A broker with no `/ice` route is every deployment older than this
-      // file, and an unreachable one is a network problem the join is about
-      // to report anyway. Neither is a reason to refuse the STUN tier.
+      // file, an unreachable one is a network problem the join is about to
+      // report anyway, and one that ran out the deadline above lands here as
+      // an abort. None is a reason to refuse the STUN tier.
       return [];
+    } finally {
+      clearTimeout(deadline);
     }
   })();
   asked = { url: signalUrl, servers };

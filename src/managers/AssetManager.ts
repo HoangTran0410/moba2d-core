@@ -441,6 +441,23 @@ export default class AssetManager {
     return undefined;
   }
 
+  /**
+   * Whether this key names art this machine actually holds.
+   *
+   * For the one caller that has a key it did not author and cannot check at
+   * compile time: a kit off the LAN wire, whose `avatar` belongs to whichever
+   * pack the *other* player installed. Core's own keys are a generated union
+   * (`assets:generate`), so a typo there is a type error long before it is a
+   * lookup — this exists for the keys that are legitimately absent, not for
+   * the ones that are wrong.
+   *
+   * A predicate rather than a `try`/`catch` around `get`: a miss here is an
+   * ordinary answer about content, not an exceptional condition.
+   */
+  static canResolve(key: string): boolean {
+    return this.resolveDescriptor(key) !== undefined;
+  }
+
   static get(key: AssetKey): AssetHandle {
     const cached = this.handles.get(key);
     if (cached) return cached;

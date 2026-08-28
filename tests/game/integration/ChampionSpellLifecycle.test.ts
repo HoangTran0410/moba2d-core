@@ -2,8 +2,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
+// `canResolve` answers true so this test keeps exercising the resolved path it
+// has always exercised: its subject is spell deactivation across a respawn, not
+// what a champion does about art it cannot find (`tests/game/net/packAvatarGate.test.ts`).
 vi.mock('../../../src/managers/AssetManager', () => ({
-  default: { get: vi.fn(() => undefined) },
+  default: { get: vi.fn(() => undefined), canResolve: vi.fn(() => true) },
 }));
 
 const replacementPreset = vi.hoisted(() => ({

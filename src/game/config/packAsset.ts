@@ -49,3 +49,33 @@ export const packAsset = (key: string): AssetHandle => AssetManager.get(key as n
  */
 export const ensurePackAsset = (key: string): Promise<AssetHandle> =>
   AssetManager.ensure(key as never);
+
+/**
+ * The same crossing for a key that arrived from **another machine**.
+ *
+ * Packs install per player, not per match, so a LAN host and its client
+ * routinely hold different content — and a client's kit crosses the wire
+ * carrying its own `avatar` string (`game/net/kitWire.ts`). `packAsset` on
+ * `'lol:champ_jhin'` at a host without that pack throws `Unknown asset key`,
+ * and it throws from `Champion`'s constructor and `applyPreset` — so a
+ * *client* pressing đổi tướng took the host's whole match down.
+ *
+ * Refusing the kit is not the alternative: the host cannot play a match it
+ * just rejected half of, and the client is entitled to a champion this
+ * machine has simply never downloaded. So draw what can be drawn.
+ * `AssetManager.placeholder` renders initials on a colour, which is already
+ * what every portrait still loading looks like — the match carries on with a
+ * body that has a name and a tile instead of a photograph.
+ *
+ * `kitWire.ts` states the same tolerance for the rest of the plan: *"Ids are
+ * only checked to be strings, not to exist"*, because `loadSpells` and
+ * `classForId` both fall back rather than fail. The avatar is that rule
+ * finally applied to the one field that never had it.
+ */
+export const packAssetOrPlaceholder = (key: string, label: string): AssetHandle =>
+  AssetManager.canResolve(key)
+    ? packAsset(key)
+    : // `placeholder` refuses a blank label, and a kit off the wire is exactly
+      // where a blank name arrives — so fall back to the key, which is never
+      // empty by the time anything asks to resolve it.
+      AssetManager.placeholder(label.trim() || key);

@@ -186,9 +186,38 @@ describe('the configuration a peer connection is built with', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * A broker that accepts the request and then never answers is not a degraded
+   * join, it is no join at all: `rtcConfig` is awaited before any
+   * `RTCPeerConnection` exists, so nothing gathers a candidate and nothing
+   * reaches the wire while it hangs. The join then dies on `lobbyJoin.ts`'s
+   * 25s deadline having sent nothing — which reads to both players as an empty
+   * room. Losing the broker's answer costs only the TURN tier; waiting on it
+   * costs the match.
+   */
+  it('stops waiting on a broker that never answers, and still offers STUN', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: { signal?: AbortSignal }) =>
+          new Promise<Response>((_keep, reject) =>
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          )
+      )
+    );
+    const pending = rtcConfig('wss://broker', '');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(urlsOf(await pending).length).toBeGreaterThan(0);
+    vi.useRealTimers();
+  });
+
   it('asks the broker it was given, at /ice', async () => {
     brokerOffers([TURN]);
     await rtcConfig('wss://moba2d-signal.example.dev', '');
-    expect(fetch).toHaveBeenCalledWith('https://moba2d-signal.example.dev/ice');
+    expect(fetch).toHaveBeenCalledWith(
+      'https://moba2d-signal.example.dev/ice',
+      expect.objectContaining({ signal: expect.anything() })
+    );
   });
 });

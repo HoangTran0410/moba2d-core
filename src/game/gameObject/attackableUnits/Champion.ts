@@ -1,5 +1,5 @@
 import AssetManager, { type AssetHandle, type AssetKey } from '@/managers/AssetManager';
-import { packAsset } from '@/game/config/packAsset';
+import { packAssetOrPlaceholder } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
 import BasicAttackController from '@/game/combat/BasicAttackController';
@@ -357,7 +357,11 @@ export default class Champion extends AttackableUnit {
       visionRadius,
       teamId,
       id,
-      avatar: avatar ?? (preset?.avatar ? packAsset(preset.avatar) : undefined),
+      avatar:
+        avatar ??
+        (preset?.avatar
+          ? packAssetOrPlaceholder(preset.avatar, preset.name ?? '')
+          : undefined),
       stats,
     });
 
@@ -396,7 +400,7 @@ export default class Champion extends AttackableUnit {
    */
   applyPreset(preset: ChampionPresetData): void {
     this.name = preset.name;
-    if (preset.avatar) this.avatar = packAsset(preset.avatar);
+    if (preset.avatar) this.avatar = packAssetOrPlaceholder(preset.avatar, preset.name ?? '');
     const previous = this.spells;
     this.replaceSpells(
       (preset.spells ?? []).map((SpellClass, index) => {
