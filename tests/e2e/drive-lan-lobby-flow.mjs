@@ -176,6 +176,29 @@ await guard(async () => {
     .catch(() => false);
   check('and the removed client stops waiting in it', clientLeft, `${clientLeft}`);
 
+  // *What* it says, not merely that it stopped. `joinFailureMessage` matches
+  // on the thrown detail and falls through to "Không vào được phòng này" for
+  // anything it does not recognise — which is what a player who was just
+  // removed used to be told, sending them round a loop of checking a code that
+  // was never wrong.
+  const kickText = await client.evaluate(
+    () => document.querySelector('#lan-error')?.textContent?.trim() ?? ''
+  );
+  report.kickMessage = kickText;
+  check(
+    'and is told it was the host, not that the room is unreachable',
+    /ra khỏi phòng/i.test(kickText),
+    JSON.stringify(kickText)
+  );
+  // Every other failure here offers "Thử lại <code>". This one must not: the
+  // room did not go wrong, and walking back through a door closed on purpose
+  // only gets you removed again.
+  check(
+    'and is not invited to walk back in',
+    !/Thử lại/i.test(kickText),
+    JSON.stringify(kickText)
+  );
+
   // Put the room back the way the rest of this script expects it.
   await client.click('#lan-join');
   await page.waitForFunction(

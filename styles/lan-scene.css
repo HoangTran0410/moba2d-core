@@ -206,6 +206,53 @@
   color: var(--hextech-muted);
 }
 
+/* The host's own control, on the host's own list. Dim until wanted: it sits on
+   every guest row for the whole life of the room, and a red ✕ shouting at four
+   people who are behaving is the wrong default. Turning red on hover/focus is
+   what says it is destructive at the moment somebody is about to press it.
+
+   44px of touch target — the row is only 32px tall, so the button carries the
+   rest itself rather than making the row taller for a control most players
+   never use. */
+.lan-player-kick {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 28px;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(120, 160, 180, 0.45);
+  border-radius: 3px;
+  background: rgba(10, 22, 32, 0.7);
+  color: var(--hextech-muted);
+  font-size: 0.95em;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.lan-player-kick:hover,
+.lan-player-kick:focus-visible {
+  color: #e8837f;
+  border-color: rgba(232, 131, 127, 0.75);
+  background: rgba(60, 20, 22, 0.75);
+  outline: none;
+}
+
+/* A finger has no hover, so on a touch screen the button must read as pressable
+   from its resting state alone. */
+@media (hover: none) {
+  .lan-player-kick {
+    color: rgba(207, 227, 238, 0.85);
+    border-color: rgba(120, 160, 180, 0.6);
+  }
+}
+
 /* In the waiting state the list is centred with everything else, and the rows
    need a width to be centred *at* — otherwise each one shrinks to its own
    name and the column reads as ragged. */

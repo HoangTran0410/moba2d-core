@@ -274,10 +274,23 @@ const copyCode = async (): Promise<void> => {
  * different problems with three different fixes were reported as the one
  * problem the player could do least about.
  */
+/** The room said no, as opposed to the room not answering. */
+const wasKicked = (error: unknown): boolean =>
+  error instanceof Error && /kicked from the room/i.test(error.message);
+
 const joinFailureMessage = (error: unknown, room: string): string => {
   const detail = error instanceof Error ? error.message : '';
   // Ordered most specific first: several of these strings contain "timed out"
   // or "closed" and the broadest test would swallow the rest.
+  //
+  // The kick leads, because it is the one failure here that is not a fault:
+  // nothing is wrong with the network, the code or the room, and telling
+  // somebody who was just removed to "check the code" sends them round a loop
+  // that cannot end. It is also the only one where retrying is the wrong
+  // advice, so the text does not offer any.
+  if (/kicked from the room/i.test(detail)) {
+    return 'Chủ phòng đã mời bạn ra khỏi phòng.';
+  }
   if (/no route|blocks direct/i.test(detail)) {
     return 'Vào được phòng nhưng mạng này chặn kết nối trực tiếp giữa hai máy. Thử mạng khác, hoặc phát 4G rồi cho cả hai máy vào chung.';
   }
@@ -342,7 +355,12 @@ const joinRoom = async (code: string): Promise<void> => {
     console.warn('net: join failed', error);
     joining.value = null;
     joinError.value = joinFailureMessage(error, room);
-    failedCode.value = room;
+    // Every failure here offers "Thử lại <code>" except the one that is not a
+    // failure. A player the host just removed is not looking at a room that
+    // went wrong, and a retry button in front of them is an invitation to walk
+    // back into a door that was closed on purpose — and, if they take it, to be
+    // removed again. The way back in is the host letting them in.
+    failedCode.value = wasKicked(error) ? '' : room;
     disarmNet();
     startPolling();
   } finally {

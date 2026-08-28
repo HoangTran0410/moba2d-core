@@ -148,7 +148,11 @@ const waitForHello = async (
         // already forgotten. A relay joiner learns it only this way: the relay
         // has no frame for one client closing another's socket.
         channel.close();
-        throw new Error('net: chủ phòng đã mời bạn ra khỏi phòng');
+        // English and stable, like every other detail string here: it is
+        // matched by `LanScene`'s `joinFailureMessage`, and a marker written
+        // in the language of the message it produces is a rename away from
+        // silently falling through to "could not join this room".
+        throw new Error('net: kicked from the room by its host');
       } else if (message?.t === 'lobby') {
         onRoster(message.players);
       } else {
