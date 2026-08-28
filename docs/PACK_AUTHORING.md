@@ -457,6 +457,70 @@ more than a handful of images generates that file rather than writing it;
 core's own `scripts/generate-assets.mjs` is the worked example, and the
 scaffold's `.gitignore` already ignores a `generated/` directory for it.
 
+## Maps drawn in the editor
+
+The scaffold's map is hand-written TypeScript — `map.ts` holds the cheap
+summary a picker lists, `geometry.ts` holds the walls and lanes behind a
+dynamic import — and that stays the right shape for a small arena. Keep the
+split whatever else changes: a picker that reads a name must not pull every
+polygon into the menu's chunk.
+
+A real world is drawn instead, in core's own map editor (`<game>/map-editor/`,
+or **Tạo map** from the menu), and exported as JSON. That export is not
+shippable as-is, for two reasons that cost a real pack a real map:
+
+- It carries **`id`** — the name you drew the map under, which is not the
+  pack's id. It once rode into `Game.activeMapId` and out as the `mapId` in a
+  LAN hello, and a joining client looking for `map-nhap-vao` in a catalogue
+  holding `lol:twisted-treeline` reported a missing pack instead. A host on
+  that map could not be joined at all.
+- It carries **`authoring`** — the shapes as drawn, before they were cut into
+  the convex pieces `TerrainField` and `Vision` need. That block is what lets
+  the editor re-open a shipped map, so it must stay in your repository; it is
+  9.4KB of 71KB for Twisted Treeline, so it must not go out to a player.
+
+`moba2d-generate-maps` is the split:
+
+```json
+"maps:generate": "moba2d-generate-maps",
+"maps:check": "moba2d-generate-maps --check"
+```
+
+Put your exports in `maps/<name>_map.json` (`--maps=` if you lay out
+differently) and wire `maps:generate` into `prepare` and `build`, `maps:check`
+into `verify`. It reads every `*_map.json`, takes the ones shaped like an
+editor export, and writes two things under `generated/maps/`:
+`<name>.geometry.json`, minified, holding exactly `terrain`/`slots`/`lanes`;
+and `mapMeta.ts`, holding `name`/`size`/`factions` and no polygons. Your
+`maps/<name>.ts` then spreads the meta and keeps the one field the export may
+never supply:
+
+```ts
+import { mapMeta } from '../generated/maps/mapMeta';
+
+let loaded: Promise<MapGeometry> | null = null;
+const load = (): Promise<MapGeometry> =>
+  import('../generated/maps/myWorld.geometry.json?raw').then(
+    module => JSON.parse(module.default) as MapGeometry
+  );
+
+export const myWorld: MapDefinition = {
+  id: 'my-world',
+  ...mapMeta.myWorld,
+  geometry: () => (loaded ??= load()),
+};
+```
+
+`?raw` rather than a plain JSON import: `vite.config.ts` claims `.json` under
+`assetsInclude`, so a plain import passes Vitest and fails `vite build`.
+`loaded ??=` rather than parsing inside the callback: a module-level import
+is cached for you, a `JSON.parse` in a loader is not, and re-parsing hands
+back a *different object* every call — which type checking cannot see.
+
+It is not wired into the scaffold on purpose. A pack with no export has
+nothing for it to read, and finding nothing is an error rather than a pass —
+wiring it is the declaration that this pack has drawn maps.
+
 ## The full spell-authoring mechanism
 
 Everything above `castSpec` — activation and targeting modes, `CancelPolicy`

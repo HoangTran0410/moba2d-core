@@ -170,7 +170,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly six bins, the five below plus moba2d-pack-serve', () => {
+  it('declares exactly seven bins, the six below plus moba2d-generate-maps', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -206,6 +206,16 @@ describe('package.json public surface', () => {
       // getting one wrong reads as an unexplained CORS error. So core ships
       // the server, the same way it ships the scaffolder.
       'moba2d-pack-serve': './scripts/pack-serve.mjs',
+      // Seven, not six, and the same shape as `moba2d-generate-assets` two
+      // entries up. `public/map-editor/` is core's, so the rules about which
+      // of an export's fields may reach a player — never `id`, never
+      // `authoring` — are facts about core's own format. They were learned
+      // in a pack instead: a stray editor `id` rode a `{ ...summary,
+      // ...geometry }` spread into `Game.activeMapId` and made a whole map
+      // unjoinable over the wire (`src/content/activeMap.ts`). Leaving the
+      // generator that strips it in whichever pack was bitten means the next
+      // pack learns it the same way.
+      'moba2d-generate-maps': './scripts/pack-maps.mjs',
     });
     for (const target of Object.values(bin!)) {
       expect(existsSync(join(repoRoot, target)), `${target} does not exist on disk`).toBe(true);

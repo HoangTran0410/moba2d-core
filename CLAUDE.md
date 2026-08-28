@@ -428,3 +428,12 @@ one.** None is visible from the file you are editing.
   `editorCatalog.test.ts` hold them by running the real editor in a `vm`. **The
   editor owns the map screen**, and **Chơi thử opens a new tab** — its undo
   history is memory-only. `docs/MAP_EDITOR.md` is the guide.
+- **A pack ships an editor export through `moba2d-generate-maps`**
+  (`scripts/generate-maps.mjs` + the `scripts/pack-maps.mjs` bin), never by
+  committing the export as-is. It writes `<name>.geometry.json` (minified,
+  exactly `terrain`/`slots`/`lanes`) plus a polygon-free `mapMeta.ts`, and
+  **never copies `id`** — an export's `id` is the name it was drawn under, and
+  one riding a `{ ...summary, ...geometry }` spread into `Game.activeMapId`
+  made a whole map unjoinable over LAN (`src/content/activeMap.ts` is the other
+  half of that fix). Deliberately **not** wired into `moba2d-pack-new`, whose
+  map is hand-written TypeScript with no export to read.

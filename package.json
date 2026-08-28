@@ -29,7 +29,8 @@
     "moba2d-pack-new": "./scripts/pack-new.mjs",
     "moba2d-pack-add": "./scripts/pack-add.mjs",
     "moba2d-pack-serve": "./scripts/pack-serve.mjs",
-    "moba2d-generate-assets": "./scripts/pack-assets.mjs"
+    "moba2d-generate-assets": "./scripts/pack-assets.mjs",
+    "moba2d-generate-maps": "./scripts/pack-maps.mjs"
   },
   "files": [
     "assets/cursors",
@@ -41,6 +42,8 @@
     "scripts/pack-webp.mjs",
     "scripts/pack-assets.mjs",
     "scripts/generate-assets.mjs",
+    "scripts/generate-maps.mjs",
+    "scripts/pack-maps.mjs",
     "scripts/installed-packs.mjs",
     "scripts/pack-new.mjs",
     "scripts/pack-add.mjs",

@@ -209,6 +209,16 @@ cuối cùng còn kịp sửa.
   `MapGeometry` dạng JSON, module `<tên>Geometry.ts`, và module
   `<tên>.ts` (`MapDefinition`) trỏ sang geometry bằng dynamic import. Cả hai
   file `.ts` dán thẳng vào pack được, đã kiểm bằng `tsc` của moba2d-core.
+
+  Dán thẳng hợp với map nhỏ. Map lớn thì dạng `.ts` sai chỗ: `MapGeometry`
+  của Summoner's Rift là 38KB dữ liệu, và dữ liệu nằm trong `.ts` thì mỗi lần
+  sửa map là một lần đọc diff polygon. Cách còn lại là giữ nguyên file `.json`
+  editor tải về (**Lưu file**, có `authoring` nên mở lại sửa được) trong
+  `maps/<tên>_map.json` của pack, rồi để `moba2d-generate-maps` cắt ra phần
+  người chơi cần — `docs/PACK_AUTHORING.md`, mục *Maps drawn in the editor*.
+  `id` trong file export **không bao giờ** đi theo: nó là tên bạn vẽ, không
+  phải id của pack, và một lần nó lọt ra `Game.activeMapId` là một map không
+  ai join qua LAN được.
 - **Export cho MOBA2D (bản cũ)** — vẫn giữ, xuất
   `{wall, brush, water, turret1, turret2}` như trước.
 - **Nhập JSON** (`Ctrl+I`) — dán thẳng vào ô, hoặc chọn file. Xem trước
