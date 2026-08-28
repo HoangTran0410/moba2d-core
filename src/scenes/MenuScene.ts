@@ -3,6 +3,7 @@ import { Scene } from '@/managers/SceneManager';
 import DomUtils from '@/utils/dom.utils';
 import { loadGameScene, loadSetupScene, preloadGame } from './gamePreload';
 import MenuSceneView from './MenuScene.vue';
+import { armPlaytestMap, takePlaytestMapId } from './playtest';
 
 /**
  * Whether this page load has already asked each pack's host what it is
@@ -64,6 +65,19 @@ export default class MenuScene extends Scene {
     this.host.style.display = 'flex';
     void preloadGame();
     checkForPackUpdates();
+
+    // Coming back from the map editor with a map to try. Checked before the
+    // menu is even built: the player asked for a match, and showing them the
+    // menu first only to replace it a frame later is a flash, not a screen.
+    // `takePlaytestMapId` consumes the param whatever it answers, so a "Quay
+    // lại" from the match it starts lands on a real menu — see its header.
+    const playtestMapId = takePlaytestMapId();
+    if (playtestMapId !== null) {
+      armPlaytestMap(playtestMapId);
+      void loadGameScene().then(scene => this.sceneManager.showScene(scene));
+      return;
+    }
+
     // "Chơi" stays a single click into a match, with whatever config is
     // already persisted (defaults, if the player has never opened the setup
     // screen) — the setup screen is additive, never a gate in front of Play.
@@ -94,6 +108,21 @@ export default class MenuScene extends Scene {
       // static import here would drag the whole match into the menu's chunk.
       onOpenPacks: () => {
         void import('./PacksScene').then(module => this.sceneManager.showScene(module.default));
+      },
+      // The map editor is a separate document under `public/map-editor/`, not a
+      // scene — plain HTML and globals, no bundler. So this is a navigation
+      // rather than a `showScene`, and the way back is the editor's own
+      // "Chơi thử", which returns here with `?playtest=`.
+      //
+      // Relative, because `vite.config.ts` sets `base: './'` and the game is
+      // served from a subpath on every host it has ever had. And `index.html`
+      // spelled out rather than the bare directory: this app is an SPA, so
+      // the dev server answers any path that is not a file with the *game's*
+      // own `index.html` — `/map-editor/` is a directory, so it silently served
+      // the menu again. Static hosts resolve the directory correctly, which
+      // is what makes the bare form a bug that only ever appears locally.
+      onOpenEditor: () => {
+        window.location.href = './map-editor/index.html';
       },
     });
     this.app.mount(this.host);
