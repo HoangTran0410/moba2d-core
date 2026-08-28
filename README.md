@@ -8,6 +8,8 @@ A 2D MOBA engine that runs entirely in the browser — team fights, bot opponent
 
 **[▶ Play](https://moba2d.pages.dev/)**
 
+> Working on this repository with an AI coding agent? [`CLAUDE.md`](./CLAUDE.md) is the briefing — the invariants, the seams that enforce them, and which doc to open for a given task. This README is the human tour.
+
 ## Contents
 
 - [What core is](#what-core-is)
@@ -174,7 +176,7 @@ npm run dev
 
 `packs:generate` is what makes the pack visible to `src/content/install.ts`; `predev`/`prebuild` already run it. Uninstalling the package and re-running it puts core back to one champion; nothing else has to be undone.
 
-**No CI proves this composes any more.** The pack repository's own `verify.yml` and `publish.yml` run its `verify` and nothing else — neither installs the pack into core — and this repository's `build.yml` dropped the step that used to `npm install` a pack in before the published build (see that workflow's own comment on why). Nothing in either repository's automation puts the two halves in the same tree today; `npm run e2e:runtime-pack` and `npm run e2e:pwa`, run locally against a sibling pack checkout, are what actually check the join now.
+**No CI proves this composes.** Neither repository's automation puts core and a pack in the same tree; `npm run e2e:runtime-pack` and `npm run e2e:pwa`, run locally against a sibling pack checkout, are what check the join.
 
 **A pack is code, not data.** It is JavaScript running on the game's own origin, with the game's `localStorage` and the game's DOM. `validate.ts` rejects a pack of the wrong _shape_ — missing fields, wrong types, a duplicate id — and rejects nothing that is deliberately hostile. Install packs from sources you trust.
 
@@ -197,7 +199,7 @@ Images and JSON live under `assets/`. `npm run assets:generate` walks that tree 
 Two things a contributor is most likely to want:
 
 - **Editing a map that already exists.** Open a copy from *Từ game*. The pack's own map is never touched — a pack is read-only — so the edit saves as a new local map, and deleting it takes it back out of the game's picker.
-- **The cut pieces come back together on their own.** A pack map ships *cut*: `TerrainField` and `Vision` are only correct on convex polygons, so Summoner's Rift is 329 pieces for 69 walls. An absent `authoring` block is proof of that rather than a guess, so opening such a map rebuilds the drawn shapes as its own undo step — 329 wall pieces to 69 shapes and 26 water pieces to 2 rivers, in about 240ms. The union is `lib/polygon-clipping.min.js` (28KB, Martinez-Rueda) rather than something hand-written: the hand-written one was wrong on both real maps in a way that matching *areas* did not reveal. Every merge still has to pass `Geom.unionCovers`, a grid-sampling check written from `pointInPolygon` alone so the transform cannot grade itself, and one that fails it leaves the pieces alone. Anywhere else the editor only *offers*: **Sửa → Gộp polygon dính nhau**, and a suggestion bar when a map looks decomposed.
+- **The cut pieces come back together on their own.** A pack map ships *cut* — `TerrainField` and `Vision` are only correct on convex polygons, so Summoner's Rift is 329 pieces for 69 walls — and opening one rebuilds the drawn shapes as its own undo step. Every merge has to pass a grid-sampling check that the transform cannot grade itself on; one that fails leaves the pieces alone. Anywhere else the editor only *offers*: **Sửa → Gộp polygon dính nhau**.
 
 [`docs/MAP_EDITOR.md`](./docs/MAP_EDITOR.md) is the full guide — controls, the object model, the checks it runs, and the code layout.
 

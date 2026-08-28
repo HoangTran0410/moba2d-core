@@ -2,11 +2,39 @@
 
 Guidance for Claude Code (claude.ai/code) when working in this repository.
 
+Every rule below is stated once, with the seam or test that enforces it.
+**`docs/TRAPS.md` is the long form** — the measurement, the bug and the reasoning
+behind each one. Read the matching section there before you change, argue with,
+or undo a rule; each was found the expensive way, and none is visible from the
+file you are editing.
+
+## Which doc to read
+
+| You are… | Read |
+|---|---|
+| about to undo or argue with a rule here | `docs/TRAPS.md` — the why, per area |
+| writing a spell in `packs/reference/` | `docs/ADDING_SPELLS.md` — the three registration points, the `MissileSpellObject` base every skillshot extends, the buff catalogue's mandatory `stackId`, and the engine traps `tsc` cannot catch |
+| writing a spell in a **content pack** | `docs/PACK_AUTHORING.md` first, then `ADDING_SPELLS.md` |
+| designing VFX or tuning damage | `docs/VFX_STANDARD.md` |
+| touching the map editor | `docs/MAP_EDITOR.md` |
+| onboarding a human | `README.md` |
+
+`docs/COMBAT_TEXT_PERF.md`, `docs/HARNESS-FIX.md` and `docs/PWA-UPDATE.md` are
+**finished investigations, not guides** — open one only when working in that
+exact area. `docs/superpowers/` is dated plan/spec/report history: it records
+what was true on its date, so cite it, do not treat it as current.
+
 ## Project
 
-LOL2D — a fan-made browser 2D game inspired by League of Legends. TypeScript + Vite; p5.js draws the canvas, Vue 3 drives the HUD. Vitest for tests, Playwright scripts (`tests/e2e/`) drive the real game in Chrome.
+LOL2D — a fan-made browser 2D game inspired by League of Legends. TypeScript +
+Vite; p5.js draws the canvas, Vue 3 drives the HUD. Vitest for tests, Playwright
+scripts (`tests/e2e/`) drive the real game in Chrome.
 
-p5 runs in **global mode** — `createVector`, `push`, `fill` and the rest are globals from a CDN `<script>` in `index.html`, not bundled. All code touching a p5 global must run inside `setup()`, never at module eval time. See the header of `src/main.ts`, the only entry point; in dev it also exposes `window.__lol2d`, which is how the e2e scripts reach the running game.
+**p5 runs in global mode.** `createVector`, `push`, `fill` and the rest are
+globals from a `<script>` in `index.html`, not bundled. All code touching a p5
+global must run inside `setup()`, never at module eval time. `src/main.ts` is the
+only entry point; in dev it exposes `window.__lol2d`, which is how e2e scripts
+reach the running game.
 
 ## Running
 
@@ -15,114 +43,194 @@ npm run dev      # http://localhost:5173
 npm run verify   # everything CI runs — do this before declaring work done
 ```
 
-`verify` = `packs:check` + `assets:check` + `catalog:check` + `typecheck` + `typecheck:core` + `typecheck:sw` + Vitest + `build` + `chunks:check` + `check-seams`. `verify:all` adds the reference pack's own `check-seams` on top. A pack's own gate (`npm run verify` inside the pack) is separate and this repository never runs it — see "Content packs" below.
+`verify` = `packs:check` + `assets:check` + `catalog:check` + `typecheck` +
+`typecheck:core` + `typecheck:sw` + Vitest + `build` + `chunks:check` +
+`check-seams`. `verify:all` adds the reference pack's own `check-seams`. **A
+pack's own `npm run verify` is separate and this repository never runs it.**
 
-**Content packs install at runtime, never at build time.** `installRuntimePacks()` (`src/content/runtimePacks.ts`) runs during the loading screen: it reads `lol2d:packs:v1` in `localStorage` (`installedPackStore.ts`) for whatever the player already has, and — the first time that list is empty and has never been seeded — fetches `DEFAULT_PACK_URL` once and installs it the same way any later URL a player pastes into the packs screen gets installed. Nothing is compiled in any more: `.github/workflows/build.yml` used to `npm install --no-save` a pack into `node_modules` before the published build so the deployed game shipped with a roster, and that step is gone (Plan 2 task 8) — CI's `verify:all` dist is now the dist that ships, and a browser hitting it performs the same install a dev's own browser performs. `npm run e2e:runtime-pack` and `npm run e2e:packs` exercise that path against a real pack `dist/` served from a second local origin; `npm run e2e:pwa` does the same with the network then cut. All three need an actual pack build to point at — a sibling `moba2d-content-riot` checkout beside this repository, or `LOL2D_PACK_DIST` set to a pack's `dist/` — and none of the three run in CI, because a runner has neither.
+**Content packs install at runtime, never at build time.**
+`installRuntimePacks()` (`src/content/runtimePacks.ts`) runs during the loading
+screen, reading `lol2d:packs:v1` (`installedPackStore.ts`) and seeding from
+`DEFAULT_PACK_URL` once if that list has never been seeded. Nothing is compiled
+in: CI's `verify:all` dist is the dist that ships.
 
-**The app is an installable PWA**, so two build-time facts are load-bearing. `predev`/`prebuild` copy p5 out of `node_modules` into `public/vendor/` (gitignored, `scripts/copy-vendor.mjs`) and `index.html` loads it from there rather than a CDN: p5 is a global the game cannot boot without, in dev or production, and a service worker can only cache a cross-origin script it has already seen fetched, so the first offline launch would otherwise be a white screen. Stats.js was vendored here too and is **gone**: three always-redrawing debug canvases cost real frame budget on a phone for a HUD nobody but a developer reads, and every player paid to fetch, parse and precache a blocking script for it. The frame rate a player might actually want is one `text()` call in `src/game/debug/FpsOverlay.ts`, behind the `fps` debug layer in the Cài đặt tab. And `public/` is the only directory Vite copies verbatim, which is why `favicon/` lives there: the generated manifest points at those icons by path. **`src/sw.ts` is hand-written, not `VitePWA`-generated** (`vite.config.ts`'s `injectManifest` strategy) — a content pack lives at whatever URL a player typed, so the rule that caches its bytes cannot be a build-time `urlPattern` literal, and its own header explains why. Workbox's router is first-match-wins, so **route order is the file's API**: the precache route is registered before anything else that could claim a precached URL, and a new route is appended at the bottom, never inserted above an existing one. `npm run e2e:pwa` builds and checks the whole thing in a real browser with the network cut — including clearing Chromium's own HTTP cache first, without which a missing precache entry still appears to work.
+`e2e:runtime-pack`, `e2e:packs` and `e2e:pwa` need a real pack `dist/` — a
+sibling `moba2d-content-riot` checkout, or `LOL2D_PACK_DIST`. **None of the three
+run in CI.**
 
-In-game: right-click ground moves and right-clicking a visible enemy attacks it; `A Q W E R` abilities, `D F` summoners (`SpellHotKeys` in `src/game/constants.ts`), `B` channels Hồi Thành back to the fountain (a `Spell`, but deliberately **not** in `spells[]` — that array is the kit's slot layout and an eighth entry ripples into the loadout editor, the HUD and every persisted config; it lives on `Champion.recall`), `Space` toggles camera follow, `N` the nav debug overlay, wheel zooms, `Esc` opens the match-config panel. **`Esc` does not leave the match** — one mis-hit used to end it outright; the way out is the exit button in the panel's Trận đấu tab, behind a two-step confirm.
+**PWA build facts that are load-bearing:**
+
+- `predev`/`prebuild` copy p5 into `public/vendor/` (gitignored,
+  `scripts/copy-vendor.mjs`); `index.html` loads it from there, not a CDN.
+- Stats.js is **gone on purpose**. The frame rate is one `text()` call in
+  `src/game/debug/FpsOverlay.ts`, behind the `fps` debug layer.
+- `public/` is the only directory Vite copies verbatim — hence `favicon/`.
+- **`src/sw.ts` is hand-written, not `VitePWA`-generated** (`injectManifest`).
+  Workbox's router is first-match-wins, so **route order is the file's API**:
+  precache is registered first, and a new route is appended at the bottom, never
+  inserted above an existing one.
+- `npm run e2e:pwa` checks the whole thing in a real browser with the network cut.
+
+**Controls.** Right-click ground moves, right-clicking a visible enemy attacks;
+`A Q W E R` abilities, `D F` summoners (`SpellHotKeys` in
+`src/game/constants.ts`), `B` channels Hồi Thành, `Space` toggles camera follow,
+`N` the nav overlay, wheel zooms, `Esc` opens the match-config panel. Recall is a
+`Spell` but deliberately **not** in `spells[]` — it lives on `Champion.recall`;
+that array is the kit's slot layout. **`Esc` does not leave the match** — the way
+out is the exit button in the panel's Trận đấu tab, behind a two-step confirm.
 
 ## Code style
 
-- **Prettier** (`.prettierrc`, 2 spaces, single quotes, 100 columns). Several files predate it and fail `--check` on `main`; never run `--write` across them as a side effect of an unrelated change.
-- **Tuning values** are exported constants in the spell file so tests import them. Retuning damage must not mean editing a test.
-- **Array prototypes are polyfilled** in `src/main.ts` from `src/utils/optimized.utils.ts`, before p5 loads. Consequence: **`Array.prototype.filter` cannot narrow types.** `src/types/global.d.ts` re-declares it and the merged interface puts the non-predicate overload first, so `objects.filter((o): o is Foo => …)` still comes back wide. Write a plain loop (see `MatchDirector.bots()`), not a cast.
-- **`<script setup>` *is* the setup function.** A `const x = ref(…)` at its top level looks like module scope and is not — it is rebuilt on every mount. State that must outlive an unmount belongs in a plain `.ts` module (`src/game/hud/config/panelTab.ts`).
-- **Spell design and VFX**: `docs/VFX_STANDARD.md` is the whole bar, distilled so an agent can be briefed with a link instead of a 400-line spell. In short: every champion's VFX is its own artwork with a real windup, damage scales to a ~100 health pool (spells 15-35, ultimates 40-60) and ranges to this canvas rather than raw wiki numbers, and a dash or sweep hits each unit at most once via a `hitTargets` set. **Legibility outranks looking good** — the animation has to state the ability's reach and area, give each differently-behaving zone a visibly different region, land an impact *on the victim*, move the way the buff moves (an inward pull draws the weapon coming inward), and stop at the fewest layers that say it. Pretty effects stacked on each other hide each other.
+- **Prettier** (`.prettierrc`, 2 spaces, single quotes, 100 columns). Several
+  files predate it and fail `--check` on `main`; **never run `--write` across
+  them** as a side effect of an unrelated change.
+- **Tuning values are exported constants** in the spell file, so tests import
+  them. Retuning damage must not mean editing a test.
+- **`Array.prototype.filter` cannot narrow types** — prototypes are polyfilled in
+  `src/main.ts` before p5 loads, and `src/types/global.d.ts` puts the
+  non-predicate overload first. Write a plain loop (`MatchDirector.bots()`), not
+  a cast.
+- **`<script setup>` *is* the setup function.** A `const x = ref(…)` at its top
+  level is rebuilt on every mount. State that must outlive an unmount belongs in
+  a plain `.ts` module (`src/game/hud/config/panelTab.ts`).
+- **Spell design and VFX**: `docs/VFX_STANDARD.md` is the whole bar. Damage
+  scales to a ~100 health pool (spells 15-35, ultimates 40-60) and ranges to this
+  canvas, not raw wiki numbers; a dash or sweep hits each unit at most once via a
+  `hitTargets` set. **Legibility outranks looking good.**
 
 ## Testing
 
 `verify` is the gate. Beyond it, pick the cheapest tool that can see the bug:
 
-1. **Vitest by default** — around 1800 tests in a few seconds. `vitest.config.ts` excludes any test file that reaches a content pack this checkout does not have installed (`scripts/pack-dependent-tests.mjs`); with no optional pack installed today that is 54 files, 458 test cases, that would otherwise run against real Riot content (a real map's wall polygons, a real monster's geometry, the full spell catalogue) with no equivalent yet in the thin reference pack — see the vitest config's own comment on `packDependent` for how to re-derive that count before assuming a file that used to exist just moved, or trusting this one to still be current.
-2. **A source-scan test** for any "nobody may do X" rule: milliseconds, and it closes a whole class permanently. Models: `tests/game/spells/mana-spend-seam.test.ts`, `dash-onupdate-seam.test.ts`. Strip comments before matching, or the scan flags its own documentation.
-3. **Playwright only for what Vitest structurally cannot see** — a real finger, a real renderer, the paused/unpaused frame boundary. Minutes per run; do not re-run neighbouring scripts for a change that does not touch their area.
+1. **Vitest by default** — ~1800 tests in a few seconds. `vitest.config.ts`
+   excludes tests reaching a content pack this checkout lacks
+   (`scripts/pack-dependent-tests.mjs`); today that is 54 files / 458 cases.
+   Re-derive the count from that config's own comment before assuming a missing
+   file just moved.
+2. **A source-scan test** for any "nobody may do X" rule — milliseconds, and it
+   closes a class permanently. Models: `tests/game/spells/mana-spend-seam.test.ts`,
+   `dash-onupdate-seam.test.ts`. **Strip comments before matching**, or the scan
+   flags its own documentation.
+3. **Playwright only for what Vitest structurally cannot see** — a real finger, a
+   real renderer, the paused/unpaused frame boundary. Do not re-run neighbouring
+   scripts for a change outside their area.
 
-**A Playwright script takes its boot from `tests/e2e/harness.mjs`** — Vite server, browser, page-error capture, and the `check()` / `report` / `finish()` bookkeeping that turns a run into a numeric summary. Seven scripts had byte-identical 32-line preambles before it existed, so a `src/` change meant editing the part nobody was testing seven times. `tests/scripts/e2eHarness.test.ts` enforces only that an importer does not *also* start its own server or browser — the half-migrated state, which is the "stray dev server" condition above. The **gesture** is deliberately each script's own: hold and touch radius vary from 60ms to 90ms and 6px to 14px because how big a finger and how long a press *is* the thing under test. Two scripts stay out on purpose, and folding either in would mean the harness growing a mode for it: `drive-game.mjs` spawns `npx vite` and honours `LOL2D_URL`/`LOL2D_PORT`; `verify-pwa-offline.mjs` serves the built `dist/` through `preview()` with the network cut. `LOL2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled Chromium, which is the only way these run on a machine without Chrome installed.
+- **A Playwright script takes its boot from `tests/e2e/harness.mjs`.**
+  `tests/scripts/e2eHarness.test.ts` enforces that an importer does not *also*
+  start its own server or browser. The **gesture** stays each script's own.
+  `drive-game.mjs` and `verify-pwa-offline.mjs` are out on purpose.
+  `LOL2D_CHROME_CHANNEL=` (empty) swaps in Playwright's bundled Chromium.
+- **Every test must be shown to fail.** Write it, run it, *read* the message.
+  Two shapes have shipped here repeatedly: asserting on state the code under test
+  already produced, and a check that computes its expected value by calling the
+  thing it checks. Prove an e2e script falsifiable **once, when it is new** —
+  repeating that on every later change is the most expensive habit available.
+- **Seed a probe at the boundary, not past it, and re-seed it.** One placement is
+  an anecdote; a live match moves underneath it.
+  `tests/e2e/drive-bot-discipline.mjs` (`npm run e2e:bots`) is the model — wrap,
+  count, end in a numeric summary, no screenshots.
+- **Known flakes, not worth chasing:** `drive-new-spells.mjs` (~1 in 4, `oScene`
+  undefined) and `drive-touch-controls.mjs` (rare freeze), both only with a pack
+  installed. Neither runs in core alone. A stray dev server on 5173 makes them
+  likelier.
 
-**Every test must be shown to fail.** Write it first, run it, and *read* the message. Two failure shapes have shipped repeatedly here: asserting on state the code under test has already produced (checking `game.monsters` is empty when the setter emptied it synchronously), and a check that computes its own expected value by calling the thing it checks — a transform asked to verify itself agrees with itself however wrong it is; one inverted axis was off by 3468 against arithmetic written out by hand. Prove an e2e script falsifiable **once, when it is new**; repeating that on every later change is the single most expensive habit available.
+**Keeping a pass cheap** — `verify` is not the expensive part:
 
-`tests/e2e/drive-bot-discipline.mjs` (`npm run e2e:bots`) is the bot layer's driver and the model for what a Playwright script here is *for*: it wraps `BotBrain.cast` and `MinionSpawner.spawn` to count what actually happened, plants a bot inside a turret ring and measures whether it gets out, and ends in a numeric summary with no screenshots at all. Both halves have already paid — the planted probe is what caught the DISENGAGE ordering above, which every unit test agreed with, and the *seeded* probe beside it (a bot placed exactly on the keep-out line with someone worth hitting just inside it) is what found the ungated retaliation path. **Seed a probe at the boundary, not past it**, and **re-seed it**: one placement is an anecdote, because a live match moves underneath the probe — a wave arrives and the dive becomes legal, the lane calls the bot away, something hurts it and RETREAT owns the walk. The first version watched once for 8s and scored the broken code 2 and the fixed code 1, which is not a check. Thirteen re-seeded trials scored them 3/16.67% and 0/0%.
-
-Known flakes, not worth chasing: `drive-new-spells.mjs` (~1 in 4, `oScene` undefined during scene boot) and `drive-touch-controls.mjs` (rare freeze) — both against a checkout with a content pack installed. **Neither runs at all in core alone** (content-pack-and-repo-split batch 6): both drive real spells by path (`/packs/riot/spells/...`), so with no such pack installed they fail outright and immediately, not rarely. A stray dev server holding port 5173 makes the flake likelier whenever a pack *is* installed.
-
-### Keeping a pass cheap
-
-`verify` is not the expensive part. What actually burns a context window, measured on the Camille/Ekko/Jarvan pass:
-
-- **Fanning out agents that share a briefing.** Seven agents each told to "read `Fizz_E.ts` first" read the same 400-line file seven times before writing a line. Fan out when the work is independent *and* the shared context is small; when N files need one standard, one agent reads it once. An audit agent should report `file:line` plus a sentence and **never quote code back** — that part scaled fine across 150 files.
-- **Reading screenshots.** A 1280x900 PNG costs about what 600 lines of source costs. Make the e2e script end in a numeric summary and trust it. Open one or two to judge a *look*, never a whole run's worth.
-- **Piping whole command output.** `npm run verify 2>&1 | grep -E "Tests |Test Files |error|FAIL"` is the entire signal, and `npx tsc --noEmit -p tsconfig.json 2>&1 | grep -v "\.vue'"` drops the pre-existing SFC-resolution errors that are not yours.
+- **Do not fan out agents that share a briefing.** When N files need one
+  standard, one agent reads it once. An audit agent reports `file:line` plus a
+  sentence and **never quotes code back**.
+- **Do not read screenshots in bulk.** A 1280x900 PNG costs about what 600 lines
+  of source costs. Trust the numeric summary; open one or two to judge a *look*.
+- **Do not pipe whole command output.**
+  `npm run verify 2>&1 | grep -E "Tests |Test Files |error|FAIL"` is the entire
+  signal; `npx tsc --noEmit -p tsconfig.json 2>&1 | grep -v "\.vue'"` drops
+  pre-existing SFC errors that are not yours.
 
 ## Architecture
 
-`LoadingScene` → `MenuScene` → `GameScene`, routed by a custom `managers/SceneManager.ts` (not p5's). `MenuScene` also reaches `SetupScene`, `AboutScene`, `PacksScene` and `LanScene`, each through a dynamic `import()` and each with its own `#…-scene` host in `index.html`, its own stylesheet, and a `*BootPath` source scan holding it clear of `src/game/`.
-
-**The menu offers exactly two big buttons, and they are the two ways into a match** — Chơi and Chơi với bạn. **Chơi opens the match-config panel, not a match**: configuring is the step before every match rather than a screen you visit between them, and the separate Cấu hình link that used to say otherwise is gone — a player who never noticed it never found the roster, the rules or the map picker. The panel's own Bắt Đầu is what reaches `GameScene`, so an e2e driver takes two presses now and `startMatch(page)` in `tests/e2e/harness.mjs` is the one place that knows it. **Neither big button waits on the warm-up any more** — both open a screen that needs none of it, and the wait moved to Bắt Đầu and Vào trận. A player whose catalog holds only core's own champion meets a one-time nudge in front of Chơi saying a roster exists (`soloContent`, dismissed for good once answered). It used to offer three (`Chơi`, `Cấu Hình Trận Đấu`, `Chơi LAN`), of which one unfolded a drawer that produced a *fourth* identical button inside itself; nothing on screen said which press was a mode, which was a setting and which was a sub-step, and hosting took three presses through three levels that all looked like one. Cấu hình is a `.menu-link` beside Nội dung and Giới thiệu now (all three are screens you visit *between* matches, and none waits on the warm-up), and the LAN half is `LanScene`. **Leaving the lobby strips `?net=`/`?room=`** — the drawer wrote them and left them written, so collapsing it and pressing Chơi silently hosted a LAN match. **And joining waits in the lobby** (`game/net/lobbyJoin.ts`): a host that has made a room but not pressed Vào trận is not connected to the broker at all, so a client that went straight into the match died on a loading screen with *"is the host still up?"* about a host sitting right there. The lobby's live connection is *handed over* to `startNetClientMatch` (`takeHeldRoom`) rather than dialled again, because the host only sends one hello.
-
-**That wait is two waits, and only one of them is unbounded.** Both took `Infinity` at first, which was right while the host reached the broker only at Vào trận — no offer could exist before it pressed. Opening the room at Tạo phòng (below) moved the meaning of silence: an open room answers a joiner in seconds, so a **handshake** still running after `HANDSHAKE_TIMEOUT_MS` is a mistyped code, a room nobody opened, or a network that blocks peer-to-peer, and an unbounded wait rendered all three as one spinner nobody could leave — reported as *"vào phòng rồi mà không thấy host, host cũng không thấy client"*. The wait for the host to actually **press Vào trận** stays unbounded, because that half is genuinely open-ended. (Neither may reach `setTimeout` with `Infinity`, whose delay wraps past 2^31-1 and fires at once.)
-
-**No screen may claim a room it has not reached.** `LanScene.vue` set its waiting state on the button press, so the client said *"Đã vào phòng ABCDE"* before a byte had left the machine and went on saying it while the handshake failed behind. `waitForHostToStart` reports the channel opening (`JoinProgress.onConnected`) and the screen has a `connecting`/`joined` phase; only the second claims membership. The host half is the mirror: `joined` fires only when the reliable channel *opens*, so a peer ICE cannot reach produced no event at all and a blocked network looked exactly like an empty room. `HostTransport.watchPeerLink` (optional — only a wire with a handshake has one to report, so `RelayHostTransport` implements nothing) carries `connecting`/`open`/`failed`/`gone` to the lobby alone, and `LobbyPlayer.link` marks the row. It never survives `decodeMessage`, which rebuilds each row from `id`/`name`/`host` — a peer that cannot be reached cannot receive the broadcast describing it anyway.
-
-**A host ICE candidate is not the machine's address.** `RtcTransport.ts` shipped `iceServers: []` on the reasoning that one LAN needs no server in the loop, and that is what actually broke joining on a corporate wifi: Chrome replaces the local IP with a random `*.local` name and leaves resolving it to **mDNS multicast**, which such a network drops while forwarding the ordinary unicast that makes the two machines look reachable (a `curl` between them answers — that is the test, and it does *not* predict ICE). With no other candidate type offered, ICE ran out of options, `joined` never fired, and both lobbies waited for ever. `src/game/net/iceConfig.ts` owns the list now, in three tiers, because **each one leaves somebody out**: host candidates (free, direct, need mDNS), STUN (free, still direct, `DEFAULT_ICE_SERVERS`), and TURN (a relay, so it always works and costs bandwidth). STUN alone was not enough on that same network: both peers gathered `srflx` and still failed, because a NAT that leaves through nine addresses hands out a different mapping per destination, so the address STUN reports is good for reaching the STUN server and nothing else. TURN credentials are minted from an account secret a static page cannot hold, so **the broker mints them** — `GET /ice` on the signaling Worker (Cloudflare Realtime TURN, keyed by the `TURN_KEY_ID`/`TURN_KEY_API_TOKEN` secrets) answers the whole list, and answers `[]` when no key is configured so a deployment without one degrades to STUN rather than failing every join. That is why `rtcConfig` is **async and takes the broker URL**, and why both transports resolve it before constructing an `RTCPeerConnection` (servers cannot be added once gathering has begun); one fetch is shared across every peer in a session. `?ice=` overrides all of it and skips the broker entirely — `none` for host-candidates-only (**the e2e passes this**, loopback being the one place the original reasoning holds), `stun:host:port`, `turn:user:pass@host:port` (credentials percent-decoded into `RTCIceServer`'s own fields), and `relay` to force `iceTransportPolicy` when proving a TURN server is really carrying the match.
-
-**`GET /rooms` is one directory, not one per public IP.** The broker grouped rooms by `CF-Connecting-IP` so that a listing meant "rooms on my network" — which works behind a home router and fails silently behind anything larger: measured on one corporate network, twenty requests from a *single machine* left through **nine** different public addresses across four unrelated /8s, so a room announced on one poll was listed from a different directory on the next. Prefix grouping does not rescue that spread. One directory finds people reliably and costs the privacy the grouping gave by accident, so that privacy became a choice: `listed=0` on the host's signaling URL (`NetChannel.hostSignalUrl`, from `openRoom`'s `HostRoomOptions`, the lobby's **Phòng riêng** toggle) keeps a room out of the listing and reachable by code alone. It has to travel on the *socket*, not only on the lobby's `/rooms` announce, because the room DO registers itself the moment its host connects.
-
-**The host holds its room open from Tạo phòng too** (`game/net/lobbyHost.ts`), which is what gives the lobby a live player list on both screens — before it, a host could not tell an empty room from a full one. That handover is the sharp edge: `HostSession` builds a champion for a client *only* on that client's `joined` event, and `setImmediate` replays nothing, so the wrapper must (a) replay one `joined` per peer already waiting, or the match starts alone while everyone sits on a dead channel, and (b) stop consuming membership once the match owns the wire, or a player joining *after* the start is swallowed by a lobby nobody is watching. `npm run e2e:lan-flow` drives the whole sequence on three real browsers.
+`LoadingScene` → `MenuScene` → `GameScene`, routed by `managers/SceneManager.ts`
+(not p5's). `MenuScene` also reaches `SetupScene`, `AboutScene`, `PacksScene` and
+`LanScene`, each through a dynamic `import()`, each with its own `#…-scene` host
+in `index.html`, its own stylesheet, and a `*BootPath` source scan holding it
+clear of `src/game/`.
 
 | File | Role |
 |---|---|
 | `Game.ts` | game loop; owns camera / objectManager / terrainMap / fogOfWar |
-| `managers/ObjectManager.ts` | updates and draws every object; **two** quadtrees — `_objectsTree` for anything gameplay can ask about, `_decorTree` for particles and trails, which no query should ever page in. `draw` reads both, `queryObjects` only the first; `isDecoration()` is the closed list, and a `SpellObject` never belongs on it |
+| `managers/ObjectManager.ts` | updates and draws every object; **two** quadtrees — `_objectsTree` for anything gameplay can ask about, `_decorTree` for particles and trails, which no query should page in. `draw` reads both, `queryObjects` only the first; `isDecoration()` is the closed list, and a `SpellObject` never belongs on it |
 | `MatchDirector.ts` | every mutation of a *running* match, and the only thing that persists them |
 | `managers/MinionSpawner.ts` | wave clock for both bases; owns the live minion cap |
 | `gameObject/map/Minimap.ts` | screen-space map; tap expands it, tapping the expanded map teleports |
 
-Objects: `GameObject` → `AttackableUnit` (`Champion`, `AIChampion`, `Minion`, `Monster`, `Turret`), plus `Fountain`, `SpellObject` and helpers (`ParticleSystem`, `CombatText`, `TrailSystem`). Key enums in `game/enums/`: `ActionState` (movement/combat flags), `StatusFlags` (crowd control), `SpellState`, `EventType`.
+Objects: `GameObject` → `AttackableUnit` (`Champion`, `AIChampion`, `Minion`,
+`Monster`, `Turret`), plus `Fountain`, `SpellObject` and helpers
+(`ParticleSystem`, `CombatText`, `TrailSystem`). Key enums in `game/enums/`:
+`ActionState`, `StatusFlags`, `SpellState`, `EventType`.
 
-**Adding a spell**: read `docs/ADDING_SPELLS.md` first — the three registration points, the `MissileSpellObject` base every skillshot should extend, the buff catalogue's mandatory `stackId`, the engine traps `tsc` cannot catch, and how to verify against the real game. Writing one for a content pack rather than for `packs/reference/` itself starts one level up, at `docs/PACK_AUTHORING.md` — see "Content packs" below.
+### The menu and LAN
+
+**Working in `src/game/net/` or the menu scenes? Read `docs/TRAPS.md` §
+*Scenes, the menu and LAN* first** — six rules there, each one a shipped bug in
+a lobby, and none of them guessable from the file.
+
+The three that reach outside that directory:
+
+- **The menu offers exactly two big buttons** — Chơi and Chơi với bạn — and
+  **Chơi opens the match-config panel, not a match**. The panel's Bắt Đầu is what
+  reaches `GameScene`, so an e2e driver takes two presses; `startMatch(page)` in
+  `tests/e2e/harness.mjs` is the one place that knows it.
+- **Joining waits in the lobby** (`game/net/lobbyJoin.ts`) and the live connection
+  is *handed over* (`takeHeldRoom`), never dialled again — the host sends one
+  hello. **Neither wait may reach `setTimeout` with `Infinity`**: it wraps and
+  fires at once.
+- **`rtcConfig` is async and takes the broker URL** (`src/game/net/iceConfig.ts`)
+  because TURN credentials are minted by the broker; ICE servers cannot be added
+  once gathering has begun. `?ice=none` is what the e2e passes.
 
 ### Content packs
 
-This repository is `@moba2d/core`: the engine, plus one small bundled pack of
-its own (`packs/reference/` — one champion, four abilities, one map, never
-optional and never leaves — the reason core is a complete game standing
-alone rather than a menu with nothing behind it). Every champion, spell, map
-and monster beyond that ships from a separate content pack, installed as an
-ordinary npm dependency and reached only through the two published surfaces:
-`api: ContentApi` for a spell's own code, `@moba2d/core/testing` for a pack's
-tests. `docs/PACK_AUTHORING.md` is the whole guide, written for a pack author
-who has never seen this repository — start there before `docs/ADDING_SPELLS.md`
-if you are writing a pack rather than editing `packs/reference/` itself.
+This repository is `@moba2d/core`: the engine, plus one small bundled pack of its
+own (`packs/reference/` — one champion, four abilities, one map, never optional
+and never leaves). Every champion, spell, map and monster beyond that ships from
+a separate content pack, installed as an ordinary npm dependency and reached only
+through two published surfaces: **`api: ContentApi`** for a spell's own code, and
+**`@moba2d/core/testing`** for a pack's tests.
 
-A Riot-derived pack (58 champions' worth of spells, monsters and a
-Summoner's Rift map, content-pack-and-repo-split batch 6) used to live in
-this repository at `packs/riot/` and now lives in its own — see this
-project's own handover doc,
-`docs/superpowers/reports/2026-08-23-pack-sdk-and-repo-split.md`, for exactly
-what moved, what still points at it, and what is unfinished. **A checkout of
-this repository alone ships no such pack, and never will by design**:
-`npm run build`'s own `chunks:check` step prints `0 per-champion spell
-chunks` on a clean tree, and `git log` never had a token or a private remote
-to hide — this is not a temporary gap waiting on a merge. Spec decision 1
-(`docs/superpowers/specs/2026-08-24-runtime-pack-loading-design.md` §2) ships
-core empty and self-installing permanently, precisely so there is no
-build-time version to fall back to, and `.github/workflows/build.yml`'s own
-compile-in step (content-pack-and-repo-split batch 6, Plan 2 task 8) is
-gone, not paused — see "Content packs install at runtime, never at build
-time" above. Do not assume any Riot-named champion, spell, map or asset
-exists in `src/` or `packs/reference/` while reading or editing code here;
-`tests/content/vocabularyBoundary.test.ts` and `tests/content/corePackTarball.test.ts`
-enforce that nothing in `src/` or the published tarball ever names one again.
+**A checkout of this repository alone ships no Riot-derived pack, and never will
+by design.** Do not assume any Riot-named champion, spell, map or asset exists in
+`src/` or `packs/reference/`; `tests/content/vocabularyBoundary.test.ts` and
+`tests/content/corePackTarball.test.ts` enforce it. Two pack traps that have cost
+real time — **a runtime install mutates the registry in place** (compare
+`PackRegistry.contentRevision`, not the instance) and **`bareCatalogId` narrowing
+silently drops every non-`reference:` id** — are in `docs/TRAPS.md` § *Content
+packs*, along with the handover doc for what moved out.
 
 ### Teams, lanes and minions
 
-`GameObject.teamId` still defaults to a fresh uuid for neutral/standalone objects, but a running match assigns champions explicitly: the player is Blue and initial bots alternate Red/Blue (the default player + 3 bots is 2v2); a bot added later joins the smaller side. A champion shares its base's fountain, turret row and minions, and spawn/respawn always uses that team's fountain. Which turrets belong to which side is a fact of the installed pack's own map data (Summoner's Rift's `turret1`/`turret2` rows lived in `packs/riot/maps/summoner_map.json` — now `@moba2d/content-riot`'s own file, not one in this checkout; the reference pack's Proving Grounds declares its two mirrored turrets per faction as structure slots in `packs/reference/provingGroundsGeometry.ts` instead — point-symmetric since 2026-08-27, see that file's header for why the old deliberate asymmetry retired), not something core hardcodes. `lanes.ts` holds three waypoint paths ordered blue → red; red minions walk them backwards, and `tests/game/minions/Lanes.test.ts` checks the coordinates against the wall polygons — **but that test reaches the departed pack's map transitively through `tests/game/minions/helpers.ts`, so it is one of the permanent pack-dependent exclusions in `scripts/pack-dependent-tests.mjs` and does not run in an ordinary `npm run verify`**; editing it and re-running it proves nothing until either the reference pack grows real lanes or the test is rewritten against it — see this batch's own handover, §4. Waves start with three melee plus three caster minions; cannon cadence and mid/late wave thinning live in `MinionSpawner.ts`. **A wave musters at the muster slot the map declares** (`slots.minion`, one per faction per lane, enforced by `content/validate.ts` at install) — `MinionSpawner.musterSlotFor` is a lookup into that list and throws on a miss rather than falling back to the fountain. The old rule ("between the two turrets nearest the fountain", `musterPointFor`) that derived it from the live buildings is deleted, and with it the reason the reference map had to keep an asymmetric turret row as a fixture. Waypoint 0 of every lane is the fountain, so the old hard-coded `startWaypointIndex: 1` now points *backwards* on MID and BOT — `lanes.ts`'s `nextWaypointIndexFrom` projects the muster onto the path instead.
+The player is Blue; initial bots alternate Red/Blue (player + 3 bots is 2v2) and
+a bot added later joins the smaller side. A champion shares its base's fountain,
+turret row and minions.
+
+**Which turrets belong to which side is the installed pack's map data, not
+something core hardcodes.** `lanes.ts` keeps only the mechanism (`LANES`,
+`setActiveLanes`, `getLaneWaypoints`, `nextWaypointIndexFrom`); three waypoint
+paths ordered blue → red, walked backwards by red minions.
+
+**A wave musters at the muster slot the map declares** (`slots.minion`, one per
+faction per lane, enforced by `content/validate.ts` at install).
+`MinionSpawner.musterSlotFor` throws on a miss rather than falling back to the
+fountain. Waypoint 0 of every lane is the fountain, so a hard-coded
+`startWaypointIndex: 1` points *backwards* — `nextWaypointIndexFrom` projects the
+muster onto the path instead.
+
+**`tests/game/minions/Lanes.test.ts` does not run in an ordinary `verify`** — it
+reaches the departed pack's map transitively, so it is a permanent
+pack-dependent exclusion. Editing and re-running it proves nothing.
 
 ### The bot brain
 
-`src/game/ai/` — one shared brain, no per-champion logic yet (the spec for that is `docs/superpowers/specs/2026-08-19-champion-ai-design.md`).
+`src/game/ai/` — one shared brain, no per-champion logic yet
+(`docs/superpowers/specs/2026-08-19-champion-ai-design.md`).
 
 | File | Role |
 |---|---|
@@ -130,128 +238,193 @@ enforce that nothing in `src/` or the published tarball ever names one again.
 | `TurretThreat.ts` | pure ring maths: is this point in the guns, where is the nearest way out, where does this walk cross a ring |
 | `TeamBlackboard.ts` | one snapshot per game per 250ms — allies, enemies, focus target, memory, lane buckets and lane assignments |
 | `LaneObjectives.ts` | pure lane maths: project a point onto a lane, score a lane's need, distribute bots across three |
-| `AimPredictor.ts` | leads a moving target by projectile flight time — the replacement for aiming at the player's cursor |
-| `Difficulty.ts` | three frozen profiles; every knob a tier changes lives here and nowhere else — including `waveClearManaPct`, which goes **down** as the tier goes up (clearing a wave with abilities is a mechanic a better player has) and may never sit below that tier's `manaReservePct`, or the bot tries to farm on every think tick and `withinManaBudget` refuses it every time |
+| `AimPredictor.ts` | leads a moving target by projectile flight time |
+| `Difficulty.ts` | three frozen profiles; every knob a tier changes lives here and nowhere else |
 | `SpellRole.ts` | ability role bitmask, cached per constructor |
 
-**One full-list walk, and `TeamBlackboard` owns it.** `objectManager.objects` is read exactly once in the whole directory (`TeamBlackboard.ts:131`), once per 250ms for the entire game, and everything else — champions, minions, turrets, lane pressure — is bucketed inside that same pass. `TeamBlackboard.lanes.test.ts` is a source scan that counts the reads and fails on a second one. Decisions run 4×/sec per bot, not 60.
+**Working in `src/game/ai/`? Read `docs/TRAPS.md` § *The bot brain* first** —
+fifteen rules there, most of them a turret standoff or a feedback loop that a
+single-tick test agreed with. The five that constrain code outside the directory:
 
-**No tier sees through terrain.** `BotBrain.canPerceive` was the one acquisition path in the game exempt from the fog — minions, monsters, pets, turrets and the player's own right click all go through `PredefinedFilters.visibleTo`, while a `seesThroughTerrain` column in `Difficulty.ts` switched the question off for `normal` and `hard`, i.e. for every bot in every default match. A player meets that as an autoattack out of a wall they cannot see into. The column is gone rather than set false everywhere (a knob that must never be turned on is a trap), and a tier's sight advantage is `memoryTtlMs`: how long it hunts what it lost, not whether it ever loses it — which is also what makes the SEARCH posture run at all.
-
-**Never aim at `game.worldMouse`.** On a phone the player's cursor *is* the touch control, so every bot fired at the on-screen button. `bot-aim-seam.test.ts` bans `worldMouse`, `visionRadius` and `spendMana` from the whole directory; `AimPredictor` is the replacement.
-
-**Time is `Game.matchTimeMs`, passed in as `nowMs`.** A per-bot clock looks equivalent and is not: a bot added mid-match through the Đội tab starts at 0 while the shared blackboard is at 300000, so it never rebuilds and its memory never expires.
-
-**A turret is a place, not a target.** `BotBrain` knew nothing about enemy buildings, and every consequence was the same bug: the bot walked into the guns and stayed. `pushTarget` answers with the enemy turret's own coordinates once its lane holds no friendly wave, `drive` walked to them, and `findObjectiveTarget` — which *does* have an escort rule — then refused to give the bot anything to shoot. `TurretThreat.ts` is the geometry, `TeamBlackboard` publishes `enemyTurrets` inside its one pass (not `LaneState.nextEnemyTurret`, which is the lane economy and drops any building off a waypoint path), and three rules read it: the **DISENGAGE** posture, which is **first in the chain, above even going home** — RETREAT walks a straight line to the nearest friendly turret and is deliberately not clamped (a bot has to be able to cross a ring to get home), so ordering it above DISENGAGE made a bot the turret had shot below its threshold walk home *through the guns*; `drive-bot-discipline.mjs` planted a full-health bot 150px inside a ring and watched it end up 228px inside one, dead; `safely()`, which stops a walk at the first ring it would cross; and `guardedByTurret`, which stops the *acquisition* — without that half the attack controller, which has never heard of a building, re-issues `navigateTo(target)` every frame and undoes the other two. Diving is allowed on exactly two grounds, both in `divingAllowed`: our own wave is under it (`PUSH_TURRET_ESCORT_PX`, and only while the building has not switched onto us), or the kill is there.
-
-**Three radii, and getting them wrong makes the bot pace.** Reported from a real match: a hurt player standing under their own turret, and the enemy bot walking in and out at the edge of the guns forever — two rules fighting, and legible from across the screen as a machine. Both halves were boundary bugs. `clampToSafeApproach` skipped any turret whose ring the body was *already inside*, using the **keep-out** ring (`reach + TURRET_KEEP_OUT_PX`) while DISENGAGE triggers on the bare **gun** ring — so the 60px band between them belonged to no rule at all, and the clamp went quiet exactly where its own answer had just parked the bot. It walked to the line, was let through, crossed into the guns, was pushed back to the line, four times a second. The skip is now the gun ring, inside the band the ring becomes the body's own distance, and an entry root of exactly `0` is a real answer (`do not step`) rather than "no crossing". Second half: `turret.target === this.owner` stops being true the moment the bot leaves range, so a disengaging bot was cleared to walk straight back in — `TURRET_HOSTILE_MS` keeps a building that has fired on this bot off-limits for four seconds, stamped once per decision in `noteTurretFire` rather than inside the predicate that reads it. And **the posture chain must not claim a fight it will not walk to**: `guardedByTurret` was applied to acquisition and not to FIGHT, so `decidePosture` ordered a bot to close in on someone `safely()` would never let it reach. It gates both FIGHT rules now — the standing order against itself, not against `target`, since they are often different champions — and a denied bot falls through to its wave, which is also what eventually earns it the dive. `maybeCast` still gets the target, so a poke thrown from outside the ring is untouched; this is about where the feet go.
-
-**There are three acquisition paths, and the third one had no gate.** `findAttackTarget` (the scan) and `decidePosture` (the posture) both ask `guardedByTurret`; `AIChampion.takeDamage`, which hits back at whoever hit it, did not — so a champion standing under their own turret could hand a bot an attack order just by poking it, and `BasicAttackController` then re-issued `navigateTo(attacker)` every frame and undid both of the other rules. `BotBrain.mayFight(unit)` is the public form of the test, and the retaliation goes through it. SEARCH is gated the same way: a sighting under a turret this bot may not dive is not somewhere to go, and without that the fall-through from FIGHT landed there instead of on the wave.
-
-**A bot test that takes one sample can only find static bugs.** A posture layer is a feedback loop — perceive, decide, walk, perceive the consequences of having walked — so a rule can be stable within one tick and unstable across two, which one `drive` call cannot see by construction. Every turret test agreed with the pacing bug. `tests/game/ai/botTrajectory.ts` is the multi-tick driver: `driveTicks(brain, bot, board, ticks)` returns a trace to assert on — `nearestApproachTo`, `reversalsAround`, `crossingsOf`, `countOf(posture)`, `from(tick)` to slice off the approach. Reach for it for anything with a loop in it; `KITE_HOLD_PCT` is the other rule that exists only because of a two-tick fact.
-
-**A bot never casts at nobody, and "it is the ultimate" is not a reason to.** Every term in `scoreSpell` that depends on a target carries `&& target` — but `Buff` (+5), the support row and `SCORE_ULTIMATE` (+6) do not, and `inferRoles` hands `roles(Buff, Shield)` to every costed `SELF` cast while `rolesOf` adds `Ultimate` from the slot. So a self-cast R scored 11 with nothing in sight and a bot walking an empty lane pressed its ultimate every `castIntervalMs`. `isTargetlessCandidate` is the gate, on `isRetreatCandidate`'s two axes and against the same inference noise.
-
-**Going home is only worth it when nothing is chasing.** `Recall` is `SpellForm.HELD`, and an enemy standing next to you is not a move, a stun or a hit — so nothing in the interrupt table can stop a bot reaching its turret with a chaser behind it, stopping dead, and opening a four-second channel. `BotBrain.safeToRecall` carries it instead, re-asked every tick: no hit for `RECALL_SAFE_MS`, and no enemy the *team* has seen within `RECALL_CLEAR_PX` (`view.memory`, not a distance scan — team knowledge, terrain-honest, aged by the tier). A chaser also latches `headingHome`, which makes `retreatPoint()` the platform rather than the turret; it clears on arrival, not when the chaser drifts back out of range, or the bot walks between the two and arrives at neither.
-
-**A clamp that refuses a step is a destination the bot has already reached.** The turret ring has now produced the same standoff three times, in three shapes, and each fix produced the next: the clamp went quiet on the ring and the bot *paced* in and out four times a second; refusing the inward step stopped the pacing and the bot *parked* on the line for ever, re-issuing a walk to its own feet — reported as "đứng đó luôn, không đi đâu nữa"; and gating PUSH on an approachable objective fixed that but sent the bot to ROAM, whose `moveToRandomLocation` fallback was the one walk in `drive` that never went through `safely()`, so it wandered straight into the guns it had just left. Three rules, and what they have in common is that none of them could see the tick before. **Assert on a trajectory, not a destination** — `tests/game/ai/botTrajectory.ts` runs the decision loop over N ticks and measures reversals, crossings and nearest approach, and every one of these was invisible to a suite that called `drive` once. The give-up is latched (`PUSH_BLOCKED_MS`) for the same reason `TURRET_HOSTILE_MS` and `headingHome` are: an unlatched give-up cancels itself the moment walking away makes the objective look reachable again, which is pacing rebuilt out of the cure for pacing.
-
-**`_autoMoveOnTakeDamage` ships off**, alone among the three reflexes. Taking a hit used to re-roll the destination to a random point on the whole map; under a turret that fired once per bolt and was as likely to pick somewhere deeper in as out. The brain answers "I am being hurt" with a posture now, and `AIChampion.takeDamage` also stops hitting back while `brain.isLeaving` — RETREAT, RECOVER and DISENGAGE all clear the standing order on their think tick, and the next incoming hit used to hand it straight back.
-
-**Kiting needs `BasicAttackController.repositionMs`.** Once a target is inside reach the controller calls `stopMovement()` every frame, which deleted a step back before the champion had taken it. `BotBrain.kiteStep` opens a window there; committing to a swing closes it early, so a kiting bot fires on the beat instead of running. Ranged only, and never past `KITE_HOLD_PCT` of the attack's reach — the controller chases anything further out, so a step over the line reads as a bot vibrating in place.
-
-**Bots play the lanes.** `ai/LaneObjectives.ts` turns those waypoint paths into a progress measure, scores each lane's need, and distributes a team's bots across the three with hysteresis so nobody ping-pongs every 250ms; `TeamBlackboard` gathers the wave and turret positions that feed it **inside its existing single pass over `objectManager.objects`** — that pass is the only full-list walk the whole AI layer is allowed and `tests/game/ai/TeamBlackboard.lanes.test.ts` scans `src/game/ai/` to keep it that way. `BotBrain`'s `PUSH` posture sits below every rule that involves an enemy champion and above `ROAM`, and `findAttackTarget` stays **champions only** on purpose: farming is `findObjectiveTarget`, reachable only from `PUSH`, so "a champion in aggro range beats a wave" is stated once, in the posture chain.
+- **One full-list walk, and `TeamBlackboard` owns it.** `objectManager.objects` is
+  read exactly once in the whole directory, once per 250ms;
+  `TeamBlackboard.lanes.test.ts` is a source scan that fails on a second read.
+  Decisions run 4×/sec per bot, not 60.
+- **Never aim at `game.worldMouse`** — on a phone that *is* the touch control.
+  `AimPredictor` is the replacement; `bot-aim-seam.test.ts` bans `worldMouse`,
+  `visionRadius` and `spendMana` from the directory.
+- **Time is `Game.matchTimeMs`, passed in as `nowMs`.** Never a per-bot clock: a
+  bot added mid-match starts at 0 while the blackboard is at 300000.
+- **All three acquisition paths must gate.** `findAttackTarget`, `decidePosture`
+  and `AIChampion.takeDamage` — the retaliation path — go through
+  `BotBrain.mayFight(unit)`. Miss one and `BasicAttackController` re-issues
+  `navigateTo(attacker)` every frame and undoes the other two.
+- **Assert on a trajectory, not a destination.** A posture layer is a feedback
+  loop, so a rule can be stable within one tick and unstable across two.
+  `tests/game/ai/botTrajectory.ts` — `driveTicks(...)` returns a trace with
+  `nearestApproachTo`, `reversalsAround`, `crossingsOf`, `countOf(posture)`.
 
 ### The match-config panel
 
-`hud/config/MatchConfigPanel.vue` — **one panel, mounted in two places**: over the menu (`SetupScene.ts`) and over a paused match (`InGameHUD.vue`, opened by `Esc`). It used to be two screens with two backends, and they diverged exactly as you would expect — the setup screen alone could pick an input mode, the practice panel alone could assign sides or switch the jungle off, and every new control landed in whichever component its author was editing.
+`hud/config/MatchConfigPanel.vue` — **one panel, mounted in two places**: over the
+menu (`SetupScene.ts`) and over a paused match (`InGameHUD.vue`, `Esc`). The seam
+is `hud/config/MatchConfigSource.ts`, with two implementations —
+`PregameConfigSource` (`lol2d:pregameConfig:v1`, `live` is `null`) and
+`MatchDirectorSource`.
 
-The seam is `hud/config/MatchConfigSource.ts`, with two implementations: `PregameConfigSource` (reads and writes `lol2d:pregameConfig:v1`, `live` is `null`) and `MatchDirectorSource` (wraps `MatchDirector`, which mutates the live match and then persists it). **A control has to be served by both**, and `tests/game/config/matchConfigSource.contract.test.ts` runs one suite against each to make sure it is — that test, not discipline, is what stops the two drifting again.
+**Adding or changing a control? Read `docs/TRAPS.md` § *The match-config panel*
+first.** Four rules bind it:
 
-Three tabs: **Đội** (roster, sides, per-bot AI, per-unit cheats), **Trận đấu** (rules, world, reset, the way out), **Cài đặt** (controls, target priority, display, debug layers). A fourth will not fit: `.pregame-tab` is `flex: 1` and 390px holds three plus the close button.
-
-**`live` is not the only capability flag any more.** `canEditMatchSettings` is the second, and it asks a different question: `live` is whether a match exists, this is whether *this device owns the one that does*. It is `!isNetClient()` in `MatchDirectorSource` and a hard `true` in `PregameConfigSource` (which may not import `src/game/net/` — see the chunk rule below). False locks the rules, the world, the map, the reset and the whole practice-cheat group, because a LAN match is host-authoritative and a client that moved the CDR slider or made itself invulnerable changed only its own half of it. It deliberately does **not** lock the Cài đặt tab (that describes the screen, not the match), the way out, or kit and side — those two cross the wire as a request the host makes real. The refusal lives in the source, not only in the tabs: `v-tap` binds touch events straight to the element and they still fire on a disabled `<button>`. Add/remove bot is the one desyncing control still ungated.
-
-Two rules the panel is built on, both reversals of what came before:
-
-- **Everything it changes persists**, cheats and debug layers included (`PregameConfig.cheats`). They used to be session state on the grounds that an invulnerable champion surviving a reload reads as a bug; one panel with two classes of control — one that comes back and one that silently does not — turned out to be the worse thing to explain. The mitigation is legibility: a roster row shows a shield on an invulnerable participant. Stack counts are still not stored (they are an action on a live spell, not a setting), nor are refill and clear-cooldowns.
-- **The shared panel must not import a `src/game/` runtime value.** It is mounted over the menu, and one such import drags the whole match into the menu's chunk with nothing on screen looking wrong. `MatchDirectorSource.ts` is the single exempt file — every `instanceof`, `Champion` field and `Spell` lives there — and `tests/scenes/matchConfigChunk.test.ts` plus `pregameBootPath.test.ts` are what keep it that way. `vite.config.ts` carves `src/game/hud/config/` (minus that one file) into the `pregame` chunk.
-
-`config/savedKits.ts` is the one thing a tab stores on its own.
+- **A control has to be served by both sources**, and
+  `tests/game/config/matchConfigSource.contract.test.ts` is what stops them
+  drifting back into two screens. **A fourth tab will not fit**: `.pregame-tab` is
+  `flex: 1` and 390px holds three plus the close button.
+- **`canEditMatchSettings` is a second capability flag** — not "is there a match"
+  but "does *this device* own it" (`!isNetClient()`). **The refusal lives in the
+  source, not only the tabs**: `v-tap` fires on a disabled `<button>`.
+- **The shared panel must not import a `src/game/` runtime value** — it is mounted
+  over the menu, and one such import drags the whole match into the menu's chunk.
+  `MatchDirectorSource.ts` is the single exempt file;
+  `tests/scenes/matchConfigChunk.test.ts` and `pregameBootPath.test.ts` hold it.
+- **The panel holds the match paused**, so nothing has settled: read both
+  `objects` and `_objectToBeAdd`, skip `toRemove` and deactivated entries, and
+  clamp derived stats at the point of change rather than trusting `update()`.
 
 ## Traps that have cost real time
 
-Each was found by measurement, more than once, and none is visible from the file you are editing. The seams named here carry the long version in their own doc comments.
+One line each; **`docs/TRAPS.md` carries the measurement and the bug for every
+one.** None is visible from the file you are editing.
 
-**The remaining chunk-hash cascade is not worth breaking, and two obvious fixes measure worse than the problem.** A one-line edit under `src/game/` re-hashes 9 of 16 chunks (~400KB), of which only `game` (~260KB) genuinely changed; the other ~140KB is chunks that merely *name* a changed chunk. Two ways in: `pregame` statically imports `game` (`ContentApi` holds the `Spell`/`SpellObject` base classes a pack extends — that edge is the pack API), and every scene chunk carries the hashed filename of the next one as a dynamic-import specifier (`index → MenuScene → SetupScene → GameScene → game`). Measured, and both rejected:
+**Rendering and VFX** → `docs/TRAPS.md` § *Rendering, VFX and z-index*
 
-- `build.modulePreload: { resolveDependencies: () => [] }` empties `__vitePreload`'s in-chunk dependency tables. It removes some bytes and **not one chunk** — the import specifiers remain, so the same 9 re-hash — while giving up preload warming. No gain, real cost.
-- Making the entry's `contentRegistry()`/`installRuntimePacks` imports dynamic does take `game`+`pregame`+physics off the entry's *static* graph, and costs **1.5 seconds on the menu** (throttled 150ms/200KB-s, no service worker: `#play-btn` at 6525ms static vs 8052ms dynamic, identical FCP and identical bytes). Static imports let the browser fetch that graph in parallel; dynamic ones queue behind the entry executing.
+- **`GameScene` calls `preventDefault()` on every touch on the page**, so
+  **every HUD control needs a touch handler beside its click handler**, and a
+  scrollable panel body needs hand-rolled scroll. `RulesTab.vue`, `RosterTab.vue`.
+- **An effect that reaches beyond its caster's body must be a `SpellObject`, not
+  `castSpec.vfx`** — VFX drawn from `Champion.draw()` vanishes when the caster is
+  culled while the damage still lands. Aim telegraphs are the exception.
+- **p5 global mode means ordinary English words are functions** — `pop`, `text`,
+  `fill`, `line`, `point`, `random`, `map`, `scale`, `rotate`, `image`, `color`.
+  A local of the same name silently shadows one and **`tsc` cannot see it**. Name
+  locals for what they mean in the effect.
+- **A `SpellObject` that paints past its own centre needs
+  `getDisplayBoundingBox()`** — the default derives a zero-area box.
+  `aoe-display-bounds.test.ts`.
+- **Ground art must name the ground layer.** `Z_INDEX_MAP` is keyed by *exact
+  constructor*; a subclass with no `zIndex` resolves above champions. A pack
+  reaches the values through `api.layers.GROUND_Z_INDEX` — never a magic number
+  on either side. `ground-decal-zindex.test.ts`.
 
-The only real lever is stable (unhashed) filenames for the shared chunks, and that collides with the precache: everything under `assets/` enters the manifest as `{"revision": null}` because workbox treats the hash *in the filename* as the version, so an unhashed `game.js` would **never be updated by the service worker again**. Fixable only by also configuring `dontCacheBustURLsMatching` — three coupled knobs where a mistake ships a permanently stale core chunk to every installed player. 400KB is the cheaper thing to own. `npm run e2e:chunk-cascade` is the measurement; the per-champion spell cascade it was written for is genuinely dead (core ships 0 spell chunks).
+**Combat seams** → `docs/TRAPS.md` § *Combat seams*
 
-**A runtime pack install mutates the registry in place, so the registry's identity is not a cache key.** `installPackNow` writes a pack *into* the `PackRegistry` that is already being read from — no reload, no new instance — so `if (cachedFor === registry) return cached` never invalidates and answers with the roster core had before the player installed anything. That shipped: the picker listed all 58 champions of the pack and choosing one still spawned core's own reference champion, because `preset.playableKits()` was memoised exactly that way and `planLoadout` fell through to a random kit when the name it was handed was not in the stale list. Compare **`PackRegistry.contentRevision`** as well as the instance; it is bumped in `writeData`/`writeCode`/`reset` rather than in each public entry point, so a new install path cannot forget it. **A test only sees this if it reads the list *before* installing** — a first read afterwards is correct, which is why the whole suite stayed green. `tests/game/preset.runtimePack.test.ts` runs that order, and one of its cases is a net over every list core publishes rather than a unit test of the one memo.
+- **Match rules are read live, and only through their seam**: `Spell.effectiveMana()`,
+  `spendMana()`, `cooldownMultiplier`. Touching `stats.mana` silently opts out;
+  `mana-spend-seam.test.ts` bans the name. **Granting is not billing** — a refill
+  is `AttackableUnit.restoreMana()`, beside `takeHeal()`.
+- **Use `Dash.onDashUpdate`, never `dashBuff.onUpdate = …`** — an instance
+  assignment replaces the movement frame instead of hooking it.
+  `dash-onupdate-seam.test.ts`.
+- **A query that picks a unit must ask whether the caster can see it** —
+  `PredefinedFilters.visibleTo(observer)` over `combat/Vision.ts`. **Not
+  `visibleToPlayerTeam`**, which is the fog's own flag, written from *the
+  player's* eyes. `target-vision-seam.test.ts`. Two boundaries: **vision gates
+  acquisition, never damage**, and **distance is not vision's business**
+  (`Reach.ts` owns range).
+- **A permanent stack is paid for by the corpse, not the hit.** Latch `wasAlive`
+  before `takeDamage`, read `isDead` after. `combat/ExecuteTargeting.ts` gives
+  lethal-first targeting; lethality counts shields; skillshots stay out.
+- **`Champion.score` is a getter** over `combat/MatchTally.ts`. What a kill is
+  worth is `killCredit` on the victim, not an `instanceof` at the crediting site
+  — and **`Pet` needs `'none'` explicitly** because `Pet extends Champion`.
+- **A taunt must leave `CAN_ATTACK` and `CAN_MOVE` alone** — the one control
+  effect that does. `StatusFlags.Taunted` is in exactly one of the three lists in
+  `Stats.updateActionState` (CAN_CAST); the buff writes through
+  `AttackableUnit.forceAttackTarget` and re-issues every frame.
+- **Reacting to a hit is not modifying it.** `Buff.modifyIncomingDamage` runs in
+  insertion order and only sees what reaches it; `Buff.onDamageTaken(swung,
+  landed, attacker)` runs after the whole chain. `DamageReflect` lives there, with
+  a re-entrancy latch.
+- **Ability damage scales with the caster's build, and you write none of it.**
+  `stats.abilityPower` (a *fraction*) amplifies in `takeDamage` via
+  `combat/Amplification.ts`; `stats.cooldownReduction` shortens in
+  `Spell.reducedCooldown`. Both default to 0. What counts as an ability is
+  `Spell.damageScalesWithAbilityPower` (defaults true, inherited at construction)
+  — **not `countsAsAbilityCast`**, which gates cooldown reduction only.
+- **`ON_ATTACK_HIT` is basic attacks only** (`combat/BasicAttack.ts` is the sole
+  emitter), so an effect hung there is invisible to every spell. For "someone
+  damaged me", use `Buff.onDamageTaken`.
+- **A `UNIT` targeting spell must declare `targetingRequest: { targetTeam: 'ENEMY' }`
+  (or `'ALLY'`), validate `context.target`, and override `press()`.** Omitting
+  `targetTeam` defaults `TargetResolver` to `'ANY'`, which includes the caster —
+  the spell then dashes to and damages its own caster.
 
-**"The bundled pack" is no longer where the content is.** Narrowing a registry read through `bareCatalogId` keeps *only* `reference:` ids and drops every other pack's — correct while the bundled pack was the one carrying the content, and silently empty now that core ships almost none. `summonerSpellIds()` did exactly that to the row flagged `summonerShelf`, which only ever arrives from a runtime pack: the D/F picker had nothing in it and both slots degraded to a basic attack. A stored id is bare (`'Flash'`) and the registry's is qualified (`'riot:Flash'`), so a lookup that matches those two has to say so — see `summonerIdOr`.
+**Geometry, navigation and vision** → `docs/TRAPS.md` § *Geometry, navigation and vision*
 
-**The match-config panel holds the match paused.** `Game.update()`/`draw()` return early while `paused`, and every `MatchDirector` method runs in exactly that window — so nothing has settled. Four bugs so far. **Read both `objects` and `_objectToBeAdd`, skip `toRemove` and deactivated entries, and clamp derived stats at the point of change rather than trusting `update()`.**
+- **Ask `wallOutlinesInArea(game, area)`, not `terrainMap`** — spell-made walls
+  are `SpellObject`s. A new slab implements `DynamicWall` and is picked up free.
+  `DynamicTerrain.test.ts`.
+- **`CollideUtils.lineRect` misses a segment lying wholly inside the rectangle**,
+  so **a `Line` is a lossy quadtree query area.** Use a bounding box.
+- **A conservative approximation whose error matches the feature size is wrong**,
+  not conservative — measure the real distance where you decide anything.
+  `NavGrid.test.ts`.
+- **A direction must never be `(0,0)`.** `Game.facing()` is private and answers
+  for *the player's own champion* only; the convention is `Spell.aimPoint` with
+  `VectorUtils.getVectorWithRange` / `getVectorWithMaxRange`. `context.direction`
+  is itself `(0,0)` on the origin, so falling back to it is the bug.
+- **What the team can see is not what is worth painting.** `visibleToPlayerTeam`
+  is narrowed to the camera; `revealCircles` is every ally. Narrowing both
+  together deletes allies from the minimap.
+- **Granted sight obeys walls, and both halves must agree** — the painted polygon
+  and `FogOfWar.grantedEyeSees`, which is `Vision.viewIsClear` line for line
+  (copied, not imported: a fourth exported name on `Vision` is a `contract:bump`).
+- **Hold a wall-shaped `SpellObject`'s centre a half-thickness plus a body radius
+  from its caster** — a body inside the wall is ejected to its *nearest* face,
+  which past the midplane is the far one.
+- **Smoothing must be per unit of time, never per frame.** `position.lerp(target,
+  0.1)` makes speed a function of frame rate, and the jitter reads as motion
+  sickness. `Camera.smoothingFor` is the conversion.
 
-**`GameScene` calls `preventDefault()` on every touch on the page**, so the browser synthesises neither the trailing `click` nor its own scrolling — anywhere, not just over the canvas. A checkbox, a range drag and a plain `@click` were each dead under a thumb and perfect under a mouse. **Every HUD control needs a touch handler beside its click handler**, and a scrollable panel body needs hand-rolled scroll. `RulesTab.vue` and `RosterTab.vue` carry the shapes.
+**Build and packs** → `docs/TRAPS.md` § *Build, chunks and the service worker*, § *Content packs*
 
-**An effect that reaches beyond its caster's body must be a `SpellObject`, not `castSpec.vfx`.** VFX drawn from `Champion.draw()` disappears whenever `ObjectManager.draw` skips the caster, while the damage — with bounds of its own — lands normally. Lux R's beam crossed the screen invisibly. Aim telegraphs (Pantheon Q, Varus Q) are the deliberate exception.
+- **The remaining chunk-hash cascade is not worth breaking** — a one-line edit
+  under `src/game/` re-hashes ~400KB, and both obvious fixes measure worse.
+  `npm run e2e:chunk-cascade` is the measurement.
+- **A runtime pack install mutates the registry in place**, so the registry's
+  identity is not a cache key — compare `PackRegistry.contentRevision`. **A test
+  only sees this if it reads the list *before* installing.**
+- **"The bundled pack" is no longer where the content is.** A stored id is bare
+  (`'Flash'`) and the registry's is qualified (`'riot:Flash'`); a lookup matching
+  those two has to say so — see `summonerIdOr`.
 
-**p5 global mode means ordinary English words are functions.** `pop`, `text`, `fill`, `line`, `point`, `random`, `map`, `scale`, `rotate`, `image`, `color` are all globals, and a local of the same name silently shadows one — `const pop = …` inside a `draw()` turns the `pop()` that closes the block into a call on a number. `tsc` cannot see it: p5's globals are ambient declarations, and shadowing an ambient is legal. It fails only at runtime, in the browser, on a frame that may not be the one you are looking at. Name locals for what they mean in the effect (`opened`, `caption`, `swept`), never for the quantity's generic word.
+**Working alongside other agents**
 
-**A `SpellObject` that paints past its own centre needs `getDisplayBoundingBox()`.** The default derives it from `visionRadius`, which is 0 for a plain `SpellObject` — a zero-area box — so a 400px cone vanishes when its *centre* leaves the camera. Six of twelve new effects had it. `aoe-display-bounds.test.ts`.
+- **Concurrent agents share one working tree.** `git stash` takes another agent's
+  uncommitted work with it. Use `git worktree`, and commit with explicit paths —
+  **never `git add -A`, never `.`, never a bare `git commit`.**
 
-**Ground art must name the ground layer.** `Z_INDEX_MAP` is keyed by *exact constructor*, and `classLayerOf` walks the `extends` chain from there — so a `SpellObject` subclass with no `zIndex` of its own resolves to `SPELL_EFFECT_Z_INDEX`, which is above `CHAMPION_Z_INDEX` and covers the feet of everyone standing on it. Right for a missile, wrong for a decal. The layers are ten named constants exported from `src/game/managers/ObjectManager.ts`; a pack cannot value-import that module (the `pack-core-boundary` seam), so a pack spell reaches the same values through `api.layers.GROUND_Z_INDEX`. Never a magic number on either side. `ground-decal-zindex.test.ts`.
+## Assets, maps and tools
 
-**Match rules are read live, and only through their seam.** `Spell.effectiveMana()` is the single expression of URF's `manaFree`, `spendMana()` the only way to charge a caster, `cooldownMultiplier` the same for CDR. Touching `stats.mana` directly silently opts out; `mana-spend-seam.test.ts` bans the name from `spells/`, `spellObjects/` and `buffs/`. **Granting is not billing** — a refill must not be zeroed by URF, so it lives on the unit as `AttackableUnit.restoreMana()`, beside `takeHeal()`.
-
-**Use `Dash.onDashUpdate`, never `dashBuff.onUpdate = …`.** `Dash` puts the movement itself in `Dash.prototype.onUpdate`, so an instance assignment replaces the frame instead of hooking it and the champion plays the spell's logic standing still. It reads exactly like a callback — Camille E, Ekko E and Jarvan Q all shipped with it unnoticed, because each still dealt its damage to whatever was next to the caster. `dash-onupdate-seam.test.ts`.
-
-**A query that picks a unit must ask whether the caster can see it.** `queryObjects` knows teams, death and targetability, not the fog — Warwick R found the blue camp through a jungle wall and leaped through it. The seam is `PredefinedFilters.visibleTo(observer)` over `combat/Vision.ts`, which answers the same rule `FogOfWar` paints. **The fog's own flag is not that seam**: `AttackableUnit.visibleToPlayerTeam` (once called `willDraw`, which is what made it look usable) is written by `FogOfWar.calculateSight` from *the player's* eyes and read only by the draw cull, the minimap and the debug overlay. Thirteen abilities had gated targeting on it, so every bot's spell was silently limited to what the human could see — it could not target an enemy beside it in an unlit bush, and could target one across the map the player had lit. The same source scan bans the name from `spells/`. `TargetResolver` and `pickExecuteTarget`/`lethalTargets` apply it centrally; a `SELF` spell doing its own lookup must add it, and `target-vision-seam.test.ts` scans for the omission. Two boundaries: **vision gates acquisition, never damage** (an area effect must still hit the champion in the bush, so only a query narrowing to a *chosen* unit gets the filter), and **distance is not vision's business** — `Reach.ts` owns range, and a sight-radius cap on top would have trimmed Warwick R from 550 to the camera's 500. `Minion`/`Monster`/`Turret` zero `visionRadius` on purpose, so granting vision and being able to see are separate questions there.
-
-**Ask `wallOutlinesInArea(game, area)`, not `terrainMap`.** Anivia W and Jarvan R are genuinely impassable but are `SpellObject`s, so `terrainMap` shows holes exactly where a player just built something — Camille's grapple flew through an ice wall, Janna R blew people through Cataclysm. A new slab implements `DynamicWall` and is picked up free. Deliberately not folded into `getObstaclesInArea`: `FogOfWar` must keep not seeing them and `NavigationSystem` rasterizes once at match start. `DynamicTerrain.test.ts`.
-
-**`CollideUtils.lineRect` misses a segment lying wholly inside the rectangle** — four edge crossings and nothing else. `Rectangle.intersect(Line)` is that function, so a `Line` is a lossy quadtree query area: anything whose bounding box swallows the segment is dropped. `Vision.hasLineOfSight` uses a bounding box instead, because `collide.utils.ts` is shared with the spell hitboxes and says not to change its semantics. Still there for the next caller.
-
-**A conservative approximation whose error matches the feature size is not conservative, it is wrong.** `NavGrid` measured clearance to the nearest blocked cell *centre*, up to a half-diagonal off, so cells were refused with 19px to spare — ~93px of corridor demanded for a 55px body, on a map whose jungle is 60-90px gaps, and a stacked champion's walkable map broke into five pieces. `refineNearWalls` measures the real distance where it decides anything; `NavGrid.test.ts` now bounds the error in both directions.
-
-**A direction must never be `(0,0)`.** `Game.facing()` is a private, no-argument method that reports which way *the player's own champion* is pointed (destination minus position, falling back to the last known facing) — it is not a general aiming convention. The convention for a spell aiming a direction is `Spell.aimPoint` together with `VectorUtils.getVectorWithRange` / `getVectorWithMaxRange`. `context.direction` is itself `(0,0)` when the cursor sits on the origin, so falling back to *it* is the bug rather than a guard.
-
-**A permanent stack is paid for by the corpse, not the hit.** Nasus Q, Cho'Gath R and Veigar Q banked one per *landed* cast, farming uncapped stats off targets that never died. The kill test is `takeDamage` being synchronous: latch `wasAlive` before, read `isDead` after. Implement `executeCandidates()` / `executeDamageAgainst()` / `executeFallback` and `combat/ExecuteTargeting.ts` gives lethal-first targeting plus the "this one dies" ring (`ExecuteMarks.ts`, drawn from `Game.draw`, never as caster VFX). Lethality counts shields. Skillshots stay out: the mark promises a kill an aimed spell cannot keep.
-
-**`Champion.score` is a getter** over `combat/MatchTally.ts`, so `score++` no longer compiles; the ledger is written in `AttackableUnit.die` and `takeDamage`. What a kill is worth is `killCredit` on the victim, not an `instanceof` at the crediting site: `'champion'`, `'minion'` (default, so camps are CS) or `'none'`. **`Pet` needs `'none'` explicitly because `Pet extends Champion`** — otherwise every Shaco clone killed lands on someone's KDA.
-
-**A taunt must leave `CAN_ATTACK` and `CAN_MOVE` alone** — the one control effect that does. `BasicAttackController.update` drops its standing order the moment `canAttack` goes false, so clearing it orders a swing and cancels it on the same frame; clearing `CAN_MOVE` roots the victim out of reach. `StatusFlags.Taunted` is in exactly one of the three lists in `Stats.updateActionState` (CAN_CAST). The buff writes through `AttackableUnit.forceAttackTarget` and re-issues every frame, because the AI re-scans and the player can press keys.
-
-**Reacting to a hit is not modifying it.** `Buff.modifyIncomingDamage` runs in insertion order, each buff handing the next what is left, so a reflect written as a modifier only sees what reaches it — behind a shield, the overflow — and ordering it first fixes one cast and not the next. `Buff.onDamageTaken(swung, landed, attacker)` runs after the whole chain and cannot change either number; `DamageReflect` lives there with a re-entrancy latch, because the payout re-enters `takeDamage` on the attacker and two curled Rammuses would ping-pong one hit.
-
-**Items bought a champion's right-click and nothing else.** A full attack build multiplies damage per swing by ~5.7 and rate by ~1.5; not one of the 308 abilities across the two packs read a stat of its caster, so the same gold bought them a multiplier of exactly 1.00 and spamming a kit lost to holding right-click. Fixed in core alone: `stats.abilityPower` (a *fraction*, +35% at 0.35) amplifies in `takeDamage` before mitigation via `combat/Amplification.ts`, and `stats.cooldownReduction` shortens in `Spell.reducedCooldown`. Both default to 0, so nothing was retuned. **What counts as an ability is not knowable from the number, the attacker or the damage type** — a third of abilities are `PHYSICAL` — so it comes from the recap ambient: `Spell.damageScalesWithAbilityPower` defaults true, spell objects and buffs inherit it at construction, and `coreSpells/BasicAttack` plus `ItemShop`'s held items opt out because they already scale on `attackDamage`. **That flag is not `countsAsAbilityCast`** and folding them would silently exclude every champion passive, which is not a cast but is unmistakably ability damage; cooldown reduction *does* gate on `countsAsAbilityCast`, because a cooldown is a question about a cast.
-
-**`ON_ATTACK_HIT` is basic attacks only** — `combat/BasicAttack.ts` is the sole emitter, so an effect hung there is invisible to every spell. Annie E's shield burn shipped that way and punished nobody. For "someone damaged me", use `Buff.onDamageTaken`.
-
-**A `UNIT` targeting spell must declare `targetingRequest: { targetTeam: 'ENEMY' }` (or `'ALLY'`), validate `context.target`, and override `press()`.** Omitting `targetTeam` causes `TargetResolver` to default to `'ANY'`, which includes the caster herself (`request.caster`). With the cursor on empty ground, nearest-to-cursor fallback will resolve the caster as the target, causing the spell to cast on, dash to, and damage the caster herself (`Diana E`, `Sett R`, `Syndra R`, `Vi R` all shipped with this). Always provide `targetingRequest` with explicit `targetTeam: 'ENEMY'`, validate `target !== this.owner && target.teamId !== this.owner.teamId` in `checkCastCondition`/`onSpellCast`, and wire `press()` to resolve through `TargetResolver`.
-
-**Concurrent agents share one working tree.** `git stash` takes another agent's uncommitted work with it. Use `git worktree`, and commit with explicit paths — never `git add -A`, never `.`, never a bare `git commit`.
-
-## Assets and data
-
-Core ships one map's coordinates of its own — `packs/reference/provingGroundsGeometry.ts` — and no map data lives in `assets/` at all any more: `src/game/lanes.ts` keeps only the mechanism (`LANES`, `setActiveLanes`, `getLaneWaypoints`, `nextWaypointIndexFrom`), and every map's actual `wall`/`bush`/`water` polygons, turret rows and lane waypoints live inside whichever content pack ships that map — a pack's own `geometry.ts`, fetched lazily so a pregame picker never downloads a map's walls just to list its name (`docs/PACK_AUTHORING.md`). Everything else loads through `AssetManager` (`src/managers/AssetManager.ts`).
-
-`npm run assets:generate` walks `assets/` and regenerates `src/generated/assetManifest.ts` with a typed `AssetKey` union, so a mistyped asset name is a compile error rather than a broken image at runtime. Never hand-edit the generated file; add the image and re-run. `assets:check` fails the build when the two drift. A content pack has the identical pair, scoped to its own `assets/` and its own generated manifest — `pack-asset-key` is the seam that stops one pack resolving a key out of another's.
-
-**Ability data, the Riot Wiki import pipeline, and the `vi_VN` spell-name sync are gone from core.** They were how the Riot-derived content pack sourced its numbers and its official Vietnamese names, and they left with that pack (content-pack-and-repo-split batch 6, task 10) into its own repository, where `docs/RESEARCH_AND_REGISTER.md` now carries this section's old content verbatim. Core itself has no such pipeline and does not need one — `packs/reference/`'s tuning is hand-authored, scaled to a ~100 health pool from the start, and its champion is not a real Riot one, so there is no official name to synchronise against.
-
-**A body *inside* a spell-made wall is ejected to its nearest face — which past the midplane is the far one.** So the wall throws it through itself. A body centred on the aim point is the one that reliably happens to, because on a phone the aim point is often on top of the caster's own champion — hold the centre of any wall-shaped `SpellObject` a half-thickness plus a body radius away from its caster to avoid it. Everyone else walks in from outside and rests on the surface, which is why the wall looked like it worked. (`Anivia_W.test.ts`, in the moved content pack's own repository, is the swept test this was found and fixed against — `DynamicTerrain.test.ts` here in core is the generic version.)
-
-**A bot must finish what it starts, and two separate things stopped it.** `BotBrain.cast` arranges a follow-through for charge activations *and* for `activation: 'RECAST'` — seven spells, and without the second Jhin R raises its curtain and fires none of its four rounds. And `drive()` must not issue a move order while one of the bot's own casts is in flight: `navigateTo` bumps `movementRevision`, `CancelPolicy` reads that as `'MOVE'`, and the think interval is 250ms, so every ability with a cast time at or above it used to die mid-cast — ten on the roster. The basic attack is exempt via `attackOrder: 'keep'`; without that check a bot mid-swing reads as mid-cast and never walks again.
-
-**What the team can see is not what is worth painting.** `FogOfWar.calculateSight` narrows to the camera for the overlay, which is right — but it is also the only writer of `visibleToPlayerTeam`, and `Game.minimapBlips` reads that flag for a map that covers the whole world. Narrowing both together deleted allied minions, wards and champions from the minimap the moment the player walked away from them. `revealCircles` is every ally; only the camera's subset is given a polygon to paint with. Turrets and fountains hid it, being structures the minimap draws unconditionally.
-
-**Granted sight obeys walls, and it is two halves that must agree.** A minion or turret has `visionRadius = 0` and lends the team a circle through `fogRevealRadius` instead. Both halves of that circle were once wall-blind — a plain disc on the overlay, a plain distance test for `visibleToPlayerTeam` — while `combat/Vision.ts` had always answered the *targeting* question with a raycast. So a wave standing against a jungle wall lit the far side of it, and the enemy sitting there was drawn on the player's screen and refused as a target in the same frame. Both halves are wall-aware now: the paint casts the same `PolyVisibility` polygon a champion casts, and `FogOfWar.grantedEyeSees` is `Vision.viewIsClear` line for line (copied, not imported, because `ContentApi` re-exports all of `Vision` and a fourth exported name there is a `contract:bump`; both call the public `hasLineOfSight`, and the doc comment on each names the other). What pays for the polygons: only revealers **near the camera** get one — off camera there is no fog to erase and the flag needs no polygon — and a granted revealer's "hasn't moved" cache test carries a 12px tolerance instead of demanding exact equality, because nobody is steering a minion's fog. The tolerance is also why `computeSightPoly` widens its clip box by the same amount; without that the box's straight edge slides in under the round gradient rim and draws a faint seam.
-
-**Smoothing must be per unit of time, never per frame.** `position.lerp(target, 0.1)` makes the camera's speed a function of the frame rate: over half a second chasing a point 1000px away, 30fps ends 794px along and 144fps 999px. Worse than the spread is the jitter — no two real frames are the same length, so the camera's speed wobbles with frame time even while the champion walks straight, and the whole world shakes in a way that reads as motion sickness rather than as a frame rate problem. `Camera.smoothingFor` is the conversion; anything else that lerps every frame wants it too.
-
-`tools/shape-maker/` is a standalone p5 app for drawing polygon point arrays (`a` add, `d` delete, `e` export, `i` import). **The map editor is not in `tools/`** — it is a separate document served with the game at `public/map-editor/`, plain HTML and globals with no bundler, so nothing in `src/` can import it and no type checker compares the two halves. Two `localStorage` keys are the whole contract — `moba2d-local-maps-v1` carries a drawn map out to the game, `moba2d-pack-maps-v1` carries the game's installed map list in — and `tests/content/localMaps.test.ts` and `tests/content/editorCatalog.test.ts` hold them by running the real editor in a `vm`. **The editor owns the map screen**; a picker in the menu was tried and removed, because it made two map lists that held different sets and could not see each other, and it did not fit a landscape phone. **Chơi thử opens a new tab** rather than navigating: the editor's undo history is memory-only, so leaving the page wiped every step — and for a map opened from the game that made the automatic merge permanent after one playtest. `docs/MAP_EDITOR.md` is the guide.
+- **Core ships one map's coordinates** (`packs/reference/provingGroundsGeometry.ts`)
+  and no map data in `assets/` at all. Every map's `wall`/`bush`/`water` polygons,
+  turret rows and lane waypoints live in whichever pack ships that map, fetched
+  lazily so a picker never downloads walls to list a name.
+- **Everything else loads through `AssetManager`** (`src/managers/AssetManager.ts`).
+- **`npm run assets:generate` writes `src/generated/assetManifest.ts`** and its
+  typed `AssetKey` union, so a mistyped name is a compile error. **Never
+  hand-edit the generated file** — add the image and re-run; `assets:check` fails
+  the build on drift. A pack has the identical pair, held apart by the
+  `pack-asset-key` seam.
+- **Ability data, the Riot Wiki import pipeline and the `vi_VN` name sync are gone
+  from core**, into the content pack's own repository. `packs/reference/`'s tuning
+  is hand-authored.
+- `tools/shape-maker/` is a standalone p5 app for polygon point arrays (`a` add,
+  `d` delete, `e` export, `i` import).
+- **The map editor is not in `tools/`** — it is `public/map-editor/`, plain HTML
+  and globals with no bundler, so nothing in `src/` can import it and no type
+  checker compares the two halves. **Two `localStorage` keys are the whole
+  contract**: `moba2d-local-maps-v1` out to the game,
+  `moba2d-pack-maps-v1` in. `tests/content/localMaps.test.ts` and
+  `editorCatalog.test.ts` hold them by running the real editor in a `vm`. **The
+  editor owns the map screen**, and **Chơi thử opens a new tab** — its undo
+  history is memory-only. `docs/MAP_EDITOR.md` is the guide.
