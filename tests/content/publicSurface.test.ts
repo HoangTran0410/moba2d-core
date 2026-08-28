@@ -170,7 +170,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly seven bins, the six below plus moba2d-generate-maps', () => {
+  it('declares exactly ten bins, the seven below plus the three a pack no longer copies', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -216,6 +216,24 @@ describe('package.json public surface', () => {
       // generator that strips it in whichever pack was bitten means the next
       // pack learns it the same way.
       'moba2d-generate-maps': './scripts/pack-maps.mjs',
+      // Ten, not seven, and this trio is the same lesson a third time. All
+      // three used to be files `moba2d-pack-new` *copied* into a pack, so a
+      // fix to one was a fix to none — and the copies had already drifted.
+      // `check-core-link.mjs` was byte-identical in every checkout that has
+      // one (it describes core's own linking mechanism; there was never
+      // anything for a pack to change). `check-unused.mjs` differed by the
+      // package name in a single `console.log`, read from `package.json`
+      // here. `write-manifest.mjs` was the one with a real cost: one copy
+      // hardcoded `icon: 'icon.png'` where the template tests for the file,
+      // which points a published manifest at a 404 the day somebody deletes
+      // it. It also stopped declaring `coreRange` — that literal existed
+      // here *and* in the pack's own data half, with a paragraph in each
+      // saying they must move together and a pack test that regexed this
+      // file's source to compare them. It reads `data.manifest` now, so
+      // there is no second copy to police.
+      'moba2d-check-core-link': './scripts/pack-core-link.mjs',
+      'moba2d-check-unused': './scripts/pack-unused.mjs',
+      'moba2d-write-manifest': './scripts/pack-manifest.mjs',
     });
     for (const target of Object.values(bin!)) {
       expect(existsSync(join(repoRoot, target)), `${target} does not exist on disk`).toBe(true);

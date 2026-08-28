@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 /**
- * Detects the one node_modules state nobody remembers to check for: this pack
- * *was* linked to a sibling `@moba2d/core` checkout (`npm run pack:link` from
- * core) and an `npm install` / `bun install` here has since replaced the
- * symlink with the registry/git copy — so typecheck and tests now run against
- * the wrong core, and the first symptom is a page of baffling type errors.
+ * `moba2d-check-core-link` — detects the one `node_modules` state nobody
+ * remembers to check for: a pack *was* linked to a sibling `@moba2d/core`
+ * checkout (`npm run pack:link` from core) and an `npm install` / `bun
+ * install` there has since replaced the symlink with the registry/git copy —
+ * so typecheck and tests now run against the wrong core, and the first
+ * symptom is a page of baffling type errors.
  *
  * The stomp is detectable because an install replaces only the package
  * directory itself and leaves the rest of the scope directory alone: the
  * parked npm copy (`.core-npm`) and the `.core-link-target` marker
- * `pack:link` writes both outlive the symlink. Either of those existing
- * while `core` is not a symlink can only mean a dropped link.
+ * `pack:link` writes both outlive the symlink. Either of those existing while
+ * `core` is not a symlink can only mean a dropped link.
  *
- * Wired in twice:
+ * Wired in twice, in every pack:
  *   - `postinstall` (`--warn-only`): the warning appears in the very install
  *     that did the damage, while the author still remembers running it.
  *   - first step of `verify`: blocking, so a red verify leads with the real
@@ -20,12 +21,27 @@
  *
  * A pack that has never been linked — the normal state for a standalone
  * author building against the published core — passes silently.
+ *
+ * ## Why this is a bin
+ *
+ * It was a file the scaffold copied, and all three copies that exist were
+ * byte-identical: it describes core's own linking mechanism, so there was
+ * never anything for a pack to change. A fix to one was a fix to none. Same
+ * reasoning as `pack-assets.mjs` beside it, and the same shape.
+ *
+ * **The pack root comes from `process.cwd()`, not from this file's own
+ * location.** Reached through a `node_modules/.bin` symlink, Node resolves
+ * `import.meta.url` to the symlink's real target — so the old
+ * `resolve(dirname(fileURLToPath(import.meta.url)), '..')` would answer
+ * `node_modules/@moba2d/` and find no `node_modules/@moba2d/core` under it,
+ * reporting every pack as never-linked. `checkSeams.bin.test.ts` records the
+ * same trap costing a whole check its exit code.
  */
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
+import { packRootFrom } from './lib/packRoot.mjs';
 
-const packRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packRoot = packRootFrom(process.cwd());
 const scopeDir = join(packRoot, 'node_modules', '@moba2d');
 const coreDir = join(scopeDir, 'core');
 const parkedNpmCopy = join(scopeDir, '.core-npm');

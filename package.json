@@ -30,7 +30,10 @@
     "moba2d-pack-add": "./scripts/pack-add.mjs",
     "moba2d-pack-serve": "./scripts/pack-serve.mjs",
     "moba2d-generate-assets": "./scripts/pack-assets.mjs",
-    "moba2d-generate-maps": "./scripts/pack-maps.mjs"
+    "moba2d-generate-maps": "./scripts/pack-maps.mjs",
+    "moba2d-check-core-link": "./scripts/pack-core-link.mjs",
+    "moba2d-check-unused": "./scripts/pack-unused.mjs",
+    "moba2d-write-manifest": "./scripts/pack-manifest.mjs"
   },
   "files": [
     "assets/cursors",
@@ -44,6 +47,9 @@
     "scripts/generate-assets.mjs",
     "scripts/generate-maps.mjs",
     "scripts/pack-maps.mjs",
+    "scripts/pack-core-link.mjs",
+    "scripts/pack-unused.mjs",
+    "scripts/pack-manifest.mjs",
     "scripts/installed-packs.mjs",
     "scripts/pack-new.mjs",
     "scripts/pack-add.mjs",

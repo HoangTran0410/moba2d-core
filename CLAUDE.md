@@ -428,6 +428,19 @@ one.** None is visible from the file you are editing.
   `editorCatalog.test.ts` hold them by running the real editor in a `vm`. **The
   editor owns the map screen**, and **Chơi thử opens a new tab** — its undo
   history is memory-only. `docs/MAP_EDITOR.md` is the guide.
+- **A pack's build tooling is core's, invoked by name — never copied.** Ten
+  bins today; `moba2d-check-core-link`, `moba2d-check-unused` and
+  `moba2d-write-manifest` were the last three files `moba2d-pack-new` copied
+  into a pack, and every copy that existed had drifted. The manifest writer
+  was the expensive one: one pack hardcoded `icon: 'icon.png'` where the
+  template tests for the file (a published manifest pointing at a 404 the day
+  somebody deletes it), and `coreRange` was a literal there *and* in the
+  pack's `data.ts` — it reads `data.manifest` now, so the floor is stated
+  once. `--name=` is the one value still passed in: `PackManifest` has no
+  display-name field, and `data.manifest.name` wins when a pack grows one.
+  **`check-unused` runs the pack's own `typescript` via `node`, not `npx
+  tsc`** — npx falls back to macOS's Turbo C++ `tsc`, which prints a joke and
+  exits 0, and the check reported clean over a compiler that never ran.
 - **A pack ships an editor export through `moba2d-generate-maps`**
   (`scripts/generate-maps.mjs` + the `scripts/pack-maps.mjs` bin), never by
   committing the export as-is. It writes `<name>.geometry.json` (minified,

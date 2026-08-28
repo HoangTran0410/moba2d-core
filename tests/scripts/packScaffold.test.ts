@@ -478,7 +478,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
     expect(pkg.devDependencies['@moba2d/core']).toBe('file:../moba2d-core');
   });
 
-  it('ships the four files a runtime install is served by', async () => {
+  it('ships the three files a runtime install is served by, and calls the manifest bin for the fourth', async () => {
     const parent = await freshTmpDir('moba2d-pack-new-runtime-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
@@ -488,15 +488,28 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
     for (const required of [
       'runtime-entry.ts',
       'vite.config.ts',
-      'scripts/write-manifest.mjs',
       '.github/workflows/publish.yml',
     ]) {
       expect(files, `${required} is missing from the scaffold`).toContain(required);
     }
 
+    // `scripts/write-manifest.mjs` is deliberately NOT in that list any more.
+    // It was a file the scaffold copied, and every copy that existed had
+    // drifted from it — one hardcoding `icon: 'icon.png'` where this tests
+    // for the file, which points a published manifest at a 404 the day
+    // somebody deletes it. Core owns the writer now and a pack invokes it, so
+    // what the scaffold has to get right is the call, not the copy.
+    expect(files, 'the writer is core\'s now, not a file to copy').not.toContain(
+      'scripts/write-manifest.mjs'
+    );
+
     const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
     expect(pkg.scripts.build, 'build must produce both halves').toMatch(/vite build/);
-    expect(pkg.scripts.build).toMatch(/write-manifest/);
+    expect(pkg.scripts.build).toMatch(/moba2d-write-manifest/);
+    // The display name has no home in `PackManifest`, so it rides the flag —
+    // and a scaffold that forgot it produces a pack whose build fails at the
+    // last step, after everything else has already succeeded.
+    expect(pkg.scripts.build, 'the writer needs a display name').toMatch(/--name=/);
   });
 
   it('exports off runtime-entry exactly what loadPackFromManifest reads', async () => {

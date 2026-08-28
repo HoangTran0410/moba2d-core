@@ -178,9 +178,19 @@ handed out — so each of them is now something the scaffold gets right and
   those two shapes and treats everything else as unsatisfiable, so `^1` — the
   ordinary npm way to write it — is not a loose range, it is a pack that
   refuses to install with a message that reads like a real version conflict.
-  It is stated twice, in `pack.ts` and in `scripts/write-manifest.mjs`; raise
-  both together. `npm run build` refuses a range it cannot parse, and refuses
-  a floor above the core the pack was built against.
+  You state it once, in `pack.ts`; `moba2d-write-manifest` reads it off the
+  built pack rather than restating it. It used to be a literal in two places
+  with a paragraph in each saying they must move together — and only the
+  manifest's copy can refuse an install, so a drift meant the bundled build
+  and the published build disagreed about which cores they support, with the
+  published one winning. `npm run build` refuses a range it cannot parse, and
+  refuses a floor above the core the pack was built against.
+- **The manifest is written for you, by core.** `moba2d-write-manifest` runs
+  after `vite build` and reads the *built* pack's own `data.manifest`, so
+  `id` and `coreRange` are stated once, where you already state them. Only
+  the display name rides a flag (`--name="Your Pack"`) — `PackManifest` has
+  no field for it yet, and a pack that grows `data.manifest.name` is
+  preferred over the flag automatically.
 - **A manifest needs `id`, `version`, `coreRange`, `name`, `entry` and
   `assets`,** and `entry` and `assets` must resolve onto the manifest's own
   origin. A pack may be served from anywhere, but it may not point execution
@@ -189,8 +199,8 @@ handed out — so each of them is now something the scaffold gets right and
 - **The pack's `manifest.id` and its data half's `manifest.id` must agree.**
   Two places, one string, and core checks them against each other.
 - **`buildId` is written for you, and you must not bump anything by hand.**
-  `scripts/write-manifest.mjs` hashes the sorted list of files the build
-  emitted, so the value moves exactly when a content hash does. Core hangs it
+  `moba2d-write-manifest` hashes the sorted list of files the build emitted,
+  so the value moves exactly when a content hash does. Core hangs it
   off the entry URL as `pack.js?b=<buildId>`, which is what makes two builds
   two URLs — the fix for a republished pack whose old chunk graph pointed at
   files the deploy had already deleted, 404ing one ability into silence. It is
@@ -228,7 +238,7 @@ bargain is not removing members.
 
 ```
 my-pack/
-├── package.json           # name, the @moba2d/core spec, the five scripts
+├── package.json           # name, the @moba2d/core spec, the scripts
 ├── tsconfig.json          # extends @moba2d/core's own strict base config
 ├── pack.ts                # the whole pack's declaration — see below
 ├── packApi.ts             # where the engine arrives; read its header
@@ -244,7 +254,6 @@ my-pack/
 │   └── packInstallable.test.ts   # core's own install check, run locally
 ├── runtime-entry.ts       # the single module a runtime install imports
 ├── vite.config.ts         # the published build
-├── scripts/write-manifest.mjs    # writes dist/manifest.json
 ├── generated/             # gitignored: spellCatalog.ts + spellModules.ts
 └── .github/workflows/     # publish.yml (Pages) + verify.yml (PRs)
 ```
