@@ -1364,6 +1364,13 @@ kbd {
  * lướt qua. Cùng nền, cùng viền, để vẫn là một họ.
  * --------------------------------------------------------------------- */
 .toast.suggest {
+    /* `#toast-root` là `pointer-events: none` để một toast lướt qua không nuốt
+       mất cú click lên map. Thanh này thì ngược lại: nó mang hai nút và ĐỢI
+       được trả lời, nên phải tự bật lại cho chính mình — không có dòng này thì
+       cả "Gộp lại" lẫn "Bỏ qua" đều chết, và vì thanh không tự tắt, nó kẹt
+       luôn trên màn hình. Nhìn y như bị canvas đè, mà z-index không cứu được:
+       thứ tự vẽ không phải thứ tự nhận sự kiện. */
+    pointer-events: auto;
     border-radius: 10px;
     padding: 9px 10px 9px 13px;
     gap: 10px;
