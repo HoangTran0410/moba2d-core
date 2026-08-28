@@ -1,5 +1,6 @@
 import { PackRegistry } from './PackRegistry';
 import { installBundledPackData } from './install';
+import { installLocalMaps } from './localMaps';
 
 /**
  * The process's content, data half only — the one place a picker asks for a
@@ -30,6 +31,15 @@ export function contentCatalog(): PackRegistry {
   if (registry) return registry;
   registry = new PackRegistry();
   installBundledPackData(registry);
+  // The player's own maps, drawn in `public/map-editor/`. After the bundled data
+  // so a local map can never shadow a shipped one, and inside this function
+  // rather than beside it so `rebuildContentRegistry()` — the call that makes
+  // a newly installed pack visible without a reload — picks up a map the
+  // player published a moment ago on the same path, for free.
+  //
+  // `installLocalMaps` never throws; see its own header for why that is the
+  // load-bearing part rather than defensive habit.
+  installLocalMaps(registry);
   return registry;
 }
 

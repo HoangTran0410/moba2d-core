@@ -137,6 +137,7 @@ const emit = defineEmits<{
   openConfig: [];
   openAbout: [];
   openPacks: [];
+  openEditor: [];
 }>();
 
 // Reads real document state rather than always starting from "not
@@ -425,6 +426,17 @@ const updateState = computed(() => {
     >
       <i class="fas fa-cubes" aria-hidden="true"></i>
       <span>Nội dung / Pack</span>
+    </button>
+
+    <button
+      id="editor-btn"
+      class="menu-link"
+      title="Vẽ map của riêng bạn rồi chơi thử ngay"
+      @click="emit('openEditor')"
+      @touchend.prevent="emit('openEditor')"
+    >
+      <i class="fas fa-pen-ruler" aria-hidden="true"></i>
+      <span>Tạo map</span>
     </button>
 
     <button

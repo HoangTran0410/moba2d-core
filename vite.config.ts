@@ -133,7 +133,16 @@ export default defineConfig({
          * manifest generator walks all of `assets/`, and the `json` glob above
          * then made every install download it.
          */
-        globIgnores: ['**/source-manifest-*.json'],
+        /**
+         * The map editor's tracing backgrounds (`public/map-editor/asset/`) are
+         * ~850KB of `png`/`webp` that the glob above would otherwise make
+         * every install download. They are reference art a map author picks
+         * as a canvas underlay — reachable from one screen, useless offline
+         * to everyone who never opens it. The editor's own `js`/`css`/`html`
+         * stay precached: those are the app, and an author on a train should
+         * still be able to draw.
+         */
+        globIgnores: ['**/source-manifest-*.json', 'map-editor/asset/**'],
         /** The menu chunk alone is ~830KB; the default 2MB cap is too tight to trust. */
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
