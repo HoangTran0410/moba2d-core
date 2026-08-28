@@ -262,6 +262,18 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   host?: boolean;
+  /**
+   * Set only while a peer is *not* simply present — mid-handshake, or one
+   * whose handshake died (`transport.ts`'s `PeerLink`). Absent is the normal
+   * case, which keeps an ordinary roster exactly the shape it has always been.
+   *
+   * **Host-side only, by construction.** `decodeMessage` rebuilds each row
+   * from `id`/`name`/`host` and drops everything else, so this never survives
+   * the wire — which is right twice over: a peer that cannot be reached cannot
+   * receive the broadcast that describes it, and a client has no use for the
+   * host's view of somebody else's handshake.
+   */
+  link?: 'connecting' | 'failed';
 }
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;

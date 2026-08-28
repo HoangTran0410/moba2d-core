@@ -127,7 +127,20 @@ await guard(async () => {
   await page.screenshot({ path: '/tmp/lan-lobby-menu.png' });
 
   // ------------------------------------------------ landscape phone, touch
-  await openLobbyHosting(page);
+
+  // The code row is measured **before** Tạo phòng, because hosting is the one
+  // state it does not exist in: the whole Vào phòng section is `v-if="!hostCode"`,
+  // on the grounds that a host has already answered the question that section
+  // asks. Measuring it after opening a room found `null` and the assertion
+  // below then threw on it rather than reporting anything.
+  await openLobby(page);
+  const inputRect = await rectOf(page, '.lan-join-code input');
+  const joinBtnRect = await rectOf(page, '.lan-join-code button');
+
+  // Now the panel's fullest state — the one whose fit is what matters.
+  await page.click('#lan-host');
+  await page.waitForSelector('#lan-start-host', { timeout: 10_000 });
+  await page.waitForSelector('#lan-players .lan-player', { timeout: 10_000 });
 
   const panel = await rectOf(page, '.lan-panel');
   const viewport = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
@@ -154,8 +167,6 @@ await guard(async () => {
   report.codeFontPx = Math.round(codeSize);
   check('the room code is rendered large', codeSize >= 24, `${report.codeFontPx}px`);
 
-  const inputRect = await rectOf(page, '.lan-join-code input');
-  const joinBtnRect = await rectOf(page, '.lan-join-code button');
   const sameRow =
     inputRect &&
     joinBtnRect &&

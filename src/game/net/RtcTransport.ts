@@ -1,14 +1,23 @@
-import { NetChannel, parseHostFrame, relayUrl } from './NetChannel';
-import type { ClientTransport, HostFrameEvent, HostTransport } from './transport';
+import { NetChannel, hostSignalUrl, parseHostFrame, relayUrl } from './NetChannel';
+import { rtcConfig } from './iceConfig';
+import type { ClientTransport, HostFrameEvent, HostTransport, PeerLink } from './transport';
 
 /**
  * WebRTC DataChannel transports — the player-facing wire (LAN design spec
  * §3 as revised): the signaling broker (the deployed Worker, or the dev
  * relay — both speak the same protocol) carries only the SDP/ICE handshake,
- * and everything after runs peer-to-peer. On one LAN that is ICE *host
- * candidates*: direct socket, sub-millisecond, no server in the loop — so
- * `iceServers` is deliberately empty. Internet play needs STUN/TURN and is
- * the spec roadmap's problem, not this file's.
+ * and everything after runs peer-to-peer. On one LAN that is ideally ICE
+ * *host candidates*: direct socket, sub-millisecond, no server in the loop.
+ *
+ * `iceServers` was empty for exactly that reason, and **that was the bug**.
+ * A host candidate is not the machine's address: Chrome hands out a random
+ * `*.local` name and leaves resolving it to mDNS multicast, which a corporate
+ * wifi drops while cheerfully forwarding the unicast that made the two
+ * machines look reachable. With nothing else on offer, ICE ran out of options
+ * and both lobbies waited for ever. `iceConfig.ts` owns the list now, defaults
+ * to STUN, and keeps host-candidates-only one parameter away (`?ice=none`) —
+ * which is what the e2e uses, loopback being the one place the old reasoning
+ * actually holds.
  *
  * Two channels per peer, negotiated by the host:
  *
@@ -28,8 +37,6 @@ import type { ClientTransport, HostFrameEvent, HostTransport } from './transport
 type SignalPayload =
   { t: 'sdp'; d: RTCSessionDescriptionInit } | { t: 'ice'; c: RTCIceCandidateInit };
 
-const RTC_CONFIG: RTCConfiguration = { iceServers: [] };
-
 interface RtcPeer {
   connection: RTCPeerConnection;
   reliable: RTCDataChannel;
@@ -41,17 +48,25 @@ export class RtcHostTransport implements HostTransport {
   private peers = new Map<string, RtcPeer>();
   private queue: HostFrameEvent[] = [];
   private immediate: ((event: HostFrameEvent) => void) | null = null;
+  private linkWatcher: ((peerId: string, link: PeerLink) => void) | null = null;
 
-  private constructor(private readonly signal: NetChannel) {
+  private constructor(
+    private readonly signal: NetChannel,
+    /** Kept for `offerTo`: the ICE list, TURN included, is minted by the broker. */
+    private readonly server: string
+  ) {
     signal.setImmediate(raw => this.onSignal(raw));
   }
 
-  static async connect(server: string, room: string, name: string): Promise<RtcHostTransport> {
-    const signal = new NetChannel(
-      `${relayUrl(server, room, 'host')}&name=${encodeURIComponent(name)}`
-    );
+  static async connect(
+    server: string,
+    room: string,
+    name: string,
+    listed = true
+  ): Promise<RtcHostTransport> {
+    const signal = new NetChannel(hostSignalUrl(server, room, name, listed));
     await signal.ready();
-    const transport = new RtcHostTransport(signal);
+    const transport = new RtcHostTransport(signal, server);
     // Anything the socket queued before the immediate handler landed.
     for (const raw of signal.drain()) transport.onSignal(raw);
     return transport;
@@ -60,6 +75,19 @@ export class RtcHostTransport implements HostTransport {
   private emit(event: HostFrameEvent): void {
     if (this.immediate) this.immediate(event);
     else this.queue.push(event);
+  }
+
+  watchPeerLink(handler: (peerId: string, link: PeerLink) => void): void {
+    this.linkWatcher = handler;
+  }
+
+  /**
+   * Not queued, unlike `emit`. A link state is a fact about *now* — a lobby
+   * that subscribes late wants the room as it stands, which it gets from the
+   * peer map, not a history of handshakes that have since resolved.
+   */
+  private reportLink(peerId: string, link: PeerLink): void {
+    this.linkWatcher?.(peerId, link);
   }
 
   private onSignal(raw: string): void {
@@ -76,6 +104,10 @@ export class RtcHostTransport implements HostTransport {
       if (peer && !peer.open) {
         peer.connection.close();
         this.peers.delete(frame.id);
+        // Nothing goes out as a `HostFrameEvent` — this peer never `joined`,
+        // so a session was never told it existed. The lobby was, and has a row
+        // on screen to take down.
+        this.reportLink(frame.id, 'gone');
       }
       return;
     }
@@ -96,7 +128,7 @@ export class RtcHostTransport implements HostTransport {
   }
 
   private async offerTo(peerId: string): Promise<void> {
-    const connection = new RTCPeerConnection(RTC_CONFIG);
+    const connection = new RTCPeerConnection(await rtcConfig(this.server));
     const reliable = connection.createDataChannel('r');
     const unreliable = connection.createDataChannel('u', { ordered: false, maxRetransmits: 0 });
     const peer: RtcPeer = { connection, reliable, unreliable, open: false };
@@ -109,6 +141,7 @@ export class RtcHostTransport implements HostTransport {
     unreliable.onmessage = onFrame;
     reliable.onopen = () => {
       peer.open = true;
+      this.reportLink(peerId, 'open');
       this.emit({ kind: 'joined', peerId });
     };
     reliable.onclose = () => {
@@ -120,6 +153,19 @@ export class RtcHostTransport implements HostTransport {
     connection.onicecandidate = ice => {
       if (ice.candidate) this.signalTo(peerId, { t: 'ice', c: ice.candidate.toJSON() });
     };
+    // ICE giving up is the only way this host ever learns that a peer it can
+    // see on the signaling socket cannot be reached over the wire — the state
+    // a blocked network leaves every join in, and the one the room used to
+    // render as an empty list.
+    connection.oniceconnectionstatechange = () => {
+      if (peer.open) return;
+      if (connection.iceConnectionState === 'failed') this.reportLink(peerId, 'failed');
+    };
+
+    // Announced before the offer, not after: `createOffer` is a round trip
+    // through the ICE agent, and on a slow gathering pass the room would
+    // otherwise sit empty for the part of the wait that most needs a name.
+    this.reportLink(peerId, 'connecting');
 
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
@@ -203,7 +249,9 @@ export class RtcClientTransport implements ClientTransport {
     const signal = new NetChannel(relayUrl(server, room, 'join'));
     await signal.ready();
 
-    const connection = new RTCPeerConnection(RTC_CONFIG);
+    // Before the socket work below, because a `RTCPeerConnection` cannot be
+    // handed servers after it is built and gathering has begun.
+    const connection = new RTCPeerConnection(await rtcConfig(server));
     connection.onicecandidate = ice => {
       if (ice.candidate) signal.send(JSON.stringify({ t: 'ice', c: ice.candidate.toJSON() }));
     };
@@ -232,6 +280,17 @@ export class RtcClientTransport implements ClientTransport {
       watchdog = setInterval(() => {
         if (signal.closed) reject(new Error('net: signaling closed before the host answered'));
       }, 500);
+      // The host answered and the two still cannot reach each other: ICE ran
+      // and found no route. Distinguished from the deadline above because the
+      // player can do something about exactly one of them — this is the
+      // network, not the host, and saying "is the host still up?" about it
+      // sends people to look in the wrong place.
+      connection.oniceconnectionstatechange = () => {
+        if (transport) return;
+        if (connection.iceConnectionState === 'failed') {
+          reject(new Error('net: no route to the host — this network blocks direct connections'));
+        }
+      };
       if (abort) {
         onAbort = () => {
           signal.close();

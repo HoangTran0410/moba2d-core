@@ -1,4 +1,4 @@
-import { NetChannel, parseHostFrame, relayUrl } from './NetChannel';
+import { NetChannel, hostSignalUrl, parseHostFrame, relayUrl } from './NetChannel';
 
 /**
  * The seam between the sessions and the wire, so WebRTC DataChannels and
@@ -32,9 +32,34 @@ export type HostFrameEvent =
   | { kind: 'left'; peerId: string }
   | { kind: 'frame'; peerId: string; raw: string };
 
+/**
+ * How far a peer has got towards being able to speak — the *handshake*, which
+ * `HostFrameEvent` deliberately says nothing about.
+ *
+ * `joined` fires when a peer can carry a frame, and that is the only thing a
+ * session ever wants to know. A **lobby** wants one thing more: whether
+ * somebody is trying. On a network that blocks peer-to-peer, ICE never
+ * completes, `joined` never fires, and the host's screen is identical to one
+ * where nobody pressed Vào — the failure reported as *"host không thấy
+ * client"*. These states are what let the room tell those two apart.
+ *
+ *   - `connecting` — an offer has gone out to this peer.
+ *   - `open` — the reliable channel carries frames; `joined` says this too.
+ *   - `failed` — ICE gave up. The peer is real and cannot be reached.
+ *   - `gone` — it abandoned the handshake (its signaling socket closed).
+ */
+export type PeerLink = 'connecting' | 'open' | 'failed' | 'gone';
+
 export interface HostTransport {
   /** Deliver every future event straight to `handler`; earlier ones stay for one `drain`. */
   setImmediate(handler: (event: HostFrameEvent) => void): void;
+  /**
+   * Handshake progress, for the lobby's roster — optional because only a wire
+   * that *has* a handshake can report one. A relay peer is connected the
+   * instant it exists, so `RelayHostTransport` implements nothing here and its
+   * rooms simply never show a `connecting` row.
+   */
+  watchPeerLink?(handler: (peerId: string, link: PeerLink) => void): void;
   drain(): HostFrameEvent[];
   sendTo(peerId: string, raw: string): void;
   broadcast(raw: string): void;
@@ -66,10 +91,13 @@ const toHostEvent = (raw: string): HostFrameEvent | null => {
 export class RelayHostTransport implements HostTransport {
   private constructor(private readonly channel: NetChannel) {}
 
-  static async connect(server: string, room: string, name: string): Promise<RelayHostTransport> {
-    const channel = new NetChannel(
-      `${relayUrl(server, room, 'host')}&name=${encodeURIComponent(name)}`
-    );
+  static async connect(
+    server: string,
+    room: string,
+    name: string,
+    listed = true
+  ): Promise<RelayHostTransport> {
+    const channel = new NetChannel(hostSignalUrl(server, room, name, listed));
     await channel.ready();
     return new RelayHostTransport(channel);
   }

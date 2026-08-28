@@ -117,9 +117,28 @@ export class NetChannel {
 }
 
 export const relayUrl = (server: string, room: string, role: 'host' | 'join'): string => {
-  const base = server.includes('://') ? server : `ws://${server}`;
+  // A trailing slash on the server would otherwise produce `//?room=`, which
+  // is a different path to the broker and a needless way to lose a match.
+  const withScheme = server.includes('://') ? server : `ws://${server}`;
+  const base = withScheme.replace(/\/+$/, '');
   return `${base}/?room=${encodeURIComponent(room)}&role=${role}`;
 };
+
+/**
+ * The host's signaling URL — `relayUrl` plus the two things only a host says.
+ *
+ * `listed=0` is a room that is **not advertised**: the broker's `/rooms`
+ * listing became one directory for everybody (it used to group by the host's
+ * public IP, which silently found nobody on any network that leaves through a
+ * pool of addresses), so staying out of it stopped being automatic and had to
+ * become a choice. It must travel on the socket rather than only on the
+ * lobby's `/rooms` poll, because the room registers itself the moment the host
+ * connects — a room withheld from the poll alone would be advertised by the
+ * WebSocket anyway.
+ */
+export const hostSignalUrl = (server: string, room: string, name: string, listed = true): string =>
+  `${relayUrl(server, room, 'host')}&name=${encodeURIComponent(name)}` +
+  (listed ? '' : '&listed=0');
 
 export const parseHostFrame = (raw: string): HostFrame | null => {
   try {

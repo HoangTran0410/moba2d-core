@@ -1,4 +1,9 @@
-import { RelayHostTransport, type HostFrameEvent, type HostTransport } from './transport';
+import {
+  RelayHostTransport,
+  type HostFrameEvent,
+  type HostTransport,
+  type PeerLink,
+} from './transport';
 import { RtcHostTransport } from './RtcTransport';
 import { decodeMessage, encodeMessage, type LobbyPlayer } from './protocol';
 import type { NetUrlRequest } from './netRole';
@@ -37,7 +42,18 @@ import { lobbyDisplayName } from './lobbyName';
 interface Peer {
   id: string;
   name: string;
+  /**
+   * How far this peer got. `open` is the ordinary case and the only one the
+   * roster keeps quiet about; the other two exist so a room that nobody can
+   * reach stops looking like a room nobody tried to enter — see
+   * `transport.ts`'s `PeerLink`.
+   */
+  link: Exclude<PeerLink, 'gone'>;
 }
+
+/** The row a peer gets before it has told us its name. */
+const CONNECTING_NAME = 'Đang kết nối…';
+const ARRIVING_NAME = 'Đang vào…';
 
 /**
  * The lobby's transport, wearing `HostTransport` so `HostSession` cannot tell
@@ -129,7 +145,13 @@ const sameRoom = (a: NetUrlRequest, b: NetUrlRequest): boolean =>
 
 const rosterOf = (state: Hosting): LobbyPlayer[] => [
   { id: 'host', name: state.hostName, host: true },
-  ...[...state.peers.values()].map(peer => ({ id: peer.id, name: peer.name })),
+  // `link` is the exception's field, so an ordinary peer carries none: the
+  // list a client is shown, and every assertion about it, stays what it was.
+  ...[...state.peers.values()].map(peer => ({
+    id: peer.id,
+    name: peer.name,
+    ...(peer.link === 'open' ? {} : { link: peer.link }),
+  })),
 ];
 
 /**
@@ -139,9 +161,23 @@ const rosterOf = (state: Hosting): LobbyPlayer[] => [
  * re-render; it is called once on open too, so the host's own row appears
  * without waiting for anybody.
  */
+/** What a host chooses about its room that is not part of the URL's request. */
+export interface HostRoomOptions {
+  /**
+   * Whether the room appears in `GET /rooms`. Default `true`.
+   *
+   * The listing is one directory for everybody now — grouping it by the host's
+   * public IP found nobody on a network that leaves through a pool of
+   * addresses — so "only people I tell can join" stopped being a side effect
+   * of the grouping and became this.
+   */
+  listed?: boolean;
+}
+
 export const openRoom = async (
   request: NetUrlRequest,
-  onChange: (players: LobbyPlayer[]) => void
+  onChange: (players: LobbyPlayer[]) => void,
+  options: HostRoomOptions = {}
 ): Promise<HostedRoom> => {
   closeRoom();
 
@@ -150,10 +186,14 @@ export const openRoom = async (
   // The same name the room is advertised under in the `/rooms` listing, so a
   // player choosing a room in the list and the players inside it agree.
   const roomName = `Trận của ${hostName}`;
-  const inner =
+  // Typed as the interface, not the union of the two classes: `watchPeerLink`
+  // is optional *on the contract*, and only a union widened to that contract
+  // lets the relay simply not have it.
+  const listed = options.listed !== false;
+  const inner: HostTransport =
     request.transport === 'ws'
-      ? await RelayHostTransport.connect(request.server, request.room, roomName)
-      : await RtcHostTransport.connect(request.server, request.room, roomName);
+      ? await RelayHostTransport.connect(request.server, request.room, roomName, listed)
+      : await RtcHostTransport.connect(request.server, request.room, roomName, listed);
 
   const state: Hosting = {
     request,
@@ -183,8 +223,15 @@ export const openRoom = async (
     // queueing it: the peer map is the record, and `setImmediate` replays it.
     // Queueing as well would hand `HostSession` two `joined` events per peer.
     if (event.kind === 'joined') {
-      if (!peers.has(event.peerId))
-        peers.set(event.peerId, { id: event.peerId, name: 'Đang vào…' });
+      const known = peers.get(event.peerId);
+      if (known) {
+        // Already on the list from `watchPeerLink` — the handshake it was
+        // showing has now succeeded.
+        known.link = 'open';
+        if (known.name === CONNECTING_NAME) known.name = ARRIVING_NAME;
+      } else {
+        peers.set(event.peerId, { id: event.peerId, name: ARRIVING_NAME, link: 'open' });
+      }
       announce();
       return;
     }
@@ -207,6 +254,31 @@ export const openRoom = async (
   };
 
   inner.setImmediate(onEvent);
+
+  /**
+   * The handshake, which `onEvent` never hears a word about.
+   *
+   * A peer ICE cannot reach produces no `joined` and no `left` — the two
+   * events the room is built out of — so before this the host rendered a
+   * blocked network and an empty room identically. These states are the
+   * difference, and they stop at the handover: once the match owns the room,
+   * membership is the match's business (`HeldHostTransport.live`).
+   */
+  inner.watchPeerLink?.((peerId, link) => {
+    if (held.live) return;
+    if (link === 'gone') {
+      if (peers.delete(peerId)) announce();
+      return;
+    }
+    // `open` arrives as `joined` too, and that is the branch that owns it —
+    // acting here as well would announce the same change twice.
+    if (link === 'open') return;
+    const peer = peers.get(peerId);
+    if (peer) peer.link = link;
+    else peers.set(peerId, { id: peerId, name: CONNECTING_NAME, link });
+    announce();
+  });
+
   // Anything the transport queued between `connect` and this line.
   for (const event of inner.drain()) onEvent(event);
 

@@ -72,20 +72,27 @@ export interface LanAnnounce {
 }
 
 /**
- * The open rooms on this network — the broker groups by public IP, so this
- * answers "ai đang mở phòng cùng mạng với mình". `null` (never a throw)
- * when the broker is unreachable, so the lobby can tell an empty network
- * from a dead connection and say so in one quiet line.
+ * The rooms that are open. `null` (never a throw) when the broker is
+ * unreachable, so the lobby can tell an empty listing from a dead connection
+ * and say so in one quiet line.
  *
- * `announce` makes the same request also *advertise* the caller's room:
- * the broker registers it under this request's own IP before answering.
- * Riding the poll is the fix for two real failures — a room used to exist
- * on the broker only once its match had started (the WebSocket at `Chơi`
- * was the sole registrar, so a host sitting in the menu with a code on
- * screen was invisible even to a second tab on the same machine), and a
- * dual-stack host could register over IPv6 while a neighbour listed over
- * IPv4 into a different per-IP directory. Announce and listing share one
- * request, so on one machine they cannot disagree.
+ * **This used to mean "rooms on my network"** — the broker kept one directory
+ * per public IP (`CF-Connecting-IP`), so two devices behind one NAT found each
+ * other and nobody else. On a home router that works, and on anything larger
+ * it fails silently: measured on one corporate wifi, twenty requests from a
+ * *single machine* left through nine different public addresses across four
+ * unrelated /8s, so a room announced on one poll was listed from a different
+ * directory on the next. There is one directory now, and a host that does not
+ * want to be found says so (`listed=0`, `game/net/lobbyHost.ts`) instead of
+ * relying on NAT to hide it.
+ *
+ * `announce` makes the same request also *advertise* the caller's room. Riding
+ * the poll is the fix for a real failure: a room used to exist on the broker
+ * only once its match had started — the WebSocket at `Chơi` was the sole
+ * registrar — so a host sitting in the menu with a code on screen was
+ * invisible even to a second tab on the same machine. Announce and listing
+ * share one request, so the two can never disagree about what this device is
+ * offering.
  */
 export const fetchLanRooms = async (
   signalUrl: string,

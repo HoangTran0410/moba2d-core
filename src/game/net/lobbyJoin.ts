@@ -45,6 +45,35 @@ import { lobbyDisplayName } from './lobbyName';
 
 export type HelloMessage = Extract<NetMessage, { t: 'hello' }>;
 
+/**
+ * How long the *handshake* may take before the join is called a failure.
+ *
+ * This wait used to be unbounded along with the hello's, and that was right
+ * when it was written: the host reached the broker only at Vào trận, so no
+ * offer could exist before it pressed. `lobbyHost.ts` moved the host's
+ * connection to Tạo phòng, and silence stopped meaning "not yet". An open room
+ * answers in seconds; a handshake still running after this long is a mistyped
+ * code, a room nobody opened, or a network that blocks peer-to-peer — three
+ * things a player can act on and none of which they can see from a spinner.
+ *
+ * Generous on purpose: ICE gathering behind a slow DNS or a captive portal can
+ * take its time, and the cost of waiting too long is a slower error message,
+ * while the cost of waiting too little is a working join thrown away.
+ */
+const HANDSHAKE_TIMEOUT_MS = 25_000;
+
+/** What the lobby screen wants to be told while a join is in flight. */
+export interface JoinProgress {
+  /**
+   * The channel is up: the host's own transport has this player on its list,
+   * and "đã vào phòng" is true for the first time. The screen says it before
+   * this only by guessing, which is what it used to do.
+   */
+  onConnected?(): void;
+  /** The room's player list, each time the host broadcasts a new one. */
+  onRoster?(players: LobbyPlayer[]): void;
+}
+
 export interface HeldRoom {
   request: NetUrlRequest;
   channel: ClientTransport;
@@ -142,7 +171,7 @@ const waitForHello = async (
 export const waitForHostToStart = async (
   request: NetUrlRequest,
   abort: AbortSignal,
-  onRoster: (players: LobbyPlayer[]) => void = () => {}
+  progress: JoinProgress = {}
 ): Promise<void> => {
   releaseHeldRoom();
 
@@ -150,9 +179,12 @@ export const waitForHostToStart = async (
     request.transport === 'ws'
       ? await RelayClientTransport.connect(request.server, request.room)
       : await RtcClientTransport.connect(request.server, request.room, {
-          timeoutMs: Infinity,
+          timeoutMs: HANDSHAKE_TIMEOUT_MS,
           abort,
         });
+  // Past the `await`, so it is a report and not a hope. Everything the screen
+  // says about being in a room hangs off this line.
+  progress.onConnected?.();
 
   // `RelayClientTransport` has no abort of its own — it is the dev/e2e wire and
   // its connect is a plain socket open — so the cancel is applied here, and the
@@ -172,7 +204,7 @@ export const waitForHostToStart = async (
     channel.send(encodeMessage({ t: 'iam', name: lobbyDisplayName() }));
     // No deadline. This is the wait the whole module exists for: the host may
     // be one press away or five minutes away, and neither is an error.
-    const hello = await waitForHello(channel, onRoster);
+    const hello = await waitForHello(channel, progress.onRoster ?? (() => {}));
     held = { request, channel, hello };
   } catch (error) {
     channel.close();

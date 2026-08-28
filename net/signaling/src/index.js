@@ -9,14 +9,28 @@
  *     the host sends `{"to":id|"all","data":frame}` and joiners receive the
  *     bare frame; the host additionally hears `{"sys":"joined"|"left","id"}`.
  *
- * On top of the relay protocol it adds the one thing a LAN lobby needs:
- * **discovery by network**. `GET /rooms` answers the open rooms created from
- * the caller's public IP (`CF-Connecting-IP`) — two devices behind the same
- * NAT land on the same `RoomDirectory` instance and therefore see each
- * other's rooms, which is as close to "find each other by themselves" as
- * browsers get without mDNS. Each `SignalRoom` registers itself with its
- * host's IP directory while the host stays connected, heartbeating via a
- * Durable Object alarm and unregistering on host disconnect.
+ * On top of the relay protocol it adds the one thing the lobby needs:
+ * **discovery**. `GET /rooms` answers the open rooms, and each `SignalRoom`
+ * registers itself while its host stays connected, heartbeating via a Durable
+ * Object alarm and unregistering on host disconnect.
+ *
+ * ## Why that listing is no longer per-network
+ *
+ * It used to group by the caller's public IP (`CF-Connecting-IP`): two
+ * devices behind one NAT landed on the same `RoomDirectory` and saw each
+ * other's rooms, which was as close to "find each other by themselves" as
+ * browsers get without mDNS. On a home router that works. On anything larger
+ * it does not, and the failure is silent — measured on one corporate network,
+ * twenty requests from a *single machine* left through **nine** different
+ * public addresses spread across four unrelated /8s, so a room announced on
+ * one poll was listed from a different directory on the next and nobody ever
+ * saw anybody. Grouping by prefix does not rescue it either at that spread.
+ *
+ * So there is one directory. A listing is now "rooms that are open", not
+ * "rooms near you" — which for a game this size is also the more useful
+ * answer, since the alternative to seeing a stranger's room is seeing none.
+ * A host that does not want to be found passes `listed=0` and is reachable by
+ * code alone.
  *
  * The broker only ever carries the WebRTC handshake (SDP/ICE — a few KB per
  * join) or, for the `transport=ws` fallback, the game stream itself. After a
@@ -44,6 +58,63 @@ const STALE_MS = 90_000;
  * disconnect.
  */
 const ANNOUNCE_STALE_MS = 15_000;
+/**
+ * The one directory every room is listed in. A constant rather than a
+ * per-caller name is the whole of the change described in this file's header
+ * — see it for the measurement that retired `ip:${ip}`.
+ */
+const DIRECTORY_NAME = 'rooms:global';
+/** A listing is something a person reads down, not a database dump. */
+const LIST_LIMIT = 50;
+
+/**
+ * How long a minted TURN credential stays valid. Comfortably longer than a
+ * match, because a credential that expires mid-handshake is a join that fails
+ * for a reason nobody can see.
+ */
+const TURN_TTL_SECONDS = 3600;
+/**
+ * Minted credentials, cached per isolate and re-minted at half their life.
+ *
+ * Every peer connection asks, and a five-player room asks several times in a
+ * few seconds; without this each one is an API round trip on the critical
+ * path of somebody's join. Isolate-local on purpose — it is a cache, and an
+ * evicted isolate simply mints again.
+ */
+let turnCache = null;
+
+const iceServers = async env => {
+  // Not configured is a normal state, not a failure: the client falls back to
+  // its own STUN list and direct connections keep working. Only the peers who
+  // need a relay lose anything.
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return [];
+  if (turnCache && turnCache.expiresAt > Date.now()) return turnCache.servers;
+  try {
+    const response = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: TURN_TTL_SECONDS }),
+      }
+    );
+    if (!response.ok) return [];
+    const body = await response.json();
+    // The API answers with a single `iceServers` object; `flat` keeps this
+    // honest if it ever answers with several.
+    const servers = body?.iceServers ? [body.iceServers].flat() : [];
+    if (servers.length) {
+      turnCache = { servers, expiresAt: Date.now() + (TURN_TTL_SECONDS / 2) * 1000 };
+    }
+    return servers;
+  } catch {
+    // A minting outage must cost only the relay, never the join.
+    return [];
+  }
+};
 
 export default {
   async fetch(request, env) {
@@ -52,18 +123,15 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
     if (url.pathname === '/rooms') {
-      const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-      const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName(`ip:${ip}`));
+      const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName(DIRECTORY_NAME));
       // `?announce=<code>&name=<n>`: the caller is *hosting* this room and
-      // wants it listed for its network while it polls. Riding the same
-      // request as the listing is the point, twice over: the lobby needs no
-      // second timer, and — the bug this fixed — registration lands under the
-      // *same* IP the listers on this machine/network query. The old design
-      // registered only from the WebSocket at match start, so a room whose
-      // host was still sitting in the menu did not exist anywhere, and a
-      // dual-stack host could register under its IPv6 while a neighbour
-      // listed under IPv4. (The WS registration remains, so an in-match room
-      // can live in up to two per-family directories at once.)
+      // wants it listed while it polls. Riding the same request as the listing
+      // saves the lobby a second timer, and — the bug it fixed — makes a room
+      // exist from the moment its code is on screen. The old design registered
+      // only from the WebSocket at match start, so a host still sitting in the
+      // menu was invisible even to a second tab on the same machine. (The WS
+      // registration remains, and is what keeps an in-match room listed for
+      // late joiners after the lobby screen has gone.)
       const announce = url.searchParams.get('announce');
       if (announce && announce.length <= 32) {
         await directory
@@ -83,14 +151,28 @@ export default {
       });
     }
 
+    // The ICE servers a peer connection should use, credentials and all.
+    //
+    // Only exists because TURN credentials cannot live in the client: they are
+    // minted from an account secret, and a static page served off Pages has
+    // nowhere to keep one. This Worker already holds secrets and is already
+    // the thing both peers talk to, so it is where the minting belongs.
+    //
+    // Answers `[]` — not an error — when no TURN key is configured, so a
+    // deployment without one degrades to the client's own STUN defaults
+    // instead of failing every join.
+    if (url.pathname === '/ice') {
+      return new Response(JSON.stringify(await iceServers(env)), {
+        headers: { 'content-type': 'application/json', ...CORS },
+      });
+    }
+
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
       const room = url.searchParams.get('room');
       if (!room || room.length > 32) return new Response('bad room', { status: 400 });
-      // The room DO registers itself with the right per-network directory —
-      // it needs the caller's public IP, which only this outer Worker sees.
-      const forwarded = new Request(request.url, request);
-      forwarded.headers.set('x-lol2d-ip', request.headers.get('CF-Connecting-IP') ?? 'unknown');
-      return env.ROOMS.get(env.ROOMS.idFromName(`room:${room}`)).fetch(forwarded);
+      // Nothing to forward any more: the room DO used to need the caller's
+      // public IP to pick its directory, and there is one directory now.
+      return env.ROOMS.get(env.ROOMS.idFromName(`room:${room}`)).fetch(request);
     }
 
     return new Response('lol2d signaling broker — GET /rooms, or WebSocket ?room=&role=host|join', {
@@ -109,7 +191,8 @@ export class SignalRoom {
     this.nextJoiner = 1;
     this.code = '';
     this.hostName = '';
-    this.hostIp = '';
+    /** A `listed=0` host is reachable by code alone — see the file header. */
+    this.listed = true;
   }
 
   async fetch(request) {
@@ -127,7 +210,7 @@ export class SignalRoom {
       if (this.host) this.host.close();
       this.host = server;
       this.hostName = url.searchParams.get('name') ?? 'LAN game';
-      this.hostIp = request.headers.get('x-lol2d-ip') ?? 'unknown';
+      this.listed = url.searchParams.get('listed') !== '0';
       server.addEventListener('message', event => this.fromHost(String(event.data)));
       server.addEventListener('close', () => {
         if (this.host === server) {
@@ -197,8 +280,11 @@ export class SignalRoom {
   }
 
   async directory(action) {
-    if (!this.code || !this.hostIp) return;
-    const directory = this.env.DIRECTORY.get(this.env.DIRECTORY.idFromName(`ip:${this.hostIp}`));
+    if (!this.code) return;
+    // A private room still unregisters: it may have been public a moment ago,
+    // under a host that reclaimed the code with `listed=0`.
+    if (action === 'register' && !this.listed) return;
+    const directory = this.env.DIRECTORY.get(this.env.DIRECTORY.idFromName(DIRECTORY_NAME));
     await directory
       .fetch(`https://directory/${action}`, {
         method: 'POST',
@@ -224,7 +310,11 @@ export class RoomDirectory {
       const now = Date.now();
       const listed = [...this.rooms.entries()]
         .filter(([, room]) => now - room.ts < (room.ttlMs ?? STALE_MS))
-        .map(([code, room]) => ({ code, name: room.name, ageMs: now - room.ts }));
+        .map(([code, room]) => ({ code, name: room.name, ageMs: now - room.ts }))
+        // Freshest first, then capped: one directory serves everybody now, so
+        // the answer needs an order and a bound it did not need per-network.
+        .sort((a, b) => a.ageMs - b.ageMs)
+        .slice(0, LIST_LIMIT);
       return new Response(JSON.stringify(listed), {
         headers: { 'content-type': 'application/json' },
       });

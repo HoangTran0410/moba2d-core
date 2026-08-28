@@ -50,9 +50,14 @@ process.on('exit', () => relay.kill());
 
 const { url, page, report, check, guard, openPage } = await startHarness();
 
+// `ice=none` keeps the WebRTC leg on loopback host candidates, which is what
+// it has always measured: two browser contexts on one machine need no STUN,
+// and the default list (`src/game/net/iceConfig.ts`) would make this script's
+// handshake wait on a third party being reachable — a flake in CI and pure
+// delay everywhere else.
 const withParams = (mode, transport, room) =>
   `${url}${url.includes('?') ? '&' : '?'}net=${mode}&transport=${transport}` +
-  `&signal=ws://localhost:${RELAY_PORT}&room=${room}`;
+  `&signal=ws://localhost:${RELAY_PORT}&room=${room}&ice=none`;
 
 await guard(async () => {
   // ------------------------------------------------------------- the host

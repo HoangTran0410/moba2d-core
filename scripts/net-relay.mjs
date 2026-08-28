@@ -59,7 +59,9 @@ const httpServer = createServer((request, response) => {
     }
   }
   for (const [code, room] of rooms) {
-    if (room.host) listed.set(code, { code, name: room.hostName ?? 'LAN game', ageMs: 0 });
+    if (room.host && room.listed !== false) {
+      listed.set(code, { code, name: room.hostName ?? 'LAN game', ageMs: 0 });
+    }
   }
   response.writeHead(200, cors).end(JSON.stringify([...listed.values()]));
 });
@@ -87,6 +89,9 @@ server.on('connection', (socket, request) => {
     if (room.host) room.host.close();
     room.host = socket;
     room.hostName = url.searchParams.get('name') ?? 'LAN game';
+    // Parity with the deployed broker: `listed=0` is a room reachable by code
+    // alone, so it never enters the `/rooms` answer.
+    room.listed = url.searchParams.get('listed') !== '0';
     console.log(`[relay] host connected to room "${roomName}"`);
     // Joiners who arrived before the host did (the lobby allows it) — replay
     // them, or this host only ever hears about future arrivals.

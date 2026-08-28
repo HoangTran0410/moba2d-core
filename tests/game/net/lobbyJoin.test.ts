@@ -17,8 +17,13 @@
  * What is checked here is the shape of the fix, because each half of it is a
  * one-line regression:
  *
- *  - the wait has **no deadline** (`timeoutMs: Infinity`, both for the
- *    handshake and for the hello);
+ *  - the wait for the host to press Vào trận has **no deadline** — that half
+ *    is genuinely open-ended and giving up on it is the original bug. The
+ *    *handshake* is the half that since grew one, for the reason the test
+ *    itself sets out: the host now connects at Tạo phòng, so silence there
+ *    stopped meaning "not yet" and started meaning "never";
+ *  - the connection **reports itself** (`onConnected`) — the screen may not
+ *    claim a room before there is a channel to it;
  *  - the connection is **handed over**, not remade — by the time the hello
  *    lands the channel already holds the host's opening events, and dialling
  *    again from `GameScene` would wait for a second hello that never comes;
@@ -71,12 +76,14 @@ class FakeChannel {
 const rtcCalls: { server: string; room: string; options: Record<string, unknown> }[] = [];
 const relayCalls: { server: string; room: string }[] = [];
 let nextChannel: FakeChannel;
+/** Set by a test that wants the handshake itself to fail. */
+let connectRejection: Error | null = null;
 
 vi.mock('../../../src/game/net/RtcTransport', () => ({
   RtcClientTransport: {
     connect: (server: string, room: string, options = {}) => {
       rtcCalls.push({ server, room, options });
-      return Promise.resolve(nextChannel);
+      return connectRejection ? Promise.reject(connectRejection) : Promise.resolve(nextChannel);
     },
   },
 }));
@@ -114,13 +121,33 @@ beforeEach(() => {
   rtcCalls.length = 0;
   relayCalls.length = 0;
   nextChannel = new FakeChannel();
+  connectRejection = null;
   releaseHeldRoom();
 });
 
 afterEach(() => releaseHeldRoom());
 
 describe('waiting in the lobby for the host to start', () => {
-  it('asks for no deadline on the handshake', async () => {
+  /**
+   * The deadline split — and why the handshake stopped sharing the hello's.
+   *
+   * Both halves were unbounded (`timeoutMs: Infinity`) when this module was
+   * written, and that was right *then*: the host reached the broker only at
+   * Vào trận, so no offer could exist before it pressed, and time passing was
+   * genuinely not a failure. `lobbyHost.ts` then moved the host's connection
+   * to **Tạo phòng**, which moved the meaning of silence with it. An open room
+   * answers a joiner in seconds, so a handshake that never completes is now a
+   * real failure with real causes — a mistyped code, a room nobody opened, a
+   * network that blocks peer-to-peer — and an unbounded wait turns every one
+   * of them into the same silent spinner. That is the bug this deadline
+   * closes: reported as *"vào phòng rồi mà không thấy host, host cũng không
+   * thấy client"*, sat on for ever because nothing was allowed to give up.
+   *
+   * The hello's wait stays unbounded, because that half is still open-ended:
+   * once the channel is up the host may sit in its own lobby for ten minutes,
+   * and the next test is what holds that line.
+   */
+  it('gives the handshake a deadline, and the wait for the host none', async () => {
     const abort = new AbortController();
     const waiting = waitForHostToStart(request(), abort.signal);
 
@@ -131,7 +158,60 @@ describe('waiting in the lobby for the host to start', () => {
     await waiting;
 
     expect(rtcCalls).toHaveLength(1);
-    expect(rtcCalls[0].options.timeoutMs, 'the handshake was given a deadline').toBe(Infinity);
+    const deadline = rtcCalls[0].options.timeoutMs as number;
+    expect(deadline, 'an unbounded handshake cannot report a network that blocks it').toBeLessThan(
+      Infinity
+    );
+    // Long enough for a slow ICE round on a real network, short enough that a
+    // player finds out inside the span of their patience.
+    expect(deadline).toBeGreaterThanOrEqual(10_000);
+    expect(deadline).toBeLessThanOrEqual(45_000);
+  });
+
+  /**
+   * "Đã vào phòng" is a claim about the wire, and the screen used to make it
+   * before there was one — `joining` was set on the press, so the client
+   * announced it had joined a room it had not reached, and went on saying so
+   * while the handshake quietly failed behind it. The host, meanwhile, showed
+   * an empty room. Two screens, both wrong, agreeing with neither reality nor
+   * each other.
+   *
+   * So the connection reports itself. `onConnected` fires at the one moment
+   * the claim becomes true — the channel is open, which is exactly when the
+   * host's own transport emits `joined` and puts this player on its list.
+   */
+  it('reports the connection before it reports anything else', async () => {
+    const abort = new AbortController();
+    const order: string[] = [];
+    const waiting = waitForHostToStart(request(), abort.signal, {
+      onConnected: () => order.push('connected'),
+      onRoster: () => order.push('roster'),
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 5));
+    nextChannel.deliver(
+      JSON.stringify({ t: 'lobby', players: [{ id: 'host', name: 'Ashe', host: true }] })
+    );
+    await new Promise(resolve => setTimeout(resolve, 60));
+    nextChannel.deliver(HELLO);
+    await waiting;
+
+    expect(order, 'the roster arrived before the connection that carried it').toEqual([
+      'connected',
+      'roster',
+    ]);
+  });
+
+  it('does not claim a connection that failed', async () => {
+    connectRejection = new Error('net: WebRTC handshake timed out — is the host still up?');
+    const abort = new AbortController();
+    let connected = false;
+
+    await expect(
+      waitForHostToStart(request(), abort.signal, { onConnected: () => (connected = true) })
+    ).rejects.toThrow(/timed out/);
+
+    expect(connected, 'a failed handshake still told the screen it was in the room').toBe(false);
   });
 
   it('waits for the hello with no deadline at all', async () => {
@@ -161,9 +241,9 @@ describe('waiting in the lobby for the host to start', () => {
   it('reports the room’s player list while it waits, and keeps the match’s frames', async () => {
     const abort = new AbortController();
     const seen: string[][] = [];
-    const waiting = waitForHostToStart(request(), abort.signal, list =>
-      seen.push(list.map(player => player.name))
-    );
+    const waiting = waitForHostToStart(request(), abort.signal, {
+      onRoster: list => seen.push(list.map(player => player.name)),
+    });
     await new Promise(resolve => setTimeout(resolve, 5));
 
     // The host announces itself, then a friend arrives.

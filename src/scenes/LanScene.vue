@@ -53,9 +53,41 @@ const emit = defineEmits<{ close: []; play: [] }>();
 const rooms = ref<LanRoom[]>([]);
 const joinCode = ref('');
 const hostCode = ref<string | null>(null);
-/** The room code this client is sitting in, waiting for its host. */
-const joining = ref<string | null>(null);
+/**
+ * The join in flight — and, the part this used to get wrong, **how far it has
+ * actually got**.
+ *
+ * It was a bare room code set on the press, so the screen said *"Đã vào phòng
+ * ABCDE"* before a single byte had left the machine, and went on saying it
+ * while the handshake failed silently behind. Reported as *"client hiện đã
+ * vào phòng, nhưng không thấy host"* — the screen was not describing a room,
+ * it was describing a button press.
+ *
+ * `phase` is now the difference: `connecting` until `lobbyJoin` reports the
+ * channel open (`onConnected`), `joined` after. Only the second one is
+ * allowed to claim membership, because only then is the host's own list
+ * showing this player too.
+ */
+const joining = ref<{ code: string; phase: 'connecting' | 'joined' } | null>(null);
 const joinError = ref('');
+/** The code a failed join was for, so the error can offer to try it again. */
+const failedCode = ref('');
+/**
+ * Keep this room out of the public listing.
+ *
+ * `GET /rooms` used to group rooms by the host's public IP, so "only my
+ * network sees my room" came free — and stopped working entirely on any
+ * network that leaves through a pool of addresses (nine of them, measured
+ * from one machine on one corporate wifi). One directory serves everybody
+ * now, which finds people reliably and means a stranger can walk in. This is
+ * the deliberate version of what the grouping used to do by accident.
+ *
+ * Read at Tạo phòng and baked into the signaling socket, so it is offered
+ * *before* the room exists rather than as a switch on a live one — the broker
+ * registers a room the moment its host connects, and un-advertising it after
+ * the fact would be a promise this screen cannot keep.
+ */
+const privateRoom = ref(false);
 /**
  * Who is in the room right now — the same list on every screen.
  *
@@ -95,8 +127,11 @@ const stopPolling = (): void => {
 
 const refreshRooms = async (): Promise<void> => {
   // Our own poll advertises our own room (see the file header), and the list
-  // then hides it again: "phòng cùng mạng" means somebody else's.
-  const announce = hostCode.value ? { code: hostCode.value, name: 'Trận LAN' } : undefined;
+  // then hides it again — a listing is other people's rooms. A private room
+  // announces nothing: it is reachable by code alone, which is the whole of
+  // what the toggle promises.
+  const announce =
+    hostCode.value && !privateRoom.value ? { code: hostCode.value, name: 'Trận LAN' } : undefined;
   const listed = await fetchLanRooms(signalUrl(), announce);
   if (listed === null) {
     unreachable.value = true;
@@ -161,15 +196,23 @@ const createRoom = async (): Promise<void> => {
     const { openRoom } = await import('@/game/net/lobbyHost');
     await openRoom(
       { mode: 'host', server: signalUrl(), room: code, transport: transportOf() },
-      list => (players.value = list)
+      list => (players.value = list),
+      { listed: !privateRoom.value }
     );
-  } catch {
+  } catch (error) {
+    console.warn('net: could not open the room', error);
     // A room nobody can reach is not a room. Fall back to the idle state
     // rather than showing a code that will never answer.
     hostCode.value = null;
     players.value = [];
     disarmNet();
     joinError.value = 'Không mở được phòng — chưa kết nối được máy chủ ghép trận.';
+    // The poll already advertised this code (`createRoom` refreshes before
+    // dialling, so the room appears the instant it is on screen). That was a
+    // room that then failed to open, and leaving it advertised offers every
+    // other screen a room nobody can join — the state this catch exists to
+    // undo. One listing without the announce drops it inside ANNOUNCE_STALE_MS.
+    void refreshRooms();
   }
 };
 
@@ -222,6 +265,39 @@ const copyCode = async (): Promise<void> => {
  * `chunks:check` both guard. By the time anyone presses Vào, the menu's
  * warm-up has already fetched that chunk anyway.
  */
+/**
+ * Why the join failed, said in terms of the thing the player can act on.
+ *
+ * One message covered every failure before this — *"Mất kết nối tới máy chủ
+ * ghép trận"* for a broker that was answering perfectly well, because the
+ * regex behind it matched the word "failed" in an error about ICE. Three
+ * different problems with three different fixes were reported as the one
+ * problem the player could do least about.
+ */
+const joinFailureMessage = (error: unknown, room: string): string => {
+  const detail = error instanceof Error ? error.message : '';
+  // Ordered most specific first: several of these strings contain "timed out"
+  // or "closed" and the broadest test would swallow the rest.
+  if (/no route|blocks direct/i.test(detail)) {
+    return 'Vào được phòng nhưng mạng này chặn kết nối trực tiếp giữa hai máy. Thử mạng khác, hoặc phát 4G rồi cho cả hai máy vào chung.';
+  }
+  if (/handshake timed out|timed out waiting/i.test(detail)) {
+    return `Phòng ${room} không trả lời. Kiểm tra lại mã, hoặc chờ chủ phòng bấm Tạo phòng trước.`;
+  }
+  if (/relay connect|relay connection/i.test(detail)) {
+    // The socket never opened. Distinguished from the two below because it is
+    // the one that is usually *not* about this room: a filter or proxy that
+    // passes the listing's plain HTTPS and refuses the WebSocket upgrade
+    // presents exactly here, with a room that looks perfectly joinable in the
+    // list because the listing rides the other protocol.
+    return 'Không mở được kết nối tới máy chủ ghép trận. Mạng này có thể chặn WebSocket.';
+  }
+  if (/signaling closed|peer connection closed/i.test(detail)) {
+    return 'Máy chủ ghép trận ngắt kết nối giữa chừng. Thử lại sau giây lát.';
+  }
+  return 'Không vào được phòng này.';
+};
+
 const joinRoom = async (code: string): Promise<void> => {
   if (!code || joining.value) return;
   const room = code.toUpperCase();
@@ -229,8 +305,9 @@ const joinRoom = async (code: string): Promise<void> => {
 
   const controller = new AbortController();
   joinAbort = controller;
-  joining.value = room;
+  joining.value = { code: room, phase: 'connecting' };
   joinError.value = '';
+  failedCode.value = '';
   players.value = [];
   // Our own room advertisement is not ours any more, and the list underneath
   // is not what this screen is showing.
@@ -241,17 +318,31 @@ const joinRoom = async (code: string): Promise<void> => {
     await waitForHostToStart(
       { mode: 'join', server: signalUrl(), room, transport: transportOf() },
       controller.signal,
-      list => (players.value = list)
+      {
+        // The one moment "đã vào phòng" becomes true. Guarded on the same
+        // controller as everything else, so a cancel racing the handshake
+        // cannot promote a screen the player has already left.
+        onConnected: () => {
+          if (!controller.signal.aborted && joining.value) {
+            joining.value = { code: room, phase: 'joined' };
+          }
+        },
+        onRoster: list => (players.value = list),
+      }
     );
     if (controller.signal.aborted) return;
     emit('play');
   } catch (error) {
     if (controller.signal.aborted) return;
+    // The screen states a cause in the player's terms, which necessarily
+    // throws away the one string that says which cause it actually was. Keep
+    // it where somebody debugging can reach it: four different failures share
+    // one sentence up there, and without this the only way to tell them apart
+    // is to guess.
+    console.warn('net: join failed', error);
     joining.value = null;
-    joinError.value =
-      error instanceof Error && /unreachable|closed|timeout|failed/i.test(error.message)
-        ? 'Mất kết nối tới máy chủ ghép trận.'
-        : 'Không vào được phòng này.';
+    joinError.value = joinFailureMessage(error, room);
+    failedCode.value = room;
     disarmNet();
     startPolling();
   } finally {
@@ -259,11 +350,17 @@ const joinRoom = async (code: string): Promise<void> => {
   }
 };
 
+const retryJoin = (): void => {
+  const code = failedCode.value;
+  if (code) void joinRoom(code);
+};
+
 const cancelJoin = (): void => {
   joinAbort?.abort();
   joinAbort = null;
   joining.value = null;
   joinError.value = '';
+  failedCode.value = '';
   players.value = [];
   disarmNet();
   startPolling();
@@ -300,15 +397,44 @@ const goBack = (): void => {
  * is not told which row is itself, and the list is short enough that it does
  * not need to be).
  */
+/**
+ * …and the row that says what went wrong with it.
+ *
+ * `link` is set only on a peer that is mid-handshake or one whose handshake
+ * died (`game/net/protocol.ts`). It reaches this screen on the host's side
+ * only — a client is shown a roster of people who are, by definition,
+ * connected — and it exists because the alternative was a room that rendered
+ * "somebody cannot reach you" and "nobody has come" as the same empty list.
+ */
 const playerRows = computed(() => {
   let seat = 1;
-  return players.value.map(player => ({
-    id: player.id,
-    isHost: player.host === true,
-    role: player.host ? (hostCode.value ? 'Bạn · chủ phòng' : 'Chủ phòng') : `Người chơi ${++seat}`,
-    name: player.name,
-  }));
+  return players.value.map(player => {
+    const failed = player.link === 'failed';
+    return {
+      id: player.id,
+      isHost: player.host === true,
+      role: player.host
+        ? hostCode.value
+          ? 'Bạn · chủ phòng'
+          : 'Chủ phòng'
+        : `Người chơi ${++seat}`,
+      // A row whose link died shows what happened to it rather than the name
+      // it never got as far as sending.
+      name: failed ? 'Không nối được' : player.name,
+      failed,
+      icon: player.host
+        ? 'fas fa-crown'
+        : failed
+          ? 'fas fa-triangle-exclamation'
+          : player.link === 'connecting'
+            ? 'fas fa-circle-notch fa-spin'
+            : 'fas fa-user',
+    };
+  });
 });
+
+/** Somebody reached the room and could not be reached back — worth explaining. */
+const anyLinkFailed = computed(() => players.value.some(player => player.link === 'failed'));
 
 /** Spaced so a five-letter code is read out one character at a time. */
 const spacedCode = computed(() => (hostCode.value ?? '').split('').join(' '));
@@ -352,10 +478,24 @@ onUnmounted(() => {
          player to abandon a wait they just started. -->
     <div v-if="joining" class="lan-body lan-waiting" id="lan-waiting">
       <i class="fas fa-circle-notch fa-spin lan-waiting-spinner" aria-hidden="true"></i>
+      <!-- Two claims, and only the second one is about a room. Saying "đã vào
+           phòng" during the handshake is what made a failed join look like a
+           successful one for as long as anybody cared to watch. -->
       <p class="lan-waiting-room">
-        Đã vào phòng <b>{{ joining }}</b>
+        <template v-if="joining.phase === 'connecting'">
+          Đang kết nối tới phòng <b>{{ joining.code }}</b>
+        </template>
+        <template v-else>
+          Đã vào phòng <b>{{ joining.code }}</b>
+        </template>
       </p>
-      <p class="lan-waiting-hint">Đang chờ chủ phòng bắt đầu trận…</p>
+      <p class="lan-waiting-hint">
+        {{
+          joining.phase === 'connecting'
+            ? 'Đang bắt tay với chủ phòng…'
+            : 'Đang chờ chủ phòng bắt đầu trận…'
+        }}
+      </p>
 
       <!-- The same list the host is looking at. Empty until the host's first
            broadcast lands, which is a fraction of a second on a LAN and never
@@ -381,7 +521,23 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="lan-body">
-      <p v-if="joinError" class="lan-error" id="lan-error">{{ joinError }}</p>
+      <div v-if="joinError" class="lan-error" id="lan-error">
+        <span>{{ joinError }}</span>
+        <!-- A failed join is very often a transient one — an ICE round that
+             lost a race, a host that pressed Tạo phòng a second too late — and
+             re-typing the code to find out is a chore this screen can spare. -->
+        <button
+          v-if="failedCode"
+          type="button"
+          class="lan-retry"
+          id="lan-retry"
+          @click="retryJoin"
+          @touchend.prevent="retryJoin"
+        >
+          <i class="fas fa-rotate-right" aria-hidden="true"></i>
+          Thử lại {{ failedCode }}
+        </button>
+      </div>
 
       <section class="lan-section">
         <h2 class="lan-section-title">Tạo phòng</h2>
@@ -407,6 +563,14 @@ onUnmounted(() => {
             </span>
           </button>
 
+          <!-- Which of the two kinds of room this is. The choice was made on
+               the previous screen state and cannot be changed without
+               reopening, so this states it rather than offering it. -->
+          <p class="lan-listing-state">
+            <i :class="privateRoom ? 'fas fa-lock' : 'fas fa-globe'" aria-hidden="true"></i>
+            {{ privateRoom ? 'Phòng riêng — chỉ vào bằng mã' : 'Đang hiện trong danh sách phòng' }}
+          </p>
+
           <!-- Who is actually in the room. The host holds the wire open from
                Tạo phòng now (`game/net/lobbyHost.ts`), so this is live: a
                friend appears the moment they press Vào, and disappears if
@@ -415,14 +579,30 @@ onUnmounted(() => {
           <div class="lan-players-block">
             <span class="lan-players-title">Người chơi ({{ playerRows.length }})</span>
             <ul class="lan-players" id="lan-players">
-              <li v-for="player of playerRows" :key="player.id" class="lan-player">
-                <i :class="player.isHost ? 'fas fa-crown' : 'fas fa-user'" aria-hidden="true"></i>
+              <li
+                v-for="player of playerRows"
+                :key="player.id"
+                class="lan-player"
+                :class="{ 'lan-player-failed': player.failed }"
+              >
+                <i :class="player.icon" aria-hidden="true"></i>
                 <span class="lan-player-role">{{ player.role }}</span>
                 <span class="lan-player-name">{{ player.name }}</span>
               </li>
             </ul>
             <p v-if="players.length <= 1" class="lan-hint">
-              Chưa ai vào. Đọc mã trên cho bạn bè, hoặc để họ chọn phòng trong danh sách cùng mạng.
+              {{
+                privateRoom
+                  ? 'Chưa ai vào. Phòng này không hiện trong danh sách — đọc mã trên cho bạn bè.'
+                  : 'Chưa ai vào. Đọc mã trên cho bạn bè, hoặc để họ chọn phòng trong danh sách.'
+              }}
+            </p>
+            <!-- The whole point of tracking the handshake: a room that cannot
+                 say this shows an empty list and lets the host conclude that
+                 nobody tried. -->
+            <p v-if="anyLinkFailed" class="lan-hint lan-hint-warn">
+              Có người vào phòng nhưng hai máy không nối trực tiếp được — mạng này (wifi công ty,
+              wifi khách) thường chặn máy nói chuyện với máy.
             </p>
           </div>
 
@@ -465,8 +645,34 @@ onUnmounted(() => {
             <i class="fas fa-plus" aria-hidden="true"></i>
             Tạo phòng mới
           </button>
+
+          <!-- Offered before the room exists, not as a switch on a live one:
+               the broker registers a room the moment its host connects, so
+               un-advertising it afterwards is a promise this screen could not
+               keep. `@touchend` beside `@click` for the reason every control
+               on this screen has both. -->
+          <button
+            type="button"
+            class="lan-toggle"
+            id="lan-private"
+            role="switch"
+            :aria-checked="privateRoom"
+            @click="privateRoom = !privateRoom"
+            @touchend.prevent="privateRoom = !privateRoom"
+          >
+            <i
+              :class="privateRoom ? 'fas fa-toggle-on' : 'fas fa-toggle-off'"
+              aria-hidden="true"
+            ></i>
+            Phòng riêng
+          </button>
+
           <p class="lan-hint">
-            Máy cùng mạng sẽ thấy phòng ngay, khỏi cần gõ mã. Ở mạng khác thì đọc mã cho bạn bè.
+            {{
+              privateRoom
+                ? 'Phòng sẽ không hiện trong danh sách. Chỉ ai được bạn đọc mã cho mới vào được.'
+                : 'Phòng sẽ hiện trong danh sách bên dưới, người khác vào được không cần gõ mã.'
+            }}
           </p>
         </template>
       </section>
@@ -478,7 +684,7 @@ onUnmounted(() => {
           <p v-if="unreachable" class="lan-empty">Không kết nối được máy chủ ghép trận.</p>
           <p v-else-if="rooms.length === 0" class="lan-empty">
             <i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i>
-            Chưa thấy phòng cùng mạng…
+            Chưa có phòng nào đang mở…
           </p>
           <button
             v-for="room in rooms"
