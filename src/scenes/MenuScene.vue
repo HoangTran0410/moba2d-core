@@ -68,41 +68,7 @@ import {
   retryPackInstall,
 } from './packBanner';
 import { packHealthDismissed, packProblems } from '@/content/packHealth';
-
-/**
- * ## The "you have no roster" nudge
- *
- * Core alone is a complete game — one champion, one map — and that is by
- * design, not a broken state. But a player pressing Chơi on a fresh install
- * has no way to know a roster exists somewhere, and the packs screen is a link
- * they have never had a reason to open. They meet one champion and conclude
- * that is the game.
- *
- * **The test is the champion count, not the installed-pack list.** The first
- * boot *seeds* a default pack URL (`runtimePacks.ts`), so that list is never
- * empty and a nudge keyed on it would never appear for anyone. What the player
- * actually has is what the catalog holds, and `soloContent` is `MenuScene.ts`
- * asking it — out here, because reaching `contentCatalog` from this component
- * would put it in the menu's own chunk.
- *
- * **Dismissed for good, not per session.** A player who chose to play without
- * a pack has answered the question, and asking again every launch is how a
- * notice becomes something people click past without reading. The packs screen
- * stays one press away in the row below.
- */
-// const NUDGE_KEY = 'lol2d:packNudgeSeen:v1';
-
-let isSeenReadNudge = false;
-const readNudgeSeen = (): boolean => {
-  try {
-    return isSeenReadNudge
-    // return localStorage.getItem(NUDGE_KEY) === '1';
-  } catch {
-    // Storage blocked. Showing the nudge once per launch is the friendlier
-    // failure than never showing it at all.
-    return false;
-  }
-};
+import { markPackNudgeSeen, packNudgeSeen } from './packNudge';
 
 /**
  * ## The pack-health notice
@@ -177,6 +143,30 @@ const props = defineProps<{
   soloContent?: boolean;
 }>();
 
+/**
+ * ## The "you have no roster" nudge
+ *
+ * Core alone is a complete game — one champion, one map — and that is by
+ * design, not a broken state. But a player pressing Chơi on a fresh install
+ * has no way to know a roster exists somewhere, and the packs screen is a link
+ * they have never had a reason to open. They meet one champion and conclude
+ * that is the game.
+ *
+ * **The test is the champion count, not the installed-pack list.** The first
+ * boot *seeds* a default pack URL (`runtimePacks.ts`), so that list is never
+ * empty and a nudge keyed on it would never appear for anyone. What the player
+ * actually has is what the catalog holds, and `soloContent` is `MenuScene.ts`
+ * asking it — out here, because reaching `contentCatalog` from this component
+ * would put it in the menu's own chunk.
+ *
+ * **Once per page load, and not persisted.** Answering it settles the question
+ * for this sitting, not for good; a reload asks again. The flag lives in
+ * `packNudge.ts` rather than here because `<script setup>` is the setup
+ * function and `MenuScene` remounts this component on every "Quay lại" — a
+ * `let` at this level would ask again on the second press of Chơi. The packs
+ * screen stays one press away in the row below either way.
+ */
+
 const packNudgeOpen = ref(false);
 
 /**
@@ -186,7 +176,7 @@ const packNudgeOpen = ref(false);
  * that plays is the default-looking one.
  */
 function pressPlay(): void {
-  if (props.soloContent === true && !readNudgeSeen()) {
+  if (props.soloContent === true && !packNudgeSeen()) {
     packNudgeOpen.value = true;
     return;
   }
@@ -195,12 +185,7 @@ function pressPlay(): void {
 
 /** Remember the answer, whichever it was, then act on it. */
 function answerNudge(to: 'packs' | 'play'): void {
-  try {
-    isSeenReadNudge = true;
-    // localStorage.setItem(NUDGE_KEY, '1');
-  } catch {
-    /* blocked storage just means it asks again next launch */
-  }
+  markPackNudgeSeen();
   packNudgeOpen.value = false;
   // Branched rather than `emit(cond ? a : b)`: `defineEmits` types each event
   // name as its own overload, so a union of names matches none of them.

@@ -52,7 +52,7 @@ export const KITS_KEY = 'lol2d:savedKits:v1';
  * where a badge overlapped its neighbour's hotkey was invisible at 1x.
  */
 /**
- * Chơi, then Bắt Đầu — the two presses a match now takes from the menu.
+ * Chơi, then Bắt Đầu — the presses a match now takes from the menu.
  *
  * It used to be one: `#play-btn` went straight to `GameScene`, and every
  * driver here clicked it. Chơi opens the match-config panel now (the menu's
@@ -69,7 +69,23 @@ export const KITS_KEY = 'lol2d:savedKits:v1';
 export const startMatch = async (page, { timeout = 30_000 } = {}) => {
   await page.waitForSelector('#play-btn', { timeout });
   await page.click('#play-btn');
-  await page.waitForSelector('#pregame-start-btn', { timeout });
+  // Sometimes three. A player whose catalog holds only core's own champion
+  // meets the no-roster nudge here *instead of* the setup panel
+  // (`MenuScene.vue`'s `pressPlay`), and a checkout of this repository alone
+  // ships exactly that catalog — so the two-press version waited out its
+  // timeout on the one configuration CI actually runs, `e2e:core-alone`. Wait
+  // on both and answer whichever came: "Chơi luôn" is the nudge's own way on
+  // to the panel, so a script that was not asking about the nudge still ends
+  // up where it meant to be.
+  //
+  // `drive-menu-flow.mjs` keeps driving the nudge by hand and does not call
+  // this, because there the nudge *is* the subject — a helper that clicks it
+  // away cannot also be the thing that proves it appears.
+  await page.waitForSelector('#pregame-start-btn, #pack-nudge-play', { timeout });
+  if (await page.$('#pack-nudge-play')) {
+    await page.click('#pack-nudge-play');
+    await page.waitForSelector('#pregame-start-btn', { timeout });
+  }
   await page.click('#pregame-start-btn');
 };
 
