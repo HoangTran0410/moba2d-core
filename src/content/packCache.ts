@@ -37,7 +37,7 @@ import { isValidPackBase } from '@/seams/packRoute';
  * program (`tsconfig.sw.json`, WebWorker lib) and cannot import from here;
  * `tests/content/packCache.test.ts` asserts the two agree.
  */
-export const PACK_CACHE_NAME = 'lol2d-packs-v1';
+export const PACK_CACHE_NAME = 'moba2d-packs-v1';
 
 /** How many files are fetched at once. */
 export const PREFETCH_CONCURRENCY = 4;

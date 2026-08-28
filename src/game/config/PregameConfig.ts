@@ -27,7 +27,7 @@
  *
  * ## Schema versioning
  *
- * The storage key stays `lol2d:pregameConfig:v1` even though this revision
+ * The storage key stays `moba2d:pregameConfig:v1` even though this revision
  * adds fields (`player.mode`, `player.customSlots`, `ai.bots`,
  * `ai.botBehaviours`, `ai.botTeams`, `playerTeam`) that v1 never wrote. Bumping the key was
  * the other option and was rejected: a player who
@@ -437,7 +437,7 @@ export const DEBUG_LAYER_KEYS = [
   'fps',
 ] as const satisfies readonly (keyof DebugLayerConfig)[];
 
-const STORAGE_KEY = 'lol2d:pregameConfig:v1';
+const STORAGE_KEY = 'moba2d:pregameConfig:v1';
 
 const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
   const n = typeof value === 'number' ? Math.round(value) : NaN;

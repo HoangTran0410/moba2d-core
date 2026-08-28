@@ -500,7 +500,7 @@ describe('TouchControls — tri-state mode preference', () => {
 
     setTouchModePreference('pointer');
 
-    expect(setItem).toHaveBeenCalledWith('lol2d.touchControls', 'pointer');
+    expect(setItem).toHaveBeenCalledWith('moba2d.touchControls', 'pointer');
   });
 
   it("'auto' still falls through to capability detection", async () => {
@@ -556,10 +556,10 @@ describe('TouchControls — tri-state mode preference', () => {
       await import('../../../src/game/input/TouchControls');
 
     rememberTouchControlsPreference(true);
-    expect(setItem).toHaveBeenCalledWith('lol2d.touchControls', 'touch');
+    expect(setItem).toHaveBeenCalledWith('moba2d.touchControls', 'touch');
 
     rememberTouchControlsPreference(false);
-    expect(setItem).toHaveBeenCalledWith('lol2d.touchControls', 'pointer');
+    expect(setItem).toHaveBeenCalledWith('moba2d.touchControls', 'pointer');
   });
 });
 
@@ -587,7 +587,7 @@ describe('TouchControls — tap target preference', () => {
 
     expect(touchTargetPriorityPreference()).toBe('lowest-health');
     setTouchTargetPriorityPreference('lowest-health');
-    expect(setItem).toHaveBeenCalledWith('lol2d.touchTargetPriority', 'lowest-health');
+    expect(setItem).toHaveBeenCalledWith('moba2d.touchTargetPriority', 'lowest-health');
   });
 });
 

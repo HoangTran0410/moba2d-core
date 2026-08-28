@@ -76,7 +76,7 @@
  * alone and risking the instability that setting exists to avoid.
  *
  *   node tests/e2e/verify-map-picker.mjs
- *   LOL2D_CHROME_CHANNEL= node tests/e2e/verify-map-picker.mjs   # bundled Chromium
+ *   MOBA2D_CHROME_CHANNEL= node tests/e2e/verify-map-picker.mjs   # bundled Chromium
  */
 import { CFG_KEY, startHarness, startMatch } from './harness.mjs';
 
@@ -128,7 +128,7 @@ const playDirectly = async () => {
  */
 const worldFacts = () =>
   page.evaluate(() => {
-    const game = window.__lol2d?.scene?.oScene?.game;
+    const game = window.__moba2d?.scene?.oScene?.game;
     if (!game) return null;
     return {
       mapId: game.activeMapId,
@@ -139,7 +139,7 @@ const worldFacts = () =>
   });
 
 const waitForMatch = () =>
-  page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
 
@@ -159,7 +159,7 @@ const waitForMatch = () =>
  */
 const forcesAWaveAndOwnsAFountain = () =>
   page.evaluate(() => {
-    const game = window.__lol2d?.scene?.oScene?.game;
+    const game = window.__moba2d?.scene?.oScene?.game;
     const spawner = game?.minionSpawner;
     if (!game || !spawner) return null;
     spawner.queueWave();

@@ -519,7 +519,7 @@ The chunk numbers matter more than usual here: Task 4 changed how every one of 2
 
 - [ ] **Step 2: Every e2e script, each with its numeric summary**
 
-`e2e:pack`, `e2e:map-picker`, `e2e:bots`, `e2e:pwa`, `e2e:render`, `e2e:champions`, `e2e:attacks`, `e2e:hud`, and the touch drivers. Two do not use the shared harness and both must still pass: `drive-game.mjs` spawns its own Vite and honours `LOL2D_URL`/`LOL2D_PORT`; `verify-pwa-offline.mjs` serves the built `dist/` with the network cut.
+`e2e:pack`, `e2e:map-picker`, `e2e:bots`, `e2e:pwa`, `e2e:render`, `e2e:champions`, `e2e:attacks`, `e2e:hud`, and the touch drivers. Two do not use the shared harness and both must still pass: `drive-game.mjs` spawns its own Vite and honours `MOBA2D_URL`/`MOBA2D_PORT`; `verify-pwa-offline.mjs` serves the built `dist/` with the network cut.
 
 Known flakes, not worth chasing: `drive-new-spells.mjs` (~1 in 4, `oScene` undefined during scene boot) and `drive-touch-controls.mjs` (rare freeze). A stray dev server on port 5173 makes both far likelier — check for one first.
 

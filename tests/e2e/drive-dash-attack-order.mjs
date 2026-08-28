@@ -5,7 +5,7 @@
  *
  * Boots its own Vite dev server on a free port, opens the game in system
  * Chrome through Playwright and reaches the live scene through the DEV-only
- * `window.__lol2d` handle set in src/main.ts.
+ * `window.__moba2d` handle set in src/main.ts.
  *
  * `Dash.onUpdate()` steps `targetUnit.position` directly
  * (`VectorUtils.moveVectorToVector`) — it never reads or writes
@@ -51,7 +51,7 @@
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-dash-attack-order';
+const OUT = process.argv[2] ?? '/tmp/moba2d-dash-attack-order';
 
 const server = await createServer({ server: { port: 0, strictPort: false } });
 await server.listen();
@@ -76,7 +76,7 @@ try {
   // import the harness helper that does both (`e2eHarness.test.ts`).
   await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -95,7 +95,7 @@ try {
     );
     const VeraE = makeVeraE(api);
     const { getChampionPresetRandom } = await import('/src/game/preset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
 
     game.director.applyLoadout(game.player, {
       mode: 'champion',
@@ -197,7 +197,7 @@ try {
   const run = async (label, orderAttack, stunAtMs = null) =>
     page.evaluate(
       async ({ label, orderAttack, stunAtMs }) => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const { player, dummy, home, landing, VeraE } = window.__probe;
 
         player.basicAttack.clear();

@@ -145,26 +145,26 @@ await guard(async () => {
 
   // -------------------------------------------------------- the host starts
   await page.click('#lan-start-host');
-  await page.waitForFunction(() => window.__lol2dNet, null, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__moba2dNet, null, { timeout: 45_000 });
 
   // The client leaves the lobby on its own — nobody pressed anything on it.
-  await client.waitForFunction(() => window.__lol2dNet, null, { timeout: 45_000 });
+  await client.waitForFunction(() => window.__moba2dNet, null, { timeout: 45_000 });
   check('the waiting client is pulled into the match when the host starts', true);
 
   // And the handover kept it: `joined` is the only thing that gives a client a
   // champion, and those events were delivered to the lobby long before
   // `HostSession` existed.
   const clientsAfterStart = await page.evaluate(
-    () => window.__lol2dNet.debugStats && document.querySelectorAll('canvas').length > 0
+    () => window.__moba2dNet.debugStats && document.querySelectorAll('canvas').length > 0
   );
   check('the host booted its session', !!clientsAfterStart);
   await page.waitForFunction(
-    () => Object.keys(window.__lol2dNet.debugPositions()).length > 0,
+    () => Object.keys(window.__moba2dNet.debugPositions()).length > 0,
     null,
     { timeout: 20_000 }
   );
   const championsInMatch = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length
+    () => window.__moba2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length
   );
   report.hostChampions = championsInMatch;
   check(
@@ -182,16 +182,16 @@ await guard(async () => {
   await openLobby(late);
   await late.fill('.lan-join-code input', code);
   await late.click('#lan-join');
-  await late.waitForFunction(() => window.__lol2dNet, null, { timeout: 45_000 });
+  await late.waitForFunction(() => window.__moba2dNet, null, { timeout: 45_000 });
   check('a player joining after the start goes straight into the match', true);
 
   await page.waitForFunction(
-    () => window.__lol2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length >= 3,
+    () => window.__moba2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length >= 3,
     null,
     { timeout: 20_000 }
   );
   report.hostChampionsAfterLate = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length
+    () => window.__moba2d.scene.oScene.game.objectManager.objects.filter(o => o.spells).length
   );
   check(
     'and the host gave the latecomer a champion too',

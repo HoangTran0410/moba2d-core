@@ -26,7 +26,7 @@ const settle = ms => page.waitForTimeout(ms);
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await settle(600);
@@ -40,7 +40,7 @@ await guard(async () => {
   // 2. Break it. The scene's own draw is inside `SceneManager.draw()`, which is
   //    what the guard wraps — the same place a real crash would come from.
   await page.evaluate(() => {
-    const scene = window.__lol2d.scene.oScene;
+    const scene = window.__moba2d.scene.oScene;
     window.__realDraw = scene.draw.bind(scene);
     scene.draw = () => {
       throw new Error('e2e-forced-draw-crash');
@@ -77,7 +77,7 @@ await guard(async () => {
   // 4. Put it back: a recovered draw goes straight on drawing, because the
   //    chain was never broken in the first place.
   await page.evaluate(() => {
-    window.__lol2d.scene.oScene.draw = window.__realDraw;
+    window.__moba2d.scene.oScene.draw = window.__realDraw;
   });
   await settle(500);
   const recovered = await frames();

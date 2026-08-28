@@ -3,7 +3,7 @@
 
 # Map editor
 
-Công cụ vẽ bản đồ cho **moba2d** (và vẫn export được cho LOL2D đời trước).
+Công cụ vẽ bản đồ cho **moba2d** (và vẫn export được cho MOBA2D đời trước).
 
 Mô hình dữ liệu bám đúng `MapGeometry` trong
 `moba2d-core/src/content/ContentPack.ts`: địa hình, slot và lane.
@@ -209,7 +209,7 @@ cuối cùng còn kịp sửa.
   `MapGeometry` dạng JSON, module `<tên>Geometry.ts`, và module
   `<tên>.ts` (`MapDefinition`) trỏ sang geometry bằng dynamic import. Cả hai
   file `.ts` dán thẳng vào pack được, đã kiểm bằng `tsc` của moba2d-core.
-- **Export cho LOL2D (bản cũ)** — vẫn giữ, xuất
+- **Export cho MOBA2D (bản cũ)** — vẫn giữ, xuất
   `{wall, brush, water, turret1, turret2}` như trước.
 - **Nhập JSON** (`Ctrl+I`) — dán thẳng vào ô, hoặc chọn file. Xem trước
   ngay số polygon từng loại trước khi nhập, và chọn *mở thành map mới* hay
@@ -220,7 +220,7 @@ cuối cùng còn kịp sửa.
   |---|---|
   | `MapGeometry` moba2d | `{terrain:{wall:[[{x,y}…]]}, slots:{…}, lanes:[…]}` |
   | file "Lưu file" | `{name, mapSize, meta, data:[…]}` |
-  | export LOL2D cũ | `{"wall":[[[x,y]…]], "turret1":[[x,y]]}` |
+  | export MOBA2D cũ | `{"wall":[[[x,y]…]], "turret1":[[x,y]]}` |
   | "Export raw" | `{data:[…]}` |
   | mảng terrain trần | `[{type, position, polygon}]` |
   | bản Firebase cũ | `{data:{key:{position:"[x,y]"}}}` |

@@ -18,13 +18,13 @@
 
 ## Global Constraints
 
-- **Never merge this branch into `main` or `dev`.** CI deploys on push to either. The branch is `content-pack-batch-6`, worktree `/Users/hoangtran/Desktop/Github/LOL2D-batch6`. Merging is the author's decision and is gated on the deploy question in Task 11.
+- **Never merge this branch into `main` or `dev`.** CI deploys on push to either. The branch is `content-pack-batch-6`, worktree `/Users/hoangtran/Desktop/Github/MOBA2D-batch6`. Merging is the author's decision and is gated on the deploy question in Task 11.
 - **Never delete `packs/riot/`, `tests/packs/riot/`, `docs/abilities/` or any asset.** Copy, verify byte-for-byte, commit in the destination, and only then remove from core through `git rm`. Task 9 states the exact sequence. `rm -rf` on any of those paths is a stop-and-ask.
 - **Commit with explicit paths.** Never `git add -A`, never `git add .`, never a bare `git commit`. Concurrent agents share this worktree's parent checkout.
 - **Never run `prettier --write` across a directory.** Several files predate the config and fail `--check` on `main`; reformatting them as a side effect buries the real diff. Format only files you wrote, by naming them.
 - **Package names, exactly:** core is `@moba2d/core`, the riot pack is `@moba2d/content-riot`, the reference pack is `@moba2d/content-reference`. Bins are `moba2d-`prefixed.
 - **Nothing is published to any npm registry.** The scaffold is a bin on core, invoked through `npx`. `npm create moba2d-pack` is a later, optional alias and is not in scope.
-- **The player-facing name of the game does not change.** `lol2d:` localStorage prefixes, `window.__lol2d`, the PWA manifest name, the `<title>` and every string of in-game copy stay exactly as they are. Renaming the package is not renaming the game.
+- **The player-facing name of the game does not change.** `moba2d:` localStorage prefixes, `window.__moba2d`, the PWA manifest name, the `<title>` and every string of in-game copy stay exactly as they are. Renaming the package is not renaming the game.
 - **The pack's test count may not fall.** Measured on `dbb8b56`: `npx vitest run tests/packs/riot` → **69 files, 566 tests, all passing**. That number is the only evidence that no test quietly stopped running. A task that changes it must say why, in its report, with the new number.
 - **Every widening of core's published surface is a deliberate act.** `tests/content/publicSurface.test.ts` pins `exports` and `bin` exactly; adding a subpath means editing that test in the same commit, and the test's doc comment says what the new entry is for.
 - **p5 runs in global mode.** `map`, `text`, `fill`, `color`, `pop`, `random`, `line`, `point`, `scale`, `rotate`, `image` are globals; a local of the same name shadows one and `tsc` cannot see it. Name locals for what they mean.
@@ -1170,7 +1170,7 @@ Compare the counts, accounting for the root-level files added in Step 1. Record 
 
 - [ ] **Step 3: Make the pack repo self-sufficient**
 
-- `package.json`: `"@moba2d/core"` moves from `"*"` to the git dependency form — `"github:HoangTran0410/LOL2D#content-pack-batch-6"` until core's work lands on a stable branch. The author's decision of 2026-08-23 is that the pack repository is **public to begin with**, so this is a plain public git dependency with no token anywhere; add `vitest`, `typescript`, `vite`, `@types/p5`, and the `wiki:*`/`ability:*`/`names:*`/`spell:new` scripts that came with `scripts/wiki/` and `new-spell.mjs`. Add `"verify": "npm run assets:check && npm run catalog:check && npm run ability:check && npm run typecheck && npm run check-seams && npm run check-seams:monsters && npm test"`.
+- `package.json`: `"@moba2d/core"` moves from `"*"` to the git dependency form — `"github:HoangTran0410/MOBA2D#content-pack-batch-6"` until core's work lands on a stable branch. The author's decision of 2026-08-23 is that the pack repository is **public to begin with**, so this is a plain public git dependency with no token anywhere; add `vitest`, `typescript`, `vite`, `@types/p5`, and the `wiki:*`/`ability:*`/`names:*`/`spell:new` scripts that came with `scripts/wiki/` and `new-spell.mjs`. Add `"verify": "npm run assets:check && npm run catalog:check && npm run ability:check && npm run typecheck && npm run check-seams && npm run check-seams:monsters && npm test"`.
 - `README.md`: what this repository is, that it needs `@moba2d/core`, how to install it, and how to run `verify`.
 - `.gitignore`: `node_modules`, `generated` if generated files are not committed — check whether `packs/riot/generated/` is committed in core today and keep the same answer.
 - `.github/workflows/`: a workflow running `npm run verify`. Per spec §6, each repository gates its own half: core's CI runs `verify` (core alone), the pack's runs its own. Both repositories are public, so neither workflow needs a secret.
@@ -1194,7 +1194,7 @@ git push -u origin main
 - [ ] **Step 5: Remove from core**
 
 ```bash
-cd /Users/hoangtran/Desktop/Github/LOL2D-batch6
+cd /Users/hoangtran/Desktop/Github/MOBA2D-batch6
 git rm -r --quiet packs/riot docs/abilities scripts/wiki
 # `new-spell.mjs` is deleted rather than copied — `moba2d-pack-add spell` replaced it in Task 8.
 git rm --quiet assets/source-manifest.json scripts/new-spell.mjs \
@@ -1304,7 +1304,7 @@ Do not delete the trap list. Every entry in "Traps that have cost real time" was
 
 `docs/superpowers/reports/2026-08-23-pack-sdk-and-repo-split.md`, in the shape of batch 5's own handover section. It must carry, plainly:
 
-1. **The deploy question, answered — and the condition under which it reopens.** Spec §6 left this open because it assumed a private pack repository, which core's CI could not fetch without a token. The author decided on 2026-08-23 that the pack repository is **public to begin with** ("để pack trong public repo test trước"), and `HoangTran0410/LOL2D` is itself already public and already carries every one of these assets — so the split is a rearrangement of what is already published, not new exposure, and the production build keeps its Riot content through an ordinary public git dependency with no secret anywhere.
+1. **The deploy question, answered — and the condition under which it reopens.** Spec §6 left this open because it assumed a private pack repository, which core's CI could not fetch without a token. The author decided on 2026-08-23 that the pack repository is **public to begin with** ("để pack trong public repo test trước"), and `HoangTran0410/MOBA2D` is itself already public and already carries every one of these assets — so the split is a rearrangement of what is already published, not new exposure, and the production build keeps its Riot content through an ordinary public git dependency with no secret anywhere.
 
    **It reopens the day the pack repository goes private.** At that point core's CI stops being able to resolve `github:…/moba2d-content-riot`, and a production build from `main` silently ships core alone — one champion, four abilities, one map — with a green pipeline, because nothing in `verify` knows the pack was supposed to be there. Whoever flips that switch must, in the same change, either give the build a token or add a check that fails when the expected pack is missing from a production build. Write that down here; it is the kind of thing that is obvious for a week.
 2. **The push commands from Task 10 Step 4**, ready to run once the private repository exists.
@@ -1328,4 +1328,4 @@ git commit -m "docs: how to write a pack, and what the split still owes"
 - **It does not push the pack repository anywhere.** The remote is private and the author's to create.
 - **It does not rewrite git history.** Deferred by decision; recorded in the handover.
 - **It does not expand the reference pack.** Named as a consequence, not fixed here.
-- **It does not rename the game.** `lol2d:` prefixes, `window.__lol2d`, the manifest name and the title are untouched, in every task.
+- **It does not rename the game.** `moba2d:` prefixes, `window.__moba2d`, the manifest name and the title are untouched, in every task.

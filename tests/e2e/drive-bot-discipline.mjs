@@ -30,12 +30,12 @@
  * something looks (CLAUDE.md).
  *
  *   node tests/e2e/drive-bot-discipline.mjs
- *   LOL2D_CHROME_CHANNEL= node tests/e2e/drive-bot-discipline.mjs   # bundled Chromium
+ *   MOBA2D_CHROME_CHANNEL= node tests/e2e/drive-bot-discipline.mjs   # bundled Chromium
  */
 import { startHarness, startMatch } from './harness.mjs';
 
 /** How long the free-running half watches the match, in wall-clock ms. */
-const OBSERVE_MS = Number(process.env.LOL2D_OBSERVE_MS ?? 60_000);
+const OBSERVE_MS = Number(process.env.MOBA2D_OBSERVE_MS ?? 60_000);
 /** How long a bot planted under a turret is given to walk back out. */
 const ESCAPE_MS = 6_000;
 /** How long a bot seeded on the keep-out ring is watched for pacing. */
@@ -97,14 +97,14 @@ const { url, page, report, check, guard, errors } = await startHarness();
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_000);
 
   // ---------------------------------------------------------------- probes
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const probe = {
       samples: 0,
       botSamples: 0,
@@ -276,7 +276,7 @@ await guard(async () => {
 
   // --------------------------------------- 1. a bot planted under a turret leaves
   const planted = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const bot = window.__bots().find(b => !b.isDead);
     if (!bot) return null;
     const turret = window.__outerEnemyTurret(bot);
@@ -310,7 +310,7 @@ await guard(async () => {
     await page.waitForTimeout(ESCAPE_MS);
     const escaped = await page.evaluate(
       ({ id, from }) => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const bot = window.__bots().find(b => b.id === id);
         if (!bot) return null;
         let nearest = Infinity;
@@ -357,7 +357,7 @@ await guard(async () => {
   // ------------------------- 1b. a bot seeded on the ring stays on the right side
   const seeded = await page.evaluate(
     ({ keepOut, avoid, reseedMs }) => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const bots = window.__bots().filter(b => !b.isDead);
       // Not the one probe 1 planted, if there is another: that bot is still
       // walking its way out of a ring and its trace would be that escape.

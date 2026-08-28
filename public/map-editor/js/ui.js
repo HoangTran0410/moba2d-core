@@ -915,7 +915,7 @@ const UI = (() => {
 
   function syncMapName() {
     $("#brand-name").textContent = E.mapName || "Map";
-    document.title = (E.mapName ? E.mapName + " — " : "") + "LOL2D Map Editor";
+    document.title = (E.mapName ? E.mapName + " — " : "") + "MOBA2D Map Editor";
     if (R.mapName && document.activeElement !== R.mapName) R.mapName.value = E.mapName || "";
   }
 
@@ -1188,7 +1188,7 @@ const UI = (() => {
       build: (body, foot, close) => {
         body.appendChild(el("p", { class: "muted" }, `Dán JSON vào ô dưới hoặc chọn một file <code>.json</code>.
           Nhận <code>MapGeometry</code> của moba2d, file “Lưu file” của editor,
-          export LOL2D đời trước (<code>{"wall":…}</code>), “Export raw”, mảng
+          export MOBA2D đời trước (<code>{"wall":…}</code>), “Export raw”, mảng
           terrain trần và cả file từ bản Firebase ngày xưa.`));
 
         const pick = el("button", { class: "btn", style: "margin:8px 0 10px" },
@@ -1233,7 +1233,7 @@ const UI = (() => {
         let doc = null;
         const FORMATS = {
           geometry: "MapGeometry của moba2d",
-          game: "dữ liệu export LOL2D đời trước",
+          game: "dữ liệu export MOBA2D đời trước",
           editor: "file map của editor",
           array: "mảng terrain trần",
         };

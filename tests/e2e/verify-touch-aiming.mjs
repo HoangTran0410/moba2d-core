@@ -13,7 +13,7 @@
  */
 import { PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-touch-aiming';
+const OUT = process.argv[2] ?? '/tmp/moba2d-touch-aiming';
 
 const { url, page, errors, report, check, touchStart, touchMove, touchEnd, guard } =
   await startHarness({
@@ -29,7 +29,7 @@ const settle = (ms = 120) => page.waitForTimeout(ms);
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.touchControls, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.touchControls, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -43,7 +43,7 @@ await guard(async () => {
     const { buildContentApi } = await import('/src/content/ContentApi.ts');
     const api = buildContentApi();
     const AllSpells = await import('/packs/riot/spells/index.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const mapSize = game.mapSize;
     const walls = game.terrainMap.obstacles.filter(o => o.type === 'wall');
@@ -151,7 +151,7 @@ await guard(async () => {
   await page.waitForTimeout(500);
 
   const layout = await page.evaluate(() => {
-    const l = window.__lol2d.scene.oScene.game.touchControls.currentLayout;
+    const l = window.__moba2d.scene.oScene.game.touchControls.currentLayout;
     return {
       dragToRange: l.dragToRange,
       buttons: l.buttons.map(b => ({ slot: b.slot, x: b.x, y: b.y })),
@@ -163,7 +163,7 @@ await guard(async () => {
 
   const resetSlot = slot =>
     page.evaluate(s => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const spell = game.player.spells[s];
       spell.currentCooldown = 0;
       spell.state = 'READY';
@@ -186,7 +186,7 @@ await guard(async () => {
   await touchMove([{ x: slotQ.x, y: slotQ.y - shortDrag }]); // due north, short
   await settle(160);
   report.zedShortAim = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const gesture = game.touchControls.gestureFor(1);
     const player = game.player;
     return gesture?.aim
@@ -203,7 +203,7 @@ await guard(async () => {
   await touchEnd();
   await settle(250);
   report.zedShortCast = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const clone = game.player.spells[1].zedWClone;
     return clone
@@ -242,7 +242,7 @@ await guard(async () => {
   await touchMove([{ x: slotQ.x, y: slotQ.y - longDrag }]);
   await settle(160);
   report.zedLongAim = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const gesture = game.touchControls.gestureFor(1);
     const player = game.player;
     return gesture?.aim
@@ -260,7 +260,7 @@ await guard(async () => {
   await touchEnd();
   await settle(250);
   report.zedLongCast = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const clone = game.player.spells[1].zedWClone;
     return clone
@@ -311,7 +311,7 @@ await guard(async () => {
   await touchMove([{ x: slotW.x + toLeft.x, y: slotW.y + toLeft.y }]);
   await settle(160);
   report.unitAimLeft = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const gesture = game.touchControls.gestureFor(2);
     const left = game.objectManager.objects.find(o => o.teamId === 'dummy-team');
     return { targetIsLeft: gesture?.aim?.target === left };
@@ -323,7 +323,7 @@ await guard(async () => {
   await touchMove([{ x: slotW.x + toRight.x, y: slotW.y + toRight.y }]);
   await settle(160);
   report.unitAimRight = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const gesture = game.touchControls.gestureFor(2);
     const right = game.objectManager.objects.find(o => o.teamId === 'dummy-team-2');
     return { targetIsRight: gesture?.aim?.target === right };
@@ -340,8 +340,8 @@ await guard(async () => {
     .catch(() => {});
 
   report.unitCast = await page.evaluate(() => {
-    const context = window.__lol2d.scene.oScene.game.player.spells[2].castContext;
-    const right = window.__lol2d.scene.oScene.game.objectManager.objects.find(
+    const context = window.__moba2d.scene.oScene.game.player.spells[2].castContext;
+    const right = window.__moba2d.scene.oScene.game.objectManager.objects.find(
       o => o.teamId === 'dummy-team-2'
     );
     return { targetWasRight: context?.target === right, spawned: window.__spawned.length };
@@ -372,7 +372,7 @@ await guard(async () => {
   await touchMove([{ x: slotE.x - tinyDrag, y: slotE.y }]);
   await settle(160);
   report.directionAimDebug = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const gesture = game.touchControls.gestureFor(3);
     const spell = game.player.spells[3];
     return {
@@ -393,7 +393,7 @@ await guard(async () => {
   await touchEnd();
   await settle(250);
   report.directionPostEnd = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[3];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[3];
     return {
       state: spell.state,
       cooldown: spell.currentCooldown,
@@ -422,7 +422,7 @@ await guard(async () => {
   // --------------------------------------------------- 5. telegraph draw cost
 
   report.drawCost = await page.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const summarise = values => {
       if (!values.length) return null;
       const sorted = [...values].sort((a, b) => a - b);

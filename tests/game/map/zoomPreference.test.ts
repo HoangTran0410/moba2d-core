@@ -6,8 +6,8 @@ import {
 
 const withEnv = (search: string, stored: string | null, touchStored: string | null = null) => {
   const store = new Map<string, string>();
-  if (stored !== null) store.set('lol2d.zoomFactor', stored);
-  if (touchStored !== null) store.set('lol2d.zoomFactor.touch', touchStored);
+  if (stored !== null) store.set('moba2d.zoomFactor', stored);
+  if (touchStored !== null) store.set('moba2d.zoomFactor.touch', touchStored);
   vi.stubGlobal('window', {
     location: { search },
     localStorage: {
@@ -55,7 +55,7 @@ describe('zoomFactorPreference', () => {
   it('round-trips through storage', () => {
     const store = withEnv('', null);
     setZoomFactorPreference(1.2);
-    expect(store.get('lol2d.zoomFactor')).toBe('1.2');
+    expect(store.get('moba2d.zoomFactor')).toBe('1.2');
     expect(zoomFactorPreference()).toBeCloseTo(1.2, 5);
   });
 
@@ -70,8 +70,8 @@ describe('zoomFactorPreference', () => {
 
     setZoomFactorPreference(1.3, true);
 
-    expect(store.get('lol2d.zoomFactor.touch')).toBe('1.3');
-    expect(store.get('lol2d.zoomFactor')).toBe('0.8');
+    expect(store.get('moba2d.zoomFactor.touch')).toBe('1.3');
+    expect(store.get('moba2d.zoomFactor')).toBe('0.8');
     expect(zoomFactorPreference(true)).toBeCloseTo(1.3, 5);
   });
 

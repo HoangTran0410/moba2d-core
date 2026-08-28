@@ -54,7 +54,7 @@
  * for the same shape used the same way.
  *
  *   node tests/e2e/verify-pack-champion.mjs
- *   LOL2D_CHROME_CHANNEL= node tests/e2e/verify-pack-champion.mjs   # bundled Chromium
+ *   MOBA2D_CHROME_CHANNEL= node tests/e2e/verify-pack-champion.mjs   # bundled Chromium
  */
 import { CFG_KEY, startHarness } from './harness.mjs';
 
@@ -127,14 +127,14 @@ await guard(async () => {
   );
 
   await page.click('#pregame-start-btn'); // Bắt Đầu
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(500);
 
   // -------------------------------------------- 2b. the live player champion
   const player = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       name: game.player?.name ?? null,
       spellNames: (game.player?.spells ?? []).map(s => s?.name ?? null),
@@ -158,7 +158,7 @@ await guard(async () => {
 
   // ------------------------------------------------- 4. each spell, cast
   const casts = await page.evaluate(expectedNames => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const subject = game.player;
     const results = [];
     for (let slot = 1; slot <= 4; slot++) {
@@ -275,13 +275,13 @@ await guard(async () => {
   );
 
   await page.click('#pregame-start-btn'); // Bắt Đầu
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(500);
 
   const customPlayer = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return { spellNames: (game.player?.spells ?? []).map(s => s?.name ?? null) };
   });
   report.customPlayer = customPlayer;

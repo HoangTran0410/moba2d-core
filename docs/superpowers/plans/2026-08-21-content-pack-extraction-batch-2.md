@@ -12,7 +12,7 @@ Three contract gaps that only a real pack exposes get closed on the way: spells 
 
 **Spec:** `docs/superpowers/specs/2026-08-20-content-pack-extraction-design.md` — this batch is a re-scoping of spec step 6's *consumption* half, taken before steps 4-5, for the reason in the Rulings section below.
 
-**Branch:** `content-pack-batch-2`, worktree `/Users/hoangtran/Desktop/Github/LOL2D-content-batch2`, based on `content-pack-batch-1` @ `0c294ba`.
+**Branch:** `content-pack-batch-2`, worktree `/Users/hoangtran/Desktop/Github/MOBA2D-content-batch2`, based on `content-pack-batch-1` @ `0c294ba`.
 
 ## Global Constraints
 
@@ -1418,7 +1418,7 @@ It must end in a **numeric summary and no screenshots**. `tests/e2e/drive-bot-di
 
 1. The pregame screen offers Vera (find her by name in the champion picker).
 2. Picking her and pressing Chơi starts a match whose player champion is named Vera.
-3. Her four spells are live: read `window.__lol2d.scene.oScene.game.player.spells` and check the four slots hold instances whose `name` matches the pack's.
+3. Her four spells are live: read `window.__moba2d.scene.oScene.game.player.spells` and check the four slots hold instances whose `name` matches the pack's.
 4. Casting each of Q/W/E/R produces an effect — count `game.objectManager.objects` before and after each cast, or read each spell's cooldown going from 0 to non-zero. Prefer the cooldown check: it is what "the cast happened" actually means and it does not depend on a spell that spawns an object.
 5. No page errors.
 

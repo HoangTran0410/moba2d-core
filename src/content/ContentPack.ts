@@ -119,7 +119,7 @@ export type SpellSource = SpellClass | SpellLoader;
  * function as a loader; wrap a `function`-expression loader in `lazy()` and it
  * is read correctly.
  */
-const SPELL_LOADER_MARK: unique symbol = Symbol('lol2d.content.spellLoader');
+const SPELL_LOADER_MARK: unique symbol = Symbol('moba2d.content.spellLoader');
 
 export function lazy(load: SpellLoader): SpellSource {
   return Object.assign(load, { [SPELL_LOADER_MARK]: true as const });

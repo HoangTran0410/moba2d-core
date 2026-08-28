@@ -8,7 +8,7 @@
  * report describes, without scripting either champion by hand. Two passes:
  *
  *   - baseline: 0 Feast stacks on either champion.
- *   - stacked:  LOL2D_STACKS (default 60) stacks applied to both via
+ *   - stacked:  MOBA2D_STACKS (default 60) stacks applied to both via
  *     `ChoGath_R.setStackCount`, the same call the practice panel's cheat
  *     button makes.
  *
@@ -31,21 +31,21 @@
  * wall-clock time getting to the same state.
  *
  *   node tests/e2e/measure-chogath-stacks.mjs
- *   LOL2D_STACKS=99 LOL2D_MEASURE_MS=8000 node tests/e2e/measure-chogath-stacks.mjs
+ *   MOBA2D_STACKS=99 MOBA2D_MEASURE_MS=8000 node tests/e2e/measure-chogath-stacks.mjs
  */
 import { CFG_KEY, PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const CPU_THROTTLE = Number(process.env.LOL2D_CPU_THROTTLE ?? 6);
-const MEASURE_MS = Number(process.env.LOL2D_MEASURE_MS ?? 6000);
-const WARMUP_MS = Number(process.env.LOL2D_WARMUP_MS ?? 2500);
-const SETTLE_MS = Number(process.env.LOL2D_SETTLE_MS ?? 900);
-const STACK_COUNT = Number(process.env.LOL2D_STACKS ?? 60);
-const MINION_COUNT = Number(process.env.LOL2D_MINIONS ?? 0);
+const CPU_THROTTLE = Number(process.env.MOBA2D_CPU_THROTTLE ?? 6);
+const MEASURE_MS = Number(process.env.MOBA2D_MEASURE_MS ?? 6000);
+const WARMUP_MS = Number(process.env.MOBA2D_WARMUP_MS ?? 2500);
+const SETTLE_MS = Number(process.env.MOBA2D_SETTLE_MS ?? 900);
+const STACK_COUNT = Number(process.env.MOBA2D_STACKS ?? 60);
+const MINION_COUNT = Number(process.env.MOBA2D_MINIONS ?? 0);
 // Off by default: bot-vs-player combat is realistic (it's where the report's
 // particles and combat text come from) but non-deterministic, which is noise
 // when the point of a run is isolating the stack-count delta. Set to '1' for
 // a scene that looks like the report; leave at '0' for a low-noise A/B.
-const COMBAT = process.env.LOL2D_COMBAT === '1';
+const COMBAT = process.env.MOBA2D_COMBAT === '1';
 const BOT_OFFSET = 140;
 
 const pregameConfig = () => ({
@@ -89,7 +89,7 @@ const pregameConfig = () => ({
  *  report was screenshotted in) and, if asked, applies Feast stacks to both —
  *  then hands references to the second pass. */
 async function setupScenario({ applyStacks, stackCount, warmupMs, settleMs, botOffset, minionCount }) {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const player = game.player;
   const bot = game.director.bots()[0];
   if (!player || !bot) throw new Error('player or bot missing');
@@ -265,7 +265,7 @@ async function runScenario({ browser, url, applyStacks, label }) {
   await startMatch(page);
   await page.waitForFunction(
     () => {
-      const g = window.__lol2d?.scene?.oScene?.game;
+      const g = window.__moba2d?.scene?.oScene?.game;
       return !!(g?.objectManager && g.player && (g.director?.bots().length ?? 0) >= 1);
     },
     null,
@@ -273,7 +273,7 @@ async function runScenario({ browser, url, applyStacks, label }) {
   );
   await page.waitForFunction(
     () => {
-      const g = window.__lol2d.scene.oScene.game;
+      const g = window.__moba2d.scene.oScene.game;
       return g.player.spells.length > 0 && g.director.bots()[0].spells.length > 0;
     },
     null,

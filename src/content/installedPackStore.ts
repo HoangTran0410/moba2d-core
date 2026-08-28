@@ -12,7 +12,7 @@
  * the dead screen the whole design forbids.
  */
 
-export const PACK_STORE_KEY = 'lol2d:packs:v1';
+export const PACK_STORE_KEY = 'moba2d:packs:v1';
 
 /** One installed pack, as remembered between sessions. */
 export interface InstalledPackRecord {
@@ -147,7 +147,7 @@ export function writeInstalledPacks(records: InstalledPackRecord[]): void {
  * flag is what separates them, and it is deliberately a second key rather
  * than a sentinel inside the list — a list of packs should hold packs.
  */
-export const PACK_SEEDED_KEY = 'lol2d:packs:seeded:v1';
+export const PACK_SEEDED_KEY = 'moba2d:packs:seeded:v1';
 
 /**
  * Defensive the same way `readInstalledPacks` is: a missing key, a blocked

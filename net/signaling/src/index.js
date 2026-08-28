@@ -1,5 +1,5 @@
 /**
- * lol2d-signal — the LAN signaling broker.
+ * moba2d-signal — the LAN signaling broker.
  *
  * Speaks **exactly the protocol of `scripts/net-relay.mjs`** so the browser
  * side needs one signaling client for both worlds:
@@ -175,7 +175,7 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(`room:${room}`)).fetch(request);
     }
 
-    return new Response('lol2d signaling broker — GET /rooms, or WebSocket ?room=&role=host|join', {
+    return new Response('moba2d signaling broker — GET /rooms, or WebSocket ?room=&role=host|join', {
       headers: CORS,
     });
   },

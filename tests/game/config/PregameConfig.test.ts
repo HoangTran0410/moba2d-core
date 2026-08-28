@@ -389,7 +389,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
 
   it('falls back to defaults instead of throwing when the stored blob is not JSON', () => {
     const storage = new MemoryStorage();
-    storage.setItem('lol2d:pregameConfig:v1', '{not json at all');
+    storage.setItem('moba2d:pregameConfig:v1', '{not json at all');
     vi.stubGlobal('localStorage', storage);
     expect(() => loadPregameConfig()).not.toThrow();
     expect(loadPregameConfig()).toEqual(DEFAULT_PREGAME_CONFIG);
@@ -397,7 +397,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
 
   it('falls back to defaults instead of throwing when the stored blob is valid JSON but the wrong shape', () => {
     const storage = new MemoryStorage();
-    storage.setItem('lol2d:pregameConfig:v1', JSON.stringify({ totally: 'unrelated' }));
+    storage.setItem('moba2d:pregameConfig:v1', JSON.stringify({ totally: 'unrelated' }));
     vi.stubGlobal('localStorage', storage);
     expect(loadPregameConfig()).toEqual(DEFAULT_PREGAME_CONFIG);
   });
@@ -428,7 +428,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
   // fields honoured exactly as they meant before, and the new fields
   // defaulting to today's actual behaviour — not throw, and not silently
   // reset to defaults. This is why the storage key stayed
-  // `lol2d:pregameConfig:v1` rather than bumping to v2: bumping the key
+  // `moba2d:pregameConfig:v1` rather than bumping to v2: bumping the key
   // would have made this blob invisible instead of readable.
   it('loads a pre-existing v1 blob (no mode, no customSlots, no ai.bots) without error, preserving every old field', () => {
     const legacyV1Blob = {
@@ -437,7 +437,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
       rules: { cooldownReductionPercent: 20, manaFree: true },
     };
     const storage = new MemoryStorage();
-    storage.setItem('lol2d:pregameConfig:v1', JSON.stringify(legacyV1Blob));
+    storage.setItem('moba2d:pregameConfig:v1', JSON.stringify(legacyV1Blob));
     vi.stubGlobal('localStorage', storage);
 
     let loaded!: PregameConfig;

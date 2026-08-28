@@ -1,15 +1,15 @@
 /**
  * End-to-end visual verification for the Ashe R travel fix and the Twitch Q
  * post-death cloak fix, driving the real game the same way drive-game.mjs
- * does (through the DEV-only `window.__lol2d` handle).
+ * does (through the DEV-only `window.__moba2d` handle).
  *
  *   npx vite --port 5199 --strictPort   # in another terminal
- *   node tests/e2e/drive-bugfixes.mjs /tmp/lol2d-bugfixes
+ *   node tests/e2e/drive-bugfixes.mjs /tmp/moba2d-bugfixes
  */
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-bugfixes';
-const URL = process.env.LOL2D_URL ?? 'http://localhost:5199/';
+const OUT = process.argv[2] ?? '/tmp/moba2d-bugfixes';
+const URL = process.env.MOBA2D_URL ?? 'http://localhost:5199/';
 
 const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -27,7 +27,7 @@ await page.click('#play-btn');
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
 await page.waitForFunction(
-  () => window.__lol2d?.scene?.oScene?.game?.objectManager,
+  () => window.__moba2d?.scene?.oScene?.game?.objectManager,
   null,
   { timeout: 30_000 }
 );
@@ -47,7 +47,7 @@ const asheResult = await page.evaluate(async () => {
   );
   const Ashe_R = makeAshe_R(api);
   const Ashe_R_Object = makeAshe_R_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
 
   // Move every other unit far away so the arrow's own collision check cannot
@@ -91,7 +91,7 @@ const asheAfter = await page.evaluate(async () => {
   const api = buildContentApi();
   const { makeAshe_R_Object } = await import('/packs/riot/spells/Ashe_R.ts');
   const Ashe_R_Object = makeAshe_R_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const arrow = game.objectManager.objects.find(o => o instanceof Ashe_R_Object);
   return arrow
     ? { alive: true, position: { x: arrow.position.x, y: arrow.position.y }, exploding: arrow.exploding }
@@ -110,7 +110,7 @@ const twitchBefore = await page.evaluate(async () => {
   );
   const Twitch_Q = makeTwitch_Q(api);
   const Twitch_Q_Object = makeTwitch_Q_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   champion.stats.mana.baseValue = champion.stats.maxMana.value;
 
@@ -137,7 +137,7 @@ const twitchAfterDeath = await page.evaluate(async () => {
   const api = buildContentApi();
   const { makeTwitch_Q_Object } = await import('/packs/riot/spells/Twitch_Q.ts');
   const Twitch_Q_Object = makeTwitch_Q_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   // AI bots auto-cast randomly and may independently roll Twitch's preset, so
   // filter to the cloak this script actually spawned on the player instead of
@@ -170,7 +170,7 @@ const twitchAfterRespawn = await page.evaluate(async () => {
   const api = buildContentApi();
   const { makeTwitch_Q_Object } = await import('/packs/riot/spells/Twitch_Q.ts');
   const Twitch_Q_Object = makeTwitch_Q_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   champion.deathData.reviveAfter = 0;
   return { deathSpot: { x: champion.position.x, y: champion.position.y } };
@@ -183,7 +183,7 @@ const finalState = await page.evaluate(async () => {
   const api = buildContentApi();
   const { makeTwitch_Q_Object } = await import('/packs/riot/spells/Twitch_Q.ts');
   const Twitch_Q_Object = makeTwitch_Q_Object(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   const cloak = game.objectManager.objects.find(
     o => o instanceof Twitch_Q_Object && o.owner === champion

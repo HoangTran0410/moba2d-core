@@ -12,7 +12,7 @@ One structural change comes first and pays for the rest: the pack contract split
 
 **Spec:** `docs/superpowers/specs/2026-08-20-content-pack-extraction-design.md` — steps 4 and 5, plus the data/code split the spec implies in §9.1 and batch 2's whole-branch review named explicitly.
 
-**Branch:** `content-pack-batch-3`, worktree `/Users/hoangtran/Desktop/Github/LOL2D-batch3`, based on `content-pack-batch-2` @ `a43e479`.
+**Branch:** `content-pack-batch-3`, worktree `/Users/hoangtran/Desktop/Github/MOBA2D-batch3`, based on `content-pack-batch-2` @ `a43e479`.
 
 **Survey:** `.superpowers/surveys/2026-08-21-map-touchpoints.md` in the main worktree — every touch point below was measured there. Read it before Task 2; it will save you a file-by-file hunt and it names three traps this plan repeats only in summary.
 
@@ -865,7 +865,7 @@ Claude-Session: https://claude.ai/code/session_01U1wfNJ78TNE9N2dFKouSbK"
 
 - `src/content/maps/summonersRift.ts` is the file batch 4 moves into `packs/riot/`, together with the 240 spell files and 368 art files. By then nothing reads it directly — the registry does.
 - `src/content/bundledPack.ts` is the adapter batch 4 **deletes**, replacing it with a real `packs/riot/pack.ts`.
-- The 15 seams listed in spec §8.1 have to be repointed, and `@lol2d/core/seams` published so a pack repo can run them against its own tree.
+- The 15 seams listed in spec §8.1 have to be repointed, and `@moba2d/core/seams` published so a pack repo can run them against its own tree.
 - `Monster.ts:154` still calls `AssetManager.get(preset.avatar)` typed against core's generated `AssetKey` — the one avatar path batch 2's `packAsset` sweep missed, and it bites the moment a pack supplies monster art.
 
 ### The chunk-hash cascade, and why batch 4 is where it dies

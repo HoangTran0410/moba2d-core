@@ -33,7 +33,7 @@ stays blocked until a second map exists — there is exactly one today
 ## Decisions taken during brainstorming
 
 1. **The panel mutates the running match only.** It never writes
-   `lol2d:pregameConfig:v1`. Leaving the match and starting a new one returns
+   `moba2d:pregameConfig:v1`. Leaving the match and starting a new one returns
    to whatever the setup screen has stored. A practice tool you can flail
    around in without wrecking your real configuration.
 2. **Changes apply instantly, in place.** Changing a unit's champion swaps its
@@ -207,7 +207,7 @@ bot re-rolling), so it stays — but it becomes a typed method on `AIChampion`
 
 ### Saved kits
 
-New: `src/game/config/savedKits.ts`, key `lol2d:savedKits:v1`, separate from
+New: `src/game/config/savedKits.ts`, key `moba2d:savedKits:v1`, separate from
 the pregame config so a corrupt library can never take the match config with it.
 
 ```ts

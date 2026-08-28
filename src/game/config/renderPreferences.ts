@@ -19,8 +19,8 @@ import type { RenderQuality } from '@/game/managers/ObjectManager';
 
 export type RenderFps = 30 | 60;
 
-const RENDER_QUALITY_STORAGE_KEY = 'lol2d.renderQuality';
-const RENDER_FPS_STORAGE_KEY = 'lol2d.renderFps';
+const RENDER_QUALITY_STORAGE_KEY = 'moba2d.renderQuality';
+const RENDER_FPS_STORAGE_KEY = 'moba2d.renderFps';
 
 export function renderQualityPreference(): RenderQuality {
   try {

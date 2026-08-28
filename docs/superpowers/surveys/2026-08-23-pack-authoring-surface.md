@@ -1,7 +1,7 @@
 # Pack authoring surface — measured gap between what a pack needs and what core exposes
 
 Survey, not a plan. Every number below was produced by a command run against this worktree
-(`/Users/hoangtran/Desktop/Github/LOL2D-batch5`, branch `content-pack-batch-5`, `c6fb29e`). No
+(`/Users/hoangtran/Desktop/Github/MOBA2D-batch5`, branch `content-pack-batch-5`, `c6fb29e`). No
 file in the worktree was left changed — one empirical probe (question 7) wrote and then deleted
 a scratch file inside `packs/riot/spells/`; `git status --porcelain` was empty before and after.
 

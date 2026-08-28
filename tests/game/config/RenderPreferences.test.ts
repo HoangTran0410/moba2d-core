@@ -25,8 +25,8 @@ describe('render preferences', () => {
     expect((GameModule as any).renderQualityPreference).toBeTypeOf('function');
     expect((GameModule as any).renderFpsPreference).toBeTypeOf('function');
 
-    storage.setItem('lol2d.renderQuality', 'potato');
-    storage.setItem('lol2d.renderFps', '144');
+    storage.setItem('moba2d.renderQuality', 'potato');
+    storage.setItem('moba2d.renderFps', '144');
 
     expect((GameModule as any).renderQualityPreference()).toBe('auto');
     expect((GameModule as any).renderFpsPreference()).toBe(60);
@@ -39,8 +39,8 @@ describe('render preferences', () => {
     (GameModule as any).setRenderQualityPreference('low');
     (GameModule as any).setRenderFpsPreference(30);
 
-    expect(storage.getItem('lol2d.renderQuality')).toBe('low');
-    expect(storage.getItem('lol2d.renderFps')).toBe('30');
+    expect(storage.getItem('moba2d.renderQuality')).toBe('low');
+    expect(storage.getItem('moba2d.renderFps')).toBe('30');
     expect((GameModule as any).renderQualityPreference()).toBe('low');
     expect((GameModule as any).renderFpsPreference()).toBe(30);
   });

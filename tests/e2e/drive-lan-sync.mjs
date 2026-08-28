@@ -63,16 +63,16 @@ await guard(async () => {
   // ------------------------------------------------------------- the host
   await page.goto(withParams('host', 'ws', 'e2e'), { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
-  await page.waitForFunction(() => window.__lol2dNet, null, { timeout: 15_000 });
+  await page.waitForFunction(() => window.__moba2dNet, null, { timeout: 15_000 });
 
   // ------------------------------------------------------------ the client
   const { context: clientContext, page: clientPage } = await openPage({ label: 'client' });
   await clientPage.goto(withParams('join', 'ws', 'e2e'), { waitUntil: 'load' });
   await startMatch(clientPage);
-  await clientPage.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
+  await clientPage.waitForFunction(() => window.__moba2dNet, null, { timeout: 30_000 });
   await clientPage.waitForTimeout(2_000);
 
   // ------------------------------------------------- position error probe
@@ -80,8 +80,8 @@ await guard(async () => {
   const unitCounts = [];
   for (let sample = 0; sample < 24; sample++) {
     const [hostPositions, clientPositions] = await Promise.all([
-      page.evaluate(() => window.__lol2dNet.debugPositions()),
-      clientPage.evaluate(() => window.__lol2dNet.debugPositions()),
+      page.evaluate(() => window.__moba2dNet.debugPositions()),
+      clientPage.evaluate(() => window.__moba2dNet.debugPositions()),
     ]);
     const shared = Object.keys(hostPositions).filter(id => clientPositions[id]);
     unitCounts.push(shared.length);
@@ -117,7 +117,7 @@ await guard(async () => {
   // commit appearing on the host. Runs before any marching, at the spawn,
   // where the champion cannot already be dead.
   const ownCastProbe = `new Promise(resolve => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const enemies = game.objectManager.objects.filter(
       o => o.constructor?.name?.includes('Champion') && o.teamId !== game.player.teamId && !o.isDead
     );
@@ -153,7 +153,7 @@ await guard(async () => {
     tryNext();
   })`;
   const hostStampProbe = `new Promise(resolve => {
-    const session = window.__lol2dNet;
+    const session = window.__moba2dNet;
     const armedAt = Date.now();
     const timer = setInterval(() => {
       const remote = session.debugRemote();
@@ -184,7 +184,7 @@ await guard(async () => {
   );
 
   // ------------------------------------------------ client orders -> host
-  const before = await page.evaluate(() => window.__lol2dNet.debugRemote());
+  const before = await page.evaluate(() => window.__moba2dNet.debugRemote());
   check('host spawned a champion for the client', !!before, JSON.stringify(before));
 
   // A right-click march, held so the tick loop sees it, far from the spawn.
@@ -195,7 +195,7 @@ await guard(async () => {
   await clientPage.mouse.up({ button: 'right' });
   await clientPage.waitForTimeout(2_500);
 
-  const afterMove = await page.evaluate(() => window.__lol2dNet.debugRemote());
+  const afterMove = await page.evaluate(() => window.__moba2dNet.debugRemote());
   const marched =
     before && afterMove ? Math.hypot(afterMove.x - before.x, afterMove.y - before.y) : 0;
   report.remoteMarchUnits = Math.round(marched);
@@ -229,7 +229,7 @@ await guard(async () => {
   const pauseProbe = await clientPage.evaluate(
     () =>
       new Promise(resolve => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const snapsBefore = game.net.debugStats.snapshotsReceived;
         game.inGameHUD.vueInstance.hud.openSpellPicker();
         setTimeout(() => {
@@ -255,7 +255,7 @@ await guard(async () => {
   // comes from the hello plan, so resolving it must reproduce the exact
   // classes the client is standing there holding.
   const seededLoadout = await clientPage.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const loadout = game.director.loadoutOf(game.player);
     const { getChampionPresetFromLoadout } = await import('/src/game/preset.ts');
     const preset = getChampionPresetFromLoadout(loadout);
@@ -280,7 +280,7 @@ await guard(async () => {
   // existed the change lived only on the client's screen and the two ends
   // fought the rest of the match with two different kits.
   const clientKit = await clientPage.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const kitOf = () => game.player.spells.map(spell => spell.constructor.name);
     const before = kitOf().join();
     const current = game.director.loadoutOf(game.player);
@@ -304,14 +304,14 @@ await guard(async () => {
   // Wire + the host fetching spell chunks it may never have seen.
   await page.waitForFunction(
     expected => {
-      const remote = window.__lol2dNet.debugRemote();
+      const remote = window.__moba2dNet.debugRemote();
       return remote && remote.name === expected.name && remote.kit.join() === expected.kit.join();
     },
     clientKit,
     { timeout: 15_000 }
   ).catch(() => null);
   const hostKitView = await page.evaluate(() => {
-    const remote = window.__lol2dNet.debugRemote();
+    const remote = window.__moba2dNet.debugRemote();
     return remote ? { name: remote.name, kit: remote.kit } : null;
   });
   report.loadoutSync = { client: clientKit, host: hostKitView };
@@ -329,7 +329,7 @@ await guard(async () => {
   // switch is the worst kind of desync: the client "fights" people its own
   // host copy is allied to, and nobody loses health.
   const teamSwitch = await clientPage.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const { MatchTeam } = await import('/src/game/config/MatchTeams.ts');
     const next = game.player.teamId === MatchTeam.BLUE ? MatchTeam.RED : MatchTeam.BLUE;
     game.director.setTeam(game.player, next);
@@ -337,12 +337,12 @@ await guard(async () => {
   });
   await page
     .waitForFunction(
-      expected => window.__lol2dNet.debugRemote()?.team === expected.local,
+      expected => window.__moba2dNet.debugRemote()?.team === expected.local,
       teamSwitch,
       { timeout: 5_000 }
     )
     .catch(() => null);
-  const hostTeamView = await page.evaluate(() => window.__lol2dNet.debugRemote()?.team);
+  const hostTeamView = await page.evaluate(() => window.__moba2dNet.debugRemote()?.team);
   report.teamSwitch = { client: teamSwitch.local, host: hostTeamView };
   check(
     "a client side switch reaches the host",
@@ -356,12 +356,12 @@ await guard(async () => {
   // asks and the jump comes back in a snapshot.
   const tpTarget = { x: 2000, y: 2000 };
   await clientPage.evaluate(target => {
-    window.__lol2d.scene.oScene.game.net.interceptTeleport(target);
+    window.__moba2d.scene.oScene.game.net.interceptTeleport(target);
   }, tpTarget);
   await clientPage
     .waitForFunction(
       target => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         return Math.hypot(game.player.position.x - target.x, game.player.position.y - target.y) < 400;
       },
       tpTarget,
@@ -369,7 +369,7 @@ await guard(async () => {
     )
     .catch(() => null);
   const tpAfter = await clientPage.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return { x: Math.round(game.player.position.x), y: Math.round(game.player.position.y) };
   });
   const tpMiss = Math.hypot(tpAfter.x - tpTarget.x, tpAfter.y - tpTarget.y);
@@ -384,7 +384,7 @@ await guard(async () => {
   // chunks may never have been fetched there, and `presetFromPlan` would
   // silently degrade every slot to a basic attack.
   const hostBot = await page.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const bot = await game.director.addBotLoaded({
       mode: 'champion',
       championName: 'random',
@@ -399,7 +399,7 @@ await guard(async () => {
   await clientPage
     .waitForFunction(
       expected => {
-        for (const unit of window.__lol2dNet.units.values()) {
+        for (const unit of window.__moba2dNet.units.values()) {
           if (
             unit.name === expected.name &&
             unit.spells &&
@@ -415,7 +415,7 @@ await guard(async () => {
     )
     .catch(() => null);
   const clientSeesBot = await clientPage.evaluate(expected => {
-    for (const unit of window.__lol2dNet.units.values()) {
+    for (const unit of window.__moba2dNet.units.values()) {
       if (unit.name === expected.name) {
         return { name: unit.name, kit: unit.spells?.map(spell => spell.constructor.name) ?? [] };
       }
@@ -434,8 +434,8 @@ await guard(async () => {
   // does not own: the host lists its remote player, the client lists
   // everything remote (host player + both bots by now).
   const rosterCounts = await Promise.all([
-    page.evaluate(() => window.__lol2d.scene.oScene.game.net.netRosterUnits().length),
-    clientPage.evaluate(() => window.__lol2d.scene.oScene.game.net.netRosterUnits().length),
+    page.evaluate(() => window.__moba2d.scene.oScene.game.net.netRosterUnits().length),
+    clientPage.evaluate(() => window.__moba2d.scene.oScene.game.net.netRosterUnits().length),
   ]);
   report.netRoster = { host: rosterCounts[0], client: rosterCounts[1] };
   check(
@@ -452,7 +452,7 @@ await guard(async () => {
   const rosterDom = await clientPage.evaluate(
     () =>
       new Promise(resolve => {
-        const hud = window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud;
+        const hud = window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud;
         hud.openRoster();
         setTimeout(() => {
           const text = document.body.innerText;
@@ -474,7 +474,7 @@ await guard(async () => {
   // half to death with nothing on screen. The host walks over and attacks;
   // the client must see carrier objects (bolt or melee swing) appear.
   await page.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     // An *enemy* of the host champion — the client's champion may well be an
     // ally (the joiner lands on the smaller team), and a right-click on an
     // ally is a walk, not a swing.
@@ -491,7 +491,7 @@ await guard(async () => {
   const swingCount = await clientPage
     .waitForFunction(
       () => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         let seen = 0;
         for (const object of game.objectManager.objects) {
           const kind = object.constructor?.name;
@@ -518,10 +518,10 @@ await guard(async () => {
   // the pair of bugs was one real-looking local ghost the host knew nothing
   // about beside an avatar-less default-sized puppet.
   const rosterBeforePet = await clientPage.evaluate(
-    () => window.__lol2d.scene.oScene.game.net.netRosterUnits().length
+    () => window.__moba2d.scene.oScene.game.net.netRosterUnits().length
   );
   await page.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const { default: Pet } = await import('/src/game/gameObject/attackableUnits/Pet.ts');
     const summon = new Pet({
       game,
@@ -537,7 +537,7 @@ await guard(async () => {
   const petView = await clientPage
     .waitForFunction(
       () => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const copies = [];
         for (const object of game.objectManager.objects) {
           if (object.name === 'Gấu Kiểm Thử') {
@@ -558,7 +558,7 @@ await guard(async () => {
     .then(handle => handle.jsonValue())
     .catch(() => []);
   const rosterAfterPet = await clientPage.evaluate(
-    () => window.__lol2d.scene.oScene.game.net.netRosterUnits().length
+    () => window.__moba2d.scene.oScene.game.net.netRosterUnits().length
   );
   report.petSync = { copies: petView, rosterBeforePet, rosterAfterPet };
   check(
@@ -579,7 +579,7 @@ await guard(async () => {
   // core-Pet lookalike beside it ("tibber phía client vẫn render dạng
   // champion").
   await clientPage.evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     await game.director.applyLoadoutLoaded(game.player, {
       mode: 'champion',
       championName: 'Annie',
@@ -591,18 +591,18 @@ await guard(async () => {
   // The host must be running Annie before the R lands there, or the cast
   // applies to the old kit's slot and no host summon ever exists.
   await page
-    .waitForFunction(() => window.__lol2dNet.debugRemote()?.kit?.includes('Annie_R'), null, {
+    .waitForFunction(() => window.__moba2dNet.debugRemote()?.kit?.includes('Annie_R'), null, {
       timeout: 15_000,
     })
     .catch(() => null);
   await clientPage.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     game.worldMouse.set(game.player.position.x + 120, game.player.position.y);
     game.spellInputController.keyDown(82, false);
     game.spellInputController.keyUp(82);
   });
   const countSummons = () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const descendsFromPet = object => {
       let ctor = object.constructor;
       while (ctor) {
@@ -655,14 +655,14 @@ await guard(async () => {
   // construction — the recap must arrive from the host's sim or the death
   // screen has nothing to say (the reported bug).
   await page.evaluate(() => {
-    const session = window.__lol2dNet;
+    const session = window.__moba2dNet;
     const champion = session.clients.values().next().value;
     champion.takeDamage(999_999, session.game?.player, 'PHYSICAL', 'Đòn kiểm thử');
   });
   const recap = await clientPage
     .waitForFunction(
       () => {
-        const player = window.__lol2d.scene.oScene.game.player;
+        const player = window.__moba2d.scene.oScene.game.player;
         return player.isDead && player.deathRecap && player.deathRecap.entries.length > 0
           ? {
               killer: player.deathRecap.killerName,
@@ -689,7 +689,7 @@ await guard(async () => {
   // Minion skirmishes usually push this well past 1 by now; the kill above
   // guarantees at least the one.
   const damageTexts = await clientPage.evaluate(
-    () => window.__lol2dNet.debugStats.damageTextsShown
+    () => window.__moba2dNet.debugStats.damageTextsShown
   );
   report.damageTexts = damageTexts;
   check('damage numbers float on the client', damageTexts > 0, `${damageTexts} shown`);
@@ -703,7 +703,7 @@ await guard(async () => {
   const blurProbe = await clientPage.evaluate(
     () =>
       new Promise(resolve => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const framesBefore = frameCount;
         const snapsBefore = game.net.debugStats.snapshotsReceived;
         window.dispatchEvent(new Event('blur'));
@@ -730,7 +730,7 @@ await guard(async () => {
   const hostBlur = await clientPage.evaluate(
     () =>
       new Promise(resolve => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const snapsBefore = game.net.debugStats.snapshotsReceived;
         setTimeout(
           () => resolve({ snaps: game.net.debugStats.snapshotsReceived - snapsBefore }),
@@ -742,8 +742,8 @@ await guard(async () => {
   check('a blurred host keeps serving snapshots', hostBlur.snaps > 10, JSON.stringify(hostBlur));
 
   // ------------------------------------------------------------ liveness
-  const hostStats = await page.evaluate(() => window.__lol2dNet.debugStats);
-  const clientStats = await clientPage.evaluate(() => window.__lol2dNet.debugStats);
+  const hostStats = await page.evaluate(() => window.__moba2dNet.debugStats);
+  const clientStats = await clientPage.evaluate(() => window.__moba2dNet.debugStats);
   report.hostStats = hostStats;
   report.clientStats = clientStats;
   check(
@@ -763,8 +763,8 @@ await guard(async () => {
   const swept = await page
     .waitForFunction(
       name => {
-        if (window.__lol2dNet.debugRemote() !== null) return false;
-        for (const object of window.__lol2d.scene.oScene.game.objectManager.objects) {
+        if (window.__moba2dNet.debugRemote() !== null) return false;
+        for (const object of window.__moba2d.scene.oScene.game.objectManager.objects) {
           if (object.name === name && !object.toRemove && !object.isDead) return false;
         }
         return true;
@@ -785,19 +785,19 @@ await guard(async () => {
   const { page: rtcHost } = await openPage({ label: 'rtc-host' });
   await rtcHost.goto(withParams('host', 'rtc', 'e2ertc'), { waitUntil: 'load' });
   await startMatch(rtcHost);
-  await rtcHost.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
+  await rtcHost.waitForFunction(() => window.__moba2dNet, null, { timeout: 30_000 });
 
   const { page: rtcClient } = await openPage({ label: 'rtc-client' });
   await rtcClient.goto(withParams('join', 'rtc', 'e2ertc'), { waitUntil: 'load' });
   await startMatch(rtcClient);
-  await rtcClient.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
+  await rtcClient.waitForFunction(() => window.__moba2dNet, null, { timeout: 30_000 });
   await rtcClient.waitForTimeout(3_000);
 
   const rtcErrors = [];
   for (let sample = 0; sample < 8; sample++) {
     const [hostPositions, clientPositions] = await Promise.all([
-      rtcHost.evaluate(() => window.__lol2dNet.debugPositions()),
-      rtcClient.evaluate(() => window.__lol2dNet.debugPositions()),
+      rtcHost.evaluate(() => window.__moba2dNet.debugPositions()),
+      rtcClient.evaluate(() => window.__moba2dNet.debugPositions()),
     ]);
     for (const id of Object.keys(hostPositions).filter(each => clientPositions[each])) {
       const [hx, hy] = hostPositions[id];
@@ -833,7 +833,7 @@ await guard(async () => {
     `${report.rtcRemoteCommitLatencyMs}ms`
   );
 
-  const rtcStats = await rtcClient.evaluate(() => window.__lol2dNet.debugStats);
+  const rtcStats = await rtcClient.evaluate(() => window.__moba2dNet.debugStats);
   report.rtcClientStats = rtcStats;
   check(
     'rtc: snapshots flowed p2p',

@@ -167,7 +167,7 @@ The scan named the exact reverted file on both new rules. Restored `verify-rende
 ## End-to-end demonstration: the harness now tells the truth
 
 Used `verify-render-guard.mjs` (cheapest of the three originally-exposed scripts), with
-`LOL2D_CHROME_CHANNEL=` (empty, Playwright's bundled Chromium — system Chrome was also
+`MOBA2D_CHROME_CHANNEL=` (empty, Playwright's bundled Chromium — system Chrome was also
 available and used for the final clean run). Broke it by pointing `page.click` at
 `#play-btn-does-not-exist` (3s timeout) instead of the real `#play-btn`.
 

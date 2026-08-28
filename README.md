@@ -164,7 +164,7 @@ Core reaches every champion, spell, map or monster beyond its own single referen
 
 There are two ways a pack gets in.
 
-**At runtime, from a URL.** The game fetches `manifest.json`, checks it against core's version, imports the entry, and installs it during the loading screen — no rebuild of core involved. A first boot with nothing installed seeds one default URL; after that the list is the player's, stored in `localStorage` under `lol2d:packs:v1`.
+**At runtime, from a URL.** The game fetches `manifest.json`, checks it against core's version, imports the entry, and installs it during the loading screen — no rebuild of core involved. A first boot with nothing installed seeds one default URL; after that the list is the player's, stored in `localStorage` under `moba2d:packs:v1`.
 
 **At build time, as a dependency.** Still supported, for a developer who wants a pack in the tree while working:
 
@@ -222,7 +222,7 @@ npm run e2e:pwa                     # build, then boot and play with the network
 node tests/e2e/drive-practice-panel.mjs
 ```
 
-Scripts reach into the running game through `window.__lol2d`, which only exists in dev builds. `LOL2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled Chromium. Scripts that need a pack read one from a sibling `moba2d-content-riot` checkout, or from `LOL2D_PACK_DIST`.
+Scripts reach into the running game through `window.__moba2d`, which only exists in dev builds. `MOBA2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled Chromium. Scripts that need a pack read one from a sibling `moba2d-content-riot` checkout, or from `MOBA2D_PACK_DIST`.
 
 ## Contributing
 

@@ -20,8 +20,8 @@ import { mkdirSync } from 'node:fs';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-execute-taunt';
-const CFG_KEY = 'lol2d:pregameConfig:v1';
+const OUT = process.argv[2] ?? '/tmp/moba2d-execute-taunt';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
 const VIEWPORT = { width: 1280, height: 900 };
 
 mkdirSync(OUT, { recursive: true });
@@ -67,14 +67,14 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_500);
 
 /** Empties the arena and installs the helpers every stage below reuses. */
 await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const player = game.player;
   const KEEP = new Set(['Turret', 'Fountain']);
 
@@ -346,7 +346,7 @@ const stackRun = async (championName, spellName, distance) => {
   // rather than as the flake it was. This turns that into a legible failure.
   const rig = await page.evaluate(() => ({
     alive: !!window.__rig,
-    scene: window.__lol2d?.scene?.oScene?.constructor?.name ?? 'none',
+    scene: window.__moba2d?.scene?.oScene?.constructor?.name ?? 'none',
   }));
   check('the harness survived the earlier sections', rig.alive, `scene=${rig.scene}`);
   if (!rig.alive) {

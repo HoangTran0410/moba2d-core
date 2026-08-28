@@ -26,7 +26,7 @@ await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
   await startMatch(page);
   await page.waitForFunction(
-    () => window.__lol2d?.scene?.oScene?.game?.monsters?.length > 0,
+    () => window.__moba2d?.scene?.oScene?.game?.monsters?.length > 0,
     null,
     {
       timeout: 30_000,
@@ -39,7 +39,7 @@ await guard(async () => {
   const measure = () =>
     page.evaluate(() => {
       const groups = new Map();
-      for (const m of window.__lol2d.scene.oScene.game.monsters) {
+      for (const m of window.__moba2d.scene.oScene.game.monsters) {
         if (!groups.has(m.camp)) groups.set(m.camp, []);
         groups.get(m.camp).push({ name: m.name, x: m.position.x, y: m.position.y });
       }
@@ -77,7 +77,7 @@ await guard(async () => {
   // exactly until it was first cleared: `respawn()` put every member back on
   // the shared slot point, so a re-taken pit came back as a pile.
   await page.evaluate(() => {
-    for (const m of window.__lol2d.scene.oScene.game.monsters) m.respawn();
+    for (const m of window.__moba2d.scene.oScene.game.monsters) m.respawn();
   });
   await page.waitForTimeout(1_500);
 
@@ -93,7 +93,7 @@ await guard(async () => {
   // `isWalkable` is the navigation grid's own answer, so this asks the same
   // question the game asks when anything tries to path there.
   const stuck = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const grid = game.navigation.grid ?? game.navigation.navGrid;
     if (!grid?.isWalkable) return null;
     return game.monsters

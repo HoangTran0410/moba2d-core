@@ -52,7 +52,7 @@ await guard(async () => {
 
   // 2. Bắt Đầu is what actually starts a match.
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game, null, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game, null, { timeout: 45_000 });
   check('Bắt Đầu reaches a running match', true);
 
   // 3. The LAN host's panel, over a room that stays open behind it.

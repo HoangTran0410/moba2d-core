@@ -36,8 +36,8 @@ import { mkdirSync } from 'node:fs';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-new-vfx';
-const CFG_KEY = 'lol2d:pregameConfig:v1';
+const OUT = process.argv[2] ?? '/tmp/moba2d-new-vfx';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
 const VIEWPORT = { width: 1280, height: 900 };
 
 mkdirSync(OUT, { recursive: true });
@@ -90,7 +90,7 @@ if (!CASTS.length) {
 
 // `hmr: false`: this repo is worked on by several agents in one tree, and a
 // stray save anywhere in `src/` makes Vite reload the page mid-run, which wipes
-// `window.__lol2d` and takes the whole script down with a bare "cannot read
+// `window.__moba2d` and takes the whole script down with a bare "cannot read
 // properties of undefined". The rig has no use for hot reload — it loads the
 // page once and drives it.
 const server = await createServer({ server: { port: 0, strictPort: false, hmr: false } });
@@ -98,8 +98,8 @@ await server.listen();
 const url = server.resolvedUrls.local[0];
 
 // Same override as `harness.mjs`: system Chrome by default because that is what
-// the game ships to, `LOL2D_CHROME_CHANNEL=` (empty) for a machine without it.
-const channel = process.env.LOL2D_CHROME_CHANNEL ?? 'chrome';
+// the game ships to, `MOBA2D_CHROME_CHANNEL=` (empty) for a machine without it.
+const channel = process.env.MOBA2D_CHROME_CHANNEL ?? 'chrome';
 const browser = await chromium.launch(channel ? { channel } : {});
 const page = await browser.newPage({ viewport: VIEWPORT });
 const errors = [];
@@ -125,7 +125,7 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_500);
@@ -133,7 +133,7 @@ await page.waitForTimeout(1_500);
 // Clear the arena once, then stand a punching bag in front of the player so
 // on-hit effects have something to land on.
 await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const player = game.player;
   for (const object of game.objectManager.objects) {
     if (object === player) continue;

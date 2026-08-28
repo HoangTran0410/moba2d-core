@@ -24,7 +24,7 @@ requirePackDist();
 const PACK_PORT = 4401;
 const packServer = await startPackServer(PACK_PORT);
 const PACK_URL = `http://localhost:${PACK_PORT}/manifest.json`;
-const STORE_KEY = 'lol2d:packs:v1';
+const STORE_KEY = 'moba2d:packs:v1';
 
 const manifest = JSON.parse(readFileSync(join(PACK_DIST, 'manifest.json'), 'utf8'));
 
@@ -56,7 +56,7 @@ const bootWith = async (record, { fresh = false } = {}) => {
       // Set so the boot below does not also try to seed the *real* default
       // pack over the internet, which would make this script's result depend
       // on a host it is not testing.
-      window.localStorage.setItem('lol2d:packs:seeded:v1', '1');
+      window.localStorage.setItem('moba2d:packs:seeded:v1', '1');
       if (clearCaches && window.caches) {
         const names = await caches.keys();
         await Promise.all(names.map(name => caches.delete(name)));
@@ -111,7 +111,7 @@ await guard(
     // storage on. Nothing is installed on it: the seeded flag is set below
     // before any boot that matters.
     await page.addInitScript(() => {
-      window.localStorage.setItem('lol2d:packs:seeded:v1', '1');
+      window.localStorage.setItem('moba2d:packs:seeded:v1', '1');
     });
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('#play-btn', { timeout: 45_000 });

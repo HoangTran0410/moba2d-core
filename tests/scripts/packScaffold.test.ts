@@ -134,7 +134,7 @@ async function openSlot(target: string, slot: string): Promise<void> {
 
 describe('packRootFrom', () => {
   it('finds the pack root from a nested directory inside it', async () => {
-    const root = await freshTmpDir('lol2d-packroot-nested-');
+    const root = await freshTmpDir('moba2d-packroot-nested-');
     await writeFile(
       join(root, 'package.json'),
       JSON.stringify({ name: '@moba2d/content-demo', devDependencies: { '@moba2d/core': '*' } })
@@ -146,7 +146,7 @@ describe('packRootFrom', () => {
   });
 
   it('finds the pack root when @moba2d/core is a plain dependency, not a devDependency', async () => {
-    const root = await freshTmpDir('lol2d-packroot-dep-');
+    const root = await freshTmpDir('moba2d-packroot-dep-');
     await writeFile(
       join(root, 'package.json'),
       JSON.stringify({ name: '@moba2d/content-demo', dependencies: { '@moba2d/core': '*' } })
@@ -164,7 +164,7 @@ describe('packRootFrom', () => {
   });
 
   it('does not stop at an unrelated package.json that does not name @moba2d/core', async () => {
-    const root = await freshTmpDir('lol2d-packroot-unrelated-');
+    const root = await freshTmpDir('moba2d-packroot-unrelated-');
     await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'unrelated-project' }));
     const nested = join(root, 'nested');
     await mkdir(nested, { recursive: true });
@@ -175,7 +175,7 @@ describe('packRootFrom', () => {
 
 describe('moba2d-pack-new', () => {
   it('writes every file the template tree declares, substituting all four tokens', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-');
+    const parent = await freshTmpDir('moba2d-pack-new-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
 
@@ -189,7 +189,7 @@ describe('moba2d-pack-new', () => {
   });
 
   it('leaves no __TOKEN__ marker anywhere in the scaffolded output', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-tokens-');
+    const parent = await freshTmpDir('moba2d-pack-new-tokens-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -206,7 +206,7 @@ describe('moba2d-pack-new', () => {
   });
 
   it('substitutes --id and --name into package.json and pack.ts', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-values-');
+    const parent = await freshTmpDir('moba2d-pack-new-values-');
     const target = join(parent, 'pack');
     const result = await scaffold(target, []);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -220,7 +220,7 @@ describe('moba2d-pack-new', () => {
   });
 
   it('refuses to write into a non-empty directory', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-nonempty-');
+    const parent = await freshTmpDir('moba2d-pack-new-nonempty-');
     const target = join(parent, 'pack');
     await mkdir(target, { recursive: true });
     await writeFile(join(target, 'already-here.txt'), 'hello');
@@ -236,7 +236,7 @@ describe('moba2d-pack-new', () => {
 
 describe('moba2d-pack-add spell', () => {
   it('adds exactly two files and edits the barrel', async () => {
-    const parent = await freshTmpDir('lol2d-pack-add-');
+    const parent = await freshTmpDir('moba2d-pack-add-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -278,7 +278,7 @@ describe('moba2d-pack-add spell', () => {
     // the 4-space, unquoted line the same run also writes into the code
     // half's factory map — so this can only pass if the entry actually
     // landed inside champions[].spells, not merely somewhere in the file.
-    const parent = await freshTmpDir('lol2d-pack-add-champion-match-');
+    const parent = await freshTmpDir('moba2d-pack-add-champion-match-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -306,7 +306,7 @@ describe('moba2d-pack-add spell', () => {
     // the champion it could not find. A future edit to `insertBeforeMarker`
     // or to the champion lookup that turns this back into either extreme
     // has to break this test to do it.
-    const parent = await freshTmpDir('lol2d-pack-add-champion-typo-');
+    const parent = await freshTmpDir('moba2d-pack-add-champion-typo-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -337,7 +337,7 @@ describe('moba2d-pack-add spell', () => {
   });
 
   it('leaves no __TOKEN__ marker in the added spell or test', async () => {
-    const parent = await freshTmpDir('lol2d-pack-add-tokens-');
+    const parent = await freshTmpDir('moba2d-pack-add-tokens-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -357,7 +357,7 @@ describe('moba2d-pack-add spell', () => {
   });
 
   it('is idempotent about the barrel when the spell file already exists and --force is not passed', async () => {
-    const parent = await freshTmpDir('lol2d-pack-add-exists-');
+    const parent = await freshTmpDir('moba2d-pack-add-exists-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -370,7 +370,7 @@ describe('moba2d-pack-add spell', () => {
   });
 
   it('refuses an unknown kind rather than silently doing nothing, with the same plain honesty', async () => {
-    const parent = await freshTmpDir('lol2d-pack-add-badkind-');
+    const parent = await freshTmpDir('moba2d-pack-add-badkind-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -389,7 +389,7 @@ describe('moba2d-pack-add spell', () => {
     // *this* kind failed. Every unimplemented kind must still write
     // nothing: this generator recognising a verb and doing nothing useful
     // with it is worse than refusing it outright.
-    const parent = await freshTmpDir('lol2d-pack-add-notimpl-');
+    const parent = await freshTmpDir('moba2d-pack-add-notimpl-');
     const target = join(parent, 'pack');
     const scaffoldResult = await scaffold(target);
     expect(scaffoldResult.status, scaffoldResult.stdout + scaffoldResult.stderr).toBe(0);
@@ -416,7 +416,7 @@ describe('moba2d-pack-add spell', () => {
 
 describe('the scaffolded pack is real content, not just files', () => {
   it('writing the pack once and reading it back describes one champion and one map', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-shape-');
+    const parent = await freshTmpDir('moba2d-pack-new-shape-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -455,7 +455,7 @@ describe('the scaffolded pack is real content, not just files', () => {
  */
 describe('the scaffolded pack is publishable, not only buildable', () => {
   it('declares a @moba2d/core spec npm can actually resolve', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-dep-');
+    const parent = await freshTmpDir('moba2d-pack-new-dep-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -469,7 +469,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
   });
 
   it('takes --core to point at a local checkout instead', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-core-flag-');
+    const parent = await freshTmpDir('moba2d-pack-new-core-flag-');
     const target = join(parent, 'pack');
     const result = await scaffold(target, ['--core', 'file:../moba2d-core']);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -479,7 +479,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
   });
 
   it('ships the four files a runtime install is served by', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-runtime-');
+    const parent = await freshTmpDir('moba2d-pack-new-runtime-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -500,7 +500,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
   });
 
   it('exports off runtime-entry exactly what loadPackFromManifest reads', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-entry-');
+    const parent = await freshTmpDir('moba2d-pack-new-entry-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -513,7 +513,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
   });
 
   it('declares a coreRange core can parse, in every file that states one', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-range-');
+    const parent = await freshTmpDir('moba2d-pack-new-range-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -531,7 +531,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
   });
 
   it('keeps the build output out of git', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-ignore-');
+    const parent = await freshTmpDir('moba2d-pack-new-ignore-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -556,7 +556,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
  */
 describe('the scaffolded spell reads like source, not like codemod output', () => {
   it('declares plain classes against the injected api, with no factory to unwrap', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-shape-factory-');
+    const parent = await freshTmpDir('moba2d-pack-new-shape-factory-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -585,7 +585,7 @@ describe('the scaffolded spell reads like source, not like codemod output', () =
   });
 
   it('gives the champion a full kit, because core installs no other kind', async () => {
-    const parent = await freshTmpDir('lol2d-pack-new-kit-');
+    const parent = await freshTmpDir('moba2d-pack-new-kit-');
     const target = join(parent, 'pack');
     const result = await scaffold(target);
     expect(result.status, result.stdout + result.stderr).toBe(0);

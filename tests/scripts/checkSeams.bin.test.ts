@@ -60,7 +60,7 @@ describe('moba2d-check-seams bin', () => {
   });
 
   it('reports real violations when invoked through its bin symlink, not silently exiting 0', async () => {
-    violationRoot = await mkdtemp(join(tmpdir(), 'lol2d-check-seams-violation-'));
+    violationRoot = await mkdtemp(join(tmpdir(), 'moba2d-check-seams-violation-'));
     await mkdir(join(violationRoot, 'target'));
     await writeFile(join(violationRoot, 'target', 'Bad.ts'), `owner.stats.mana.baseValue -= 10;\n`);
 
@@ -75,7 +75,7 @@ describe('moba2d-check-seams bin', () => {
     // check-seams.mjs ./target`, invoking the script by a path outside the
     // target's own directory. Before the fix this resolved `./target`
     // against the script's own directory and threw ENOENT.
-    violationRoot = await mkdtemp(join(tmpdir(), 'lol2d-check-seams-cwd-'));
+    violationRoot = await mkdtemp(join(tmpdir(), 'moba2d-check-seams-cwd-'));
     await mkdir(join(violationRoot, 'target'));
     await writeFile(join(violationRoot, 'target', 'Bad.ts'), `owner.stats.mana.baseValue -= 10;\n`);
 
@@ -92,7 +92,7 @@ describe('moba2d-check-seams bin', () => {
   });
 
   it('still finds a clean target clean, from a non-root directory', async () => {
-    cleanRoot = await mkdtemp(join(tmpdir(), 'lol2d-check-seams-clean-'));
+    cleanRoot = await mkdtemp(join(tmpdir(), 'moba2d-check-seams-clean-'));
     await mkdir(join(cleanRoot, 'target'));
     await writeFile(join(cleanRoot, 'target', 'Nothing.ts'), 'export const nothing = 1;\n');
 
@@ -116,7 +116,7 @@ describe('moba2d-check-seams bin', () => {
     // authoring more than one scanned tree, as `packs/riot` does, would
     // have had discover the *same* file for every tree), discovered and
     // honoured through the real bin.
-    violationRoot = await mkdtemp(join(tmpdir(), 'lol2d-check-seams-debt-'));
+    violationRoot = await mkdtemp(join(tmpdir(), 'moba2d-check-seams-debt-'));
     await mkdir(join(violationRoot, 'target'));
     await writeFile(join(violationRoot, 'target', 'Bad.ts'), `owner.stats.mana.baseValue -= 10;\n`);
     await writeFile(
@@ -141,7 +141,7 @@ describe('moba2d-check-seams bin', () => {
     // against unrelated `treeB` matches nothing, by construction). Two
     // sibling trees under one parent, only one with its own seam-debt.mjs
     // (inside it, not beside the parent) — the other must see none of it.
-    violationRoot = await mkdtemp(join(tmpdir(), 'lol2d-check-seams-sibling-'));
+    violationRoot = await mkdtemp(join(tmpdir(), 'moba2d-check-seams-sibling-'));
     await mkdir(join(violationRoot, 'treeA'));
     await mkdir(join(violationRoot, 'treeB'));
     await writeFile(join(violationRoot, 'treeA', 'Bad.ts'), `owner.stats.mana.baseValue -= 10;\n`);

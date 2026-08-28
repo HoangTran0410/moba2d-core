@@ -18,7 +18,7 @@
 import { mkdirSync } from 'node:fs';
 import { CFG_KEY, DESKTOP_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-roster-stats';
+const OUT = process.argv[2] ?? '/tmp/moba2d-roster-stats';
 
 mkdirSync(OUT, { recursive: true });
 
@@ -69,14 +69,14 @@ await page.addInitScript(
 );
 await page.goto(url, { waitUntil: 'load' });
 await startMatch(page);
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_500);
 
 // ── Play a little: a champion kill, a last hit and some damage taken ─────────
 const fought = await page.evaluate(async () => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const player = game.player;
 
   const bot = game.director.bots()[0];

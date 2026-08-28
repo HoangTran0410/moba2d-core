@@ -1,6 +1,6 @@
 # What breaks when `packs/riot/` leaves this tree
 
-Surveyed against the `LOL2D-batch5` worktree, no files changed. `packs/` currently
+Surveyed against the `MOBA2D-batch5` worktree, no files changed. `packs/` currently
 holds two packs: `packs/riot/` (240 spell files, 1 monster, the map) and
 `packs/reference/` (7 files) — this matters throughout: a scan rooted at the
 `packs/` *parent* does not throw when `riot/` disappears, because `reference/`

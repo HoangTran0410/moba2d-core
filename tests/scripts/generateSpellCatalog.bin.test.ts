@@ -72,7 +72,7 @@ describe('moba2d-generate-spell-catalog bin', () => {
    * catch it.
    */
   it('reports a missing catalog.config.mjs, naming the exact path, when --root has none', () => {
-    const emptyRoot = mkdtempSync(join(tmpdir(), 'lol2d-no-catalog-config-'));
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'moba2d-no-catalog-config-'));
     try {
       const result = spawnSync(bin, ['--check', '--tree=riot', `--root=${emptyRoot}`], {
         cwd: root,

@@ -44,7 +44,7 @@ const ACCEPTED_GRAZE = -NAV_MAX_ACCEPTED_OVERLAP;
  * algorithmic mistake visible instead of silently patched.
  *
  * This is what settled "clicking a wall sometimes walks straight into it"
- * (the LOL2D owner's bug report, and a bug-report hypothesis this file
+ * (the MOBA2D owner's bug report, and a bug-report hypothesis this file
  * disproved and replaced). The originally suspected mechanism -- `plan()`
  * holding `destination` at the raw click for "the frame or two the search
  * takes" -- turns out not to be observable: `NavigationSystem.update()` runs

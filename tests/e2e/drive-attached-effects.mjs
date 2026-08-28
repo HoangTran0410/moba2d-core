@@ -1,6 +1,6 @@
 /**
  * End-to-end visual proof that a spell effect riding on a champion's body dies
- * with the body, driving the real game through the DEV-only `window.__lol2d`
+ * with the body, driving the real game through the DEV-only `window.__moba2d`
  * handle the same way drive-game.mjs does.
  *
  * Ahri W is the worst offender of the class: three fox-fires orbit her for five
@@ -13,12 +13,12 @@
  * there after its caster dies.
  *
  *   npx vite --port 5199 --strictPort   # in another terminal
- *   node tests/e2e/drive-attached-effects.mjs /tmp/lol2d-attached
+ *   node tests/e2e/drive-attached-effects.mjs /tmp/moba2d-attached
  */
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-attached';
-const URL = process.env.LOL2D_URL ?? 'http://localhost:5199/';
+const OUT = process.argv[2] ?? '/tmp/moba2d-attached';
+const URL = process.env.MOBA2D_URL ?? 'http://localhost:5199/';
 
 const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -36,14 +36,14 @@ await page.click('#play-btn');
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
 await page.waitForFunction(
-  () => window.__lol2d?.scene?.oScene?.game?.objectManager,
+  () => window.__moba2d?.scene?.oScene?.game?.objectManager,
   null,
   { timeout: 30_000 }
 );
 await page.waitForTimeout(1_500);
 
 await page.evaluate(() => {
-  const camera = window.__lol2d.scene.oScene.game.camera;
+  const camera = window.__moba2d.scene.oScene.game.camera;
   camera.scale = 2.2;
   camera.currentScale = 2.2;
 });
@@ -60,7 +60,7 @@ const cast = await page.evaluate(async () => {
   const { makeVarus_Q_Arrow } = await import('/packs/riot/spells/Varus_Q.ts');
   const Ahri_W = makeAhri_W(api);
   const Varus_Q_Arrow = makeVarus_Q_Arrow(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   champion.stats.mana.baseValue = champion.stats.maxMana.value;
 
@@ -107,7 +107,7 @@ const countOwn = async () => page.evaluate(async () => {
   const { makeVarus_Q_Arrow } = await import('/packs/riot/spells/Varus_Q.ts');
   const Ahri_W_Object = makeAhri_W_Object(api);
   const Varus_Q_Arrow = makeVarus_Q_Arrow(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   const own = game.objectManager.objects.filter(
     o => o instanceof Ahri_W_Object && o.owner === champion
@@ -128,7 +128,7 @@ const alive = await countOwn();
 await page.screenshot({ path: `${OUT}-1-orbiting.png` });
 
 await page.evaluate(() => {
-  const champion = window.__lol2d.scene.oScene.game.player;
+  const champion = window.__moba2d.scene.oScene.game.player;
   champion.die({ reviveAfter: champion.reviveTime });
 });
 await page.waitForTimeout(400);
@@ -138,7 +138,7 @@ await page.screenshot({ path: `${OUT}-2-dead.png` });
 // force the respawn instead of waiting out the timer, and drop the corpse
 // somewhere else entirely: a fire that survived would light up at the new spot
 await page.evaluate(() => {
-  const champion = window.__lol2d.scene.oScene.game.player;
+  const champion = window.__moba2d.scene.oScene.game.player;
   champion.respawn();
   champion.teleportTo(champion.position.x + 700, champion.position.y + 400);
 });

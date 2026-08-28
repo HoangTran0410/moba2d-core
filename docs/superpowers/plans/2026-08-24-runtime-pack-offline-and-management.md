@@ -589,7 +589,7 @@ The alternative — a route matching every cross-origin request — is the one s
 **Interfaces:**
 - Consumes: `manifest.files` (Task 2).
 - Produces:
-  - `PACK_CACHE_NAME = 'lol2d-packs-v1'` — exported from `packCache.ts`, and **duplicated as a literal in `src/sw.ts`** (the worker is a separate TypeScript program and cannot import from `src/content/`; the test in Step 4 is what keeps the two equal).
+  - `PACK_CACHE_NAME = 'moba2d-packs-v1'` — exported from `packCache.ts`, and **duplicated as a literal in `src/sw.ts`** (the worker is a separate TypeScript program and cannot import from `src/content/`; the test in Step 4 is what keeps the two equal).
   - `packBaseFor(manifestUrl: string): string`
   - `announcePackBases(bases: readonly string[]): void`
   - `prefetchPackFiles(baseUrl: string, files: readonly string[]): Promise<PrefetchReport>`
@@ -793,7 +793,7 @@ Expected: `Failed to load url @/content/packCache`.
  * program (`tsconfig.sw.json`, WebWorker lib) and cannot import from here;
  * `tests/content/packCache.test.ts` asserts the two agree.
  */
-export const PACK_CACHE_NAME = 'lol2d-packs-v1';
+export const PACK_CACHE_NAME = 'moba2d-packs-v1';
 
 /** How many files are fetched at once. */
 export const PREFETCH_CONCURRENCY = 4;
@@ -992,7 +992,7 @@ Append to `src/sw.ts`, **below** the Font Awesome rule (first match wins, and th
  * its own TypeScript program (`tsconfig.sw.json`) and cannot import from
  * `src/content/`. `tests/content/packCache.test.ts` asserts the two agree.
  */
-const PACK_CACHE_NAME = 'lol2d-packs-v1';
+const PACK_CACHE_NAME = 'moba2d-packs-v1';
 
 /**
  * The base URLs the page has told us belong to packs, and where that list is
@@ -1003,7 +1003,7 @@ const PACK_CACHE_NAME = 'lol2d-packs-v1';
  * would claim core's own un-precached requests. And spec §6 rules out the
  * broad shape outright.
  */
-const PACK_BASES_KEY = new URL('__lol2d_pack_bases__', self.registration.scope).href;
+const PACK_BASES_KEY = new URL('__moba2d_pack_bases__', self.registration.scope).href;
 const packBases: string[] = [];
 
 function rememberBases(bases: unknown): void {
@@ -1122,7 +1122,7 @@ Expected: PASS.
 
 Both of these have already shipped as checks that could not fail in this repository, so prove these two specifically:
 
-1. Change `PACK_CACHE_NAME` in `src/sw.ts` to `'lol2d-packs-v2'`. Re-run — "matches the literal the worker uses" must fail. Restore.
+1. Change `PACK_CACHE_NAME` in `src/sw.ts` to `'moba2d-packs-v2'`. Re-run — "matches the literal the worker uses" must fail. Restore.
 2. Delete the `if (!url.startsWith(base))` guard in `prefetchPackFiles`. Re-run — "refuses a path that escapes the base" must fail. Restore.
 
 Report both messages.
@@ -1148,7 +1148,7 @@ The wiring. After the install loop, `runtimePacks.ts` tells the worker which bas
 
 **Interfaces:**
 - Consumes: `packCache.ts`'s four functions, `manifest.files`.
-- Produces: `window.__lol2dPackPrefetch` — an array of `PrefetchReport`, set when every prefetch has settled. Task 5's offline e2e waits on it; nothing in the app reads it.
+- Produces: `window.__moba2dPackPrefetch` — an array of `PrefetchReport`, set when every prefetch has settled. Task 5's offline e2e waits on it; nothing in the app reads it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1255,14 +1255,14 @@ and beneath the file's other exports:
 /**
  * What the background prefetch did, on a global.
  *
- * Same reasoning as `packBanner.ts`'s `__lol2dPackInstall`, and the same bill
+ * Same reasoning as `packBanner.ts`'s `__moba2dPackInstall`, and the same bill
  * already paid once: an install whose only voice was `console.warn` reported
  * itself green through a Playwright run that had no way to hear it. An
  * offline check in particular cannot be written at all without a signal for
  * "the prefetch has finished" — the alternative is a sleep, which is a check
  * that passes on a slow machine by accident.
  */
-const PACK_PREFETCH_GLOBAL = '__lol2dPackPrefetch';
+const PACK_PREFETCH_GLOBAL = '__moba2dPackPrefetch';
 
 function publishPrefetchReports(reports: PrefetchReport[]): void {
   (globalThis as Record<string, unknown>)[PACK_PREFETCH_GLOBAL] = reports;
@@ -1301,7 +1301,7 @@ Everything above is invisible to Vitest by construction — it needs a real serv
 - Modify: `package.json` (nothing new — `e2e:pwa` already covers it)
 
 **Interfaces:**
-- Consumes: `window.__lol2dPackPrefetch` (Task 4), `manifest.files` (Task 2), the pack's built `dist/`.
+- Consumes: `window.__moba2dPackPrefetch` (Task 4), `manifest.files` (Task 2), the pack's built `dist/`.
 
 - [ ] **Step 1: Stop hard-coding the pack's path**
 
@@ -1318,11 +1318,11 @@ Replace, in that file and in the new code below, with:
  * The pack repository's built output. An absolute path in one developer's
  * home directory was fine while this was the only script that needed it and
  * it ran on one machine; two scripts and a second machine is where it stops
- * being fine. `LOL2D_PACK_DIST` overrides; the default is the sibling
+ * being fine. `MOBA2D_PACK_DIST` overrides; the default is the sibling
  * checkout, which is how both repositories are actually laid out.
  */
 const PACK_DIST =
-  process.env.LOL2D_PACK_DIST ??
+  process.env.MOBA2D_PACK_DIST ??
   join(process.cwd(), '..', 'moba2d-content-riot', 'dist');
 ```
 
@@ -1374,7 +1374,7 @@ await page.addInitScript(
     );
     window.localStorage.setItem(cfgKey, JSON.stringify(cfg));
   },
-  ['lol2d:packs:v1', PACK_URL, 'lol2d:pregameConfig:v1', CFG_SEED]
+  ['moba2d:packs:v1', PACK_URL, 'moba2d:pregameConfig:v1', CFG_SEED]
 );
 ```
 
@@ -1406,7 +1406,7 @@ const CFG_SEED = {
 And, **while still online**, wait for the prefetch rather than sleeping:
 
 ```js
-  const prefetch = await page.waitForFunction(() => window.__lol2dPackPrefetch ?? null, null, {
+  const prefetch = await page.waitForFunction(() => window.__moba2dPackPrefetch ?? null, null, {
     timeout: 180_000,
   }).then(handle => handle.jsonValue());
 ```
@@ -1423,7 +1423,7 @@ Expected: the new checks fail — most usefully, `a pack champion takes the fiel
 
 No new source is expected here; Tasks 1–4 are the implementation. What this step covers is the debugging that a first real-browser run always produces. Two failures to expect and their causes:
 
-- **The pack's own asset URLs are absolute to the pack host.** The pack builds with `base: ''` so Vite emits `new URL('./assets/x.png', import.meta.url)`; that resolves against the pack's origin at runtime, which is what the base-prefix route is built for. If art is missing offline, check the base the page announced (`window.__lol2dPackPrefetch[0].base`) against a real asset URL from `AssetManager`.
+- **The pack's own asset URLs are absolute to the pack host.** The pack builds with `base: ''` so Vite emits `new URL('./assets/x.png', import.meta.url)`; that resolves against the pack's origin at runtime, which is what the base-prefix route is built for. If art is missing offline, check the base the page announced (`window.__moba2dPackPrefetch[0].base`) against a real asset URL from `AssetManager`.
 - **The worker is not in control on the first load.** The existing script already reloads once for exactly this reason. The prefetch runs on the *first* load, when the page may be uncontrolled — which is fine, because `packCache.ts` writes the cache itself rather than relying on the route.
 
 - [ ] **Step 5: Prove the offline check can fail**
@@ -1871,7 +1871,7 @@ Then rewrite the long comment block beneath it (the one beginning "`npm run veri
 
 - [ ] **Step 3: Update `CLAUDE.md`**
 
-The `## Running` and CI sections describe a build that compiles a pack in. Update them to describe the runtime path: what `lol2d:packs:v1` is, that `e2e:runtime-pack`/`e2e:packs`/`e2e:pwa` need a pack checkout beside core (or `LOL2D_PACK_DIST`), and that `src/sw.ts` is hand-written with route order as its API.
+The `## Running` and CI sections describe a build that compiles a pack in. Update them to describe the runtime path: what `moba2d:packs:v1` is, that `e2e:runtime-pack`/`e2e:packs`/`e2e:pwa` need a pack checkout beside core (or `MOBA2D_PACK_DIST`), and that `src/sw.ts` is hand-written with route order as its API.
 
 - [ ] **Step 4: Prove the deployed shape is right**
 
@@ -1890,7 +1890,7 @@ Boot the built app and read the install report:
 
 ```bash
 npm run preview
-# in the browser console: window.__lol2dPackInstall
+# in the browser console: window.__moba2dPackInstall
 ```
 
 Expected: exactly one outcome, `ok: true`, **no `skipped: true`**. Before this task the compose step put `riot` in the bundle and the runtime install found it already present, so the outcome was a skip and the pack was fetched twice — once by the build, once by the browser. Report the actual value.

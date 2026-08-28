@@ -10,12 +10,12 @@
  * player would use), not by poking the flag directly, so the screenshot also
  * proves the binding works. Requires a system Chrome install.
  *
- *   node tests/e2e/verify-nav-fix.mjs /tmp/lol2d-nav
+ *   node tests/e2e/verify-nav-fix.mjs /tmp/moba2d-nav
  */
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-nav';
+const OUT = process.argv[2] ?? '/tmp/moba2d-nav';
 
 const server = await createServer({ server: { port: 0, strictPort: false } });
 await server.listen();
@@ -36,7 +36,7 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.navigation, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.navigation, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_000);
@@ -44,7 +44,7 @@ await page.waitForTimeout(1_000);
 // Clear the battlefield and make the player immortal, so a bot or a minion
 // wave cannot end the demo before the navigation run this script is watching.
 await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const hostile = new Set(['AIChampion', 'Minion']);
   for (const object of game.objectManager.objects) {
     if (object !== game.player && hostile.has(object.constructor.name)) object.toRemove = true;
@@ -59,14 +59,14 @@ await page.waitForTimeout(300);
 // The real key a player presses -- proves the binding, not just the flag.
 await page.click('canvas');
 await page.keyboard.press('n');
-const debugOn = await page.evaluate(() => window.__lol2d.scene.oScene.game.navigation.debugRoutes);
+const debugOn = await page.evaluate(() => window.__moba2d.scene.oScene.game.navigation.debugRoutes);
 if (!debugOn) throw new Error('N did not toggle navigation.debugRoutes on');
 
 const results = {};
 
 // ---------------------------------------------------------- (a) hug a wall
 results.hugWall = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const navigation = game.navigation;
   const grid = navigation.grid;
   const player = game.player;
@@ -99,7 +99,7 @@ results.hugWall = await page.evaluate(() => {
 if (results.hugWall.found) {
   await page.waitForTimeout(3_500);
   results.hugWall.final = await page.evaluate(() => {
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return {
       position: { x: player.position.x, y: player.position.y },
       state: player.pathAgent?.state,
@@ -110,7 +110,7 @@ if (results.hugWall.found) {
 
 // --------------------------------------------------- (b) click into a wall
 results.clickWall = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const navigation = game.navigation;
   const grid = navigation.grid;
   const player = game.player;
@@ -166,7 +166,7 @@ if (results.clickWall.found) {
   await page.waitForTimeout(2_500);
   results.clickWall.final = await page.evaluate(() => {
     clearInterval(window.__navClickTimer);
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return {
       position: { x: player.position.x, y: player.position.y },
       state: player.pathAgent?.state,
@@ -177,7 +177,7 @@ if (results.clickWall.found) {
 
 // -------------------------------------------------- (c) a narrow gap
 results.narrowGap = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const navigation = game.navigation;
   const grid = navigation.grid;
   const player = game.player;
@@ -231,7 +231,7 @@ if (results.narrowGap.found) {
     await page.waitForTimeout(400);
     arrived = await page.evaluate(
       ({ tx, ty }) => {
-        const player = window.__lol2d.scene.oScene.game.player;
+        const player = window.__moba2d.scene.oScene.game.player;
         return Math.hypot(player.position.x - tx, player.position.y - ty) < 40;
       },
       { tx: results.narrowGap.to.x, ty: results.narrowGap.to.y }
@@ -239,7 +239,7 @@ if (results.narrowGap.found) {
   }
   results.narrowGap.final = await page.evaluate(() => {
     clearInterval(window.__navGapTimer);
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return {
       position: { x: player.position.x, y: player.position.y },
       state: player.pathAgent?.state,

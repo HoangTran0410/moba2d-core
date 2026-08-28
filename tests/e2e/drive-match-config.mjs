@@ -36,7 +36,7 @@
  */
 import { CFG_KEY, DESKTOP_VIEWPORT, startHarness } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-match-config';
+const OUT = process.argv[2] ?? '/tmp/moba2d-match-config';
 
 const { url, page, check, guard } = await startHarness({
   viewport: DESKTOP_VIEWPORT,
@@ -230,16 +230,16 @@ check('confirming stores it', (await storedChampion()) === 'Zed');
 
 // --------------------------------------------------- 8. into the match
 await page.click('#pregame-start-btn');
-// `__lol2d` is the SceneManager; the live game hangs off the active scene —
+// `__moba2d` is the SceneManager; the live game hangs off the active scene —
 // the same handle `drive-practice-panel.mjs` uses.
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.player, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.player, null, {
   timeout: 120_000,
 });
 
 // Bots spawn in slot order, so the slot edited above is that index in the
 // live roster too — `Game` walks `ai.bots[0..count)` in order.
 const applied = await page.evaluate(i => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const bot = game.director.bots()[i];
   return {
     terrain: game.director.debug.terrain,
@@ -258,7 +258,7 @@ check(
 );
 
 const match = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   return {
     player: game.player.name,
     bots: game.director.bots().length,
@@ -332,7 +332,7 @@ await shot('match-settings');
 const panelUp = '#practice-tab-roster';
 const matchState = () =>
   page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return { paused: game.paused, panel: !!game.inGameHUD.vueInstance.hud.showSpellsPicker };
   });
 

@@ -127,7 +127,7 @@ registerRoute(
  * its own TypeScript program (`tsconfig.sw.json`) and cannot import from
  * `src/content/`. `tests/content/packCache.test.ts` asserts the two agree.
  */
-const PACK_CACHE_NAME = 'lol2d-packs-v1';
+const PACK_CACHE_NAME = 'moba2d-packs-v1';
 
 /**
  * The base URLs the page has told us belong to packs, and where that list is
@@ -138,7 +138,7 @@ const PACK_CACHE_NAME = 'lol2d-packs-v1';
  * would claim core's own un-precached requests. And spec §6 rules out the
  * broad shape outright.
  */
-const PACK_BASES_KEY = new URL('__lol2d_pack_bases__', self.registration.scope).href;
+const PACK_BASES_KEY = new URL('__moba2d_pack_bases__', self.registration.scope).href;
 const packBases: string[] = [];
 
 function rememberBases(bases: unknown): void {

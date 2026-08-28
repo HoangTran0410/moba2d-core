@@ -39,7 +39,7 @@ import {
 const dirs: string[] = [];
 
 function tempTree(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'lol2d-seams-'));
+  const dir = mkdtempSync(join(tmpdir(), 'moba2d-seams-'));
   dirs.push(dir);
   for (const [name, contents] of Object.entries(files)) {
     const path = join(dir, name);

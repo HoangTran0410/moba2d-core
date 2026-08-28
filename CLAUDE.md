@@ -26,14 +26,14 @@ what was true on its date, so cite it, do not treat it as current.
 
 ## Project
 
-LOL2D — a fan-made browser 2D game inspired by League of Legends. TypeScript +
+MOBA2D — a fan-made browser 2D game inspired by League of Legends. TypeScript +
 Vite; p5.js draws the canvas, Vue 3 drives the HUD. Vitest for tests, Playwright
 scripts (`tests/e2e/`) drive the real game in Chrome.
 
 **p5 runs in global mode.** `createVector`, `push`, `fill` and the rest are
 globals from a `<script>` in `index.html`, not bundled. All code touching a p5
 global must run inside `setup()`, never at module eval time. `src/main.ts` is the
-only entry point; in dev it exposes `window.__lol2d`, which is how e2e scripts
+only entry point; in dev it exposes `window.__moba2d`, which is how e2e scripts
 reach the running game.
 
 ## Running
@@ -50,12 +50,12 @@ pack's own `npm run verify` is separate and this repository never runs it.**
 
 **Content packs install at runtime, never at build time.**
 `installRuntimePacks()` (`src/content/runtimePacks.ts`) runs during the loading
-screen, reading `lol2d:packs:v1` (`installedPackStore.ts`) and seeding from
+screen, reading `moba2d:packs:v1` (`installedPackStore.ts`) and seeding from
 `DEFAULT_PACK_URL` once if that list has never been seeded. Nothing is compiled
 in: CI's `verify:all` dist is the dist that ships.
 
 `e2e:runtime-pack`, `e2e:packs` and `e2e:pwa` need a real pack `dist/` — a
-sibling `moba2d-content-riot` checkout, or `LOL2D_PACK_DIST`. **None of the three
+sibling `moba2d-content-riot` checkout, or `MOBA2D_PACK_DIST`. **None of the three
 run in CI.**
 
 **PWA build facts that are load-bearing:**
@@ -119,7 +119,7 @@ out is the exit button in the panel's Trận đấu tab, behind a two-step confi
   `tests/scripts/e2eHarness.test.ts` enforces that an importer does not *also*
   start its own server or browser. The **gesture** stays each script's own.
   `drive-game.mjs` and `verify-pwa-offline.mjs` are out on purpose.
-  `LOL2D_CHROME_CHANNEL=` (empty) swaps in Playwright's bundled Chromium.
+  `MOBA2D_CHROME_CHANNEL=` (empty) swaps in Playwright's bundled Chromium.
 - **Every test must be shown to fail.** Write it, run it, *read* the message.
   Two shapes have shipped here repeatedly: asserting on state the code under test
   already produced, and a check that computes its expected value by calling the
@@ -269,7 +269,7 @@ single-tick test agreed with. The five that constrain code outside the directory
 `hud/config/MatchConfigPanel.vue` — **one panel, mounted in two places**: over the
 menu (`SetupScene.ts`) and over a paused match (`InGameHUD.vue`, `Esc`). The seam
 is `hud/config/MatchConfigSource.ts`, with two implementations —
-`PregameConfigSource` (`lol2d:pregameConfig:v1`, `live` is `null`) and
+`PregameConfigSource` (`moba2d:pregameConfig:v1`, `live` is `null`) and
 `MatchDirectorSource`.
 
 **Adding or changing a control? Read `docs/TRAPS.md` § *The match-config panel*

@@ -33,13 +33,13 @@ const slotCentre = async index => {
 /** Which item id is in each slot, straight off the champion. */
 const bag = () =>
   page.evaluate(() =>
-    window.__lol2d.scene.oScene.game.player.items.map(held => held?.def.id ?? null)
+    window.__moba2d.scene.oScene.game.player.items.map(held => held?.def.id ?? null)
   );
 
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -50,7 +50,7 @@ await guard(async () => {
   await page.evaluate(async () => {
     const { HeldItem } = await import('/src/game/items/Item.ts');
     const { packAsset } = await import('/src/game/config/packAsset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const make = (id, stats) =>
       new HeldItem(
         { id, name: id, icon: 'spell_basic_attack', cost: 300, stats },
@@ -72,7 +72,7 @@ await guard(async () => {
   );
 
   const armourBefore = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.stats.armor.value
+    () => window.__moba2d.scene.oScene.game.player.stats.armor.value
   );
 
   // ------------------------------------------------------------- the drag
@@ -112,7 +112,7 @@ await guard(async () => {
   // Stats are the half a slot count cannot see: a move routed through
   // unequip/equip would drift them, and nothing on screen would say so.
   const armourAfter = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.stats.armor.value
+    () => window.__moba2d.scene.oScene.game.player.stats.armor.value
   );
   report.armour = { before: armourBefore, after: armourAfter };
   check('no stat moved with it', armourAfter === armourBefore, `${armourBefore} -> ${armourAfter}`);
@@ -154,7 +154,7 @@ await guard(async () => {
   await page.evaluate(async () => {
     const { HeldItem } = await import('/src/game/items/Item.ts');
     const { packAsset } = await import('/src/game/config/packAsset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     // The champion's own W, worn as an item — a spell that is definitely
     // registered and definitely castable, so the check is about the binding
     // and not about whether some probe spell works.
@@ -180,7 +180,7 @@ await guard(async () => {
   await page.waitForTimeout(200);
 
   const movedTo = await page.evaluate(() =>
-    window.__lol2d.scene.oScene.game.player.items.findIndex(i => i?.def.id === 'probe:active')
+    window.__moba2d.scene.oScene.game.player.items.findIndex(i => i?.def.id === 'probe:active')
   );
   report.activeNowInSlot = movedTo;
   check('the active moved to slot 4', movedTo === 4, `slot ${movedTo}`);
@@ -191,7 +191,7 @@ await guard(async () => {
   // every one of them would make this look like a broken binding. What is
   // being tested is which slot the key reached, so that is what is counted.
   await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.items[4].active;
+    const spell = window.__moba2d.scene.oScene.game.player.items[4].active;
     window.__pressed = 0;
     const original = spell.press.bind(spell);
     spell.press = context => {
@@ -206,7 +206,7 @@ await guard(async () => {
   // time in three for a reason that had nothing to do with the binding.
   await page.waitForFunction(
     () => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       return !game.paused && !game.player.isDead && game.player.items[4]?.active != null;
     },
     null,

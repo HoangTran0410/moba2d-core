@@ -23,7 +23,7 @@
  */
 import { PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-touch';
+const OUT = process.argv[2] ?? '/tmp/moba2d-touch';
 
 // `deviceScaleFactor: 3` is also what makes the fog-buffer reading below
 // meaningful, not just a retina check.
@@ -41,7 +41,7 @@ const settle = (ms = 120) => page.waitForTimeout(ms);
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.touchControls, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.touchControls, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -49,7 +49,7 @@ await guard(async () => {
   // ------------------------------------------------------------------ 1. on
 
   report.mode = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       enabled: game.touchControls.enabled,
       bodyClass: document.body.classList.contains('touch-ui'),
@@ -62,7 +62,7 @@ await guard(async () => {
   check('HUD switches to the touch layout with them', report.mode.bodyClass === true);
 
   report.layout = await page.evaluate(() => {
-    const layout = window.__lol2d.scene.oScene.game.touchControls.currentLayout;
+    const layout = window.__moba2d.scene.oScene.game.touchControls.currentLayout;
     const round = n => Math.round(n * 10) / 10;
     return {
       joystick: {
@@ -96,7 +96,7 @@ await guard(async () => {
     // exactly that), and the throw took the whole run down with it before any
     // check below had run.
     const { removeGraphics } = await import('/src/utils/graphics.utils.ts');
-    const fog = window.__lol2d.scene.oScene.game.fogOfWar;
+    const fog = window.__moba2d.scene.oScene.game.fogOfWar;
     const probe = createGraphics(8, 8);
     const inherited = probe.pixelDensity();
     removeGraphics(probe);
@@ -163,7 +163,7 @@ await guard(async () => {
     const { buildContentApi } = await import('/src/content/ContentApi.ts');
     const api = buildContentApi();
     const AllSpells = await import('/packs/riot/spells/index.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const mapSize = game.mapSize;
     const walls = game.terrainMap.obstacles.filter(o => o.type === 'wall');
@@ -269,14 +269,14 @@ await guard(async () => {
   report.joystick = await (async () => {
     // Put a route in flight first, so the takeover has something to take over.
     const before = await page.evaluate(() => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const player = game.player;
       player.orderMove(player.position.x + 2200, player.position.y + 1400, true);
       return { x: player.position.x, y: player.position.y };
     });
     await page.waitForTimeout(350);
     const routed = await page.evaluate(
-      () => window.__lol2d.scene.oScene.game.player.pathAgent?.state ?? 'NONE'
+      () => window.__moba2d.scene.oScene.game.player.pathAgent?.state ?? 'NONE'
     );
 
     // Grab the stick and push it north-west.
@@ -285,20 +285,20 @@ await guard(async () => {
     await touchMove([{ x: stick.x - 60, y: stick.y - 60 }]);
     await page.waitForTimeout(120);
     const duringRoute = await page.evaluate(
-      () => window.__lol2d.scene.oScene.game.player.pathAgent?.state ?? 'NONE'
+      () => window.__moba2d.scene.oScene.game.player.pathAgent?.state ?? 'NONE'
     );
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${OUT}-02-joystick.png` });
 
     const during = await page.evaluate(() => {
-      const player = window.__lol2d.scene.oScene.game.player;
+      const player = window.__moba2d.scene.oScene.game.player;
       return { x: player.position.x, y: player.position.y };
     });
 
     await touchEnd();
     await page.waitForTimeout(300);
     const settled = await page.evaluate(() => {
-      const player = window.__lol2d.scene.oScene.game.player;
+      const player = window.__moba2d.scene.oScene.game.player;
       return {
         x: player.position.x,
         y: player.position.y,
@@ -310,7 +310,7 @@ await guard(async () => {
     });
     await page.waitForTimeout(500);
     const afterRelease = await page.evaluate(() => {
-      const player = window.__lol2d.scene.oScene.game.player;
+      const player = window.__moba2d.scene.oScene.game.player;
       return { x: player.position.x, y: player.position.y };
     });
 
@@ -362,7 +362,7 @@ await guard(async () => {
 
   const resetSpell = () =>
     page.evaluate(() => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const spell = game.player.spells[1];
       spell.currentCooldown = 0;
       spell.state = 'READY';
@@ -378,7 +378,7 @@ await guard(async () => {
   await touchStart([{ x: slot1.x, y: slot1.y }]);
   await page.waitForTimeout(400);
   report.pressDeferral = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[1];
     return {
       state: spell.state,
@@ -403,7 +403,7 @@ await guard(async () => {
   await page.waitForTimeout(250);
 
   report.draggedSkillshot = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[1];
     const context = spell.castContext;
     return {
@@ -444,7 +444,7 @@ await guard(async () => {
 
   await resetSpell();
   const tapVictim = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = game.objectManager.objects.find(
       o => o.constructor.name === 'AIChampion' && Math.hypot(o.position.x - player.position.x, o.position.y - player.position.y) < 900
@@ -466,7 +466,7 @@ await guard(async () => {
   await page.waitForTimeout(250);
 
   report.tap = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[1];
     const context = spell.castContext;
     const bot = game.objectManager.objects.find(o => o.constructor.name === 'AIChampion' && o.visibleToPlayerTeam);
@@ -504,7 +504,7 @@ await guard(async () => {
     const { buildContentApi } = await import('/src/content/ContentApi.ts');
     const api = buildContentApi();
     const AllSpells = await import('/packs/riot/spells/index.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bots = game.objectManager.objects.filter(o => o.constructor.name === 'AIChampion');
     const nearest = bots[0];
@@ -528,7 +528,7 @@ await guard(async () => {
   await page.waitForTimeout(300);
 
   report.unitDrag = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[3];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[3];
     return {
       targetId: spell.castContext?.target?.id ?? null,
       cooldown: Math.round(spell.currentCooldown),
@@ -555,7 +555,7 @@ await guard(async () => {
   await page.waitForTimeout(300);
 
   report.cancel = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[1];
     return {
       spawned: window.__spawned.length,
@@ -575,7 +575,7 @@ await guard(async () => {
   // ----------------------------------------------------- 8. charged spells
 
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[2];
     spell.currentCooldown = 0;
     spell.state = 'READY';
@@ -586,20 +586,20 @@ await guard(async () => {
   await touchStart([{ x: slot2.x, y: slot2.y }]);
   await page.waitForTimeout(150);
   const chargeStart = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[2];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[2];
     return { state: spell.state, chargeMs: Math.round(spell.chargeMs ?? -1) };
   });
   await touchMove([{ x: slot2.x - 40, y: slot2.y - 150 }]);
   await page.waitForTimeout(700);
   const chargeHeld = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[2];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[2];
     return { state: spell.state, chargeMs: Math.round(spell.chargeMs ?? -1) };
   });
   await page.screenshot({ path: `${OUT}-06-charging.png` });
   await touchEnd();
   await page.waitForTimeout(300);
   const chargeReleased = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const spell = game.player.spells[2];
     // Not spell.castContext: for a charge that is deliberately the *press*
     // snapshot, taken before the thumb had aimed anything. The arrow is what
@@ -666,7 +666,7 @@ await guard(async () => {
 
   const readRecall = () =>
     page.evaluate(() => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const spell = game.player.recall;
       return {
         state: spell.state,
@@ -725,7 +725,7 @@ await guard(async () => {
     // by the root Vue instance directly. `openSpellPicker` is the touch
     // corner button's own entry point (`openPlayerLoadout` is the desktop
     // strip's, and needs an equipped-icon index no touch surface supplies).
-    window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.openSpellPicker();
+    window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.openSpellPicker();
   });
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${OUT}-07-practice-panel.png` });
@@ -758,7 +758,7 @@ await guard(async () => {
   );
 
   await page.evaluate(() => {
-    window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeSpellPicker();
+    window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeSpellPicker();
   });
   await page.waitForTimeout(400);
 
@@ -769,11 +769,11 @@ await guard(async () => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.waitForTimeout(500);
   await page.evaluate(() => {
-    window.__lol2d.scene.oScene.game.setTouchControlsEnabled(false, false);
+    window.__moba2d.scene.oScene.game.setTouchControlsEnabled(false, false);
   });
   await page.waitForTimeout(600);
   report.desktopAfterToggle = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const hud = document.querySelector('.bottom-HUD');
     const box = hud?.getBoundingClientRect();
     const icon = document.querySelectorAll('.bottom-HUD .spell')[1]?.getBoundingClientRect();
@@ -832,7 +832,7 @@ await guard(async () => {
   await page.click('.bottom-HUD .recall-btn');
   await page.waitForTimeout(400);
   const desktopStarted = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.recall;
+    const spell = window.__moba2d.scene.oScene.game.player.recall;
     const fill = document.querySelector('.bottom-HUD .recall-btn .recall-fill');
     return {
       state: spell.state,
@@ -867,7 +867,7 @@ await guard(async () => {
   await page.click('.bottom-HUD .recall-btn');
   await page.waitForTimeout(400);
   report.desktopRecallCancelled = await page.evaluate(() => ({
-    state: window.__lol2d.scene.oScene.game.player.recall.state,
+    state: window.__moba2d.scene.oScene.game.player.recall.state,
     channelling: document.querySelector('.bottom-HUD .recall-btn.channeling') !== null,
   }));
   check(

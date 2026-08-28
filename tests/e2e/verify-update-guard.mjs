@@ -27,7 +27,7 @@ const { url, page, report, check, errors, guard } = await startHarness();
 
 /** `ObjectManager.update()` bumps this at the end of every simulation tick. */
 const revision = () =>
-  page.evaluate(() => window.__lol2d?.scene?.oScene?.game?.objectManager?.revision ?? 0);
+  page.evaluate(() => window.__moba2d?.scene?.oScene?.game?.objectManager?.revision ?? 0);
 /** How many times the loop has reached `game.update()`, crash or not. */
 const calls = () => page.evaluate(() => window.__updateCalls ?? 0);
 const settle = ms => page.waitForTimeout(ms);
@@ -35,7 +35,7 @@ const settle = ms => page.waitForTimeout(ms);
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await settle(600);
@@ -49,7 +49,7 @@ await guard(async () => {
   // 2. Break it, at exactly the place a real spell crash lands: inside
   //    `game.update()`, which is what `runTick` wraps.
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     window.__realUpdate = game.update.bind(game);
     window.__updateCalls = 0;
     game.update = () => {
@@ -90,7 +90,7 @@ await guard(async () => {
   // 4. Put it back: the match goes straight on simulating, because the chain
   //    was never broken in the first place.
   await page.evaluate(() => {
-    window.__lol2d.scene.oScene.game.update = window.__realUpdate;
+    window.__moba2d.scene.oScene.game.update = window.__realUpdate;
   });
   await settle(500);
   const recovered = await revision();

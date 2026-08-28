@@ -15,8 +15,8 @@ import type { AttackTargetPriority } from '@/game/combat/AttackTargeting';
  * `from '@/game/input/TouchControls'` still resolves.
  */
 
-const STORAGE_KEY = 'lol2d.touchControls';
-const TARGET_PRIORITY_STORAGE_KEY = 'lol2d.touchTargetPriority';
+const STORAGE_KEY = 'moba2d.touchControls';
+const TARGET_PRIORITY_STORAGE_KEY = 'moba2d.touchTargetPriority';
 
 export type TouchTargetPriority = AttackTargetPriority;
 

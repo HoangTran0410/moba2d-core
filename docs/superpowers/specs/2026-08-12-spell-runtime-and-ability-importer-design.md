@@ -6,7 +6,7 @@ Status: Approved in conversation; pending implementation plan
 
 ## Goal
 
-Standardize LOL2D's spell runtime before adding more champions so new abilities can reuse predictable casting, charging, channeling, recast, targeting, projectile, beam, area, VFX, and cancellation behavior.
+Standardize MOBA2D's spell runtime before adding more champions so new abilities can reuse predictable casting, charging, channeling, recast, targeting, projectile, beam, area, VFX, and cancellation behavior.
 
 The same change will make assets lazy and type-safe, introduce a local League Wiki research cache with champion and spell images, and enforce strict TypeScript at the new core boundary without attempting a risky whole-repository rewrite.
 
@@ -386,7 +386,7 @@ Legacy p5/Vue/game-object values enter through narrow adapters as `unknown` and 
 - A homing missile follows the target and defines behavior if the target becomes invalid.
 - Damage and movement-speed transfer apply once on arrival.
 
-Exact numeric values are not copied into this design. Each migration reads its checked-in importer record, compares it with Riot's current champion page/patch history, and records deliberate LOL2D adaptations.
+Exact numeric values are not copied into this design. Each migration reads its checked-in importer record, compares it with Riot's current champion page/patch history, and records deliberate MOBA2D adaptations.
 
 ## Verification Strategy
 

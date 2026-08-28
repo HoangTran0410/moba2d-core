@@ -349,9 +349,9 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
     it('does not write storage mid-drag', () => {
       source.setRules({ cooldownReductionPercent: 10, manaFree: false }, true);
-      const before = localStorage.getItem('lol2d:pregameConfig:v1');
+      const before = localStorage.getItem('moba2d:pregameConfig:v1');
       source.setRules({ cooldownReductionPercent: 70, manaFree: false }, false);
-      expect(localStorage.getItem('lol2d:pregameConfig:v1')).toBe(before);
+      expect(localStorage.getItem('moba2d:pregameConfig:v1')).toBe(before);
       // …but the label still reads the value being dragged.
       expect(source.getRules().cooldownReductionPercent).toBe(70);
     });

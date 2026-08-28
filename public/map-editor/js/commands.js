@@ -413,7 +413,7 @@ const Cmd = (() => {
    * không phải xin quyền, và dán qua lại giữa hai tab editor cũng chạy.
    * `memClip` chỉ là phao cứu sinh cho lúc trình duyệt chặn clipboard.
    */
-  const CLIP_TAG = "lol2d-mapeditor-clip";
+  const CLIP_TAG = "moba2d-mapeditor-clip";
   let memClip = null;
 
   function clipPayload() {
@@ -894,16 +894,16 @@ const Cmd = (() => {
     run: () => UI.exportMoba2d(),
   });
   def("file.export", {
-    label: "Export cho LOL2D (bản cũ)", icon: "code",
+    label: "Export cho MOBA2D (bản cũ)", icon: "code",
     run: () => UI.text({
-      title: "Export LOL2D — định dạng đời trước",
+      title: "Export MOBA2D — định dạng đời trước",
       value: Store.exportForGame(),
-      filename: "lol2d-map-export.json",
+      filename: "moba2d-map-export.json",
     }),
   });
   def("file.exportRaw", {
     label: "Export dữ liệu thô", icon: "code",
-    run: () => UI.text({ title: "Export raw", value: Store.exportRaw(), filename: "lol2d-map-raw.json" }),
+    run: () => UI.text({ title: "Export raw", value: Store.exportRaw(), filename: "moba2d-map-raw.json" }),
   });
   def("file.clear", {
     label: "Xoá toàn bộ terrain", icon: "trash", danger: true,

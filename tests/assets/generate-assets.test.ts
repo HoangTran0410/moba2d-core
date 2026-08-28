@@ -99,7 +99,7 @@ describe('asset manifest generator', () => {
     });
 
     it('names the regenerate command in the stale-manifest message', async () => {
-      const tmpRoot = await mkdtemp(join(tmpdir(), 'lol2d-assets-stale-'));
+      const tmpRoot = await mkdtemp(join(tmpdir(), 'moba2d-assets-stale-'));
       try {
         await mkdir(join(tmpRoot, 'assets'), { recursive: true });
         await expect(generate(tmpRoot, true, CORE_ASSET_TREE)).rejects.toThrow(

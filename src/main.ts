@@ -16,6 +16,7 @@ import { registerServiceWorker } from './pwa/updates';
 import AssetManager from './managers/AssetManager';
 import { contentRegistry } from './content/registry';
 import { installGlobalErrorReporter } from './managers/RenderGuard';
+import { carryRenamedStorage } from './managers/storageRename';
 
 /*
  * No `import { System } from './libs/detect-collisions'` here.
@@ -43,6 +44,18 @@ import { installGlobalErrorReporter } from './managers/RenderGuard';
  * here the stack is already unwound. See `managers/RenderGuard.ts`.
  */
 installGlobalErrorReporter();
+
+/*
+ * Before anything reads a saved anything.
+ *
+ * Every key this game stores moved prefix with the project's own rename, and
+ * a returning player's pack list, kits and match settings are all under the
+ * old one until this has run. `LoadingScene` reaches `installRuntimePacks()`,
+ * which reads that list and *seeds* when it is empty, so being late here is
+ * not a missing setting — it is a player being re-offered the default pack as
+ * though they had never played. See `managers/storageRename.ts`.
+ */
+carryRenamedStorage();
 
 // Patch Math.hypot with fast 2D scalar implementation
 Math.hypot = fastHypot;
@@ -82,7 +95,7 @@ Math.hypot = fastHypot;
 
   // Dev-only handle so end-to-end tests can reach the live scene and game.
   // Stripped from production builds by Vite's import.meta.env.DEV constant.
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__lol2d = mgr;
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__moba2d = mgr;
 
   // open loading scene
   mgr.showScene(LoadingScene);

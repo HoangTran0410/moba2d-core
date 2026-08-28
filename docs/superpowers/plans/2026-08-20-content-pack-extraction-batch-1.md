@@ -320,7 +320,7 @@ Expected: FAIL — `expected [ 'Chilled.ts: 'spell_anivia_e'', 'Speedup.ts: 'spe
 The existing set (`assets/images/buffs/`) is flat 32×32 marks of 692B–1.2KB. Write this throwaway script to the scratchpad — **not** into `scripts/`, it runs once — and run it:
 
 ```js
-// /private/tmp/claude-501/-Users-hoangtran-Desktop-Github-LOL2D/97ce2ebd-72ef-4602-8bdd-4966b66074d7/scratchpad/make-buff-icons.mjs
+// /private/tmp/claude-501/-Users-hoangtran-Desktop-Github-MOBA2D/97ce2ebd-72ef-4602-8bdd-4966b66074d7/scratchpad/make-buff-icons.mjs
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 
@@ -389,7 +389,7 @@ writeFileSync('assets/images/buffs/haste.png', png(S, haste));
 console.log('written');
 ```
 
-Run it from the repo root: `node /private/tmp/claude-501/-Users-hoangtran-Desktop-Github-LOL2D/97ce2ebd-72ef-4602-8bdd-4966b66074d7/scratchpad/make-buff-icons.mjs`
+Run it from the repo root: `node /private/tmp/claude-501/-Users-hoangtran-Desktop-Github-MOBA2D/97ce2ebd-72ef-4602-8bdd-4966b66074d7/scratchpad/make-buff-icons.mjs`
 
 - [ ] **Step 4: Regenerate the manifest and point the buffs at them**
 
@@ -705,7 +705,7 @@ import type { ContentApi } from './ContentApi';
  *
  * The same shape also loads at runtime, which is the whole point:
  *
- *     Stage 1  import factory from '@lol2d/content-riot'      -> factory(api)
+ *     Stage 1  import factory from '@moba2d/content-riot'      -> factory(api)
  *     Stage 2  const { default: factory } = await import(url) -> factory(api)
  *
  * so batch 2 changes `install.ts` and nothing a pack author wrote.
@@ -1898,7 +1898,7 @@ import referencePack from '../../packs/reference/pack';
  * 2 this becomes a fetch, an `import(blobUrl)` and a cache — and nothing below
  * it changes, because a pack is a factory taking core's API in both cases:
  *
- *     Stage 1  import factory from '@lol2d/content-riot'      -> factory(api)
+ *     Stage 1  import factory from '@moba2d/content-riot'      -> factory(api)
  *     Stage 2  const { default: factory } = await import(url) -> factory(api)
  *
  * Keeping that one seam is what makes Stage 2 a change to this file rather

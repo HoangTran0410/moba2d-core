@@ -105,7 +105,7 @@ import {
  * chunk fetched mid-match is cached by the worker's own route too, so the
  * announce always happens) and then starts the prefetch without awaiting it,
  * catching whatever it throws so a slow or failing cache never becomes the
- * player's problem. `window.__lol2dPackPrefetch` is where that background
+ * player's problem. `window.__moba2dPackPrefetch` is where that background
  * work reports in, once it is actually done — see this file's own export.
  */
 
@@ -397,7 +397,7 @@ export async function installRuntimePacks(): Promise<PackInstallOutcome[]> {
   // should never happen (that is what the `prefetchPackFiles` contract
   // promises), so a settled report is synthesized for it rather than
   // omitted: "one report per requested pack" stays true for whatever reads
-  // `window.__lol2dPackPrefetch`, and the synthesized report's own numbers
+  // `window.__moba2dPackPrefetch`, and the synthesized report's own numbers
   // say plainly that nothing made it in.
   if (toPrefetch.length > 0) {
     void Promise.allSettled(toPrefetch.map(pack => prefetchPackFiles(pack.base, pack.files)))
@@ -676,14 +676,14 @@ export async function installPackNow(
 /**
  * What the background prefetch did, on a global.
  *
- * Same reasoning as `packBanner.ts`'s `__lol2dPackInstall`, and the same bill
+ * Same reasoning as `packBanner.ts`'s `__moba2dPackInstall`, and the same bill
  * already paid once: an install whose only voice was `console.warn` reported
  * itself green through a Playwright run that had no way to hear it. An
  * offline check in particular cannot be written at all without a signal for
  * "the prefetch has finished" — the alternative is a sleep, which is a check
  * that passes on a slow machine by accident.
  */
-const PACK_PREFETCH_GLOBAL = '__lol2dPackPrefetch';
+const PACK_PREFETCH_GLOBAL = '__moba2dPackPrefetch';
 
 function publishPrefetchReports(reports: PrefetchReport[]): void {
   (globalThis as Record<string, unknown>)[PACK_PREFETCH_GLOBAL] = reports;

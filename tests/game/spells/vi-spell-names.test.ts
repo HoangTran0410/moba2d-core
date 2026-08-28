@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  * an owner, to check a string literal that is right there in the file.
  *
  * Descriptions are deliberately **not** covered. The official ones carry no
- * damage numbers and LOL2D's are scaled to a ~100 health pool.
+ * damage numbers and MOBA2D's are scaled to a ~100 health pool.
  */
 const SPELL_DIR = fileURLToPath(new URL('../../../packs/riot/spells/', import.meta.url));
 const NAMES: { version: string; names: Record<string, string> } = JSON.parse(

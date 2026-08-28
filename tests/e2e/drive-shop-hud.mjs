@@ -29,14 +29,14 @@ const { page, check, report, guard } = h;
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
 
   // ---------------------------------------------------------------- gold
   const gold = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return { balance: game.player.wallet?.balance ?? null };
   });
   report.startingGold = gold.balance;
@@ -68,7 +68,7 @@ await guard(async () => {
   await page.evaluate(async () => {
     const { HeldItem } = await import('/src/game/items/Item.ts');
     const { packAsset } = await import('/src/game/config/packAsset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const def = {
       id: 'probe:boots',
       name: 'Giày Thử',
@@ -89,7 +89,7 @@ await guard(async () => {
   check('and draws its icon', iconShown === 1, `${iconShown} images`);
 
   const armour = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.stats.armor.value
+    () => window.__moba2d.scene.oScene.game.player.stats.armor.value
   );
   report.armourWithItem = armour;
   check('the item grants its stats', armour === 25, `armour ${armour}`);
@@ -104,7 +104,7 @@ await guard(async () => {
   // one under test here is a real kit spell with its `castSpec.activation`
   // rewritten — which is exactly the field `hudState` reads.
   const toggleWired = await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[1];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[1];
     if (!spell) return false;
     const base = spell.castSpec;
     Object.defineProperty(spell, 'castSpec', {
@@ -127,7 +127,7 @@ await guard(async () => {
   check('an off toggle says so', offBadge === 'TẮT', `badge "${offBadge}"`);
 
   await page.evaluate(() => {
-    const spell = window.__lol2d.scene.oScene.game.player.spells[1];
+    const spell = window.__moba2d.scene.oScene.game.player.spells[1];
     spell.state = 'ACTIVE';
   });
   await page.waitForTimeout(200);
@@ -154,16 +154,16 @@ await guard(async () => {
   // onto the champion rather than bought, so it is in the bag and *not* on the
   // shelf — which is a state the panel handles (the pane says nothing is
   // picked) but a poor thing to run every later check through.
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.player.unequipItem(0));
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.player.unequipItem(0));
   await seedShopProbePack(page);
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.openShop());
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.openShop());
   await page.waitForTimeout(400);
 
   const panel = await page.locator('.shop-panel').count();
   report.shopPanels = panel;
   check('the shop opens', panel === 1, `${panel} panels`);
 
-  const paused = await page.evaluate(() => window.__lol2d.scene.oScene.game.paused === true);
+  const paused = await page.evaluate(() => window.__moba2d.scene.oScene.game.paused === true);
   check('and does not pause the match', paused === false, `paused=${paused}`);
 
   // ----------------------------------------------------------- the grid
@@ -238,7 +238,7 @@ await guard(async () => {
   // the boot rather than watching for a purchase. The bag is the honest
   // question: browsing must put nothing in it.
   const heldAfterPick = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.items.filter(Boolean).length
+    () => window.__moba2d.scene.oScene.game.player.items.filter(Boolean).length
   );
   report.picked = { pickedName, pickedTiles, heldAfterPick };
   check(
@@ -294,13 +294,13 @@ await guard(async () => {
   await page.locator(`.shop-tile[title="${PROBE_ITEMS.sword.name}"]`).click();
   await page.waitForTimeout(200);
   const goldBeforeBuy = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.wallet.balance
+    () => window.__moba2d.scene.oScene.game.player.wallet.balance
   );
   await page.locator('.shop-buy').click();
   await page.waitForTimeout(300);
 
   const afterBuy = await page.evaluate(() => {
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return { gold: player.wallet.balance, held: player.items.filter(Boolean).length };
   });
   // A window rather than an equality, for the same reason the gold pill above
@@ -367,12 +367,12 @@ await guard(async () => {
   check('and that pane grows a sell button', sellButtons === 1, `${sellButtons} sell buttons`);
 
   const goldBeforeSell = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.wallet.balance
+    () => window.__moba2d.scene.oScene.game.player.wallet.balance
   );
   await page.locator('.shop-sell').click();
   await page.waitForTimeout(300);
   const afterSell = await page.evaluate(() => {
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return { gold: player.wallet.balance, held: player.items.filter(Boolean).length };
   });
   report.sale = { goldBeforeSell, ...afterSell };
@@ -398,7 +398,7 @@ await guard(async () => {
   await page.locator(`.shop-tile[title^="${PROBE_ITEMS.cloak.name}"]`).click();
   await page.waitForTimeout(200);
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     game.player.position.set(game.player.position.x + 4000, game.player.position.y);
   });
   await page.waitForTimeout(300);
@@ -427,7 +427,7 @@ await guard(async () => {
   // the Bán button reads — the assertion here is that death does not close
   // the shop the way it once did.
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     game.player.position.set(game.player.position.x - 4_000, game.player.position.y);
   });
   await page.waitForTimeout(300);
@@ -436,10 +436,10 @@ await guard(async () => {
   check('back on the platform the warning clears', homeAgain === 0, `${homeAgain} warnings`);
   check('and the sell button comes back', sellableAgain === 0, `${sellableAgain} blocked`);
 
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.player.takeDamage(99_999));
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.player.takeDamage(99_999));
   await page.waitForTimeout(300);
   const deadAtFountain = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.isDead === true
+    () => window.__moba2d.scene.oScene.game.player.isDead === true
   );
   const deadBlockedSell = await page.locator('.shop-sell.blocked').count();
   report.dead = { deadAtFountain, deadBlockedSell };
@@ -451,7 +451,7 @@ await guard(async () => {
   );
 
   // Escape closes the shop and leaves the config panel shut.
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.escape());
   await page.waitForTimeout(300);
   const stillOpen = await page.locator('.shop-panel').count();
   const configOpen = await page.locator('.practice-panel').count();
@@ -471,10 +471,10 @@ await guard(async () => {
     );
 
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     for (const entry of game.director.roster()) if (!entry.isPlayer) entry.unit.wallet?.earn(5_000);
   });
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.escape());
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.escape());
   await page.waitForTimeout(500);
   await page.locator('.practice-stat-toggle').nth(1).click();
   await page.waitForTimeout(300);
@@ -500,7 +500,7 @@ await guard(async () => {
   // the bot's" is a coincidence of ordering, not the claim. The claim is whose
   // wallet the panel is reading.
   const wallets = await page.evaluate(name => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const roster = game.director.roster();
     return {
       subject: roster.find(entry => entry.unit.name === name)?.unit.wallet?.balance ?? null,
@@ -528,7 +528,7 @@ await guard(async () => {
   );
   check(
     'and the match runs while shopping, as it does for the player',
-    await page.evaluate(() => !window.__lol2d.scene.oScene.game.paused),
+    await page.evaluate(() => !window.__moba2d.scene.oScene.game.paused),
     'paused'
   );
 

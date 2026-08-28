@@ -37,7 +37,7 @@ const { page, check, report, guard, tap, touchStart, touchMove, touchEnd } = h;
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -177,12 +177,12 @@ await guard(async () => {
   );
 
   const heldBefore = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.items.filter(Boolean).length
+    () => window.__moba2d.scene.oScene.game.player.items.filter(Boolean).length
   );
   await tap(buyBox.x + buyBox.width / 2, buyBox.y + buyBox.height / 2, 80);
   await page.waitForTimeout(400);
   const bought = await page.evaluate(() => {
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return {
       held: player.items.filter(Boolean).length,
       name: player.items.find(Boolean)?.def.name,
@@ -233,7 +233,7 @@ await guard(async () => {
   await page.evaluate(async () => {
     const { HeldItem } = await import('/src/game/items/Item.ts');
     const { packAsset } = await import('/src/game/config/packAsset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     // The champion's own W, worn as an item active: a real `Spell` with a real
     // icon, so the button has something to draw and something to press.
     const kitSpell = game.player.spells[2];
@@ -281,7 +281,7 @@ await guard(async () => {
   await page.waitForTimeout(300);
 
   const afterDrag = await page.evaluate(() =>
-    window.__lol2d.scene.oScene.game.player.items.map(held => held?.def.id ?? null)
+    window.__moba2d.scene.oScene.game.player.items.map(held => held?.def.id ?? null)
   );
   report.afterDrag = afterDrag;
   check(
@@ -332,11 +332,11 @@ await guard(async () => {
   // slot 4, so slot 4's button is the one that must fire it. Moving an item is
   // only worth anything if its key moves with it — "gán slot cho user dễ bấm
   // kích hoạt item" is the ask, and this is the sentence that answers it.
-  await page.evaluate(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeShop());
+  await page.evaluate(() => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeShop());
   await page.waitForTimeout(300);
 
   const drawn = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const controls = game.touchControls;
     const layout = controls.currentLayout;
     const at = slot => ({
@@ -364,13 +364,13 @@ await guard(async () => {
   // slot 2 is the *same class*, so pressing the wrong row would look identical
   // in a screenshot — this checks the instance the item is holding.
   const before = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.player.items[4].active.state
+    () => window.__moba2d.scene.oScene.game.player.items[4].active.state
   );
   await tap(drawn.moved.x, drawn.moved.y, 80);
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({
-    item: window.__lol2d.scene.oScene.game.player.items[4].active.state,
-    kit: window.__lol2d.scene.oScene.game.player.spells[2].state,
+    item: window.__moba2d.scene.oScene.game.player.items[4].active.state,
+    kit: window.__moba2d.scene.oScene.game.player.spells[2].state,
   }));
   report.itemPress = { before, after };
   check(

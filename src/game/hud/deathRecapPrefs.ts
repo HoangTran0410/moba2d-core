@@ -7,10 +7,10 @@
  * that one, because collapsing the recap is a *setting*: the player who wants
  * the compact bar wants it on every death, not until the next respawn
  * unmounts the panel. `localStorage` in the same guarded style every other
- * `lol2d:*` preference uses: a blocked store reads as the default and
+ * `moba2d:*` preference uses: a blocked store reads as the default and
  * swallows the write.
  */
-export const RECAP_COLLAPSED_KEY = 'lol2d:deathRecapCollapsed:v1';
+export const RECAP_COLLAPSED_KEY = 'moba2d:deathRecapCollapsed:v1';
 
 export function loadRecapCollapsed(): boolean {
   try {

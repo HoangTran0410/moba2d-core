@@ -6,7 +6,7 @@
 ## Goal
 
 Make charged and channeled abilities readable and satisfying in motion, bring
-outlier cooldowns and Janna Q dimensions back into LOL2D's arcade scale, and
+outlier cooldowns and Janna Q dimensions back into MOBA2D's arcade scale, and
 render shields as visible extra effective health instead of an overlay. Restore
 Lux R's layered prepare/fire visual that was lost during the runtime migration.
 
@@ -17,9 +17,9 @@ Lux R's layered prepare/fire visual that was lost during the runtime migration.
 - Varus Q and Pantheon Q assign an image to their missile objects, but the base
   missile has no sprite renderer; their collision objects therefore fly invisibly.
 - Charged directional spells have no shared live range telegraph.
-- Janna R has a source-game cooldown (`130s`) that conflicts with LOL2D's short,
+- Janna R has a source-game cooldown (`130s`) that conflicts with MOBA2D's short,
   repeatable arcade loop.
-- Janna Q uses a `240`-unit hitbox and `1100–1760` range while ordinary LOL2D
+- Janna Q uses a `240`-unit hitbox and `1100–1760` range while ordinary MOBA2D
   projectiles are mostly `20–40` units wide and travel roughly `350–700` units.
 - Shield rendering overlays current health and caps itself inside the original
   health container, hiding the shield's real size.
@@ -68,7 +68,7 @@ Normalize every current spell cooldown above ten seconds:
 - ultimates target `8–10s`;
 - no current spell may exceed `10s`.
 
-This is an explicit LOL2D balance decision and does not track live League values.
+This is an explicit MOBA2D balance decision and does not track live League values.
 Focused charged abilities use:
 
 - Varus Q: `5s`;

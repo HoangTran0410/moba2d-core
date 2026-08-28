@@ -45,7 +45,7 @@ const openMatch = async (viewport, query = '') => {
   // import the harness helper that does both (`e2eHarness.test.ts`).
   await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.camera, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.camera, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(600);
@@ -58,7 +58,7 @@ const spanAt = async (page, viewport) => {
   // 0.39 -> 0.9 move needs some 60 frames to settle inside 1%.
   await page.waitForTimeout(2_000);
   return page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const box = game.camera.getBoundingBox();
     return {
       w: box.w,

@@ -210,7 +210,7 @@ try {
   // succeeds and a menu that dead-ends is the failure this whole drill exists
   // to catch, and nothing above this line can see it: `verify` runs Vitest on
   // `environment: 'node'`, with no renderer, no p5, no DOM and no `GameScene`.
-  // `--skip-boot` is for a machine with no browser at all; `LOL2D_CHROME_CHANNEL=`
+  // `--skip-boot` is for a machine with no browser at all; `MOBA2D_CHROME_CHANNEL=`
   // (empty) is the better answer there, and swaps system Chrome for
   // Playwright's own bundled Chromium.
   if (process.argv.includes('--skip-boot')) {

@@ -17,10 +17,10 @@
  * folding them in would mean this module growing a mode for each:
  *
  *   - `drive-game.mjs` spawns `npx vite` as a child process and honours
- *     `LOL2D_URL` / `LOL2D_PORT` so it can be pointed at an already-running
+ *     `MOBA2D_URL` / `MOBA2D_PORT` so it can be pointed at an already-running
  *     server. That is a different contract, not a different option.
  *   - `verify-pwa-offline.mjs` serves the *built* `dist/` through `preview()`,
- *     never touches `window.__lol2d`, and cuts the network on purpose. A dev
+ *     never touches `window.__moba2d`, and cuts the network on purpose. A dev
  *     server would invalidate the only thing it asks.
  *
  * `hmr: false` is not a detail: this repo is worked on by several agents in one
@@ -36,8 +36,8 @@ export const PHONE_VIEWPORT = { width: 844, height: 390 };
 /** The desktop frame the non-mobile drivers assert layout against. */
 export const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 
-export const CFG_KEY = 'lol2d:pregameConfig:v1';
-export const KITS_KEY = 'lol2d:savedKits:v1';
+export const CFG_KEY = 'moba2d:pregameConfig:v1';
+export const KITS_KEY = 'moba2d:savedKits:v1';
 
 /**
  * Boots the server and the browser and hands back everything a driver needs.
@@ -101,11 +101,11 @@ export const startHarness = async ({
   const url = `${server.resolvedUrls.local[0]}${touch ? '?touch=1' : ''}`;
 
   // System Chrome by default, because that is the browser the game ships to.
-  // `LOL2D_CHROME_CHANNEL=` (empty) falls back to Playwright's own bundled
+  // `MOBA2D_CHROME_CHANNEL=` (empty) falls back to Playwright's own bundled
   // Chromium, which is what makes these scripts runnable on a machine — or in
   // CI — with no Chrome installed. Same idea as `drive-game.mjs`'s
-  // `LOL2D_URL` / `LOL2D_PORT`: an override, never the default.
-  const channel = process.env.LOL2D_CHROME_CHANNEL ?? 'chrome';
+  // `MOBA2D_URL` / `MOBA2D_PORT`: an override, never the default.
+  const channel = process.env.MOBA2D_CHROME_CHANNEL ?? 'chrome';
   const browser = await chromium.launch(channel ? { channel } : {});
   const page = await browser.newPage({
     viewport,

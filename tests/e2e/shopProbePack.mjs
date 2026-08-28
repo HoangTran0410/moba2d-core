@@ -115,6 +115,6 @@ export const seedShopProbePack = async (page, { gold = 6_000 } = {}) => {
       },
     });
 
-    window.__lol2d.scene.oScene.game.player.wallet.earn(wallet);
+    window.__moba2d.scene.oScene.game.player.wallet.earn(wallet);
   }, gold);
 };

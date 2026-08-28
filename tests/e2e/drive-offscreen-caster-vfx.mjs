@@ -55,8 +55,8 @@
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-offscreen-caster-vfx';
-const CFG_KEY = 'lol2d:pregameConfig:v1';
+const OUT = process.argv[2] ?? '/tmp/moba2d-offscreen-caster-vfx';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
 const VIEWPORT = { width: 1280, height: 900 };
 
 /**
@@ -114,14 +114,14 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_200);
 
 // ------------------------------------------------------------------ stage ---
 const staged = await page.evaluate(async offset => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const player = game.player;
 
   // Empty arena: another object drifting through frame would be drawing the

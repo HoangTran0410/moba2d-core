@@ -34,7 +34,7 @@ import { join, extname } from 'node:path';
  * The pack repository's built output. An absolute path in one developer's
  * home directory was fine while this was the only script that needed it and
  * it ran on one machine; three scripts and a second machine is where it stops
- * being fine. `LOL2D_PACK_DIST` overrides; the default is the sibling
+ * being fine. `MOBA2D_PACK_DIST` overrides; the default is the sibling
  * checkout, which is how both repositories are actually laid out.
  */
 const SIBLING_CANDIDATES = ['moba2d-content-lol', 'lol', 'moba2d-content-riot'];
@@ -45,10 +45,10 @@ const SIBLING_CANDIDATES = ['moba2d-content-lol', 'lol', 'moba2d-content-riot'];
  * may be under either. The old name is last rather than removed: a developer
  * who cloned it before the rename should not have their e2e runs start
  * failing with "no pack build found" over a directory that is right there.
- * `LOL2D_PACK_DIST` overrides all of it.
+ * `MOBA2D_PACK_DIST` overrides all of it.
  */
 function findPackDist() {
-  if (process.env.LOL2D_PACK_DIST) return process.env.LOL2D_PACK_DIST;
+  if (process.env.MOBA2D_PACK_DIST) return process.env.MOBA2D_PACK_DIST;
   for (const name of SIBLING_CANDIDATES) {
     const candidate = join(process.cwd(), '..', name, 'dist');
     if (existsSync(join(candidate, 'manifest.json'))) return candidate;
@@ -67,7 +67,7 @@ export const PACK_DIST = findPackDist();
  * manifest fetch fails inside `installRuntimePacks()`, and every pack check
  * in the calling script fails exactly the way a real regression would — a
  * developer without the sibling checkout, or with a typo in
- * `LOL2D_PACK_DIST`, gets a report that reads as this repository's bug with
+ * `MOBA2D_PACK_DIST`, gets a report that reads as this repository's bug with
  * nothing pointing at the real cause. `manifest.json`, not just the
  * directory, because a stale empty `dist/` left over from an interrupted
  * build passes an `existsSync` on the directory alone.
@@ -76,7 +76,7 @@ export function requirePackDist() {
   if (!existsSync(join(PACK_DIST, 'manifest.json'))) {
     console.error(
       `no pack build found at ${PACK_DIST} (looked for manifest.json inside it) — build the ` +
-        `content pack repository first, or set LOL2D_PACK_DIST to its dist/ directory.`
+        `content pack repository first, or set MOBA2D_PACK_DIST to its dist/ directory.`
     );
     process.exit(1);
   }

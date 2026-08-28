@@ -85,7 +85,7 @@ await guard(
           key,
           JSON.stringify([{ manifestUrl: packUrl, id: 'riot', version: '1.0.0' }])
         ),
-      ['lol2d:packs:v1', PACK_URL]
+      ['moba2d:packs:v1', PACK_URL]
     );
     await page.addInitScript(
       ([key, config]) => window.localStorage.setItem(key, JSON.stringify(config)),
@@ -123,13 +123,13 @@ await guard(
     await page.click('.kit-bar-btn:not(.secondary)'); // Xác nhận
     await page.waitForSelector('.loadout-modal', { state: 'detached' });
     await page.click('#pregame-start-btn'); // Bắt Đầu
-    await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+    await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
       timeout: 30_000,
     });
     await page.waitForTimeout(500);
 
     const match = await page.evaluate(() => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const subject = game.player;
       const casts = [];
       // `SpellHotKeys` is [A, Q, W, E, R, D, F], so `spells[1..4]` is Q/W/E/R.
@@ -184,7 +184,7 @@ await guard(
     // `console.error` and `pageerror`). That is how this script reported 6/6
     // green while `installCode` was throwing 61 pairing errors: it had no
     // way to look. See `src/scenes/packBanner.ts`.
-    const outcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    const outcomes = await page.evaluate(() => window.__moba2dPackInstall ?? null);
     report.outcomes = outcomes;
     check(
       'the install reports itself to the page, not only to a console warning',
@@ -215,7 +215,7 @@ await guard(
       .then(() => true)
       .catch(() => false);
     check('a pinned pack survives a dead host', survivedDeadHost);
-    const pinnedOutcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    const pinnedOutcomes = await page.evaluate(() => window.__moba2dPackInstall ?? null);
     report.pinnedOutcomes = pinnedOutcomes;
     check(
       'and installs from the pin, with no network at all',
@@ -252,7 +252,7 @@ await guard(
       await page.locator('.pack-banner').isVisible()
     );
     check('the banner offers a retry', await page.locator('#pack-banner-retry').isVisible());
-    const failedOutcomes = await page.evaluate(() => window.__lol2dPackInstall ?? null);
+    const failedOutcomes = await page.evaluate(() => window.__moba2dPackInstall ?? null);
     report.failedOutcomes = failedOutcomes;
     check(
       'and the failure is reported to the page with its stage',

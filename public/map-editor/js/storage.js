@@ -436,7 +436,7 @@ const Store = (() => {
 
   const LEGACY_KEYS = ["wall", "brush", "water", "turret1", "turret2"];
 
-  /** Định dạng export của LOL2D đời trước. */
+  /** Định dạng export của MOBA2D đời trước. */
   function fromGameFormat(obj) {
     const out = [];
     for (const key of LEGACY_KEYS) {
@@ -683,7 +683,7 @@ const Store = (() => {
       data: serializeTerrains(),
     };
     const safe = (E.mapName || "map").replace(/[^\p{L}\p{N}_-]+/gu, "-");
-    download(`lol2d-map-${safe}.json`, JSON.stringify(payload, null, 2));
+    download(`moba2d-map-${safe}.json`, JSON.stringify(payload, null, 2));
     UI.toast("Đã tải file map về máy");
   }
 
@@ -877,7 +877,7 @@ const Store = (() => {
 /**
  * ${sum.name} — nửa nặng của map: địa hình, slot và lane.
  *
- * Sinh bởi LOL2D Map Editor. Địa hình đã được cắt thành mảnh lồi
+ * Sinh bởi MOBA2D Map Editor. Địa hình đã được cắt thành mảnh lồi
  * (${counts}); TerrainField/Vision của core chỉ đúng với polygon lồi.
  */
 export const ${name}Geometry: MapGeometry = {
@@ -1185,10 +1185,10 @@ export const ${name}Map: MapDefinition = {
     return out;
   }
 
-  /* ------------------------ export LOL2D (cũ) ------------------------ */
+  /* ------------------------ export MOBA2D (cũ) ------------------------ */
 
   /**
-   * Định dạng của LOL2D đời trước: mảng toạ độ trần, bụi gọi là `brush`, trụ
+   * Định dạng của MOBA2D đời trước: mảng toạ độ trần, bụi gọi là `brush`, trụ
    * tách theo đội. Giữ lại để map cũ vẫn dùng được với game cũ.
    */
   function exportForGame() {

@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **The match is paused while the panel is open.** `Game.update()` and `Game.draw()` return early when `paused` (`Game.ts:252`, `Game.ts:257`), so `ObjectManager.update()` does not run. Spawns and removals land on the first unpaused tick. Never write a test or a UI affordance that assumes a mutation is visible on the canvas while the panel is open.
-- **The panel never writes `lol2d:pregameConfig:v1`.** Saved kits use their own key, `lol2d:savedKits:v1`, and only on an explicit user save.
+- **The panel never writes `moba2d:pregameConfig:v1`.** Saved kits use their own key, `moba2d:savedKits:v1`, and only on an explicit user save.
 - **No p5 globals at module eval time.** Anything touching `createVector`, `deltaTime`, `push`, `fill` etc. must run inside `setup()` or later. `MatchDirector` must not reference them at all — see `src/main.ts`'s file comment.
 - **Prettier:** 2 spaces, single quotes, trailing commas, 100 columns (`.prettierrc`). Do not run `prettier --write` across files you did not otherwise change.
 - **Tuning values are exported constants** from the module that owns them, so tests import them instead of copying numbers.
@@ -499,7 +499,7 @@ describe('savedKits', () => {
 
   it('never touches the pregame config key', () => {
     saveKit('a', LOADOUT);
-    expect(localStorage.getItem('lol2d:pregameConfig:v1')).toBeNull();
+    expect(localStorage.getItem('moba2d:pregameConfig:v1')).toBeNull();
   });
 });
 ```
@@ -520,7 +520,7 @@ Create `src/game/config/savedKits.ts`:
  * yourself or on any bot.
  *
  * Deliberately its own storage key rather than a field inside
- * `lol2d:pregameConfig:v1`. Two reasons. A library grows without bound while
+ * `moba2d:pregameConfig:v1`. Two reasons. A library grows without bound while
  * the match config is a fixed shape, and a corrupt library must not be able to
  * take a player's match configuration down with it — `loadSavedKits` failing
  * closed to an empty list costs you your saved kits; the same failure inside
@@ -541,7 +541,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { ChampionLoadout } from './PregameConfig';
 import { SLOT_COUNT } from './PregameConfig';
 
-export const SAVED_KITS_STORAGE_KEY = 'lol2d:savedKits:v1';
+export const SAVED_KITS_STORAGE_KEY = 'moba2d:savedKits:v1';
 
 /** Long enough for "Ahri nhưng có Flash trên A", short enough to fit a shelf heading. */
 export const SAVED_KIT_NAME_MAX = 40;
@@ -1495,7 +1495,7 @@ Expected: PASS. The typecheck is the real gate here — removing the `any` casts
 
 - [ ] **Step 5: Drive the game to confirm nothing regressed**
 
-Run: `node tests/e2e/drive-mobile-hud.mjs /tmp/lol2d-mh`
+Run: `node tests/e2e/drive-mobile-hud.mjs /tmp/moba2d-mh`
 Expected: all 17 checks PASS. "Clone my spells" runs through the flag that just changed shape.
 
 - [ ] **Step 6: Commit**
@@ -1628,7 +1628,7 @@ In `styles/hud.css`, in the Spell Picker section, add:
 
 Run `npm run dev`, open the game, press the corner wand button. Confirm: four tabs, the spell roster still scrolls, the slot row still sticks, Huỷ and Xác nhận still work. Then:
 
-Run: `node tests/e2e/drive-mobile-hud.mjs /tmp/lol2d-mh`
+Run: `node tests/e2e/drive-mobile-hud.mjs /tmp/moba2d-mh`
 Expected: all 17 PASS. If the scroll check at step "a touch drag inside the picker scrolls it" fails, the scroll container moved — `.spell-picker` must stay the element with `overflow-y: auto`.
 
 - [ ] **Step 6: Commit**
@@ -1986,7 +1986,7 @@ git commit -m "feat(setup): save a kit and reuse it in any match, from either sc
 
 - [ ] **Step 1: Write the script**
 
-Model it on `tests/e2e/drive-kit-builder.mjs` (its harness: own Vite server, system Chrome, `window.__lol2d`). Cover, each as a `check(...)`:
+Model it on `tests/e2e/drive-kit-builder.mjs` (its harness: own Vite server, system Chrome, `window.__moba2d`). Cover, each as a `check(...)`:
 
 1. the corner button opens a panel with four tabs
 2. Đấu thủ: add a bot → close → `game.director.roster()` has one more, and the bot is in `objectManager.objects`
@@ -1999,7 +1999,7 @@ Model it on `tests/e2e/drive-kit-builder.mjs` (its harness: own Vite server, sys
 
 - [ ] **Step 2: Run it**
 
-Run: `node tests/e2e/drive-practice-panel.mjs /tmp/lol2d-practice`
+Run: `node tests/e2e/drive-practice-panel.mjs /tmp/moba2d-practice`
 Expected: every check PASS, `--- page errors ---` empty.
 
 - [ ] **Step 3: Full verification**

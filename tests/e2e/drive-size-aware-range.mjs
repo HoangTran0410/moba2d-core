@@ -14,16 +14,16 @@
  *   node tests/e2e/drive-size-aware-range.mjs            # boots its own server
  *   node tests/e2e/drive-size-aware-range.mjs /tmp/reach # screenshot prefix
  *
- * Set LOL2D_URL to point at a dev server you already have running.
+ * Set MOBA2D_URL to point at a dev server you already have running.
  * Requires a system Chrome install.
  */
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-reach';
-const PORT = process.env.LOL2D_PORT ?? String(5_200 + Math.floor(Math.random() * 600));
-const URL = process.env.LOL2D_URL ?? `http://localhost:${PORT}/`;
-const OWN_SERVER = !process.env.LOL2D_URL;
+const OUT = process.argv[2] ?? '/tmp/moba2d-reach';
+const PORT = process.env.MOBA2D_PORT ?? String(5_200 + Math.floor(Math.random() * 600));
+const URL = process.env.MOBA2D_URL ?? `http://localhost:${PORT}/`;
+const OWN_SERVER = !process.env.MOBA2D_URL;
 // proof that the server on this port is serving THIS checkout, not a stale one
 const CANARY = 'src/game/combat/Reach.ts';
 
@@ -92,7 +92,7 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_500);
@@ -105,7 +105,7 @@ const setup = await page.evaluate(async () => {
   const { default: AIChampion } = await import(
     '/src/game/gameObject/attackableUnits/AIChampion.ts'
   );
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
 
   // The wave clock keeps refilling the lanes, and a minion or turret wandering
@@ -170,7 +170,7 @@ const castLeeSinR = async (overrideRange = null) =>
     const { PredefinedFilters } = await import('/src/game/managers/ObjectManager.ts');
     const { DEFAULT_BODY_RADIUS, effectiveRange } = await import('/src/game/combat/Reach.ts');
 
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const champion = game.player;
     const victim = window.__reachVictim;
 
@@ -250,7 +250,7 @@ const grow = await page.evaluate(async () => {
   const api = buildContentApi();
   const { makeChoGath_R_Growth } = await import('/packs/riot/spells/ChoGath_R.ts');
   const ChoGath_R_Growth = makeChoGath_R_Growth(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   const victim = window.__reachVictim;
 
@@ -278,7 +278,7 @@ const grow = await page.evaluate(async () => {
 /** Puts the enemy back on the caster's doorstep and lets separation settle it. */
 const resettleVictim = async () => {
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const victim = window.__reachVictim;
     window.__quarantine();
     for (const buff of victim.buffs.slice()) buff.deactivateBuff();

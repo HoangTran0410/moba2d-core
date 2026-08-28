@@ -16,7 +16,7 @@
 - **`VISION_SPAN = 1000`**, from `Stats.ts:190`'s `visionRadius = new Stat(500)`. A constant, never a live read of the player's current vision.
 - **`SCALE_MIN = 0.3`, `SCALE_MAX = 2.5`.** The existing `constrain(this.scale, 0.5, 2)` must go: a landscape phone needs 0.39 and 0.5 would clip it.
 - **`ZOOM_FACTOR_MIN = 0.6`, `ZOOM_FACTOR_MAX = 1.6`**, default `1`.
-- **Storage key `'lol2d.zoomFactor'`**, query override `?zoom=`. Mirrors `TouchControls.ts:160` (`'lol2d.touchControls'`) and its `?touch=` override.
+- **Storage key `'moba2d.zoomFactor'`**, query override `?zoom=`. Mirrors `TouchControls.ts:160` (`'moba2d.touchControls'`) and its `?touch=` override.
 - **`npm run verify` must pass before any task is called done.**
 - Every test is written first, run, and **its failure message read** before the implementation exists.
 
@@ -206,7 +206,7 @@ import { setZoomFactorPreference, zoomFactorPreference } from '../../../src/game
 
 const withEnv = (search: string, stored: string | null) => {
   const store = new Map<string, string>();
-  if (stored !== null) store.set('lol2d.zoomFactor', stored);
+  if (stored !== null) store.set('moba2d.zoomFactor', stored);
   vi.stubGlobal('window', {
     location: { search },
     localStorage: {
@@ -254,7 +254,7 @@ describe('zoomFactorPreference', () => {
   it('round-trips through storage', () => {
     const store = withEnv('', null);
     setZoomFactorPreference(1.2);
-    expect(store.get('lol2d.zoomFactor')).toBe('1.2');
+    expect(store.get('moba2d.zoomFactor')).toBe('1.2');
     expect(zoomFactorPreference()).toBeCloseTo(1.2, 5);
   });
 });
@@ -270,8 +270,8 @@ Expected: FAIL — `No "zoomFactorPreference" export is defined`.
 Append to `Camera.ts`:
 
 ```ts
-/** Mirrors `TouchControls.ts:160`'s `'lol2d.touchControls'`. */
-const ZOOM_STORAGE_KEY = 'lol2d.zoomFactor';
+/** Mirrors `TouchControls.ts:160`'s `'moba2d.touchControls'`. */
+const ZOOM_STORAGE_KEY = 'moba2d.zoomFactor';
 
 const finiteAbove = (value: number, floor: number): boolean =>
   Number.isFinite(value) && value > floor;
@@ -750,7 +750,7 @@ git commit -m "feat(camera): a zoom slider in the practice panel, for screens wi
 - Create: `tests/e2e/verify-viewport-scaling.mjs`
 
 **Interfaces:**
-- Consumes: everything above, plus `window.__lol2d` (DEV-only).
+- Consumes: everything above, plus `window.__moba2d` (DEV-only).
 
 - [ ] **Step 1: Write the script**
 
@@ -763,7 +763,7 @@ const spanAt = async (page, w, h) => {
   await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
   await page.waitForTimeout(400); // let the resize handler and the lerp settle
   return page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const box = game.camera.getBoundingBox();
     return { w: box.w, h: box.h, scale: game.camera.currentScale };
   });

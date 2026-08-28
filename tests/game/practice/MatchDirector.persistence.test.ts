@@ -12,7 +12,7 @@ import TeamId from '../../../src/game/enums/TeamId';
 import { context } from './helpers';
 
 /**
- * The panel writes `lol2d:pregameConfig:v1` now.
+ * The panel writes `moba2d:pregameConfig:v1` now.
  *
  * It used to write nothing at all — "chỉ sửa trận hiện tại", mutate the running
  * match and leave the setup screen's storage alone. The
@@ -44,7 +44,7 @@ class MemoryStorage {
   }
 }
 
-const STORAGE_KEY = 'lol2d:pregameConfig:v1';
+const STORAGE_KEY = 'moba2d:pregameConfig:v1';
 let storage: MemoryStorage;
 
 beforeEach(() => {

@@ -31,18 +31,18 @@
  * costs about what 600 lines of source costs to read (CLAUDE.md).
  *
  *   node tests/e2e/measure-combattext-perf.mjs
- *   LOL2D_CHROME_CHANNEL= node tests/e2e/measure-combattext-perf.mjs   # bundled Chromium
+ *   MOBA2D_CHROME_CHANNEL= node tests/e2e/measure-combattext-perf.mjs   # bundled Chromium
  */
 import { startHarness, startMatch } from './harness.mjs';
 
 /** Extra minions spawned directly through the live spawner, beyond wave 1. */
-const TARGET_MINION_COUNT = Number(process.env.LOL2D_TARGET_MINIONS ?? 100);
+const TARGET_MINION_COUNT = Number(process.env.MOBA2D_TARGET_MINIONS ?? 100);
 /** How many of the dummy targets take damage on each tick of the burst. */
-const HITS_PER_TICK = Number(process.env.LOL2D_HITS_PER_TICK ?? 4);
+const HITS_PER_TICK = Number(process.env.MOBA2D_HITS_PER_TICK ?? 4);
 /** Burst tick period, ms — matches the interval real attack swings land at. */
-const TICK_MS = Number(process.env.LOL2D_TICK_MS ?? 20);
+const TICK_MS = Number(process.env.MOBA2D_TICK_MS ?? 20);
 /** How long the burst runs, ms. */
-const BURST_MS = Number(process.env.LOL2D_BURST_MS ?? 5_000);
+const BURST_MS = Number(process.env.MOBA2D_BURST_MS ?? 5_000);
 /** Settle window before sampling starts, so the burst's own onset is excluded. */
 const WARMUP_MS = 300;
 
@@ -51,7 +51,7 @@ const { url, page, report, check, guard } = await startHarness();
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_000);
@@ -59,14 +59,14 @@ await guard(async () => {
   // Let the first real wave leave both fountains, so there is at least one
   // real (teamId, lane) pair per side to spawn more minions on.
   await page.waitForFunction(
-    () => window.__lol2d.scene.oScene.game.minionSpawner.minions.length >= 6,
+    () => window.__moba2d.scene.oScene.game.minionSpawner.minions.length >= 6,
     null,
     { timeout: 20_000 }
   );
 
   const result = await page.evaluate(
     async ({ TARGET_MINION_COUNT, HITS_PER_TICK, TICK_MS, BURST_MS, WARMUP_MS }) => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const objectManager = game.objectManager;
       const spawner = game.minionSpawner;
 

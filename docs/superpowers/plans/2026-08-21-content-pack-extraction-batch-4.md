@@ -361,8 +361,8 @@ Claude-Session: https://claude.ai/code/session_01U1wfNJ78TNE9N2dFKouSbK"
 Spec §8.1: core exports its rules as something runnable, and a pack checks its own tree against them.
 
 ```
-core exports:  @lol2d/core/seams
-pack runs:     lol2d-check-seams ./src
+core exports:  @moba2d/core/seams
+pack runs:     moba2d-check-seams ./src
 ```
 
 The rule lives with the engine that owns it, so it evolves with the engine; the population lives with the content. A pack that violates a rule fails **its own** build, not the engine's.
@@ -379,7 +379,7 @@ That is tedious and it is the point. This project's own notes call a scan that h
 
 - [ ] **Step 2: Decide the export shape and say why**
 
-`@lol2d/core/seams` as a real package entry, or a directory core exposes. **Task ruling 3 says do not add a `package.json` to `packs/riot/`** — batch 5 owns that. So this task builds the rules as *runnable functions with a documented entry point*, and batch 5 decides how they are published.
+`@moba2d/core/seams` as a real package entry, or a directory core exposes. **Task ruling 3 says do not add a `package.json` to `packs/riot/`** — batch 5 owns that. So this task builds the rules as *runnable functions with a documented entry point*, and batch 5 decides how they are published.
 
 - [ ] **Step 3: Verify and commit**
 
@@ -410,7 +410,7 @@ Expected: FAIL, listing what is left. That list is the last of the work.
 
 - [ ] **Step 3: Run every e2e script and report every summary**
 
-Note the two that do not use the shared harness — `drive-game.mjs` spawns its own Vite and honours `LOL2D_URL`/`LOL2D_PORT`; `verify-pwa-offline.mjs` serves the built `dist/` with the network cut. Both are deliberate and both must still pass.
+Note the two that do not use the shared harness — `drive-game.mjs` spawns its own Vite and honours `MOBA2D_URL`/`MOBA2D_PORT`; `verify-pwa-offline.mjs` serves the built `dist/` with the network cut. Both are deliberate and both must still pass.
 
 - [ ] **Step 4: Full verify, and report the shape of the result**
 
@@ -427,9 +427,9 @@ Claude-Session: https://claude.ai/code/session_01U1wfNJ78TNE9N2dFKouSbK"
 
 ## What batch 5 inherits
 
-Batch 5 extracts `packs/riot/` into its own repository: a `package.json`, a workspace or git dependency, publishing `@lol2d/core/seams`, and the `lol2d-check-seams` binary a pack repo runs against its own tree. Everything before that is done here.
+Batch 5 extracts `packs/riot/` into its own repository: a `package.json`, a workspace or git dependency, publishing `@moba2d/core/seams`, and the `moba2d-check-seams` binary a pack repo runs against its own tree. Everything before that is done here.
 
 Two things it will need that this batch deliberately does not decide:
 
 - **How the pack depends on core.** npm workspace in development, git dependency for a release — spec §9 says so, and it also says **not** to publish the Riot pack to a public registry: a public package carrying 378 Riot art files under an author's name is a more exposed surface than a GitHub repository, for no useful gain.
-- **`package.json`'s `name` is still `"lol2d"`.** Spec §11 calls that out: "LOL" is in it. Changing it is cheap now and expensive later.
+- **`package.json`'s `name` is still `"moba2d"`.** Spec §11 calls that out: "LOL" is in it. Changing it is cheap now and expensive later.

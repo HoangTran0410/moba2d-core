@@ -2,7 +2,7 @@
  * End-to-end drive of the rebuilt loadout editor and per-bot AI config on the
  * pregame setup screen. Boots its own Vite dev server, opens the game in
  * system Chrome through Playwright, and reaches the live scene through the
- * DEV-only `window.__lol2d` handle — same pattern as the other
+ * DEV-only `window.__moba2d` handle — same pattern as the other
  * tests/e2e/*.mjs scripts.
  *
  * The editor used to be a mode toggle ("Chọn Tướng" / "Tự Ghép Chiêu") over
@@ -59,18 +59,18 @@
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-kitbuilder';
+const OUT = process.argv[2] ?? '/tmp/moba2d-kitbuilder';
 
 const server = await createServer({ server: { port: 0, strictPort: false } });
 await server.listen();
 const port = server.config.server.port ?? server.httpServer.address().port;
 const url = `http://localhost:${port}/`;
 
-// `LOL2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled
+// `MOBA2D_CHROME_CHANNEL=` (empty) swaps system Chrome for Playwright's bundled
 // Chromium, which is the only way this runs on a machine without Chrome
 // installed. Same line the shared harness uses; this script keeps its own boot
 // (it is not a harness importer), so it needs its own copy.
-const channel = process.env.LOL2D_CHROME_CHANNEL ?? 'chrome';
+const channel = process.env.MOBA2D_CHROME_CHANNEL ?? 'chrome';
 const browser = await chromium.launch(channel ? { channel } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
 const errors = [];
@@ -81,7 +81,7 @@ page.on('console', m => {
 
 const report = {};
 const evaluate = (fn, arg) => page.evaluate(fn, arg);
-const CFG = 'lol2d:pregameConfig:v1';
+const CFG = 'moba2d:pregameConfig:v1';
 
 /** Records a mismatch instead of throwing, so one bad expectation doesn't hide the rest of the run. */
 const expect = (label, actual, expected) => {
@@ -453,12 +453,12 @@ try {
   // ...and that `'random'` is resolved at spawn, not dropped: six fixed slots
   // and one real, arbitrary spell where R was left open.
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.player, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.player, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(400);
   report.randomSlotButton.spawnedSpells = await evaluate(() =>
-    window.__lol2d.scene.oScene.game.player.spells.map(s => s?.constructor?.name ?? null)
+    window.__moba2d.scene.oScene.game.player.spells.map(s => s?.constructor?.name ?? null)
   );
   const spawned = report.randomSlotButton.spawnedSpells;
   expect(
@@ -477,7 +477,7 @@ try {
   // practice panel (`GameScene.keyPressed`), so the scene never switched and
   // every step after this waited for a menu that was not coming.
   // `onExitRequested` is the seam the panel's own exit button calls.
-  await evaluate(() => window.__lol2d.scene.oScene.game.onExitRequested());
+  await evaluate(() => window.__moba2d.scene.oScene.game.onExitRequested());
   await page.waitForSelector('#config-btn', { state: 'visible' });
   await page.click('#config-btn');
   await page.waitForSelector('#pregame-scene', { state: 'visible' });
@@ -699,7 +699,7 @@ try {
   // 6. a pre-existing v1 blob (no mode/customSlots/ai.bots) loads cleanly
   await evaluate(() => {
     localStorage.setItem(
-      'lol2d:pregameConfig:v1',
+      'moba2d:pregameConfig:v1',
       JSON.stringify({
         player: { championName: 'Zed', summonerD: 'Ghost', summonerF: 'Ignite' },
         ai: { count: 6, autoMove: true, autoAttack: false, autoCast: true },
@@ -747,7 +747,7 @@ try {
   // 7. start a real match with a custom kit and one fixed-champion bot
   await evaluate(() => {
     localStorage.setItem(
-      'lol2d:pregameConfig:v1',
+      'moba2d:pregameConfig:v1',
       JSON.stringify({
         player: {
           mode: 'custom',
@@ -797,13 +797,13 @@ try {
   // import the harness helper that does both (`e2eHarness.test.ts`).
   await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(500);
   report.liveMatch = await evaluate(async () => {
     const aiModule = await import('/src/game/gameObject/attackableUnits/AIChampion.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const bots = game.objectManager.objects.filter(o => o instanceof aiModule.default);
     return {
       playerSpellNames: game.player.spells.map(s => s.constructor.name),

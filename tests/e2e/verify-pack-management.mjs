@@ -113,7 +113,7 @@ await guard(
     // never tries to seed `DEFAULT_PACK_URL` on boot — a real, live host, and
     // this script's own "starts empty" and roster-count checks would
     // otherwise depend on whether that fetch happens to succeed.
-    await page.addInitScript(() => window.localStorage.setItem('lol2d:packs:seeded:v1', '1'));
+    await page.addInitScript(() => window.localStorage.setItem('moba2d:packs:seeded:v1', '1'));
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('#play-btn', { timeout: 45_000 });
 

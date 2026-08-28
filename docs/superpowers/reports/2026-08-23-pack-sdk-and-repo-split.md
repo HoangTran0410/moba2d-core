@@ -2,7 +2,7 @@
 
 Content-pack-and-repo-split batch 6, tasks 11 and 12. Task 10 (the previous
 session) did the actual departure: `packs/riot/` and everything Riot at the
-repository root left `HoangTran0410/LOL2D` (branch `content-pack-batch-6`)
+repository root left `HoangTran0410/MOBA2D` (branch `content-pack-batch-6`)
 for a sibling repository, `/Users/hoangtran/Desktop/Github/moba2d-content-riot`.
 This document is what that session's own instructions asked this one to
 write: core measured alone, and the brief for whoever picks this branch back
@@ -15,7 +15,7 @@ section (`docs/superpowers/plans/2026-08-22-content-pack-extraction-batch-5.md`,
 Spec §6 left this open because it assumed a private pack repository, which
 core's CI could not fetch without a token. **The author decided on
 2026-08-23 that the pack repository is public to begin with** ("để pack
-trong public repo test trước"), and `HoangTran0410/LOL2D` is itself already
+trong public repo test trước"), and `HoangTran0410/MOBA2D` is itself already
 public and already carries every one of these assets — so the split is a
 rearrangement of what is already published, not new exposure, and a
 production build keeps its Riot content through an ordinary public git
@@ -70,7 +70,7 @@ pushing to a remote is the author's action, not an agent's.
 
 ## 3. The git history
 
-Every commit `HoangTran0410/LOL2D` has ever had still carries the Riot
+Every commit `HoangTran0410/MOBA2D` has ever had still carries the Riot
 assets that lived here before the split, in full. Moving `packs/riot/` out
 of the working tree does not remove it from history — `git log -p` against
 any commit that ever touched it still shows it, and a clone of this
@@ -588,7 +588,7 @@ wrong.
 **The sibling repository pins core at a branch name, and that is a
 merge-sequencing precondition, not a bug to fix here.**
 `moba2d-content-riot/package.json`'s `devDependencies` names
-`"@moba2d/core": "github:HoangTran0410/LOL2D#content-pack-batch-6"` — a
+`"@moba2d/core": "github:HoangTran0410/MOBA2D#content-pack-batch-6"` — a
 branch, not a commit or a tag, and one this repository's own instructions
 say may be deleted after `content-pack-batch-6` merges into `main`. If that
 branch is deleted (or force-pushed elsewhere) before the sibling repository

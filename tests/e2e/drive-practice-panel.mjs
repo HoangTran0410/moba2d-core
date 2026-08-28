@@ -4,7 +4,7 @@
  * `src/game/MatchDirector.ts`).
  *
  * Boots its own Vite dev server, opens the game in system Chrome through
- * Playwright, and reaches the live scene through the DEV-only `window.__lol2d`
+ * Playwright, and reaches the live scene through the DEV-only `window.__moba2d`
  * handle — the same harness as the other `tests/e2e/drive-*.mjs` scripts.
  *
  * ## Why so much of this is dispatched as a real touch
@@ -52,7 +52,7 @@
  *      the saved-kit shelf is not on the panel itself — it is at Đội → a
  *      unit's row → the loadout editor, which teleports out of the panel.
  *      Asserted both ways. The same reload closes the persistence round trip:
- *      everything checks 7, 8 and 10 changed is in `lol2d:pregameConfig:v1`,
+ *      everything checks 7, 8 and 10 changed is in `moba2d:pregameConfig:v1`,
  *      *and* the new match boots from it — 90% CDR, no jungle, two bots, none
  *      of which `MATCH_CONFIG` describes. This check asserted the exact
  *      opposite until the panel started persisting ("chỉ sửa trận hiện tại",
@@ -75,11 +75,11 @@
  */
 import { PHONE_VIEWPORT as MOBILE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-practice-panel';
+const OUT = process.argv[2] ?? '/tmp/moba2d-practice-panel';
 /** Roomy enough that neither of `styles/hud.css`'s full-bleed media queries applies. */
 const VIEWPORT = { width: 1280, height: 900 };
-const CFG_KEY = 'lol2d:pregameConfig:v1';
-const KITS_KEY = 'lol2d:savedKits:v1';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
+const KITS_KEY = 'moba2d:savedKits:v1';
 const KIT_NAME = 'E2E Kit';
 const TAB_IDS = ['roster', 'rules', 'settings'];
 const TAB_LABELS = ['Đội', 'Trận đấu', 'Cài đặt'];
@@ -147,17 +147,17 @@ const tapSelector = async (selector, holdMs = 60) => {
 const gameEval = (fn, arg) => page.evaluate(fn, arg);
 
 const hudFlag = () =>
-  gameEval(() => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker);
-const isPaused = () => gameEval(() => window.__lol2d.scene.oScene.game.paused);
-const rosterCount = () => gameEval(() => window.__lol2d.scene.oScene.game.director.roster().length);
+  gameEval(() => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker);
+const isPaused = () => gameEval(() => window.__moba2d.scene.oScene.game.paused);
+const rosterCount = () => gameEval(() => window.__moba2d.scene.oScene.game.director.roster().length);
 const directorBotCount = () =>
-  gameEval(() => window.__lol2d.scene.oScene.game.director.bots().length);
+  gameEval(() => window.__moba2d.scene.oScene.game.director.bots().length);
 
 /** Only the bots the object manager has actually taken in — deliberately not `director.bots()`. */
 const liveBotIds = () =>
   gameEval(async () => {
     const AIChampion = (await import('/src/game/gameObject/attackableUnits/AIChampion.ts')).default;
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const ids = [];
     for (const object of game.objectManager.objects) {
       if (object instanceof AIChampion && !object.toRemove) ids.push(object.id);
@@ -167,7 +167,7 @@ const liveBotIds = () =>
 
 const botSnapshot = id =>
   gameEval(botId => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const all = [...game.objectManager.objects, ...game.objectManager._objectToBeAdd];
     const bot = all.find(object => object.id === botId);
     if (!bot) return null;
@@ -185,7 +185,7 @@ const botSnapshot = id =>
 const monsterCensus = () =>
   gameEval(async () => {
     const Monster = (await import('/src/game/gameObject/attackableUnits/Monster.ts')).default;
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     let inWorld = 0;
     for (const object of game.objectManager.objects) if (object instanceof Monster) inWorld++;
     return { listed: game.monsters.length, inWorld };
@@ -218,7 +218,7 @@ const runMatch = (ms = 700) => page.waitForTimeout(ms);
 const enterMatch = async () => {
   await startMatch(page);
   await page.waitForFunction(
-    () => window.__lol2d?.scene?.oScene?.game?.inGameHUD?.vueInstance,
+    () => window.__moba2d?.scene?.oScene?.game?.inGameHUD?.vueInstance,
     null,
     {
       timeout: 30_000,
@@ -244,7 +244,7 @@ await guard(async () => {
   // this same object reports a different cooldown later — a fresh
   // `player.spells[1]` read after the drag would prove nothing.
   await gameEval(() => {
-    window.__practiceProbe = window.__lol2d.scene.oScene.game.player.spells[1];
+    window.__practiceProbe = window.__moba2d.scene.oScene.game.player.spells[1];
   });
 
   // ------------------------------------------- 1. four tabs, and a way out
@@ -254,7 +254,7 @@ await guard(async () => {
     tabs: [...document.querySelectorAll('.practice-tab')].map(tab => tab.textContent.trim()),
     tabIds: [...document.querySelectorAll('.practice-tab')].map(tab => tab.id),
     hasClose: !!document.querySelector('#practice-close'),
-    paused: window.__lol2d.scene.oScene.game.paused,
+    paused: window.__moba2d.scene.oScene.game.paused,
   }));
   check(
     'a real touch on the corner button opens the panel and its tabs, over a paused match',
@@ -281,7 +281,7 @@ await guard(async () => {
     // Recover so a single bad tab cannot take the rest of the run with it.
     if (report.closeFromEveryTab[id].pickerFlag !== false) {
       await gameEval(() =>
-        window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeSpellPicker()
+        window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.closeSpellPicker()
       );
       await page.waitForTimeout(200);
     }
@@ -465,7 +465,7 @@ await guard(async () => {
   );
   // Clear the field again — ten bots fighting is noise every later check pays for.
   await gameEval(() => {
-    const director = window.__lol2d.scene.oScene.game.director;
+    const director = window.__moba2d.scene.oScene.game.director;
     for (const bot of director.bots()) director.removeBot(bot);
   });
   await closePanel();
@@ -516,11 +516,11 @@ await guard(async () => {
    * before moving on.
    */
   await gameEval(() => {
-    const camera = window.__lol2d.scene.oScene.game.camera;
+    const camera = window.__moba2d.scene.oScene.game.camera;
     camera.setZoomFactor(1);
     camera.snapToScale();
-    localStorage.removeItem('lol2d.zoomFactor.touch');
-    localStorage.removeItem('lol2d.zoomFactor');
+    localStorage.removeItem('moba2d.zoomFactor.touch');
+    localStorage.removeItem('moba2d.zoomFactor');
   });
   check(
     'Cài đặt: native touch drag scrolls the modal body',
@@ -533,12 +533,12 @@ await guard(async () => {
   await page.setViewportSize(VIEWPORT);
   await page.waitForTimeout(100);
   report.zoomInitial = await gameEval(() => {
-    const camera = window.__lol2d.scene.oScene.game.camera;
+    const camera = window.__moba2d.scene.oScene.game.camera;
     return {
       factor: camera.zoomFactor,
       scale: camera.scale,
       currentScale: camera.currentScale,
-      storedTouch: localStorage.getItem('lol2d.zoomFactor.touch'),
+      storedTouch: localStorage.getItem('moba2d.zoomFactor.touch'),
     };
   });
   check(
@@ -553,12 +553,12 @@ await guard(async () => {
   });
   await page.waitForTimeout(100);
   report.zoomWhilePaused = await gameEval(() => {
-    const camera = window.__lol2d.scene.oScene.game.camera;
+    const camera = window.__moba2d.scene.oScene.game.camera;
     return {
       factor: camera.zoomFactor,
       scale: camera.scale,
       currentScale: camera.currentScale,
-      storedTouch: localStorage.getItem('lol2d.zoomFactor.touch'),
+      storedTouch: localStorage.getItem('moba2d.zoomFactor.touch'),
     };
   });
   check(
@@ -572,10 +572,10 @@ await guard(async () => {
   // no longer do — zoom is the device's, CDR is the match's.
   await selectTab('rules');
   const beforeCdr = await gameEval(() => ({
-    multiplier: window.__lol2d.scene.oScene.game.matchRules.cooldownMultiplier,
+    multiplier: window.__moba2d.scene.oScene.game.matchRules.cooldownMultiplier,
     probeCooldownMs: window.__practiceProbe.effectiveCoolDownMs,
     probeIsStillEquipped:
-      window.__practiceProbe === window.__lol2d.scene.oScene.game.player.spells[1],
+      window.__practiceProbe === window.__moba2d.scene.oScene.game.player.spells[1],
     label: document.querySelector('#practice-cdr-value')?.textContent ?? null,
   }));
   // A real native drag across the range track.
@@ -587,7 +587,7 @@ await guard(async () => {
   await touchEnd();
   await page.waitForTimeout(200);
   const afterCdr = await gameEval(() => ({
-    multiplier: window.__lol2d.scene.oScene.game.matchRules.cooldownMultiplier,
+    multiplier: window.__moba2d.scene.oScene.game.matchRules.cooldownMultiplier,
     probeCooldownMs: window.__practiceProbe.effectiveCoolDownMs,
     label: document.querySelector('#practice-cdr-value')?.textContent ?? null,
     slider: document.querySelector('#practice-cdr').value,
@@ -616,12 +616,12 @@ await guard(async () => {
   // rules controls check 7 just drove.
   const monstersBefore = await monsterCensus();
   await tapSelector('#practice-jungle'); // real thumb on the checkbox
-  const jungleFlag = await gameEval(() => window.__lol2d.scene.oScene.game.director.jungleEnabled);
+  const jungleFlag = await gameEval(() => window.__moba2d.scene.oScene.game.director.jungleEnabled);
   await page.screenshot({ path: `${OUT}-05-rules-world.png` });
   await closePanel();
   await runMatch();
   report.zoomAfterClose = await gameEval(() => {
-    const camera = window.__lol2d.scene.oScene.game.camera;
+    const camera = window.__moba2d.scene.oScene.game.camera;
     return { factor: camera.zoomFactor, scale: camera.scale, currentScale: camera.currentScale };
   });
   check(
@@ -651,16 +651,16 @@ await guard(async () => {
   // Blue→Red and back, and confirm the unit's teamId and which section its row
   // sits under move together — a real reassignment, not a label. The player is
   // switchable too, which is why this drives the player and not a bot.
-  const teamBefore = await gameEval(() => window.__lol2d.scene.oScene.game.player.teamId);
+  const teamBefore = await gameEval(() => window.__moba2d.scene.oScene.game.player.teamId);
   await tapSelector('.practice-roster-row.is-player .practice-team-switch'); // real thumb
   const teamAfterSwitch = await gameEval(() => ({
-    teamId: window.__lol2d.scene.oScene.game.player.teamId,
+    teamId: window.__moba2d.scene.oScene.game.player.teamId,
     underRed: !!document.querySelector('.practice-team--red .practice-roster-row.is-player'),
     underBlue: !!document.querySelector('.practice-team--blue .practice-roster-row.is-player'),
   }));
   await tapSelector('.practice-team--red .practice-roster-row.is-player .practice-team-switch');
   const teamAfterSwitchBack = await gameEval(
-    () => window.__lol2d.scene.oScene.game.player.teamId
+    () => window.__moba2d.scene.oScene.game.player.teamId
   );
   report.teamSwitch = { teamBefore, teamAfterSwitch, teamAfterSwitchBack };
   check(
@@ -693,8 +693,8 @@ await guard(async () => {
   // The toggle, on the player (row 0).
   await tapSelector('#practice-cheat-invuln-0');
   const invulnAfterTap = await gameEval(() =>
-    window.__lol2d.scene.oScene.game.director.isInvulnerable(
-      window.__lol2d.scene.oScene.game.player
+    window.__moba2d.scene.oScene.game.director.isInvulnerable(
+      window.__moba2d.scene.oScene.game.player
     )
   );
   await closePanel();
@@ -704,8 +704,8 @@ await guard(async () => {
   await tapSelector('#practice-row-toggle-0');
   const invulnAfterReopen = await gameEval(() => ({
     checkbox: document.querySelector('#practice-cheat-invuln-0').checked,
-    director: window.__lol2d.scene.oScene.game.director.isInvulnerable(
-      window.__lol2d.scene.oScene.game.player
+    director: window.__moba2d.scene.oScene.game.director.isInvulnerable(
+      window.__moba2d.scene.oScene.game.player
     ),
   }));
   // And off again, on the reopened panel. Both directions, because
@@ -716,8 +716,8 @@ await guard(async () => {
   await tapSelector('#practice-cheat-invuln-0');
   const invulnAfterSecondTap = await gameEval(() => ({
     checkbox: document.querySelector('#practice-cheat-invuln-0').checked,
-    director: window.__lol2d.scene.oScene.game.director.isInvulnerable(
-      window.__lol2d.scene.oScene.game.player
+    director: window.__moba2d.scene.oScene.game.director.isInvulnerable(
+      window.__moba2d.scene.oScene.game.player
     ),
   }));
   report.invulnToggle = { invulnAfterTap, invulnAfterReopen, invulnAfterSecondTap };
@@ -740,7 +740,7 @@ await guard(async () => {
   await tapSelector('#practice-debug-routes');
   await tapSelector('#practice-debug-terrain');
   const debugAfterTaps = await gameEval(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       routes: game.director.debug.routes,
       navigation: game.navigation.debugRoutes,
@@ -752,7 +752,7 @@ await guard(async () => {
   await tapSelector('#practice-debug-routes');
   await tapSelector('#practice-debug-terrain');
   const debugAfterOff = await gameEval(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       routes: game.director.debug.routes,
       navigation: game.navigation.debugRoutes,
@@ -783,12 +783,12 @@ await guard(async () => {
   await tapSelector('#practice-row-toggle-0');
   const stackId = cheatShape.stackRows[0];
   const stacksBefore = await gameEval(
-    () => window.__lol2d.scene.oScene.game.player.spells[1].stackCount
+    () => window.__moba2d.scene.oScene.game.player.spells[1].stackCount
   );
   await tapSelector(`[data-cheat-stack="${stackId}"] .practice-cheat-btn:nth-child(2)`);
   await page.waitForTimeout(250);
   const stacksAfter = await gameEval(() => ({
-    spell: window.__lol2d.scene.oScene.game.player.spells[1].stackCount,
+    spell: window.__moba2d.scene.oScene.game.player.spells[1].stackCount,
     tabBadge: document.querySelector('.practice-cheat-stack-count')?.textContent?.trim() ?? null,
   }));
   // The HUD badge lives on the *desktop* strip (`DesktopHudView.vue`), and this
@@ -796,7 +796,7 @@ await guard(async () => {
   // renders. Flip the mode for the read and flip it straight back. Note the
   // flip remounts the panel with it (both views own one), which is why the tab
   // badge is read *before* this and the roster tab is re-selected after.
-  await gameEval(() => window.__lol2d.scene.oScene.game.setTouchControlsEnabled(false, false));
+  await gameEval(() => window.__moba2d.scene.oScene.game.setTouchControlsEnabled(false, false));
   await page.waitForTimeout(300);
   const hudBadge = await gameEval(() => ({
     icons: document.querySelectorAll('.bottom-HUD .spells .spell').length,
@@ -806,7 +806,7 @@ await guard(async () => {
         ?.querySelector('.stacks')
         ?.textContent?.trim() ?? null,
   }));
-  await gameEval(() => window.__lol2d.scene.oScene.game.setTouchControlsEnabled(true, false));
+  await gameEval(() => window.__moba2d.scene.oScene.game.setTouchControlsEnabled(true, false));
   await page.waitForTimeout(300);
   report.stacks = { stacksBefore, stacksAfter, hudBadge };
   check(
@@ -840,10 +840,10 @@ await guard(async () => {
   await tapSelector('#practice-row-toggle-1');
   await tapSelector('#practice-cheat-invuln-1');
   const immuneId = await gameEval(
-    () => window.__lol2d.scene.oScene.game.director.roster()[1].unit.id
+    () => window.__moba2d.scene.oScene.game.director.roster()[1].unit.id
   );
   const controlId = await gameEval(
-    () => window.__lol2d.scene.oScene.game.director.roster()[2].unit.id
+    () => window.__moba2d.scene.oScene.game.director.roster()[2].unit.id
   );
   await closePanel();
 
@@ -851,7 +851,7 @@ await guard(async () => {
   // tests cannot exercise.
   const beatenUp = await gameEval(
     ids => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const find = id => game.objectManager.objects.find(object => object.id === id);
       const immune = find(ids.immuneId);
       const control = find(ids.controlId);
@@ -871,7 +871,7 @@ await guard(async () => {
   await runMatch(700);
   const afterFrames = await gameEval(
     ids => {
-      const game = window.__lol2d.scene.oScene.game;
+      const game = window.__moba2d.scene.oScene.game;
       const find = id => game.objectManager.objects.find(object => object.id === id);
       const immune = find(ids.immuneId);
       const control = find(ids.controlId);
@@ -958,7 +958,7 @@ await guard(async () => {
   // booted, which is the second half of the persistence round trip (the first
   // half — what got written — is asserted below).
   const matchAfterReload = await gameEval(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       cooldownMultiplier: game.matchRules.cooldownMultiplier,
       jungleEnabled: game.director.jungleEnabled,
@@ -1115,7 +1115,7 @@ await guard(async () => {
   await tapSelector('#practice-reset');
   const afterFirstReset = await gameEval(() => ({
     label: document.querySelector('#practice-reset')?.textContent?.trim() ?? null,
-    cdr: window.__lol2d.scene.oScene.game.director.getRules().cooldownReductionPercent,
+    cdr: window.__moba2d.scene.oScene.game.director.getRules().cooldownReductionPercent,
   }));
   await page.screenshot({ path: `${OUT}-08-reset-confirm.png` });
   await tapSelector('#practice-reset');
@@ -1135,7 +1135,7 @@ await guard(async () => {
     return config.DEFAULT_PREGAME_CONFIG.ai.count;
   });
   await page.waitForFunction(n => {
-    const game = window.__lol2d?.scene?.oScene?.game;
+    const game = window.__moba2d?.scene?.oScene?.game;
     return (
       game?.director?.getRules().cooldownReductionPercent === 0 &&
       game.director.bots().length === n &&
@@ -1144,7 +1144,7 @@ await guard(async () => {
     );
   }, defaultBotCount);
   const afterReset = await gameEval(key => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       cdrLabel: document.querySelector('#practice-cdr-value')?.textContent ?? null,
       jungleChecked: document.querySelector('#practice-jungle')?.checked ?? null,
@@ -1190,22 +1190,22 @@ await guard(async () => {
   await closePanel();
 
   const beforeEscape = await gameEval(() => ({
-    scene: window.__lol2d.scene.oScene.constructor.name,
+    scene: window.__moba2d.scene.oScene.constructor.name,
     panel: !!document.querySelector('.practice-panel'),
   }));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(350);
   const afterEscape = await gameEval(() => ({
-    scene: window.__lol2d.scene.oScene.constructor.name,
-    gameAlive: !!window.__lol2d.scene.oScene.game,
+    scene: window.__moba2d.scene.oScene.constructor.name,
+    gameAlive: !!window.__moba2d.scene.oScene.game,
     panel: !!document.querySelector('.practice-panel'),
-    paused: window.__lol2d.scene.oScene.game?.paused ?? null,
+    paused: window.__moba2d.scene.oScene.game?.paused ?? null,
   }));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(350);
   const afterSecondEscape = await gameEval(() => ({
-    scene: window.__lol2d.scene.oScene.constructor.name,
-    gameAlive: !!window.__lol2d.scene.oScene.game,
+    scene: window.__moba2d.scene.oScene.constructor.name,
+    gameAlive: !!window.__moba2d.scene.oScene.game,
     panel: !!document.querySelector('.practice-panel'),
   }));
   report.escape = { beforeEscape, afterEscape, afterSecondEscape };
@@ -1227,16 +1227,16 @@ await guard(async () => {
   await selectTab('rules');
   await tapSelector('#practice-exit');
   const afterFirstPress = await gameEval(() => ({
-    scene: window.__lol2d.scene.oScene.constructor.name,
-    gameAlive: !!window.__lol2d.scene.oScene.game,
+    scene: window.__moba2d.scene.oScene.constructor.name,
+    gameAlive: !!window.__moba2d.scene.oScene.game,
     label: document.querySelector('#practice-exit')?.textContent?.trim() ?? null,
   }));
   await page.screenshot({ path: `${OUT}-10-exit-confirm.png` });
   await tapSelector('#practice-exit');
   await page.waitForTimeout(600);
   const afterConfirm = await gameEval(() => ({
-    scene: window.__lol2d.scene.oScene.constructor.name,
-    gameAlive: !!window.__lol2d.scene.oScene.game,
+    scene: window.__moba2d.scene.oScene.constructor.name,
+    gameAlive: !!window.__moba2d.scene.oScene.game,
     panel: !!document.querySelector('.practice-panel'),
   }));
   report.exitButton = { afterFirstPress, afterConfirm };

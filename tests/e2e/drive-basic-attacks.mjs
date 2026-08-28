@@ -3,7 +3,7 @@
  *
  * Boots its own Vite dev server on a free port, opens the game in system Chrome
  * through Playwright, and reaches the live scene through the DEV-only
- * `window.__lol2d` handle set in src/main.ts.
+ * `window.__moba2d` handle set in src/main.ts.
  *
  * What it proves, in order:
  *   1. a real right click on an enemy body becomes an attack order;
@@ -21,7 +21,7 @@
  */
 import { startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-attacks';
+const OUT = process.argv[2] ?? '/tmp/moba2d-attacks';
 const { url, page, errors, report, check, guard } = await startHarness({
   out: OUT,
   viewport: { width: 1280, height: 800 },
@@ -41,7 +41,7 @@ async function rightClick(x, y) {
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -54,7 +54,7 @@ await guard(async () => {
   // it lands somewhere with line of sight — dropping it behind a wall is a
   // correct refusal, not a bug to work around.
   report.setup = await evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = game.objectManager.objects.find(
       o => o !== player && o.basicAttack && o.teamId !== player.teamId
@@ -143,7 +143,7 @@ await guard(async () => {
 
   // 1. right click the enemy body
   const botScreen = await evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const point = game.camera.worldToScreen(
       window.__probe.bot.position.x,
       window.__probe.bot.position.y
@@ -152,12 +152,12 @@ await guard(async () => {
   });
   await rightClick(botScreen.x, botScreen.y);
   report.rightClickOnEnemy = await evaluate(() => {
-    const player = window.__lol2d.scene.oScene.game.player;
+    const player = window.__moba2d.scene.oScene.game.player;
     return {
       ordersTheBot: player.basicAttack.target === window.__probe.bot,
       cursorWasOnTheBot:
         Math.round(
-          window.__lol2d.scene.oScene.game.worldMouse.dist(window.__probe.bot.position)
+          window.__moba2d.scene.oScene.game.worldMouse.dist(window.__probe.bot.position)
         ) < 20,
     };
   });
@@ -194,11 +194,11 @@ await guard(async () => {
 
   // 2. right click empty ground cancels the order and moves instead
   const groundBefore = await evaluate(
-    () => window.__lol2d.scene.oScene.game.worldMouse.y
+    () => window.__moba2d.scene.oScene.game.worldMouse.y
   );
   await rightClick(botScreen.x, botScreen.y - 200);
   report.rightClickOnGround = await evaluate(before => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       target: game.player.basicAttack.target,
       cursorMovedUpBy: Math.round(before - game.worldMouse.y),
@@ -215,7 +215,7 @@ await guard(async () => {
   // bot and pressing `A` has to pick the far one, or the feature is just a
   // rename of the AI's own scan.
   report.aKeySetup = await evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     const decoy = game.objectManager.objects.find(
@@ -267,7 +267,7 @@ await guard(async () => {
 
   // the cursor goes PAST the far bot, well clear of any body, then `A`
   const aimPoint = await evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     const dx = bot.position.x - player.position.x;
@@ -287,7 +287,7 @@ await guard(async () => {
   await page.waitForTimeout(150);
 
   report.aKeyOrder = await evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     const decoy = window.__probe.decoy;
@@ -326,7 +326,7 @@ await guard(async () => {
 
   // 4. sticky: the target runs, nobody presses anything again
   report.stickyChase = await evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     // half speed, so the chase actually closes and the swings keep coming
@@ -374,7 +374,7 @@ await guard(async () => {
 
   // 5. casting an ability drops the order
   report.cancelOnCast = await evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     bot.stats.speed.baseValue = 0;
@@ -407,7 +407,7 @@ await guard(async () => {
 
   // and put the sparring partner back the way step 6 expects to find it
   await evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const player = game.player;
     const bot = window.__probe.bot;
     bot.stats.speed.baseValue = 0;
@@ -429,7 +429,7 @@ await guard(async () => {
 
   // 6. order the attack again and watch the whole exchange out
   await evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     // both duellists start the measurement whole; the roster has been brawling
     // since the scene loaded and the player is usually already chewed up
     window.__probe.bot.stats.healthRegen.baseValue = 0;
@@ -470,7 +470,7 @@ await guard(async () => {
     await page.waitForTimeout(500);
     samples.push(
       await evaluate(() => {
-        const game = window.__lol2d.scene.oScene.game;
+        const game = window.__moba2d.scene.oScene.game;
         const bolts = game.objectManager.objects.filter(
           o => o.constructor.name === 'BasicAttackBolt'
         ).length;
@@ -503,7 +503,7 @@ await guard(async () => {
 
   // 7. a bot fights back on its own, with nobody ordering it to
   report.botFightsBack = await evaluate(async () => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const bot = window.__probe.bot;
     const player = game.player;
     // the player may have died and respawned during the duel; put the bot back
@@ -539,7 +539,7 @@ await guard(async () => {
   report.crowd = await evaluate(async () => {
     const aiModule = await import('/src/game/gameObject/attackableUnits/AIChampion.ts');
     const presetModule = await import('/src/game/preset.ts');
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     for (const turret of game.turrets) turret.damage = turret._savedDamage;
     for (let i = 0; i < 42; i++) {
       game.objectManager.addObject(
@@ -558,7 +558,7 @@ await guard(async () => {
     await page.waitForTimeout(500);
     crowdSamples.push(
       await evaluate(() => {
-        const objects = window.__lol2d.scene.oScene.game.objectManager.objects;
+        const objects = window.__moba2d.scene.oScene.game.objectManager.objects;
         return {
           fps: Math.round(window.frameRate?.() ?? -1),
           objects: objects.length,

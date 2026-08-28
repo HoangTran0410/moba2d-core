@@ -24,7 +24,7 @@ At the existing 844×390 reference viewport, all four ability buttons have an ed
 
 ### Zoom default and close behavior
 
-`lol2d.zoomFactor` currently serves both pointer and touch modes. A previously stored `0.6` therefore becomes the next mobile match's opening value even though the code's missing-value default is `1`.
+`moba2d.zoomFactor` currently serves both pointer and touch modes. A previously stored `0.6` therefore becomes the next mobile match's opening value even though the code's missing-value default is `1`.
 
 A real touch trace starting from stored 60% showed:
 

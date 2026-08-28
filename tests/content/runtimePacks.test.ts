@@ -320,13 +320,13 @@ describe('the offline prefetch', () => {
   });
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).localStorage;
-    // Minor 6: two tests in this block now write `__lol2dPackPrefetch`
+    // Minor 6: two tests in this block now write `__moba2dPackPrefetch`
     // (this one and 'publishes what the prefetch actually did...') and one
     // waits on its value with `vi.waitFor` — leaving a previous test's
     // publish in place is an ordering hazard, not hygiene, since a later
     // test's own `vi.waitFor` could observe a stale value and pass for the
     // wrong reason.
-    delete (globalThis as Record<string, unknown>).__lol2dPackPrefetch;
+    delete (globalThis as Record<string, unknown>).__moba2dPackPrefetch;
   });
 
   /** One stored pack whose manifest is reachable at `PACK_URL`/`PACK_BASE`. */
@@ -415,7 +415,7 @@ describe('the offline prefetch', () => {
     // suite does. `vi.waitFor` because `installRuntimePacks()` resolving
     // does not mean the background `.then` has run yet.
     await vi.waitFor(() => {
-      expect((globalThis as Record<string, unknown>).__lol2dPackPrefetch).toEqual([
+      expect((globalThis as Record<string, unknown>).__moba2dPackPrefetch).toEqual([
         // `gone: 0` and not `gone: 1`: the promise rejected, so nothing was
         // ever asked and nothing came back 404. A synthesized report must not
         // invent the one signal that means "this build is gone from the
@@ -445,7 +445,7 @@ describe('the offline prefetch', () => {
     await installRuntimePacks();
 
     await vi.waitFor(() => {
-      expect((globalThis as Record<string, unknown>).__lol2dPackPrefetch).toEqual([report]);
+      expect((globalThis as Record<string, unknown>).__moba2dPackPrefetch).toEqual([report]);
     });
   });
 

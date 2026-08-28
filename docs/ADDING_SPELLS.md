@@ -487,7 +487,7 @@ directly) shoots the installed roster's own abilities — add an entry for
 your ability and shoot it:
 
 ```sh
-LOL2D_CHROME_CHANNEL= node tests/e2e/shoot-new-champion-vfx.mjs /tmp/vfx Vera
+MOBA2D_CHROME_CHANNEL= node tests/e2e/shoot-new-champion-vfx.mjs /tmp/vfx Vera
 ```
 
 ```js

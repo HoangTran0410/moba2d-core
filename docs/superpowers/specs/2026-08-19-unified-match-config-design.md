@@ -215,7 +215,7 @@ legible without opening anything.
 
 ## 3. Storage
 
-Same key, `lol2d:pregameConfig:v1`. One new branch, following the per-field
+Same key, `moba2d:pregameConfig:v1`. One new branch, following the per-field
 optional policy `PregameConfig.ts` has used from the start:
 
 ```ts
@@ -252,9 +252,9 @@ behaviour — a lossless read of what an old config meant, not a reset.
   setting. Persisting one means keying by `slot × spellId` and replaying it at
   spawn — a separate change, and it is hidden outside a match anyway.
 - **Device preferences keep their own keys.** Input mode
-  (`lol2d.touchControls`), tap-target priority
-  (`lol2d.touchTargetPriority`), render quality (`lol2d.renderQuality`), FPS
-  (`lol2d.renderFps`) and zoom already persist independently and already work
+  (`moba2d.touchControls`), tap-target priority
+  (`moba2d.touchTargetPriority`), render quality (`moba2d.renderQuality`), FPS
+  (`moba2d.renderFps`) and zoom already persist independently and already work
   without a `Game`. Folding them into the config blob is a migration with risk
   and no user-visible gain.
 

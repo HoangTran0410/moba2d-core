@@ -41,7 +41,7 @@
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
-const CFG_KEY = 'lol2d:pregameConfig:v1';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
 
 /**
  * [preset display name, spell class prefix] — they differ where a name has a
@@ -102,7 +102,7 @@ const MATCH_CONFIG = {
 };
 
 // `hmr: false`: several agents share this tree and a stray save mid-run would
-// reload the page and wipe `window.__lol2d` under us.
+// reload the page and wipe `window.__moba2d` under us.
 const server = await createServer({ server: { port: 0, strictPort: false, hmr: false } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
@@ -131,13 +131,13 @@ try {
   // import the harness helper that does both (`e2eHarness.test.ts`).
   await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
   await page.click('#pregame-start-btn');
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
 
   await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     window.__rig = { game, home: game.player.position.copy() };
   });
 

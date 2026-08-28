@@ -2,22 +2,22 @@
  * Visual verification for the four new spells added in this branch:
  * Malphite E (Ground Slam), Anivia E (Frostbite), Janna W (Zephyr), and
  * Janna E (Eye of the Storm). Drives the real game through the DEV-only
- * `window.__lol2d` handle the same way drive-game.mjs and
+ * `window.__moba2d` handle the same way drive-game.mjs and
  * drive-attached-effects.mjs do, force-casting each spell on the player and
  * screenshotting the result.
  *
- *   node tests/e2e/drive-new-spells.mjs /tmp/lol2d-new-spells
+ *   node tests/e2e/drive-new-spells.mjs /tmp/moba2d-new-spells
  *
- * Boots its own Vite dev server on a random port unless LOL2D_URL is set.
+ * Boots its own Vite dev server on a random port unless MOBA2D_URL is set.
  * Requires a system Chrome install.
  */
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-new-spells';
-const PORT = process.env.LOL2D_PORT ?? String(5_800 + Math.floor(Math.random() * 400));
-const URL = process.env.LOL2D_URL ?? `http://localhost:${PORT}/`;
-const OWN_SERVER = !process.env.LOL2D_URL;
+const OUT = process.argv[2] ?? '/tmp/moba2d-new-spells';
+const PORT = process.env.MOBA2D_PORT ?? String(5_800 + Math.floor(Math.random() * 400));
+const URL = process.env.MOBA2D_URL ?? `http://localhost:${PORT}/`;
+const OWN_SERVER = !process.env.MOBA2D_URL;
 const CANARY = 'packs/riot/spells/Malphite_E.ts';
 
 let server;
@@ -83,14 +83,14 @@ await page.click('#play-btn');
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
 await page.waitForFunction(
-  () => window.__lol2d?.scene?.oScene?.game?.objectManager,
+  () => window.__moba2d?.scene?.oScene?.game?.objectManager,
   null,
   { timeout: 30_000 }
 );
 await page.waitForTimeout(1_500);
 
 await page.evaluate(() => {
-  const camera = window.__lol2d.scene.oScene.game.camera;
+  const camera = window.__moba2d.scene.oScene.game.camera;
   camera.scale = 2.4;
   camera.currentScale = 2.4;
 });
@@ -103,7 +103,7 @@ const setup = await page.evaluate(async () => {
     '/src/game/gameObject/attackableUnits/DummyChampion.ts'
   );
   const { default: TeamId } = await import('/src/game/enums/TeamId.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   champion.stats.mana.baseValue = champion.stats.maxMana.value;
   champion.stats.health.baseValue = champion.stats.maxHealth.value;
@@ -168,7 +168,7 @@ const castOn = (spellModule, spellClass, targetHandle) =>
     const api = buildContentApi();
     const mod = await import(spellModule);
     const SpellClass = mod[spellClass](api);
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const champion = game.player;
     const target = targetHandle ? window[targetHandle] : champion;
     const spell = new SpellClass(champion);
@@ -232,7 +232,7 @@ await page.screenshot({ path: `${OUT}-2-anivia-e-plain.png` });
 
 const chillInfo = await page.evaluate(async () => {
   const { default: Chilled } = await import('/src/game/gameObject/buffs/Chilled.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const enemy = window.__e2eEnemy;
   enemy.addBuff(new Chilled(3_000, game.player, enemy));
   return { chilled: enemy.hasBuff(Chilled), health: enemy.stats.health.value };
@@ -255,7 +255,7 @@ const passiveBefore = await page.evaluate(async () => {
   const Janna_W = makeJanna_W(api);
   const Janna_W_Passive = makeJanna_W_Passive(api);
   const { default: StatusFlags } = await import('/src/game/enums/StatusFlags.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player;
   const spell = new Janna_W(champion);
   window.__e2eJannaW = spell;
@@ -298,7 +298,7 @@ const jannaEState = await page.evaluate(async () => {
   const { makeJanna_E_Shell } = await import('/packs/riot/spells/Janna_E.ts');
   const Janna_E_Shell = makeJanna_E_Shell(api);
   const { default: Shield } = await import('/src/game/gameObject/buffs/Shield.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const ally = window.__e2eAlly;
   const shell = game.objectManager.objects.find(o => o instanceof Janna_E_Shell);
   return {

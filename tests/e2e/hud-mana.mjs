@@ -11,7 +11,7 @@
 import { chromium } from 'playwright';
 
 const OUT = process.argv[2] ?? '/tmp/hud';
-const URL = process.env.LOL2D_URL ?? 'http://localhost:5211/';
+const URL = process.env.MOBA2D_URL ?? 'http://localhost:5211/';
 
 const browser = await chromium.launch({ channel: 'chrome' });
 // The bar is ~40px tall; 3x makes the badges big enough to judge collisions.
@@ -32,7 +32,7 @@ await page.click('#play-btn');
 // import the harness helper that does both (`e2eHarness.test.ts`).
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
-await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });
 await page.waitForTimeout(1_500);
@@ -46,7 +46,7 @@ await page.evaluate(async () => {
   const { buildContentApi } = await import('/src/content/ContentApi.ts');
   const api = buildContentApi();
   const spells = await import('/packs/riot/spells/index.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   game.player.replaceSpell(1, new (spells.Nasus_Q(api))(game.player));
   game.player.replaceSpell(2, new (spells.Ashe_R(api))(game.player));
   game.player.replaceSpell(3, new (spells.Varus_Q(api))(game.player));
@@ -63,7 +63,7 @@ await page.locator('.spell-info').screenshot({ path: `${OUT}-tooltip.png` });
 
 // Empty the pool: every costed icon should grey out and flip its badge to red.
 await page.evaluate(() => {
-  window.__lol2d.scene.oScene.game.player.stats.mana.baseValue = 5;
+  window.__moba2d.scene.oScene.game.player.stats.mana.baseValue = 5;
 });
 await page.waitForTimeout(400);
 await bar.screenshot({ path: `${OUT}-broke.png` });

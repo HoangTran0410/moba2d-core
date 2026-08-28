@@ -27,7 +27,7 @@ jobs:
       - run: npm ci
 
       # Playwright's own Chromium, for the real-browser boot step below.
-      # `LOL2D_CHROME_CHANNEL=` (empty) is what makes `tests/e2e/harness.mjs`
+      # `MOBA2D_CHROME_CHANNEL=` (empty) is what makes `tests/e2e/harness.mjs`
       # use it instead of system Chrome, which no runner has.
       - run: npx --yes playwright install --with-deps chromium
 
@@ -62,7 +62,7 @@ jobs:
       # `verify:all` below has no e2e step of its own.
       - run: npm run e2e:core-alone
         env:
-          LOL2D_CHROME_CHANNEL: ''
+          MOBA2D_CHROME_CHANNEL: ''
 
       - run: npm run verify:all
 

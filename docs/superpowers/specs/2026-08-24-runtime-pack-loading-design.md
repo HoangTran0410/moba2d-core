@@ -197,7 +197,7 @@ Hai thứ, khác bản chất:
 
 | Thứ | Ở đâu | Vì sao |
 |---|---|---|
-| Danh sách URL đã cài | `localStorage`, khoá `lol2d:packs:v1` | Vài trăm byte, phải đọc đồng bộ ngay lúc boot |
+| Danh sách URL đã cài | `localStorage`, khoá `moba2d:packs:v1` | Vài trăm byte, phải đọc đồng bộ ngay lúc boot |
 | Bytes của pack | Cache của service worker | Vài MB, phải sống sót offline |
 
 Tiền lệ đã chạy trong repo — luật Font Awesome trong `vite.config.ts`:
@@ -280,7 +280,7 @@ Pack repo đã có CI xanh chạy `verify`; thêm một job build + deploy vào 
 | `src/content/install.ts` | Thêm đường async: nhận factory đã `import()` về, install như hiện tại. Nửa dưới không đổi. |
 | `src/content/registry.ts` | `resetContentRegistryForTests` → tên công khai, dùng để dựng lại sau khi cài |
 | `src/content/packSource.ts` *(mới)* | fetch manifest, kiểm `coreRange`, `import()` entry, trả factory. Toàn bộ phần "nói chuyện với mạng" ở đúng một file. |
-| `src/content/installedPackStore.ts` *(mới)* | đọc/ghi `lol2d:packs:v1` |
+| `src/content/installedPackStore.ts` *(mới)* | đọc/ghi `moba2d:packs:v1` |
 | `src/scenes/LoadingScene.ts` | await bước cài, nuốt lỗi, bật băng báo |
 | `src/scenes/packs/*` *(mới)* | màn hình §7 |
 | `vite.config.ts` | `generateSW` → `injectManifest`; bỏ `optimizeDeps.exclude` khi pack không còn là dependency |

@@ -124,7 +124,7 @@ describe('savedKits', () => {
     saveKit('a', LOADOUT);
     renameKit(loadSavedKits()[0].id, 'b');
     deleteKit(loadSavedKits()[0].id);
-    expect(localStorage.getItem('lol2d:pregameConfig:v1')).toBeNull();
+    expect(localStorage.getItem('moba2d:pregameConfig:v1')).toBeNull();
   });
 
   it('survives localStorage being unavailable entirely', () => {

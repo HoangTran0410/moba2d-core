@@ -147,7 +147,7 @@ export class ClientSession implements NetGameHooks {
 
     // Dev-only handle for the e2e driver, like the host's.
     if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__lol2dNet = this;
+      (window as unknown as Record<string, unknown>).__moba2dNet = this;
     }
   }
 

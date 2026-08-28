@@ -35,7 +35,7 @@ that is certainly wanted to one that is merely probably wanted.
 
 ## What persists, and what must not
 
-**Persists** — written to `lol2d:pregameConfig:v1` on every panel mutation:
+**Persists** — written to `moba2d:pregameConfig:v1` on every panel mutation:
 
 - Player loadout, bot loadouts, bot count.
 - Per-bot behaviour flags (`autoMove`, `autoAttack`, `autoCast`).
@@ -50,7 +50,7 @@ the next visit would read as the game being broken.
 - Every cheat: invulnerability, reveal-the-whole-map, stack counts.
 - Debug overlay flags.
 
-Zoom already persists under its own key (`lol2d.zoomFactor`) and stays there —
+Zoom already persists under its own key (`moba2d.zoomFactor`) and stays there —
 it is a device preference like input mode, not a match setting.
 
 ## The schema change
@@ -86,7 +86,7 @@ fields.** A patch-per-field scheme has to be kept in step with the panel's
 controls forever; deriving the config from the roster and rules that actually
 exist cannot drift from what the player is looking at.
 
-Beware the paused-panel trap ([[lol2d-paused-panel-trap]], and
+Beware the paused-panel trap ([[moba2d-paused-panel-trap]], and
 `MatchDirector.bots()`'s own comment): the panel holds the match paused, so
 `ObjectManager.update()` has not run. Any derivation must read both
 `objects` and `_objectToBeAdd` and skip `toRemove`, exactly as `bots()` does —

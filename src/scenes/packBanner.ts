@@ -48,7 +48,7 @@ export const packBannerDismissed = ref(false);
  * data and is also the first thing worth asking for when a player says the
  * roster is short.
  */
-const PACK_INSTALL_GLOBAL = '__lol2dPackInstall';
+const PACK_INSTALL_GLOBAL = '__moba2dPackInstall';
 
 /**
  * Called once, by `LoadingScene.boot()`, with whatever `installRuntimePacks`

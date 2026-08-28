@@ -542,7 +542,7 @@ Record the base URL in the task report — Task 7 needs it.
   - `type InstalledPackRecord = { manifestUrl: string; id: string; version: string }`
   - `readInstalledPacks(): InstalledPackRecord[]`
   - `writeInstalledPacks(records: InstalledPackRecord[]): void`
-  - `PACK_STORE_KEY = 'lol2d:packs:v1'`
+  - `PACK_STORE_KEY = 'moba2d:packs:v1'`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -657,7 +657,7 @@ Expected: FAIL — `Cannot find module '@/content/installedPackStore'`.
  * the dead screen the whole design forbids.
  */
 
-export const PACK_STORE_KEY = 'lol2d:packs:v1';
+export const PACK_STORE_KEY = 'moba2d:packs:v1';
 
 /** One installed pack, as remembered between sessions. */
 export interface InstalledPackRecord {
@@ -1579,7 +1579,7 @@ await guard(async () => {
         key,
         JSON.stringify([{ manifestUrl: packUrl, id: 'riot', version: '1.0.0' }])
       ),
-    ['lol2d:packs:v1', PACK_URL]
+    ['moba2d:packs:v1', PACK_URL]
   );
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('#play-btn', { timeout: 45_000 });

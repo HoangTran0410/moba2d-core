@@ -184,7 +184,7 @@ registry thành hai bản. Factory đảm bảo **đúng một bản core**, và
 ở cả hai giai đoạn:
 
 ```
-GĐ1  import factory from '@lol2d/content-riot'    → factory(api)
+GĐ1  import factory from '@moba2d/content-riot'    → factory(api)
 GĐ2  const { default: factory } = await import(url) → factory(api)
 ```
 
@@ -195,7 +195,7 @@ JSON đủ sức diễn đạt chúng thì đã là một ngôn ngữ lập trì
 bỏ `docs/VFX_STANDARD.md` — VFX ở đây là code p5 vẽ tay.
 
 Type của TypeScript **không tồn tại lúc runtime**. Pack `devDependencies` vào
-`@lol2d/core` để có type + autocomplete lúc viết; lúc build core là `external`;
+`@moba2d/core` để có type + autocomplete lúc viết; lúc build core là `external`;
 lúc chạy không còn type nào. An toàn ở đường biên đến từ **validate runtime**
 (§6), không từ type.
 
@@ -204,7 +204,7 @@ lúc chạy không còn type nào. An toàn ở đường biên đến từ **va
 Mọi id là `<packId>:<localId>`. Tác giả viết `Fizz_E`, registry gắn thành
 `riot:Fizz_E`.
 
-**Hệ quả cần migration**: `lol2d:pregameConfig:v1` hiện lưu id trần. Id không
+**Hệ quả cần migration**: `moba2d:pregameConfig:v1` hiện lưu id trần. Id không
 tiền tố ⇒ hiểu là pack mặc định. Đây là thay đổi dữ liệu người dùng, phải làm
 có chủ đích.
 
@@ -356,8 +356,8 @@ thêm.
 ### 8.1 Seam thành luật xuất khẩu được
 
 ```
-core xuất:   @lol2d/core/seams        — luật, dạng chạy được
-pack chạy:   lol2d-check-seams ./src  — trên cây của chính nó
+core xuất:   @moba2d/core/seams        — luật, dạng chạy được
+pack chạy:   moba2d-check-seams ./src  — trên cây của chính nó
 ```
 
 Luật sống cùng engine sở hữu nó nên tiến hoá theo engine; quần thể sống cùng
@@ -399,7 +399,7 @@ Repo pack cần 4 lệnh, vì hôm nay chúng nằm trong core và duyệt `spel
 |---|---|
 | `assets:generate` | `AssetKey` union **của pack** |
 | `spell-catalog` | catalog của pack (dựng instance rồi đọc field) |
-| `check-seams` | chạy `@lol2d/core/seams` lên cây của chính nó |
+| `check-seams` | chạy `@moba2d/core/seams` lên cây của chính nó |
 | `build` | ESM bundle, core `external` |
 
 Core giữ `assets:generate` cho ~11 asset của nó + icon buff generic +
@@ -454,7 +454,7 @@ học và đến cuối.
 5. **`MapDefinition` + slots** — xoá `musterPointFor`; `MonsterPreset` tách
    thành slot + monster.
 6. **Content Riot vào `packs/riot/`** — refactor bind qua API.
-7. **Source-scan ép ranh giới** + `@lol2d/core/seams` + trỏ lại 15 seam.
+7. **Source-scan ép ranh giới** + `@moba2d/core/seams` + trỏ lại 15 seam.
 8. **Tách `packs/riot/` ra repo riêng.**
 
 **Tám bước này là hai plan, không phải một.** Bước 1-3 (gỡ coupling, dựng
@@ -474,7 +474,7 @@ xuyên repo**, không phải coupling import.
 content vẫn phải giữ đồng bộ; luật đổi mà pack không chạy lại thì im lặng mất
 tác dụng. `coreRange` trong manifest là chỗ móc để phát hiện lệch.
 
-**Tên repo.** `package.json` đang là `"lol2d"` — "LOL" nằm ngay trong đó. Đổi
+**Tên repo.** `package.json` đang là `"moba2d"` — "LOL" nằm ngay trong đó. Đổi
 sớm thì rẻ.
 
 **Thuật ngữ thì không đụng.** `Champion`, `Minion`, `Turret`, `Fountain` là từ

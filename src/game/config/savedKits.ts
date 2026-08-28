@@ -4,7 +4,7 @@
  * yourself or on any bot.
  *
  * Deliberately its own storage key rather than a field inside
- * `lol2d:pregameConfig:v1`. Two reasons. A library grows without bound while
+ * `moba2d:pregameConfig:v1`. Two reasons. A library grows without bound while
  * the match config is a fixed shape, and a corrupt library must not be able to
  * take a player's match configuration down with it — `loadSavedKits` failing
  * closed to an empty list costs you your saved kits; the same failure inside
@@ -29,7 +29,7 @@ import { uuidv4 } from '@/utils';
 import { SLOT_COUNT } from './PregameConfig';
 import type { ChampionLoadout } from './PregameConfig';
 
-export const SAVED_KITS_STORAGE_KEY = 'lol2d:savedKits:v1';
+export const SAVED_KITS_STORAGE_KEY = 'moba2d:savedKits:v1';
 
 /** Long enough for "<champion> nhưng có <summoner spell> trên A", short enough to fit a shelf heading. */
 export const SAVED_KIT_NAME_MAX = 40;

@@ -18,7 +18,7 @@
  */
 import { PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-minimap';
+const OUT = process.argv[2] ?? '/tmp/moba2d-minimap';
 
 const { url, page, errors, report, check, dispatch, guard } = await startHarness({
   out: OUT,
@@ -41,7 +41,7 @@ const tap = async point => {
 };
 const state = () =>
   page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     return {
       expanded: game.minimap.expanded,
       rect: { ...game.minimap.rect },
@@ -52,7 +52,7 @@ const state = () =>
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.minimap, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.minimap, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -81,7 +81,7 @@ await guard(async () => {
   // on the next tick), and landing in one would move the champion off the
   // predicted point by the push-out distance rather than by a bug.
   const open = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const walls = game.terrainMap.obstacles.filter(o => o.type === 'wall');
     const margin = 900;
     for (let x = margin; x <= game.mapSize - margin; x += 200) {
@@ -108,7 +108,7 @@ await guard(async () => {
   // whole check exists to catch. Rounded, because a touch event is dispatched
   // in whole pixels: assert against what is actually tapped.
   const aim = await page.evaluate(target => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const rect = game.minimap.rect;
     const screen = {
       x: Math.round(rect.x + (target.x / game.mapSize) * rect.size),
@@ -161,7 +161,7 @@ await guard(async () => {
 
   // A unit the fog is hiding right now, then the same unit with the cheat on.
   report.reveal = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const drawn = () =>
       new Set(game.minimapBlips().map(b => `${Math.round(b.x)},${Math.round(b.y)}`));
     // Alive only: a dead unit is not drawn with the cheat on either, and the
@@ -205,7 +205,7 @@ await guard(async () => {
   // the tab is open. `revealMap` is a plain flag for exactly that reason: it is
   // true the instant the checkbox is ticked, with no tick in between.
   report.pausedToggle = await page.evaluate(() => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     game.pause();
     game.director.revealMap = true;
     const whilePaused = game.minimapBlips().length;

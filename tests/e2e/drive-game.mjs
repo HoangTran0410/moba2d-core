@@ -9,22 +9,22 @@
  * turret — and screenshots the result.
  *
  *   npm run e2e                 # boots its own dev server
- *   npm run e2e -- /tmp/lol2d   # and writes screenshots under that prefix
+ *   npm run e2e -- /tmp/moba2d   # and writes screenshots under that prefix
  *
- * Set LOL2D_URL to point at a server you already have running instead.
+ * Set MOBA2D_URL to point at a server you already have running instead.
  * Requires a system Chrome install.
  */
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d';
+const OUT = process.argv[2] ?? '/tmp/moba2d';
 // A random high port by default. A fixed one collides with whatever dev server
 // is already up, and with --strictPort that either kills this run or — worse —
 // silently drives someone else's checkout.
-const PORT = process.env.LOL2D_PORT ?? String(5_200 + Math.floor(Math.random() * 600));
-const URL = process.env.LOL2D_URL ?? `http://localhost:${PORT}/`;
-const OWN_SERVER = !process.env.LOL2D_URL;
-// requested through the DEV-only window.__lol2d handle later; fetched up front
+const PORT = process.env.MOBA2D_PORT ?? String(5_200 + Math.floor(Math.random() * 600));
+const URL = process.env.MOBA2D_URL ?? `http://localhost:${PORT}/`;
+const OWN_SERVER = !process.env.MOBA2D_URL;
+// requested through the DEV-only window.__moba2d handle later; fetched up front
 // as the proof that the server on this port is serving THIS checkout
 const CANARY = 'src/game/gameObject/attackableUnits/Minion.ts';
 
@@ -103,7 +103,7 @@ await page.click('#play-btn');
 await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
 await page.click('#pregame-start-btn');
 await page.waitForFunction(
-  () => window.__lol2d?.scene?.oScene?.game?.objectManager,
+  () => window.__moba2d?.scene?.oScene?.game?.objectManager,
   null,
   { timeout: 30_000 }
 );
@@ -125,7 +125,7 @@ const spawned = await page.evaluate(async () => {
   const pantheon = await import('/packs/riot/spells/Pantheon_Q.ts');
   const Varus_Q_Arrow = varus.makeVarus_Q_Arrow(api);
   const Pantheon_Q_Spear = pantheon.makePantheon_Q_Spear(api);
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const champion = game.player ?? game.champion ?? game.objectManager.objects.find(o => o.spells);
 
   const park = (object, offsetY) => {
@@ -148,7 +148,7 @@ await page.screenshot({ path: `${OUT}-game.png` });
 
 // Zoom in so the avatar edge and the projectile silhouettes are legible.
 await page.evaluate(() => {
-  const camera = window.__lol2d.scene.oScene.game.camera;
+  const camera = window.__moba2d.scene.oScene.game.camera;
   camera.scale = 2.4;
   camera.currentScale = 2.4;
 });
@@ -166,7 +166,7 @@ await page.screenshot({ path: `${OUT}-zoom.png` });
 await page.evaluate(async () => {
   const MinionModule = await import('/src/game/gameObject/attackableUnits/Minion.ts');
   const Minion = MinionModule.default;
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
 
   game.fogOfWar.outOfViewColor = '#0003';
 
@@ -282,7 +282,7 @@ await page.evaluate(async () => {
 // The first wave leaves on its own clock, so wait it out rather than forcing it:
 // this is the check that the game spawns waves without being poked.
 const firstWave = await page.evaluate(async () => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const spawner = game.minionSpawner;
   const spawnerModule = await import('/src/game/managers/MinionSpawner.ts');
 
@@ -315,7 +315,7 @@ const firstWave = await page.evaluate(async () => {
 const FAST = 12;
 await page.evaluate(async fast => {
   const MinionModule = await import('/src/game/gameObject/attackableUnits/Minion.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   for (const preset of Object.values(MinionModule.MinionPresets)) preset.speed = fast;
   for (const minion of game.minionSpawner.minions) minion.stats.speed.baseValue = fast;
   game.camera.target = null;
@@ -329,7 +329,7 @@ await page.waitForTimeout(6_000);
 const laneShots = {};
 for (const lane of ['top', 'mid', 'bot']) {
   const at = await page.evaluate(laneName => {
-    const game = window.__lol2d.scene.oScene.game;
+    const game = window.__moba2d.scene.oScene.game;
     const inLane = game.minionSpawner.minions.filter(m => m.lane === laneName);
     if (inLane.length === 0) return null;
     // the front of the blue wave: furthest along its waypoint list
@@ -357,7 +357,7 @@ for (const lane of ['top', 'mid', 'bot']) {
 // Queue extra waves so both sides collide, and keep watching long enough for
 // turrets to open up on whatever survives.
 await page.evaluate(() => {
-  const spawner = window.__lol2d.scene.oScene.game.minionSpawner;
+  const spawner = window.__moba2d.scene.oScene.game.minionSpawner;
   spawner.queueWave();
 });
 await page.waitForTimeout(14_000);
@@ -365,7 +365,7 @@ await page.waitForTimeout(14_000);
 // Park on a minion that is mid-fight with another minion, so the clash shot
 // shows the two waves trading rather than an empty stretch of lane.
 const clashAt = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const fighting = game.minionSpawner.minions.filter(
     m => m.phase === 'ATTACK' && m.targetLock?.unitType === 'minion'
   );
@@ -383,7 +383,7 @@ await page.screenshot({ path: `${OUT}-lane-clash.png` });
 // And on a turret that is shooting a minion, which is the other half of what a
 // lane is supposed to look like.
 const turretAt = await page.evaluate(() => {
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
   const shooting = game.turrets.filter(t => t.target?.unitType === 'minion');
   if (shooting.length === 0) return null;
   const turret = shooting[0];
@@ -421,7 +421,7 @@ const observed = await page.evaluate(() => {
 // not the cadence one, which the probe above already answered.
 const frameRate = await page.evaluate(async () => {
   const MinionModule = await import('/src/game/gameObject/attackableUnits/Minion.ts');
-  const game = window.__lol2d.scene.oScene.game;
+  const game = window.__moba2d.scene.oScene.game;
 
   window.__minionProbe.revealMinions = false;
   game.fogOfWar.outOfViewColor = '#0007';

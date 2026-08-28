@@ -1,6 +1,6 @@
 # Survey: mapping `tests/packs/riot/`'s core imports onto `ContentApi`
 
-Measured 2026-08-23, on worktree `LOL2D-batch5` (`content-pack-batch-5`). Every
+Measured 2026-08-23, on worktree `MOBA2D-batch5` (`content-pack-batch-5`). Every
 number below is reproducible with the commands cited beside it; nothing here
 is estimated. No file was changed to produce this survey.
 

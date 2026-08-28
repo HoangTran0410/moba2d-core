@@ -23,7 +23,7 @@
  */
 import { PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
-const OUT = process.argv[2] ?? '/tmp/lol2d-mobile-hud';
+const OUT = process.argv[2] ?? '/tmp/moba2d-mobile-hud';
 
 // `deviceScaleFactor: 3` is load-bearing here rather than cosmetic: the badge
 // overlap this script checks for last was invisible at 1x.
@@ -39,7 +39,7 @@ const { url, page, errors, report, check, touchStart, touchMove, touchEnd, tap, 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.touchControls, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.touchControls, null, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1_500);
@@ -63,12 +63,12 @@ await guard(async () => {
   );
 
   const pickerBeforeTap = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
+    () => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
   );
   await tap(pickerBtnBox.x, pickerBtnBox.y);
   await page.waitForTimeout(300);
   report.pickerAfterRealTap = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
+    () => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
   );
   check(
     'a real touch tap on the corner button opens the practice panel',
@@ -172,7 +172,7 @@ await guard(async () => {
   await tap(closeBox.x, closeBox.y, 40);
   await page.waitForTimeout(250);
   report.pickerAfterClose = await page.evaluate(
-    () => window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
+    () => window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.showSpellsPicker
   );
   check('a real touch tap on the close button closes the panel', report.pickerAfterClose === false);
 
@@ -185,7 +185,7 @@ await guard(async () => {
   // this test runs at (not a hand-picked one).
   report.cornerVsArc = await page.evaluate(() => {
     const btn = document.querySelector('.spell-picker-btn')?.getBoundingClientRect();
-    const layout = window.__lol2d.scene.oScene.game.touchControls.currentLayout;
+    const layout = window.__moba2d.scene.oScene.game.touchControls.currentLayout;
     if (!btn) return { missing: true };
     let minButtonTop = Infinity;
     for (const b of layout.buttons) minButtonTop = Math.min(minButtonTop, b.y - b.radius);
@@ -206,7 +206,7 @@ await guard(async () => {
   // device scale. That row is the panel's densest piece of chrome on a
   // 390px-tall phone, and it is the one this HUD reaches through two modals.
   await page.evaluate(() =>
-    window.__lol2d.scene.oScene.game.inGameHUD.vueInstance.hud.openSpellPicker()
+    window.__moba2d.scene.oScene.game.inGameHUD.vueInstance.hud.openSpellPicker()
   );
   await page.waitForTimeout(300);
   await page.click('.practice-roster-row.is-player .practice-roster-open');

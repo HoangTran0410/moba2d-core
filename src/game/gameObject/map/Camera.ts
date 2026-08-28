@@ -255,9 +255,9 @@ export default class Camera {
   }
 }
 
-/** Mirrors `TouchControls.ts:160`'s `'lol2d.touchControls'`. */
-const POINTER_ZOOM_STORAGE_KEY = 'lol2d.zoomFactor';
-const TOUCH_ZOOM_STORAGE_KEY = 'lol2d.zoomFactor.touch';
+/** Mirrors `TouchControls.ts:160`'s `'moba2d.touchControls'`. */
+const POINTER_ZOOM_STORAGE_KEY = 'moba2d.zoomFactor';
+const TOUCH_ZOOM_STORAGE_KEY = 'moba2d.zoomFactor.touch';
 
 const zoomStorageKey = (touchUi: boolean): string =>
   touchUi ? TOUCH_ZOOM_STORAGE_KEY : POINTER_ZOOM_STORAGE_KEY;

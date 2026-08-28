@@ -1,6 +1,6 @@
 # Survey: what crosses the core/pack boundary today
 
-Worktree: `/Users/hoangtran/Desktop/Github/LOL2D-batch5`. All counts below are from commands run against this tree on 2026-08-22 (see each section). Nothing was modified.
+Worktree: `/Users/hoangtran/Desktop/Github/MOBA2D-batch5`. All counts below are from commands run against this tree on 2026-08-22 (see each section). Nothing was modified.
 
 Pack inventory for scale: `packs/riot/` has 251 `.ts` files (240 in `spells/`, 2 `vfx/`, 1 `monsters/`, 2 `maps/`, 3 top-level `pack.ts`/`code.ts`/`data.ts`) plus 378 files under `assets/`. `packs/reference/` has 7 `.ts` files. `tests/packs/riot/**/*.test.ts` has 68 files (none live inside `packs/` itself).
 
@@ -28,7 +28,7 @@ Pack inventory for scale: `packs/riot/` has 251 `.ts` files (240 in `spells/`, 2
 - **By pack**: `packs/riot/` accounts for 342 of the 350 statements; `packs/reference/` accounts for 8 (`packs/reference/map.ts:1`, `provingGroundsGeometry.ts:1`, `pack.ts:1-2`, and each of the four `Vera_*.ts` spell files at line 1).
 - **This is an enforced rule, not an accident**: `tests/content/packBoundary.test.ts` scans every pack file and fails on any specifier other than `@/content/ContentApi`, `@/content/ContentPack`, `@/content/types`, and fails unless each is `import type`. My independent scan's numbers match the rule's shape exactly.
 
-**Bottom line for the package boundary**: pack → core reach is 3 type-only modules, ~870 lines total (`src/content/ContentApi.ts` 337, `ContentPack.ts` 436, `types.ts` 97) that erase completely at runtime. Splitting `packs/riot` into its own package needs these three files' *type* shapes available at build time (a `.d.ts` or a workspace dependency on `@lol2d/core`'s types) and nothing at runtime.
+**Bottom line for the package boundary**: pack → core reach is 3 type-only modules, ~870 lines total (`src/content/ContentApi.ts` 337, `ContentPack.ts` 436, `types.ts` 97) that erase completely at runtime. Splitting `packs/riot` into its own package needs these three files' *type* shapes available at build time (a `.d.ts` or a workspace dependency on `@moba2d/core`'s types) and nothing at runtime.
 
 ---
 

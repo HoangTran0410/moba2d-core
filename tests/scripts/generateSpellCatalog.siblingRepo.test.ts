@@ -71,7 +71,7 @@ function publishedPaths(): string[] {
  */
 describe('generate-spell-catalog against a pack outside this repository', () => {
   async function buildSibling(): Promise<string> {
-    const root = await mkdtemp(join(tmpdir(), 'lol2d-sibling-sim-'));
+    const root = await mkdtemp(join(tmpdir(), 'moba2d-sibling-sim-'));
     const coreDir = join(root, 'node_modules/@moba2d/core');
 
     await mkdir(join(root, 'generated'), { recursive: true });

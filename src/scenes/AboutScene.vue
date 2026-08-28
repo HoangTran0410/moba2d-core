@@ -36,7 +36,7 @@ import { ARTICLES } from './about/articles';
 const emit = defineEmits<{ close: []; openPacks: [] }>();
 
 /**
- * This repository, not the one the project started in. `HoangTran0410/LOL2D`
+ * This repository, not the one the project started in. `HoangTran0410/MOBA2D`
  * is where it lived before the engine and its content were split apart, and
  * a link to a repository that is no longer the one being played is worse
  * than no link at all — see `README.md`, which carried the same stale URL.

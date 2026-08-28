@@ -668,7 +668,7 @@ Expected: seven ability records, six champion images, seven ability images, and 
 
 - [ ] **Step 3: Add reviewed adaptation notes**
 
-For each record, set `implementationStatus` to `planned`, add a Vietnamese description based on the imported current mechanics, and add only the explicit LOL2D scaling differences required by the current game's lower health/damage scale. Do not silently change activation, targeting, interrupt, recast, tether, or projectile behavior.
+For each record, set `implementationStatus` to `planned`, add a Vietnamese description based on the imported current mechanics, and add only the explicit MOBA2D scaling differences required by the current game's lower health/damage scale. Do not silently change activation, targeting, interrupt, recast, tether, or projectile behavior.
 
 - [ ] **Step 4: Validate generated artifacts**
 
@@ -725,7 +725,7 @@ rtk node -e "for (const p of ['docs/abilities/lux/r.json','docs/abilities/janna/
 
 - Lux R uses `CASTING`, a frozen beam geometry, telegraph/cast bar, then one release hit pass.
 - Janna R uses `CHANNELING`, an initial knockback pass, interval healing, channel loop VFX, and cancel cleanup.
-- Use checked-in adaptation values for LOL2D damage/healing, while keeping imported timing and mechanics unless an adaptation note explicitly records a change.
+- Use checked-in adaptation values for MOBA2D damage/healing, while keeping imported timing and mechanics unless an adaptation note explicitly records a change.
 
 - [ ] **Step 4: Export and register**
 

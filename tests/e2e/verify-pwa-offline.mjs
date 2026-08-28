@@ -90,7 +90,7 @@ const declaredPrecacheCount = () => {
  * starts, not as a 180-second timeout inside one — and specifically here,
  * that timeout would have been unusually misleading: left unchecked, every
  * pack request 404s against the static server, the manifest fetch fails
- * inside `installRuntimePacks()`, `window.__lol2dPackPrefetch` never
+ * inside `installRuntimePacks()`, `window.__moba2dPackPrefetch` never
  * publishes (the `if (toPrefetch.length > 0)` guard around its only writer
  * never runs), and the five pack checks below fail — bit-for-bit the same
  * shape this task's own Step 5 falsification produces by disabling the
@@ -152,7 +152,7 @@ await page.addInitScript(
     );
     window.localStorage.setItem(cfgKey, JSON.stringify(cfg));
   },
-  ['lol2d:packs:v1', PACK_URL, 'lol2d:pregameConfig:v1', CFG_SEED]
+  ['moba2d:packs:v1', PACK_URL, 'moba2d:pregameConfig:v1', CFG_SEED]
 );
 
 const failures = [];
@@ -191,7 +191,7 @@ try {
   // runs again on every fresh boot, and by the second load most of the pack is
   // already cached — its own report would read mostly `skipped`, not `added`,
   // which would make "it pulled the pack in whole" below pass for the wrong
-  // reason on a warm cache. Waiting on `window.__lol2dPackPrefetch` (Task 4)
+  // reason on a warm cache. Waiting on `window.__moba2dPackPrefetch` (Task 4)
   // rather than sleeping is what makes this a real signal instead of a guess
   // at how long 590 files over a local static server takes.
   // `.then(fulfilled, rejected)`, not a bare `.then()`: a timeout here (the
@@ -201,7 +201,7 @@ try {
   // script that dies here would report only "run completed: false" instead
   // of naming which two.
   const prefetch = await page
-    .waitForFunction(() => window.__lol2dPackPrefetch ?? null, null, { timeout: 180_000 })
+    .waitForFunction(() => window.__moba2dPackPrefetch ?? null, null, { timeout: 180_000 })
     .then(
       handle => handle.jsonValue(),
       () => null
@@ -217,7 +217,7 @@ try {
       const names = await caches.keys();
       let total = 0;
       for (const name of names) {
-        // `lol2d-packs-v1` (`packCache.ts`'s `PACK_CACHE_NAME`) is Plan 2's
+        // `moba2d-packs-v1` (`packCache.ts`'s `PACK_CACHE_NAME`) is Plan 2's
         // own cache, filled by the pack prefetch this script now waits on
         // just above — concurrently with the precache, during the same boot.
         // Counting it here would make this check's target move with however
@@ -226,7 +226,7 @@ try {
         // without this exclusion the total read 648 (57 precache + 590
         // prefetched pack files + 1 for the worker's own stored base list)
         // against a declared count of 57.
-        if (name === 'lol2d-packs-v1') continue;
+        if (name === 'moba2d-packs-v1') continue;
         total += (await (await caches.open(name)).keys()).length;
       }
       stable = total === count && total > 0 ? stable + 1 : 0;
@@ -304,7 +304,7 @@ try {
     `added=${prefetch?.[0]?.added} failed=${prefetch?.[0]?.failed}`
   );
 
-  // `window.__lol2d` — the dev-only handle `verify-runtime-pack.mjs` reads the
+  // `window.__moba2d` — the dev-only handle `verify-runtime-pack.mjs` reads the
   // live game through — is stripped from a production build (`main.ts`, gated
   // on `import.meta.env.DEV`), and this script tests exactly that build. So
   // both readings below come off the same screen a player would use, not off

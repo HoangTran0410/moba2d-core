@@ -1,6 +1,6 @@
 # Combat text performance — investigation and fix
 
-Branch `perf-combat-text`, worktree `LOL2D-perf-combattext`.
+Branch `perf-combat-text`, worktree `MOBA2D-perf-combattext`.
 
 ## The report
 
@@ -20,8 +20,8 @@ Built `tests/e2e/measure-combattext-perf.mjs`, a Playwright script (model:
 
 1. Boots a real match, lets the first wave leave both fountains, then spawns
    more minions directly through `MinionSpawner.spawn` up to a configurable
-   target (env-overridable: `LOL2D_TARGET_MINIONS`, `LOL2D_HITS_PER_TICK`,
-   `LOL2D_TICK_MS`, `LOL2D_BURST_MS`).
+   target (env-overridable: `MOBA2D_TARGET_MINIONS`, `MOBA2D_HITS_PER_TICK`,
+   `MOBA2D_TICK_MS`, `MOBA2D_BURST_MS`).
 2. Pins a pool of 40 "dummy" minions' health to 1e9 so a burst of real
    `takeDamage`/`takeHeal` calls (some routed through `takeHeal`'s omnivamp
    path, some plain) can't kill them and shrink the population mid-run — that
@@ -53,8 +53,8 @@ the fixed `src/` on the same machine, same warm dev server:
 - **moderate**: 130 minions on the board, 200 damage/heal events/sec, 5s
   window (`node tests/e2e/measure-combattext-perf.mjs`, defaults)
 - **heavy**: 160 minions (the live cap), 1000 events/sec, 6s window
-  (`LOL2D_TARGET_MINIONS=150 LOL2D_HITS_PER_TICK=10 LOL2D_TICK_MS=10
-LOL2D_BURST_MS=6000 node tests/e2e/measure-combattext-perf.mjs`)
+  (`MOBA2D_TARGET_MINIONS=150 MOBA2D_HITS_PER_TICK=10 MOBA2D_TICK_MS=10
+MOBA2D_BURST_MS=6000 node tests/e2e/measure-combattext-perf.mjs`)
 
 Every one of the 10 new Vitest cases and the e2e script's own checks were
 run against the original code (via `git stash` on just the six touched
@@ -272,8 +272,8 @@ have produced by accident.
   lands in `_decorTree` and is invisible to a type-filtered gameplay query.
 - `tests/e2e/measure-combattext-perf.mjs`: the measurement script itself,
   kept as a regression instrument (env-overridable burst intensity via
-  `LOL2D_TARGET_MINIONS` / `LOL2D_HITS_PER_TICK` / `LOL2D_TICK_MS` /
-  `LOL2D_BURST_MS`).
+  `MOBA2D_TARGET_MINIONS` / `MOBA2D_HITS_PER_TICK` / `MOBA2D_TICK_MS` /
+  `MOBA2D_BURST_MS`).
 
 `npm run verify` is green: 244 test files, 3949 tests, both `tsc` passes,
 and the build. `npx prettier --check` passes on every file touched.
@@ -564,7 +564,7 @@ unit's top edge and the new test (`draws above the top of the unit body, not
 at its centre or feet`) fails with `expected -27.5 to be less than -27.5`.
 
 **Rejected / not applied**:
-- **Color-by-damage-type** (physical/magic/true). LOL2D's `CombatText.show`
+- **Color-by-damage-type** (physical/magic/true). MOBA2D's `CombatText.show`
   is keyed on `kind` (`damage`/`heal`/`shield`/`reflect`), not on a damage
   *type* the combat system does not currently track at the text layer —
   plumbing physical/magic/true through to `CombatText.show` would touch the

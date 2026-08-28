@@ -26,7 +26,7 @@
  *   1. **the menu draws** — `#play-btn` exists. With no pack the roster the
  *      menu reads is one champion; a menu that threw while rendering it would
  *      never get here.
- *   2. **a match starts at all** — `window.__lol2d.scene.oScene.game` gains an
+ *   2. **a match starts at all** — `window.__moba2d.scene.oScene.game` gains an
  *      `objectManager`. `GameScene.startGame()` awaits the map's geometry and
  *      every kit's chunk before this exists, so reaching it means the whole
  *      content path resolved: catalogue, roster, spell classes, art.
@@ -104,25 +104,25 @@ await page.addInitScript(
 // background — a real network request this script never wanted, to a pack
 // that is not published yet, whose resulting console noise used to make
 // check 7 flaky-by-design. Seeding both keys `runtimePacks.ts` reads —
-// `lol2d:packs:v1` empty, `lol2d:packs:seeded:v1` already set — tells it
+// `moba2d:packs:v1` empty, `moba2d:packs:seeded:v1` already set — tells it
 // the default has already been offered and declined, so it makes no
 // request at all. Literal key strings, not an import from
 // `@/content/installedPackStore`: this file runs under plain `node`, not
 // through Vite, so `@/` does not resolve here — the same reason
-// `verify-runtime-pack.mjs` seeds `'lol2d:packs:v1'` by hand rather than
+// `verify-runtime-pack.mjs` seeds `'moba2d:packs:v1'` by hand rather than
 // importing `PACK_STORE_KEY`.
 await page.addInitScript(
   ([storeKey, seededKey]) => {
     window.localStorage.setItem(storeKey, JSON.stringify([]));
     window.localStorage.setItem(seededKey, '1');
   },
-  ['lol2d:packs:v1', 'lol2d:packs:seeded:v1']
+  ['moba2d:packs:v1', 'moba2d:packs:seeded:v1']
 );
 
 /** Everything this script asserts on, read off the live `Game` — no screenshots. */
 const matchFacts = () =>
   page.evaluate(() => {
-    const game = window.__lol2d?.scene?.oScene?.game;
+    const game = window.__moba2d?.scene?.oScene?.game;
     if (!game) return null;
     const player = game.player;
     const spawner = game.minionSpawner;
@@ -166,7 +166,7 @@ await harness.guard(async () => {
 
   // ---------------------------------------------------- 2. a match starts
   await startMatch(page);
-  await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
+  await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 60_000,
   });
   await page.waitForTimeout(500);
@@ -214,7 +214,7 @@ await harness.guard(async () => {
   // ------------------------------------------------- 6. the player can act
   const box = await page.locator('canvas').first().boundingBox();
   const before = await page.evaluate(() => {
-    const player = window.__lol2d?.scene?.oScene?.game?.player;
+    const player = window.__moba2d?.scene?.oScene?.game?.player;
     return { x: player?.position?.x ?? null, y: player?.position?.y ?? null };
   });
   // Move, then press and release as separate steps with real gaps between
@@ -230,7 +230,7 @@ await harness.guard(async () => {
   await page.mouse.up({ button: 'right' });
   await page.waitForTimeout(1500);
   const after = await page.evaluate(() => {
-    const player = window.__lol2d?.scene?.oScene?.game?.player;
+    const player = window.__moba2d?.scene?.oScene?.game?.player;
     return { x: player?.position?.x ?? null, y: player?.position?.y ?? null };
   });
   const moved = Math.hypot((after.x ?? 0) - (before.x ?? 0), (after.y ?? 0) - (before.y ?? 0));

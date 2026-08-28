@@ -1,7 +1,7 @@
 /**
  * Every Playwright script in `tests/e2e/` used to boot itself from scratch.
  * All 24 called `chromium.launch` directly, 17 built their own Vite server and
- * 23 reached for `window.__lol2d` — with no shared module anywhere in the
+ * 23 reached for `window.__moba2d` — with no shared module anywhere in the
  * directory. The seven touch drivers had drifted into *byte-identical*
  * preambles: same 844x390 viewport, same `deviceScaleFactor: 3`, same
  * `pageerror`/`console` capture, same CDP session, same `check()`, same
@@ -85,7 +85,7 @@
  *
  * And the two scripts that boot differently are simply not importers, so the
  * rule never reaches them. That is on purpose. `drive-game.mjs` spawns
- * `npx vite` as a child process and honours `LOL2D_URL`/`LOL2D_PORT` so it can
+ * `npx vite` as a child process and honours `MOBA2D_URL`/`MOBA2D_PORT` so it can
  * be pointed at an already-running server; `verify-pwa-offline.mjs` serves the
  * *built* `dist/` through `preview()` and cuts the network. Folding either in
  * would mean the harness growing a mode for it.

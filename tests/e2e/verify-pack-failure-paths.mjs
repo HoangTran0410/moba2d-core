@@ -49,8 +49,8 @@ const PACK_PORT = 4403;
 const packServer = await startPackServer(PACK_PORT);
 const PACK_ORIGIN = `http://localhost:${PACK_PORT}`;
 const PACK_URL = `${PACK_ORIGIN}/manifest.json`;
-const STORE_KEY = 'lol2d:packs:v1';
-const CFG_KEY = 'lol2d:pregameConfig:v1';
+const STORE_KEY = 'moba2d:packs:v1';
+const CFG_KEY = 'moba2d:pregameConfig:v1';
 
 /**
  * The pack's own map, named explicitly.
@@ -79,7 +79,7 @@ const boot = async () => {
       window.localStorage.clear();
       window.localStorage.setItem(key, value);
       window.localStorage.setItem(cfgKey, cfg);
-      window.localStorage.setItem('lol2d:packs:seeded:v1', '1');
+      window.localStorage.setItem('moba2d:packs:seeded:v1', '1');
       const names = await caches.keys();
       await Promise.all(names.map(name => caches.delete(name)));
     },
@@ -95,7 +95,7 @@ const boot = async () => {
 };
 
 /** Whether a match is actually running. */
-const matchRunning = () => page.evaluate(() => Boolean(window.__lol2d?.scene?.oScene?.game));
+const matchRunning = () => page.evaluate(() => Boolean(window.__moba2d?.scene?.oScene?.game));
 
 /** Every bit of text the player can see, canvas excluded. */
 const visibleText = () =>
@@ -115,7 +115,7 @@ await guard(async () => {
   report.afterGeometryFailure = {
     running: await matchRunning(),
     activeMapId: await page.evaluate(
-      () => window.__lol2d?.scene?.oScene?.game?.activeMapId ?? null
+      () => window.__moba2d?.scene?.oScene?.game?.activeMapId ?? null
     ),
     domText: await visibleText(),
   };

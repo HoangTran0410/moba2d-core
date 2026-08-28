@@ -16,7 +16,7 @@
  * Serving both through one interface is where this would have gone wrong. The
  * two still are not interchangeable — but they are now connected, in one
  * direction and at one seam: **every mutating method here persists the match to
- * `lol2d:pregameConfig:v1` afterwards**, so the match you shaped is the match
+ * `moba2d:pregameConfig:v1` afterwards**, so the match you shaped is the match
  * you get back on reload.
  *
  * ## The rule this reverses, and why
