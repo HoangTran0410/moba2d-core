@@ -14,8 +14,13 @@
 
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- Chỉ còn một lib duy nhất: convex decomposition (5KB). Chạy offline 100%. -->
+    <!-- Hai lib, cả hai chạy offline 100%.
+         - decomp: cắt polygon lõm thành mảnh lồi, thứ game cần (5KB).
+         - polygon-clipping: phép ngược lại, gộp mảnh về hình gốc (28KB).
+           Là thư viện chứ không tự viết vì bản tự viết sai trên map thật —
+           xem `Geom.union` trong js/geom.js. -->
     <script src="lib/decomp.min.js"></script>
+    <script src="lib/polygon-clipping.min.js"></script>
 </head>
 
 <body>
@@ -195,6 +200,13 @@
             <g id="i-front">
                 <rect x="3.5" y="3.5" width="12" height="12" rx="2" />
                 <path d="M8.5 20.5h10a2 2 0 0 0 2-2v-10" />
+            </g>
+            <!-- Mũi tên rời khỏi màn hình. Khác hẳn `i-back` ngay dưới: cái
+                 đó là hai hình chồng nhau, nghĩa "đưa ra sau" trong xếp lớp,
+                 và dùng nó cho nút "Về game" thì trông y như nút copy. -->
+            <g id="i-arrow-left">
+                <path d="M20.5 12h-15" />
+                <path d="M11 5.5 4.5 12l6.5 6.5" />
             </g>
             <g id="i-back">
                 <rect x="8.5" y="8.5" width="12" height="12" rx="2" />

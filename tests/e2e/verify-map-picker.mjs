@@ -78,7 +78,7 @@
  *   node tests/e2e/verify-map-picker.mjs
  *   LOL2D_CHROME_CHANNEL= node tests/e2e/verify-map-picker.mjs   # bundled Chromium
  */
-import { CFG_KEY, startHarness } from './harness.mjs';
+import { CFG_KEY, startHarness, startMatch } from './harness.mjs';
 
 const SUMMONERS_RIFT_ID = 'lol:summoners-rift';
 const PROVING_GROUNDS_ID = 'reference:proving-grounds';
@@ -114,7 +114,7 @@ const storedMapId = () =>
 /** Enters a match from the menu with no config interaction — `Chơi`. */
 const playDirectly = async () => {
   await page.waitForSelector('#play-btn', { timeout: 30_000 });
-  await page.click('#play-btn');
+  await startMatch(page);
 };
 
 /**

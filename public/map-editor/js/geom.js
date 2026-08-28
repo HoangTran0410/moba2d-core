@@ -140,12 +140,22 @@ const Geom = (() => {
     return [sx / n, sy / n];
   }
 
-  function area(pts) {
+  /**
+   * Diện tích CÓ DẤU: dương khi các đỉnh quấn ngược chiều kim đồng hồ, âm khi
+   * thuận chiều. Dấu chính là chiều quấn, nên `union` dùng nó để đưa mọi hình
+   * về cùng một chiều, và để phân biệt viền ngoài với lỗ thủng.
+   */
+  function signedArea(pts) {
     let a = 0;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
       a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
     }
-    return Math.abs(a) * 0.5;
+    return a * 0.5;
+  }
+
+  /** Diện tích, luôn không âm — chiều quấn không đổi kết quả. */
+  function area(pts) {
+    return Math.abs(signedArea(pts));
   }
 
   /** Bình phương khoảng cách từ điểm tới đoạn thẳng + vị trí t trên đoạn. */
@@ -241,6 +251,242 @@ const Geom = (() => {
     }
   }
 
+  /**
+   * Gộp các polygon chạm nhau thành đường viền của chúng — phép ngược của
+   * `decompose`.
+   *
+   * Map đến từ pack không mang theo `authoring`, nên thứ mở ra được là
+   * `terrain`: dạng ĐÃ CẮT. Summoner's Rift là 329 mảnh cho khoảng 70 bức
+   * tường thật. Sửa đống đó là sửa kết quả cắt chứ không phải sửa map.
+   *
+   * ## Vì sao là thư viện chứ không phải mấy chục dòng tự viết
+   *
+   * Bản đầu tiên tự viết: chuẩn hoá chiều quấn rồi huỷ từng cặp cạnh ngược
+   * chiều, phần sót lại là biên. Đúng với mọi hình thử tay, đúng cả về diện
+   * tích trên dữ liệu thật — và vẫn sai. Ba lần sửa là ba ca mới lộ ra: mối
+   * chữ T, đỉnh thắt nhiều nhánh, rồi cái giết nó hẳn — **các mảnh CHỒNG lên
+   * nhau**, mà triệt tiêu cạnh chỉ đúng khi chúng rời nhau. Ở Sân Thử Nghiệm,
+   * dải viền và hai nhánh hành lang đè nhau đúng 60x100 mỗi bên; kết quả là
+   * một vệt chéo cắt ngang map.
+   *
+   * Đây là bài toán boolean trên đa giác, đã được giải kỹ từ lâu
+   * (Martinez-Rueda). `lib/polygon-clipping.min.js` là 28KB làm đúng việc đó,
+   * xử lý cả chồng lấn, lỗ thủng và mối chữ T. Không có nó thì không gộp gì
+   * cả — trả lại nguyên đầu vào, vì gộp sai còn tệ hơn không gộp.
+   *
+   * Trả về danh sách vòng phẳng: vòng ngoài quấn dương, lỗ quấn âm (xem
+   * `signedArea`). `unionCovers` vẫn đứng sau để chấm lại kết quả.
+   */
+  function union(polys) {
+    const shapes = (polys || []).filter((p) => p && p.length >= 3);
+    if (shapes.length < 2) return shapes.map((p) => p.map((q) => [q[0], q[1]]));
+    if (typeof polygonClipping === "undefined") {
+      console.warn("polygon-clipping thiếu — không gộp");
+      return shapes.map((p) => p.map((q) => [q[0], q[1]]));
+    }
+
+    let result;
+    try {
+      // Mỗi hình vào là một Polygon một vòng: `[[ring]]`.
+      result = polygonClipping.union(shapes.map((p) => [p.map((q) => [q[0], q[1]])]));
+    } catch (e) {
+      console.warn("gộp lỗi, giữ nguyên mảnh gốc:", e);
+      return shapes.map((p) => p.map((q) => [q[0], q[1]]));
+    }
+
+    const rings = [];
+    for (const poly of result || []) {
+      for (let i = 0; i < poly.length; i++) {
+        const ring = poly[i].map((q) => [q[0], q[1]]);
+        // Thư viện khép vòng bằng cách lặp lại đỉnh đầu ở cuối; bỏ đi.
+        if (
+          ring.length > 1 &&
+          ring[0][0] === ring[ring.length - 1][0] &&
+          ring[0][1] === ring[ring.length - 1][1]
+        ) {
+          ring.pop();
+        }
+        if (ring.length < 3) continue;
+        // Vòng 0 là viền ngoài, các vòng sau là lỗ — ép đúng dấu để
+        // `signedArea` phân biệt được, thay vì tin vào chiều thư viện trả.
+        const wantPositive = i === 0;
+        const cleaned = dropCollinear(ring);
+        if (cleaned.length < 3) continue;
+        const positive = signedArea(cleaned) > 0;
+        rings.push(positive === wantPositive ? cleaned : cleaned.reverse());
+      }
+    }
+    return rings;
+  }
+
+  /**
+   * Đoạn a→b có nằm CHÔN trong ruột một hình khác không?
+   *
+   * Triệt tiêu cạnh chỉ đúng khi các mảnh rời nhau — chồng nhau thì cạnh
+   * trong không thành cặp và cả phép gộp ra rác. Mà dữ liệu thật thì CÓ
+   * chồng: ở Sân Thử Nghiệm, dải viền trái và nhánh tây của hành lang đè lên
+   * nhau đúng 60x100, và chuyện đó biến thành một vệt chéo cắt ngang map.
+   *
+   * Xét TRUNG ĐIỂM chứ không xét hai đầu mút: đầu mút của một cạnh biên gần
+   * như luôn nằm trên biên hình khác, còn trung điểm thì phân biệt sạch giữa
+   * "đi dọc biên chung" (cặp sẽ tự triệt tiêu nhau) và "xuyên qua ruột" (phải
+   * bỏ hẳn). Đoạn đã được chẻ tại mọi đỉnh trước đó, nên trung điểm của nó
+   * không bao giờ rơi vào nửa trong nửa ngoài.
+   */
+  function buriedIn(a, b, shapes, boxes, skip) {
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    for (let i = 0; i < shapes.length; i++) {
+      if (i === skip) continue;
+      const box = boxes[i];
+      if (mx < box[0] || mx > box[2] || my < box[1] || my > box[3]) continue;
+      // Điểm nằm ĐÚNG TRÊN biên hình kia thì không tính là chôn — đó là hai
+      // hình áp cạnh nhau, và cặp cạnh đó sẽ tự triệt tiêu. Phải xét riêng vì
+      // ray-casting trả kết quả không xác định cho điểm nằm trên biên: cạnh
+      // phải của nhánh hành lang đông nằm đúng trên mép ngoài của tường viền
+      // phải, bị đọc nhầm là "trong", bỏ mất, và vòng đi cụt ngay tại đó.
+      if (onOutline(mx, my, shapes[i])) continue;
+      if (pointInPolygon(mx, my, shapes[i])) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Các đỉnh nằm lọt hẳn trong đoạn a→b, đã xếp theo thứ tự dọc đoạn.
+   *
+   * Thẳng hàng xét bằng tích có hướng bằng đúng 0, không nới sai số: toạ độ ở
+   * đây là số nguyên, nên "gần thẳng hàng" là một điểm khác chứ không phải
+   * một điểm bị lệch.
+   */
+  function pointsWithin(a, b, verts) {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const loX = a[0] < b[0] ? a[0] : b[0];
+    const hiX = a[0] > b[0] ? a[0] : b[0];
+    const loY = a[1] < b[1] ? a[1] : b[1];
+    const hiY = a[1] > b[1] ? a[1] : b[1];
+    const hits = [];
+    for (const v of verts) {
+      if (v[0] < loX || v[0] > hiX || v[1] < loY || v[1] > hiY) continue;
+      if ((v[0] === a[0] && v[1] === a[1]) || (v[0] === b[0] && v[1] === b[1])) continue;
+      if ((v[0] - a[0]) * dy - (v[1] - a[1]) * dx !== 0) continue;
+      hits.push(v);
+    }
+    if (hits.length > 1) {
+      hits.sort((p, q) => (p[0] - a[0]) * dx + (p[1] - a[1]) * dy - ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy));
+    }
+    return hits;
+  }
+
+  /**
+   * Cạnh tiếp theo của đường viền tại một đỉnh.
+   *
+   * Đây là luật duyệt mặt của đồ thị phẳng, không phải một mẹo: đi tới `cur`
+   * từ `prev`, cạnh kế tiếp là cạnh ĐẦU TIÊN gặp khi quay thuận chiều kim
+   * đồng hồ kể từ hướng `cur → prev`. Chọn như vậy thì phần trong luôn nằm
+   * cùng một phía suốt cả vòng, nên mỗi mặt của đồ thị ra đúng một vòng.
+   *
+   * Bản đầu tiên chọn "rẽ phải gắt nhất so với hướng đang đi" — nghe thì
+   * giống, và trùng kết quả ở mọi hình t thử tay. Nó sai ở đúng chỗ có nhiều
+   * hơn hai cạnh gặp nhau: Sân Thử Nghiệm là một khung viền cộng một dải
+   * hành lang cắt ngang, và ở mối chữ T giữa hai thứ đó nó nhảy sang nhánh
+   * kia, nối hai điểm ở hai đầu map thành một vệt chéo. Diện tích ra âm, và
+   * lỗi hiện ra thành một vết chém trên màn hình.
+   *
+   * Xét TOÀN BỘ cạnh đi ra chứ không riêng cạnh chưa dùng: thứ tự góc là thứ
+   * quyết định, và lọc trước theo "chưa dùng" có thể đẩy phép chọn sang một
+   * cạnh không phải hàng xóm thật của nó.
+   */
+  function pickNext(prev, cur, out, used) {
+    const cands = out.get(cur[0] + "," + cur[1]) || [];
+    if (!cands.length) return null;
+
+    let best = null;
+    if (cands.length === 1) {
+      best = cands[0];
+    } else {
+      const back = Math.atan2(prev[1] - cur[1], prev[0] - cur[0]);
+      let bestTurn = Infinity;
+      for (const c of cands) {
+        const a = Math.atan2(c[1] - cur[1], c[0] - cur[0]);
+        let turn = back - a;
+        while (turn <= 0) turn += TAU;
+        while (turn > TAU) turn -= TAU;
+        if (turn < bestTurn) {
+          bestTurn = turn;
+          best = c;
+        }
+      }
+    }
+    if (!best) return null;
+    return used.has(cur[0] + "," + cur[1] + "|" + best[0] + "," + best[1]) ? null : best;
+  }
+
+  /**
+   * Kết quả gộp có phủ đúng cái mà các mảnh gốc phủ không?
+   *
+   * Kiểm bằng LẤY MẪU LƯỚI, và cố ý không dùng lại một dòng nào của `union`:
+   * một phép biến đổi tự chấm bài mình thì luôn đồng ý với chính nó, sai thế
+   * nào cũng đồng ý. Ở đây câu hỏi "điểm này có nằm trong hình nào không" chỉ
+   * cần `pointInPolygon`, và hai bên phải trả lời giống nhau ở mọi mẫu.
+   *
+   * Lý do nó tồn tại: bản đầu của `union` gộp sai Sân Thử Nghiệm thành một
+   * vệt chéo cắt ngang map, và không có gì trong đường đi từ đó tới màn hình
+   * nhận ra. Một phép gộp chạy TỰ ĐỘNG mà hỏng âm thầm thì phá map của người
+   * ta; thà từ chối gộp còn hơn.
+   *
+   * Mẫu nằm giữa ô lưới và lưới lệch một chút so với hộp bao, để hạn chế mẫu
+   * rơi đúng lên cạnh — chỗ mà cả hai bên đều có quyền trả lời thế nào cũng
+   * được.
+   */
+  function unionCovers(shapes, rings, steps) {
+    const n = steps || 128;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of shapes) {
+      for (const q of p) {
+        if (q[0] < minX) minX = q[0];
+        if (q[0] > maxX) maxX = q[0];
+        if (q[1] < minY) minY = q[1];
+        if (q[1] > maxY) maxY = q[1];
+      }
+    }
+    if (!(maxX > minX) || !(maxY > minY)) return true;
+
+    const pad = 0.5;
+    const dx = (maxX - minX + pad * 2) / n;
+    const dy = (maxY - minY + pad * 2) / n;
+    for (let ix = 0; ix < n; ix++) {
+      const x = minX - pad + (ix + 0.5) * dx;
+      for (let iy = 0; iy < n; iy++) {
+        const y = minY - pad + (iy + 0.5) * dy;
+
+        let inSource = false;
+        for (const p of shapes) {
+          if (pointInPolygon(x, y, p)) { inSource = true; break; }
+        }
+        // Vòng ngoài cộng vào, vòng lỗ trừ ra — đúng quy tắc even-odd mà
+        // `union` tuyên bố là đang xuất ra.
+        let depth = 0;
+        for (const r of rings) if (pointInPolygon(x, y, r)) depth++;
+        if (inSource !== (depth % 2 === 1)) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Bỏ đỉnh thẳng hàng — chỗ hai mảnh cũ nối nhau để lại rất nhiều. */
+  function dropCollinear(ring) {
+    const kept = [];
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[(i - 1 + ring.length) % ring.length];
+      const b = ring[i];
+      const c = ring[(i + 1) % ring.length];
+      const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (cross !== 0) kept.push(b);
+    }
+    return kept.length >= 3 ? kept : ring;
+  }
+
   /** Đa giác đều n đỉnh, bán kính r, đỉnh đầu hướng lên cho đẹp mắt. */
   function regularPolygon(n, r) {
     const pts = [];
@@ -257,9 +503,9 @@ const Geom = (() => {
   return {
     clamp, lerp, TAU,
     pointInPolygon, bounds, rectsOverlap, rectContainsPoint,
-    centroid, meanPoint, area, segDistSq, nearestEdge,
+    centroid, meanPoint, area, signedArea, segDistSq, nearestEdge,
     segSeg, segHitsRect, outlineHitsRect,
     rotatePoints, scalePoints, flipPoints, roundPoints,
-    decompose, regularPolygon, snap,
+    decompose, union, unionCovers, regularPolygon, snap,
   };
 })();

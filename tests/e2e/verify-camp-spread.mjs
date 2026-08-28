@@ -17,14 +17,14 @@
  *
  *   node tests/e2e/verify-camp-spread.mjs
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const h = await startHarness({});
 const { page, check, report, guard } = h;
 
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(
     () => window.__lol2d?.scene?.oScene?.game?.monsters?.length > 0,
     null,

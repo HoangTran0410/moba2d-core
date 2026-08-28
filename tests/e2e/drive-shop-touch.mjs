@@ -21,7 +21,7 @@
  *
  *   node tests/e2e/drive-shop-touch.mjs /tmp/shoptouch
  */
-import { startHarness, PHONE_VIEWPORT } from './harness.mjs';
+import { startHarness, PHONE_VIEWPORT, startMatch } from './harness.mjs';
 import { PROBE_ITEMS, seedShopProbePack } from './shopProbePack.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/shoptouch';
@@ -36,7 +36,7 @@ const { page, check, report, guard, tap, touchStart, touchMove, touchEnd } = h;
 
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

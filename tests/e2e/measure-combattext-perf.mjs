@@ -33,7 +33,7 @@
  *   node tests/e2e/measure-combattext-perf.mjs
  *   LOL2D_CHROME_CHANNEL= node tests/e2e/measure-combattext-perf.mjs   # bundled Chromium
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 /** Extra minions spawned directly through the live spawner, beyond wave 1. */
 const TARGET_MINION_COUNT = Number(process.env.LOL2D_TARGET_MINIONS ?? 100);
@@ -50,7 +50,7 @@ const { url, page, report, check, guard } = await startHarness();
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

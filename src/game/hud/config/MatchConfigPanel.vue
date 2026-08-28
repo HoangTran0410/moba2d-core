@@ -61,7 +61,18 @@ import RosterTab from './RosterTab.vue';
 import MatchTab from './MatchTab.vue';
 import SettingsTab from './SettingsTab.vue';
 
-const props = defineProps<{ source: MatchConfigSource }>();
+const props = defineProps<{
+  source: MatchConfigSource;
+  /**
+   * Hide the Bắt Đầu footer even out of a match.
+   *
+   * The LAN lobby mounts this panel over itself so the host can set the rules
+   * while people are still arriving — but starting there is Vào trận, which
+   * hands a live room to the match. A second start button on the same screen
+   * would start a *solo* game and drop everyone waiting.
+   */
+  hideStart?: boolean;
+}>();
 const emit = defineEmits<{ close: []; start: [] }>();
 
 const version = ref(0);
@@ -130,7 +141,7 @@ defineExpose({ closeInnerLayer: (): boolean => roster.value?.closeEditor() ?? fa
 
     <!-- Only outside a match, and only here: the one control the menu opened
          this panel to reach must not be inside a tab. -->
-    <footer v-if="pregame" class="match-config-actions">
+    <footer v-if="pregame && !hideStart" class="match-config-actions">
       <button id="pregame-start-btn" class="hextech-btn" @click="emit('start')">Bắt Đầu</button>
     </footer>
   </div>

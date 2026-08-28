@@ -1355,3 +1355,61 @@ kbd {
         transition-duration: .01ms !important;
     }
 }
+
+/* --------------------------------------------------------------------- *
+ * Thanh gợi ý — một toast KHÔNG tự tắt, vì nó hỏi một câu.
+ *
+ * Bo góc vuông hơn và rộng hơn toast tròn bên trên: nó mang hai nút và ở lại
+ * cho tới khi được trả lời, nên nó là một thanh chứ không phải một lời báo
+ * lướt qua. Cùng nền, cùng viền, để vẫn là một họ.
+ * --------------------------------------------------------------------- */
+.toast.suggest {
+    border-radius: 10px;
+    padding: 9px 10px 9px 13px;
+    gap: 10px;
+    flex-wrap: wrap;
+    animation: pop .16s cubic-bezier(.2, .8, .3, 1);
+}
+
+.toast.suggest>span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn.sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    min-height: 30px;
+}
+
+.btn.sm.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--tx-dim, #8b98ab);
+}
+
+/* Map từ game: không có thumbnail (chưa mở nên chưa vẽ được), nên card thấp
+   hơn và viền đứt để phân biệt với bản nháp của chính mình. */
+.map-card.pack {
+    border-style: dashed;
+    min-height: 0;
+}
+
+.map-card.pack canvas {
+    display: none;
+}
+
+.section-head {
+    margin: 16px 2px 8px;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+/* Nút đóng hộp thoại: đẩy sang mép phải của thanh tiêu đề. `margin-left:auto`
+   thay vì `position:absolute` để nó không bao giờ đè lên tiêu đề dài. */
+.modal-head .modal-x {
+    margin-left: auto;
+    flex: none;
+}

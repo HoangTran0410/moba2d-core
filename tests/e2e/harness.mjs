@@ -51,6 +51,28 @@ export const KITS_KEY = 'lol2d:savedKits:v1';
  * `deviceScaleFactor: 3` is worth passing on any phone-sized run: a HUD bug
  * where a badge overlapped its neighbour's hotkey was invisible at 1x.
  */
+/**
+ * Chơi, then Bắt Đầu — the two presses a match now takes from the menu.
+ *
+ * It used to be one: `#play-btn` went straight to `GameScene`, and every
+ * driver here clicked it. Chơi opens the match-config panel now (the menu's
+ * separate Cấu hình link is gone, and configuring *is* the pregame step), so a
+ * script that clicks Play and waits for a game waits for ever.
+ *
+ * One helper rather than two lines in forty scripts, for the reason this whole
+ * module exists: the preamble is not what any of them is testing, and it was
+ * the part that had to be edited N times whenever `src/` moved.
+ *
+ * Callers that only wait for `#play-btn` to *exist* — "is the menu up yet" —
+ * are unaffected and still do that directly.
+ */
+export const startMatch = async (page, { timeout = 30_000 } = {}) => {
+  await page.waitForSelector('#play-btn', { timeout });
+  await page.click('#play-btn');
+  await page.waitForSelector('#pregame-start-btn', { timeout });
+  await page.click('#pregame-start-btn');
+};
+
 export const startHarness = async ({
   out,
   viewport = DESKTOP_VIEWPORT,

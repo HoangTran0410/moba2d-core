@@ -18,3 +18,9 @@ dist/
 docs/abilities/
 docs/spell-names-vi.json
 assets/source-manifest.json
+
+# Minified libraries the map editor loads as plain <script> tags. Vendored into
+# the tree on purpose — the editor has no bundler and must work offline — and
+# declared in package.json so the copy on disk has a version to be refreshed
+# from. Never formatted: they are build output from another project.
+public/map-editor/lib/

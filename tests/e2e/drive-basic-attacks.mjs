@@ -19,7 +19,7 @@
  *
  *   node tests/e2e/drive-basic-attacks.mjs [outPrefix]
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/lol2d-attacks';
 const { url, page, errors, report, check, guard } = await startHarness({
@@ -40,7 +40,7 @@ async function rightClick(x, y) {
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

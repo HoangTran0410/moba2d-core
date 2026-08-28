@@ -48,7 +48,7 @@ import { DEFAULT_SIGNAL_URL, fetchLanRooms, randomRoomCode, type LanRoom } from 
 // menu→game chunk edge; see the file header and `lanBootPath.test.ts`.
 import type { LobbyPlayer } from '@/game/net/protocol';
 
-const emit = defineEmits<{ close: []; play: [] }>();
+const emit = defineEmits<{ close: []; play: []; openConfig: [] }>();
 
 const rooms = ref<LanRoom[]>([]);
 const joinCode = ref('');
@@ -622,6 +622,22 @@ onUnmounted(() => {
             @touchend.prevent="startHostedMatch"
           >
             Vào trận
+          </button>
+          <!-- The host sets the rules while people are still arriving, rather
+               than in front of them: everyone in the room is waiting on this
+               screen, so a config step *between* Vào trận and the match would
+               make them all wait through it. A LAN match is
+               host-authoritative, so this is the only device whose settings
+               count — a client's own panel locks them (`canEditMatchSettings`). -->
+          <button
+            type="button"
+            class="lan-ghost"
+            id="lan-config-host"
+            @click="emit('openConfig')"
+            @touchend.prevent="emit('openConfig')"
+          >
+            <i class="fas fa-sliders" aria-hidden="true"></i>
+            Cấu hình trận
           </button>
           <button
             type="button"

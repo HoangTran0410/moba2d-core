@@ -81,6 +81,7 @@ function runEditor(): EditorRun {
   const context = vm.createContext(sandbox);
 
   vm.runInContext(editorFile('lib/decomp.min.js'), context);
+  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
   for (const file of ['js/geom.js', 'js/state.js', 'js/storage.js']) {
     vm.runInContext(editorFile(file), context);
   }

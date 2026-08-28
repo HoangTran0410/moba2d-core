@@ -119,14 +119,16 @@ describe('a scene root fits the screen it is on', () => {
    * `#fullscreen-btn` right above it in the same file — silently reinstates
    * the entire class of bug, and nothing about the source would look wrong.
    *
-   * `#config-btn` joined them from the other direction: it came *down* out of
-   * the button column, where it was a third full-size button between the two
-   * that start a match. It is a `.menu-link` now and belongs to the same row,
-   * so it inherits the same rule.
+   * `#config-btn` used to be checked here too. It is gone from the menu
+   * entirely: configuring a match *is* the pregame step now, so Chơi opens the
+   * panel and nothing on the menu duplicates it. The other links that carry no
+   * rule of their own — `#editor-btn` — cannot be listed here, because this
+   * test reads a rule and a missing one is indistinguishable from a passing
+   * one; `.menu-link` is what they all inherit.
    */
   it('keeps the menu links in the column rather than pinned to a corner', () => {
     const css = stripCss(read('styles/menu-scene.css'));
-    for (const selector of ['#about-btn', '#packs-btn', '#config-btn']) {
+    for (const selector of ['#about-btn', '#packs-btn']) {
       expect(
         ruleFor(css, selector),
         `${selector} is pinned again — it belongs in .menu-links, in the column flow`

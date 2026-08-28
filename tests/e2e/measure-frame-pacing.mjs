@@ -28,7 +28,7 @@
  *
  *   node tests/e2e/measure-frame-pacing.mjs
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const { url, page, check, report, guard } = await startHarness({});
 
@@ -61,7 +61,7 @@ function stepStats(frames) {
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

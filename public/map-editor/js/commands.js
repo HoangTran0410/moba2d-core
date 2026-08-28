@@ -94,6 +94,83 @@ const Cmd = (() => {
   }
 
   /**
+   * Gộp các polygon dính cạnh lại — hỏi trước, và hoàn tác được như mọi
+   * thay đổi khác.
+   *
+   * Cố ý KHÔNG tự chạy khi mở map. Map từ pack không mang `authoring` nên thứ
+   * mở ra là dạng đã cắt lồi — Summoner's Rift là 329 mảnh cho 73 bức tường —
+   * nhưng "map này trông như đã cắt" chỉ là suy đoán, và tự viết lại hình của
+   * người khác dựa trên suy đoán là việc không nên làm. Map đã có `authoring`
+   * thì vốn đang ở dạng người ta vẽ và lệnh này không có gì để làm.
+   *
+   * Có vùng chọn từ 2 polygon trở lên thì chỉ gộp trong đó; không thì cả map.
+   */
+  async function mergeSelection() {
+    const useSel = E.selection.filter(isPoly).length >= 2;
+    const scope = useSel ? E.selection.slice() : E.terrains.slice();
+    const before = scope.filter(isPoly).length;
+    if (before < 2) {
+      UI.toast("Cần ít nhất 2 polygon để gộp");
+      return;
+    }
+
+    const merged = mergeTerrains(scope);
+    const after = merged.filter(isPoly).length;
+    if (after >= before) {
+      UI.alert({
+        icon: "ok",
+        title: "Không có gì để gộp",
+        text: "Không tìm thấy polygon nào cùng loại mà dùng chung cạnh với nhau.",
+      });
+      return;
+    }
+
+    const ok = await UI.confirm({
+      icon: "ask",
+      title: "Gộp polygon dính nhau?",
+      text:
+        `${before} hình sẽ còn ${after}. Chỉ gộp trong cùng một loại — tường không ` +
+        "bao giờ dính vào bụi — và hình nào quây quanh một khoảng trống thì giữ " +
+        "nguyên, vì gộp lại sẽ lấp mất khoảng đó. Ctrl+Z hoàn tác được.",
+      confirmText: "Gộp",
+    });
+    if (!ok) return;
+
+    if (useSel) {
+      const doomed = new Set(scope);
+      E.terrains = E.terrains.filter((t) => !doomed.has(t)).concat(merged);
+    } else {
+      E.terrains = merged;
+    }
+    Sel.set(merged.filter(isPoly));
+    commit();
+    UI.toast(`Đã gộp ${before} hình còn ${after}`);
+  }
+
+  /**
+   * Map đang mở có gộp được không? Nếu có thì mời một tiếng.
+   *
+   * Map từ pack đã được `Store.openPackMap` tự gộp rồi — ở đó thiếu
+   * `authoring` là bằng chứng chắc chắn nó đang ở dạng đã cắt. Còn map mở từ
+   * file, hay bản nháp của chính người dùng, thì không có bằng chứng nào như
+   * vậy: các hình dính cạnh nhau có thể là cố ý. Nên chỗ này chỉ hỏi.
+   *
+   * Gọi sau khi mở map. Không tìm thấy gì thì im lặng — một gợi ý bật lên mỗi
+   * lần mở map sẽ nhanh chóng thành thứ người ta học cách phớt lờ.
+   */
+  function offerMerge() {
+    const before = E.terrains.filter(isPoly).length;
+    if (before < 2) return;
+    const after = mergeTerrains(E.terrains.slice()).filter(isPoly).length;
+    if (after >= before) return;
+    UI.suggest({
+      text: `Map này có ${before} hình, gộp lại còn ${after} — nhiều mảnh đang dính cạnh nhau.`,
+      actionLabel: "Gộp lại",
+      onAction: () => Cmd.run("shape.merge"),
+    });
+  }
+
+  /**
    * Đổi loại chỉ trong cùng một nhóm: địa hình ↔ địa hình, slot ↔ slot. Biến
    * một polygon thành điểm hồi sinh thì mất sạch hình, nên chặn luôn.
    */
@@ -624,6 +701,11 @@ const Cmd = (() => {
     label: "Xoá", icon: "trash", keyHint: "Del", danger: true,
     isEnabled: hasSel, run: deleteSelection,
   });
+  def("shape.merge", {
+    label: "Gộp polygon dính nhau", icon: "layers",
+    isEnabled: () => E.terrains.filter(isPoly).length >= 2,
+    run: mergeSelection,
+  });
   def("shape.type", { label: "Đổi loại", icon: "check", run: setType });
   def("shape.prop", { label: "Đổi thuộc tính", icon: "settings", run: (a) => setProp(a[0], a[1]) });
   def("shape.addKind", { label: "Thêm đối tượng", icon: "plus", run: addObject });
@@ -784,6 +866,24 @@ const Cmd = (() => {
   def("file.import", {
     label: "Nhập JSON", icon: "import", keyHint: "Ctrl+I",
     run: (arg) => UI.importDialog(typeof arg === "string" ? arg : null),
+  });
+  /**
+   * Về game mà KHÔNG bắt đầu trận nào.
+   *
+   * Khác hẳn "Chơi thử" bên cạnh, và trước đây editor chỉ có mỗi cái đó —
+   * nghĩa là đường duy nhất quay lại game là bắt đầu một trận đấu, còn ai chỉ
+   * muốn về menu thì phải bấm nút Back của trình duyệt. Một cửa vào thì phải
+   * có một cửa ra ngang hàng với nó.
+   *
+   * Lưu trước khi đi: điều hướng ra khỏi trang thì autosave đang hẹn giờ chưa
+   * chắc kịp chạy.
+   */
+  def("file.backToGame", {
+    label: "Về game", icon: "arrow-left", showLabel: true,
+    run: () => {
+      Store.flush();
+      window.location.href = "../index.html";
+    },
   });
   def("file.playtest", {
     label: "Chơi thử", icon: "play", keyHint: "Ctrl+Enter", showLabel: true,
@@ -1018,7 +1118,7 @@ const Cmd = (() => {
       UI.sheet(anchor || document.querySelector('[data-cmd="ui.overflow"]'), [
         { title: "Map", items: [item("map.menu"), item("map.new"), item("file.open"), item("file.import"), item("file.save")] },
         { title: "Clipboard", items: [item("edit.copy"), item("edit.cut"), item("edit.paste"), item("edit.pasteInPlace")] },
-        { title: "Sửa", items: [item("ui.addMenu"), item("shape.addCustom"), item("shape.duplicate"), item("shape.delete"), item("shape.flipH"), item("shape.flipV"), item("shape.recenter"), item("lane.reverse"), item("shape.front"), item("shape.back")] },
+        { title: "Sửa", items: [item("ui.addMenu"), item("shape.addCustom"), item("shape.duplicate"), item("shape.delete"), item("shape.merge"), item("shape.flipH"), item("shape.flipV"), item("shape.recenter"), item("lane.reverse"), item("shape.front"), item("shape.back")] },
         { title: "Hiển thị", items: [item("view.grid"), item("view.snap"), item("view.bg"), item("view.bgUpload"), item("view.minimap"), item("view.dummy"), item("view.resetCamera"), item("ui.inspector")] },
         {
           title: "Con lăn chuột", items: [
@@ -1034,7 +1134,7 @@ const Cmd = (() => {
             { icon: "zoom-in", label: "Nhanh", on: E.zoomSpeed > 1.4, run: () => run("ui.zoomSpeed", 1.8) },
           ],
         },
-        { title: "moba2d", items: [item("file.playtest"), item("file.exportGeometry"), item("map.check"), item("map.resize"), item("map.scaleContent"), item("map.addFaction")] },
+        { title: "moba2d", items: [item("file.backToGame"), item("file.playtest"), item("file.exportGeometry"), item("map.check"), item("map.resize"), item("map.scaleContent"), item("map.addFaction")] },
         { title: "Xuất / nhập khác", items: [item("file.import"), item("file.export"), item("file.exportRaw"), item("file.clear")] },
         { items: [item("help.shortcuts")] },
       ]);
@@ -1047,6 +1147,6 @@ const Cmd = (() => {
     toggleNodeMode, deleteVertices, recenterSelection, centerOffset,
     copyToText, pasteFromText, readMemClip, deleteSelection,
     scaleMapContent, resizeMap, reverseLanes,
-    nudge, fitView, allBounds,
+    nudge, fitView, allBounds, offerMerge,
   };
 })();

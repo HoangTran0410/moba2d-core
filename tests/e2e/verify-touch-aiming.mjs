@@ -11,7 +11,7 @@
  *
  * Requires a system Chrome install.
  */
-import { PHONE_VIEWPORT, startHarness } from './harness.mjs';
+import { PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/lol2d-touch-aiming';
 
@@ -28,7 +28,7 @@ const settle = (ms = 120) => page.waitForTimeout(ms);
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.touchControls, null, {
     timeout: 30_000,
   });

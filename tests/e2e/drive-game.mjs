@@ -97,6 +97,11 @@ page.on('console', message => {
 
 await page.goto(URL, { waitUntil: 'load' });
 await page.click('#play-btn');
+// Chơi opens the match-config panel now; Bắt Đầu is what starts
+// the match. This script boots its own browser, so it cannot
+// import the harness helper that does both (`e2eHarness.test.ts`).
+await page.waitForSelector('#pregame-start-btn', { timeout: 30_000 });
+await page.click('#pregame-start-btn');
 await page.waitForFunction(
   () => window.__lol2d?.scene?.oScene?.game?.objectManager,
   null,

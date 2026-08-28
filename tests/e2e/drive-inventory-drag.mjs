@@ -17,7 +17,7 @@
  *
  *   node drive-inventory-drag.mjs /tmp/invdrag
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/invdrag';
 
@@ -38,7 +38,7 @@ const bag = () =>
 
 await guard(async () => {
   await page.goto(h.url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

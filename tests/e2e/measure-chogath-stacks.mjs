@@ -33,7 +33,7 @@
  *   node tests/e2e/measure-chogath-stacks.mjs
  *   LOL2D_STACKS=99 LOL2D_MEASURE_MS=8000 node tests/e2e/measure-chogath-stacks.mjs
  */
-import { CFG_KEY, PHONE_VIEWPORT, startHarness } from './harness.mjs';
+import { CFG_KEY, PHONE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
 const CPU_THROTTLE = Number(process.env.LOL2D_CPU_THROTTLE ?? 6);
 const MEASURE_MS = Number(process.env.LOL2D_MEASURE_MS ?? 6000);
@@ -262,7 +262,7 @@ async function runScenario({ browser, url, applyStacks, label }) {
   const cdp = await context.newCDPSession(page);
 
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(
     () => {
       const g = window.__lol2d?.scene?.oScene?.game;

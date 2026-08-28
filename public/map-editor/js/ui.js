@@ -54,6 +54,37 @@ const UI = (() => {
     }, 2200);
   }
 
+  /**
+   * Gợi ý có kèm hành động — khác `toast` ở chỗ nó ĐỢI.
+   *
+   * Một toast tự tắt sau 2.2 giây, đúng cho việc báo "đã xong". Cái này hỏi
+   * một câu và người ta phải trả lời được, nên nó ở lại tới khi bị bấm hoặc bị
+   * bỏ qua. Sinh ra vì lệnh gộp polygon nằm trong menu tràn và không ai tìm
+   * thấy — chức năng không tìm ra được thì coi như không có.
+   */
+  function suggest({ text, actionLabel, onAction }) {
+    const root = $("#toast-root");
+    const existing = root.querySelector(".toast.suggest");
+    if (existing) existing.remove();
+
+    const bar = el("div", { class: "toast suggest" });
+    bar.appendChild(el("span", {}, `${ico("help", "ico ico-sm i-warn")}<span>${esc(text)}</span>`));
+    const dismiss = () => {
+      bar.classList.add("out");
+      setTimeout(() => bar.remove(), 220);
+    };
+    bar.append(
+      el("button", {
+        class: "btn primary sm",
+        text: actionLabel,
+        onclick: () => { dismiss(); onAction(); },
+      }),
+      el("button", { class: "btn sm ghost", text: "Bỏ qua", onclick: dismiss })
+    );
+    root.appendChild(bar);
+    return dismiss;
+  }
+
   /* ============================== hộp thoại ============================ */
 
   let modalDepth = 0;
@@ -73,6 +104,16 @@ const UI = (() => {
       const head = el("div", { class: "modal-head" },
         (icon && iconMap[icon] ? ico(iconMap[icon][0], "ico " + iconMap[icon][1]) : "") +
         `<h3>${esc(title || "")}</h3>`);
+      // Nút đóng, trên MỌI hộp thoại. Trước đây chỉ có Escape và bấm ra ngoài
+      // — hai thứ không nhìn thấy được, nên "Map của bạn" mở ra là trông như
+      // không có đường nào thoát. Trên cảm ứng lại càng không: không có phím
+      // Escape, và bấm ra ngoài là thứ phải đoán mới biết.
+      head.appendChild(el("button", {
+        class: "icon-btn modal-x",
+        title: "Đóng (Esc)",
+        "aria-label": "Đóng",
+        onclick: () => close(undefined),
+      }, ico("x", "ico ico-sm")));
       const body = el("div", { class: "modal-body" });
       const foot = el("div", { class: "modal-foot" });
       modal.append(head, body, foot);
@@ -266,6 +307,10 @@ const UI = (() => {
    * đều còn nguyên trong menu “…” nên điện thoại không mất chức năng nào.
    */
   const LEFT_GROUPS = [
+    // Không có `min`, giống nhóm "Chơi thử" bên phải: đường ra khỏi editor
+    // phải luôn nhìn thấy được. Trước đây nó không tồn tại, và cách duy nhất
+    // để về game mà không mở một trận là bấm Back của trình duyệt.
+    { items: ["file.backToGame"] },
     { items: ["tool.select", "tool.node", "tool.marquee", "tool.hand", "tool.pen", "tool.lane"], min: 860 },
     { items: ["tool.select", "tool.node", "tool.marquee", "tool.pen", "tool.lane"], min: 700, max: 860 },
     { items: ["tool.select", "tool.node", "tool.marquee", "tool.pen"], max: 700 },
@@ -1080,6 +1125,46 @@ const UI = (() => {
         body.appendChild(grid);
         render();
 
+        // Map game đang có, xếp NGAY DƯỚI bản nháp trong cùng một màn hình.
+        //
+        // Trước đây danh sách này nằm ở menu chính của game, tách hẳn khỏi
+        // đây — thành ra hai danh sách chứa hai tập map khác nhau, không cái
+        // nào thấy cái kia, và map xoá bên này vẫn nằm bên kia. Một màn hình
+        // "map" phải cho thấy mọi map, không thì nó chỉ là một nửa.
+        const packMaps = Store.readPackMaps();
+        if (packMaps.length) {
+          body.appendChild(el("p", { class: "muted section-head", text: "Từ game — mở ra một bản sao để sửa" }));
+          const packGrid = el("div", { class: "maps-grid" });
+          for (const map of packMaps) {
+            const card = el("div", { class: "map-card pack" });
+            // Đếm theo hình SẼ MỞ RA, không phải theo `terrain`.
+            //
+            // Map có `authoring` mở ra ở dạng người ta vẽ, nên đọc `terrain`
+            // của nó là đọc nửa còn lại: Twisted Treeline hiện "121 tường"
+            // trong khi mở lên chỉ có 23. Còn map không có `authoring` thì
+            // `terrain` đúng là thứ mở ra — và gộp xong sẽ ít hơn, nên câu
+            // sau nói rõ điều đó thay vì hứa một con số.
+            const authoredWalls =
+              map.authoring && map.authoring.terrain && Array.isArray(map.authoring.terrain.wall)
+                ? map.authoring.terrain.wall.length
+                : null;
+            const walls = authoredWalls != null
+              ? authoredWalls
+              : (map.terrain && map.terrain.wall ? map.terrain.wall.length : 0);
+            card.appendChild(el("div", { class: "mc-info" },
+              `<div class="mc-name">${esc(map.name)}</div>
+               <div class="mc-meta">${walls} tường · ${esc(String(map.size || "?"))}${authoredWalls != null ? "" : " · dạng đã cắt"}</div>`));
+            card.addEventListener("click", () => {
+              close();
+              Store.openPackMap(map.id);
+              syncAll();
+              requestRender();
+            });
+            packGrid.appendChild(card);
+          }
+          body.appendChild(packGrid);
+        }
+
         foot.append(
           el("button", { class: "btn", onclick: () => { close(); Cmd.run("file.open"); } },
             `${ico("folder", "ico ico-sm")} Mở file .json`),
@@ -1263,13 +1348,34 @@ const UI = (() => {
       return;
     }
 
-    // Ghi nốt map vào kho riêng của editor trước khi rời trang: bấm chơi thử
-    // là một mốc, quay lại phải thấy đúng cái mình vừa chơi.
+    // Ghi nốt map vào kho riêng của editor: bấm chơi thử là một mốc, và tab
+    // này có thể bị đóng bất cứ lúc nào sau đây.
     Store.saveNow();
-    toast("Đang mở game…");
+
     // Editor nằm ở `<game>/map-editor/`, nên `../` là game. Đường dẫn tương đối
     // vì game được phục vụ từ subpath trên mọi host nó từng ở.
-    window.location.href = "../?playtest=local:" + encodeURIComponent(id);
+    const href = "../?playtest=local:" + encodeURIComponent(id);
+
+    // TAB MỚI, không phải điều hướng tại chỗ.
+    //
+    // `History` sống hoàn toàn trong bộ nhớ, nên rời trang là mất sạch undo:
+    // đi chơi thử rồi quay lại, map vẫn còn (autosave) nhưng mọi bước lùi thì
+    // không. Với map mở từ game, cái mất đó nặng hơn — bước gộp tự động là
+    // một bước undo, và qua một vòng chơi thử thì nó thành vĩnh viễn.
+    //
+    // Mở tab mới thì document này không bị huỷ, nên lịch sử còn nguyên và
+    // người ta sửa tiếp được ngay trong lúc tab game vẫn đang mở.
+    const opened = window.open(href, "moba2d-playtest");
+    if (opened) {
+      opened.focus();
+      toast("Đang mở game ở tab mới — tab này giữ nguyên lịch sử sửa");
+      return;
+    }
+    // Trình duyệt chặn popup (hiếm, vì đây là cú bấm của người dùng, nhưng
+    // một số cấu hình vẫn chặn). Đi tại chỗ còn hơn không đi được — mất undo
+    // vẫn hơn là bấm "Chơi thử" mà không có gì xảy ra.
+    toast("Trình duyệt chặn tab mới — mở tại chỗ, lịch sử sửa sẽ mất", "warn");
+    window.location.href = href;
   }
 
   /* ========================= export cho moba2d ========================== */
@@ -1415,7 +1521,7 @@ const UI = (() => {
 
   return {
     ico, el, esc, toast,
-    alert: alertBox, confirm: confirmBox, form: formBox, text: textBox,
+    alert: alertBox, confirm: confirmBox, form: formBox, text: textBox, suggest,
     sheet, closeSheet,
     buildToolbar, syncToolbar, buildInspector,
     syncSelection, syncLayers, syncView, syncMap, syncMapName, syncHistory,

@@ -1,4 +1,4 @@
-import { createApp, type App } from 'vue';
+import { createApp, h, type App } from 'vue';
 import { Scene } from '@/managers/SceneManager';
 import { loadGameScene } from './gamePreload';
 import LanSceneView from './LanScene.vue';
@@ -33,6 +33,8 @@ import LanSceneView from './LanScene.vue';
 export default class LanScene extends Scene {
   private host!: HTMLElement;
   private app: App | null = null;
+  private configApp: App | null = null;
+  private configHost: HTMLElement | null = null;
 
   setup() {
     this.host = document.querySelector('#lan-scene') as HTMLElement;
@@ -53,11 +55,68 @@ export default class LanScene extends Scene {
       onPlay: () => {
         void loadGameScene().then(scene => this.sceneManager.showScene(scene));
       },
+      onOpenConfig: () => {
+        void this.openConfig();
+      },
     });
     this.app.mount(this.host);
   }
 
+  /**
+   * The match-config panel, *over* the lobby rather than instead of it.
+   *
+   * It cannot be a scene transition. The host holds its room open from Tạo
+   * phòng — the lobby owns a live broker connection and the player list built
+   * on it — and leaving this scene drops both, and strips `?net=`/`?room=` on
+   * the way out. So the lobby stays mounted underneath and this goes on top,
+   * in a host element of its own.
+   *
+   * **Imported dynamically, and that is load-bearing rather than tidy.** The
+   * panel lives under `src/game/`, and this file's header is explicit that a
+   * static import of anything there drags the whole match into the LAN chunk.
+   * The import happens when the button is pressed, by which time the warm-up
+   * has almost certainly fetched it anyway.
+   *
+   * `hideStart` because starting here is Vào trận: the footer's Bắt Đầu would
+   * open a solo match and leave everyone in the room waiting on a dead lobby.
+   */
+  private async openConfig(): Promise<void> {
+    if (this.configApp) return;
+
+    const [{ default: MatchConfigPanel }, { default: PregameConfigSource }] = await Promise.all([
+      import('@/game/hud/config/MatchConfigPanel.vue'),
+      import('@/game/hud/config/PregameConfigSource'),
+    ]);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'lan-config-overlay';
+    overlay.className = 'lan-config-overlay';
+    this.host.appendChild(overlay);
+
+    const source = new PregameConfigSource();
+    this.configApp = createApp({
+      render: () =>
+        h(MatchConfigPanel, {
+          source,
+          hideStart: true,
+          onClose: () => this.closeConfig(),
+        }),
+    });
+    this.configApp.mount(overlay);
+    this.configHost = overlay;
+  }
+
+  private closeConfig(): void {
+    this.configApp?.unmount();
+    this.configApp = null;
+    this.configHost?.remove();
+    this.configHost = null;
+  }
+
   exit() {
+    // The overlay first: leaving the lobby with a panel still mounted over it
+    // leaves a detached Vue app and an orphan element in `#lan-scene`.
+    this.closeConfig();
     this.app?.unmount();
     this.app = null;
     this.host.style.display = 'none';

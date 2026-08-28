@@ -42,11 +42,16 @@
 
     UI.syncAll();
     requestRender();
+
+    // Sau khi màn hình đã dựng xong, không phải trong `openInitialMap`: gợi ý
+    // là một thanh trong UI, và UI lúc đó chưa tồn tại.
+    Cmd.offerMerge();
   }
 
   /** Mở thẳng map đang làm dở — khỏi bắt người dùng qua màn hình chọn map. */
   function openInitialMap() {
     Store.migrateLegacy();
+
     const index = Store.readIndex();
     const lastId = localStorage.getItem(Store.CURRENT_KEY);
 

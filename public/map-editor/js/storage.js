@@ -296,7 +296,17 @@ const Store = (() => {
     );
   }
 
+  /**
+   * Xoá map — kể cả bản đã đẩy sang game.
+   *
+   * `unpublishLocal` là nửa từng thiếu: xoá map ở đây chỉ dọn kho riêng của
+   * editor, còn `LOCAL_MAPS_KEY` thì không ai đụng, nên map đã xoá vẫn nằm
+   * trong picker của game mãi mãi và không có đường nào gỡ ra. Hai kho, một
+   * hành động — chúng phải đi cùng nhau.
+   */
   function deleteMap(id) {
+    const record = readRecord(id);
+    unpublishLocal((record && record.meta && record.meta.id) || slugify(record && record.name));
     localStorage.removeItem(mapKey(id));
     writeIndex(readIndex().filter((m) => m.id !== id));
     const views = readViews();
@@ -925,6 +935,81 @@ export const ${name}Map: MapDefinition = {
   const LOCAL_MAPS_KEY = "moba2d-local-maps-v1";
 
   /**
+   * Khoá game ghi ra để editor biết game đang có những map nào. Khớp từng ký
+   * tự với `PACK_MAPS_KEY` trong `src/content/editorCatalog.ts`.
+   *
+   * Là một CATALOG chứ không phải lời nhắn: đọc bao nhiêu lần cũng được và
+   * không bao giờ xoá. Bản cũ chỉ là tin cũ. (Bản đầu tiên của tính năng này
+   * là lời nhắn dùng-một-lần, và nếu quên xoá thì mỗi lần F5 map của game lại
+   * đè lên việc đang làm dở — cách này không có kiểu hỏng đó.)
+   */
+  const PACK_MAPS_KEY = "moba2d-pack-maps-v1";
+
+  /** Map game đang có, để màn hình "Map của bạn" xếp cạnh bản nháp. */
+  function readPackMaps() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PACK_MAPS_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((m) => m && m.id && m.terrain) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /**
+   * Mở một BẢN SAO của map game đang có. Trả về id map mới, hoặc null.
+   *
+   * Tự gộp lại các mảnh lồi khi map không mang `authoring` — và đây không phải
+   * suy đoán: `terrain` là dạng đã cắt vì `TerrainField`/`Vision` của core chỉ
+   * đúng với polygon lồi, nên thiếu `authoring` nghĩa là không ai còn giữ hình
+   * gốc. Summoner's Rift là 329 mảnh cho 73 bức tường; mở ra mà thấy 329 hình
+   * thì đang sửa kết quả cắt chứ không phải sửa map.
+   *
+   * Map CÓ `authoring` thì `fromMapGeometry` đã đọc đúng hình người ta vẽ rồi,
+   * và gộp thêm là viết lại quyết định của tác giả — nên không đụng vào.
+   *
+   * Gộp là một bước undo RIÊNG, ngay sau bước mở map. Nên một lần Ctrl+Z trả
+   * lại các mảnh rời mà vẫn giữ map đang mở — người không thích kết quả gộp
+   * lấy lại được bản gốc, chứ không bị ném về map trước đó.
+   */
+  function openPackMap(id) {
+    const found = readPackMaps().find((m) => m.id === id);
+    if (!found) return null;
+
+    const bare = String(found.id).includes(":")
+      ? String(found.id).slice(String(found.id).lastIndexOf(":") + 1)
+      : String(found.id);
+    const name = String(found.name || "Map") + " (bản sửa)";
+
+    let doc;
+    try {
+      doc = parseMapJSON(JSON.stringify(Object.assign({}, found, { id: bare, name })), name);
+    } catch (e) {
+      if (typeof UI !== "undefined") {
+        UI.alert({ icon: "err", title: "Không mở được map", text: String((e && e.message) || e) });
+      }
+      return null;
+    }
+    if (!importParsed(doc, "new")) return null;
+
+    const authored = found.authoring && typeof found.authoring === "object";
+    if (!authored) {
+      const before = E.terrains.filter(isPoly).length;
+      E.terrains = mergeTerrains(E.terrains);
+      const after = E.terrains.filter(isPoly).length;
+      if (after < before) {
+        for (const t of E.terrains) refreshTerrain(t);
+        Sel.clear();
+        commit();
+        if (typeof UI !== "undefined") {
+          UI.toast(`Đã gộp ${before} mảnh cắt thành ${after} hình — Ctrl+Z nếu muốn giữ mảnh rời`);
+        }
+      }
+    }
+    scheduleSave(0);
+    return E.mapId;
+  }
+
+  /**
    * Đẩy map đang mở sang cho game, dưới dạng một `MapDefinition` đã có sẵn
    * geometry — thứ `PackRegistry.installData` nhận thẳng, không cần pack,
    * không cần manifest, không cần mạng.
@@ -964,6 +1049,32 @@ export const ${name}Map: MapDefinition = {
 
     localStorage.setItem(LOCAL_MAPS_KEY, JSON.stringify(list));
     return entry.id;
+  }
+
+  /**
+   * Gỡ một map khỏi danh sách game đọc.
+   *
+   * `id` ở đây là `meta.id` — thứ đi vào `MapSummary.id` — chứ không phải id
+   * bản ghi trong kho editor. Hai không gian id khác nhau, và nhầm chúng thì
+   * lệnh xoá chạy êm ru mà không gỡ được gì.
+   */
+  function unpublishLocal(id) {
+    if (!id) return false;
+    let list = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LOCAL_MAPS_KEY) || "[]");
+      if (Array.isArray(parsed)) list = parsed;
+    } catch (e) {
+      return false;
+    }
+    const kept = list.filter((m) => !m || m.id !== id);
+    if (kept.length === list.length) return false;
+    try {
+      localStorage.setItem(LOCAL_MAPS_KEY, JSON.stringify(kept));
+    } catch (e) {
+      return false;
+    }
+    return true;
   }
 
   /** Danh sách map đã đẩy sang game — để biết map đang mở đã có bên đó chưa. */
@@ -1115,7 +1226,8 @@ export const ${name}Map: MapDefinition = {
     parseMapJSON, importParsed, describe, toPts,
     exportForGame, exportRaw,
     mapSummary, mapGeometry, mapAuthoring, exportMapGeometry, exportGeometryTS, exportMapTS,
-    publishLocal, localMapIds, LOCAL_MAPS_KEY,
+    publishLocal, unpublishLocal, localMapIds, LOCAL_MAPS_KEY,
+    readPackMaps, openPackMap, PACK_MAPS_KEY,
     validate, slugify, normalizeMeta, camel,
   };
 })();

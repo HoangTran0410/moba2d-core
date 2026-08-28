@@ -16,7 +16,7 @@
  * Requires a system Chrome install.
  */
 import { mkdirSync } from 'node:fs';
-import { CFG_KEY, DESKTOP_VIEWPORT, startHarness } from './harness.mjs';
+import { CFG_KEY, DESKTOP_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/lol2d-roster-stats';
 
@@ -68,7 +68,7 @@ await page.addInitScript(
   [CFG_KEY, MATCH_CONFIG]
 );
 await page.goto(url, { waitUntil: 'load' });
-await page.click('#play-btn');
+await startMatch(page);
 await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
   timeout: 30_000,
 });

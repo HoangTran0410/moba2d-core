@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * The main menu: background, logo, and the buttons. Scene transitions
- * ("Chơi", "Chơi với bạn", "Cấu hình", "Giới thiệu", "Nội dung / Pack") are
+ * ("Chơi", "Chơi với bạn", "Giới thiệu", "Tướng & Map") are
  * lifecycle, not presentation, so this only emits — `MenuScene.ts` maps
- * `play`/`openLan`/`openConfig`/`openAbout`/`openPacks` onto
+ * `play`/`openLan`/`openAbout`/`openPacks` onto
  * `sceneManager.showScene`, the same split `LoadingScene.vue` uses for its own
  * scene handover.
  *
@@ -11,28 +11,34 @@
  * so — unlike the buttons above — it stays entirely local to this component
  * instead of being driven from `MenuScene.ts`.
  *
- * ## Two big buttons, and everything else is a link
+ * ## Two big buttons, and each one is a way into a match
  *
  * The menu used to carry three identical `.hextech-btn`s — Chơi, Cấu Hình Trận
  * Đấu, Chơi LAN — of which two started a match and one unfolded a panel, and
  * the panel then produced a *fourth* identical button inside itself. Nothing on
  * screen said which press was a mode, which was a setting and which was a
- * sub-step of another; hosting a LAN game took three presses through three
- * levels that all looked like one level.
+ * sub-step of another. Cấu hình became a `.menu-link` for a while on the
+ * reading that it is a screen you visit *between* matches, like Giới thiệu.
  *
- * So the big buttons are now exactly the two ways into a match, and they are
- * the only two. Cấu hình joined Nội dung and Giới thiệu in `.menu-links`: it is
- * a screen you visit before a match, like those two, not a third way to start
- * one. The LAN half moved out entirely, into `LanScene.vue`.
+ * **That reading was wrong, and it is gone.** Configuring is not something you
+ * do between matches, it is the step before every one of them — and a player
+ * who never noticed the link never found the roster, the rules or the map
+ * picker either. Chơi opens the panel now and the panel's own Bắt Đầu starts
+ * the match. That is the same *shape* the original complaint was about — a
+ * button that opens a panel with a button in it — and it is fine here for the
+ * reason the original was not: this is a line (play, set up, start), not three
+ * peers where one of them was a setting pretending to be a mode.
  *
- * **Cấu hình, Giới thiệu and Nội dung / Pack are not gated behind `ready`.**
- * None opens game code — see `AboutScene.ts`, `PacksScene.ts`, and
- * `pregameBootPath.test.ts` for the pregame chunk's own boundary — so there is
- * no reason to make a player wait through the warm-up bar to read what the game
- * is or to build a loadout, and a player whose pack failed to load (the banner
- * below) is exactly the player who most needs the packs screen *before* the
- * warm-up finishes. The two match buttons stay behind it, because what the
- * warm-up fetches is what they need.
+ * So the two big buttons are the two ways into a match, `.menu-links` holds
+ * the three screens that are not (Tướng & Map, Tạo map, Giới thiệu), and the
+ * LAN half lives in `LanScene.vue`.
+ *
+ * **Nothing on this screen waits for the warm-up any more.** Both big buttons
+ * open a *screen* — the setup panel and the LAN lobby — and neither needs a
+ * byte of what the bar is fetching. The wait moved to the two presses that
+ * actually open a match: Bắt Đầu in the panel and Vào trận in the lobby. The
+ * bar is still here, as progress rather than a gate, so a player sets their
+ * match up while it loads instead of watching it first.
  *
  * **The logo and the background are drawn, not fetched.** Both used to be
  * images, and both were Riot's: the Vietnamese *Liên Minh Huyền Thoại*
@@ -62,6 +68,39 @@ import {
   retryPackInstall,
 } from './packBanner';
 import { packHealthDismissed, packProblems } from '@/content/packHealth';
+
+/**
+ * ## The "you have no roster" nudge
+ *
+ * Core alone is a complete game — one champion, one map — and that is by
+ * design, not a broken state. But a player pressing Chơi on a fresh install
+ * has no way to know a roster exists somewhere, and the packs screen is a link
+ * they have never had a reason to open. They meet one champion and conclude
+ * that is the game.
+ *
+ * **The test is the champion count, not the installed-pack list.** The first
+ * boot *seeds* a default pack URL (`runtimePacks.ts`), so that list is never
+ * empty and a nudge keyed on it would never appear for anyone. What the player
+ * actually has is what the catalog holds, and `soloContent` is `MenuScene.ts`
+ * asking it — out here, because reaching `contentCatalog` from this component
+ * would put it in the menu's own chunk.
+ *
+ * **Dismissed for good, not per session.** A player who chose to play without
+ * a pack has answered the question, and asking again every launch is how a
+ * notice becomes something people click past without reading. The packs screen
+ * stays one press away in the row below.
+ */
+const NUDGE_KEY = 'lol2d:packNudgeSeen:v1';
+
+const readNudgeSeen = (): boolean => {
+  try {
+    return localStorage.getItem(NUDGE_KEY) === '1';
+  } catch {
+    // Storage blocked. Showing the nudge once per launch is the friendlier
+    // failure than never showing it at all.
+    return false;
+  }
+};
 
 /**
  * ## The pack-health notice
@@ -131,10 +170,44 @@ function dismissPackProblem(): void {
   packHealthDismissed.value = true;
 }
 
+const props = defineProps<{
+  /** True when the catalog holds nothing beyond core's own single champion. */
+  soloContent?: boolean;
+}>();
+
+const packNudgeOpen = ref(false);
+
+/**
+ * Chơi, with the nudge in front of it exactly once.
+ *
+ * The nudge is not a gate: both of its buttons lead somewhere, and the one
+ * that plays is the default-looking one.
+ */
+function pressPlay(): void {
+  if (props.soloContent === true && !readNudgeSeen()) {
+    packNudgeOpen.value = true;
+    return;
+  }
+  emit('play');
+}
+
+/** Remember the answer, whichever it was, then act on it. */
+function answerNudge(to: 'packs' | 'play'): void {
+  try {
+    localStorage.setItem(NUDGE_KEY, '1');
+  } catch {
+    /* blocked storage just means it asks again next launch */
+  }
+  packNudgeOpen.value = false;
+  // Branched rather than `emit(cond ? a : b)`: `defineEmits` types each event
+  // name as its own overload, so a union of names matches none of them.
+  if (to === 'packs') emit('openPacks');
+  else emit('play');
+}
+
 const emit = defineEmits<{
   play: [];
   openLan: [];
-  openConfig: [];
   openAbout: [];
   openPacks: [];
   openEditor: [];
@@ -291,34 +364,35 @@ const updateState = computed(() => {
 
   <!-- The bar stands exactly where the buttons will, so the menu does not jump
        when it is replaced by them. -->
-  <div v-if="!ready" id="menu-loading" class="menu-loading">
+  <div v-if="!ready" id="menu-loading" class="menu-loading" aria-live="polite">
     <div class="menu-loading-track">
       <div class="menu-loading-fill" :style="{ width: `${percent}%` }"></div>
     </div>
     <p class="menu-loading-label">Đang tải tài nguyên trận đấu… {{ percent }}%</p>
   </div>
 
-  <!-- The two ways into a match, and nothing else at this size. Both are
-       gated on `ready` because both are about to need the chunks the warm-up
-       is fetching; everything below them is a screen, not a match, and is
-       offered immediately. -->
-  <template v-else>
-    <button id="play-btn" class="hextech-btn" @click="emit('play')" @touchend.prevent="emit('play')">
-      Chơi
-    </button>
-    <button
-      id="lan-btn"
-      class="hextech-btn"
-      @click="emit('openLan')"
-      @touchend.prevent="emit('openLan')"
-    >
-      <i class="fas fa-user-group" aria-hidden="true"></i>
-      Chơi với bạn
-    </button>
-    <p v-if="preload.codeFailed" class="menu-loading-warning">
-      Tải dữ liệu chưa xong — bấm Chơi để thử lại.
-    </p>
-  </template>
+  <!-- The two ways into a match, and nothing else at this size.
+       **Neither waits on the warm-up any more.** Both now open a screen —
+       the setup panel and the LAN lobby — and neither of those needs a single
+       byte of what the bar is fetching. The wait moved to where it belongs:
+       the Bắt Đầu inside the panel, and Vào trận inside the lobby, which are
+       the presses that actually open a match. So the player sets up their
+       match *while* it loads instead of watching a bar first. -->
+  <button id="play-btn" class="hextech-btn" @click="pressPlay" @touchend.prevent="pressPlay">
+    Chơi
+  </button>
+  <button
+    id="lan-btn"
+    class="hextech-btn"
+    @click="emit('openLan')"
+    @touchend.prevent="emit('openLan')"
+  >
+    <i class="fas fa-user-group" aria-hidden="true"></i>
+    Chơi với bạn
+  </button>
+  <p v-if="preload.codeFailed" class="menu-loading-warning">
+    Tải dữ liệu chưa xong — bấm Chơi để thử lại.
+  </p>
 
   <!-- Both `@click` and `@touchend.prevent` on each button: once a
        `GameScene` is on screen it calls `preventDefault()` on every touch on
@@ -407,31 +481,20 @@ const updateState = computed(() => {
        file's header: none opens game code, so none waits on the warm-up. -->
   <div class="menu-links">
     <button
-      id="config-btn"
-      class="menu-link"
-      title="Cấu hình trận đấu"
-      @click="emit('openConfig')"
-      @touchend.prevent="emit('openConfig')"
-    >
-      <i class="fas fa-sliders" aria-hidden="true"></i>
-      <span>Cấu hình</span>
-    </button>
-
-    <button
       id="packs-btn"
       class="menu-link"
-      title="Nội dung / Pack"
+      title="Thêm tướng và map từ pack"
       @click="emit('openPacks')"
       @touchend.prevent="emit('openPacks')"
     >
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      <span>Nội dung / Pack</span>
+      <span>Tướng &amp; Map</span>
     </button>
 
     <button
       id="editor-btn"
       class="menu-link"
-      title="Vẽ map của riêng bạn rồi chơi thử ngay"
+      title="Vẽ map của riêng bạn, hoặc sửa một map có sẵn, rồi chơi thử ngay"
       @click="emit('openEditor')"
       @touchend.prevent="emit('openEditor')"
     >
@@ -449,6 +512,41 @@ const updateState = computed(() => {
       <i class="fas fa-circle-info" aria-hidden="true"></i>
       <span>Giới thiệu</span>
     </button>
+  </div>
+
+  <!-- Sits over the menu rather than replacing it, so the answer is visibly
+       a choice and not a screen the player has been sent to. Both handlers
+       carry `@touchend.prevent` beside `@click` for the reason every control
+       here does: a `GameScene` on the page kills synthesised clicks. -->
+  <div v-if="packNudgeOpen" id="pack-nudge" class="pack-nudge" role="dialog" aria-modal="true">
+    <div class="pack-nudge-box">
+      <h2>Bạn đang có bản gọn nhất</h2>
+      <p>
+        Chưa cài pack nào, nên trận đấu sẽ dùng nội dung mặc định: <b>1 tướng</b> và
+        <b>1 map</b>. Cài một pack là có thêm tướng, map và quái rừng.
+      </p>
+      <div class="pack-nudge-actions">
+        <button
+          id="pack-nudge-play"
+          type="button"
+          class="hextech-btn"
+          @click="answerNudge('play')"
+          @touchend.prevent="answerNudge('play')"
+        >
+          Chơi luôn
+        </button>
+        <button
+          id="pack-nudge-packs"
+          type="button"
+          class="menu-link"
+          @click="answerNudge('packs')"
+          @touchend.prevent="answerNudge('packs')"
+        >
+          <i class="fas fa-cubes" aria-hidden="true"></i>
+          <span>Xem pack</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <button id="fullscreen-btn" @click="toggleFullscreen">

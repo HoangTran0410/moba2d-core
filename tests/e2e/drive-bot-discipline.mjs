@@ -32,7 +32,7 @@
  *   node tests/e2e/drive-bot-discipline.mjs
  *   LOL2D_CHROME_CHANNEL= node tests/e2e/drive-bot-discipline.mjs   # bundled Chromium
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 /** How long the free-running half watches the match, in wall-clock ms. */
 const OBSERVE_MS = Number(process.env.LOL2D_OBSERVE_MS ?? 60_000);
@@ -96,7 +96,7 @@ const { url, page, report, check, guard, errors } = await startHarness();
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

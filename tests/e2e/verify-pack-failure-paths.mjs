@@ -40,7 +40,7 @@
  *
  *   node tests/e2e/verify-pack-failure-paths.mjs
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 import { requirePackDist, startPackServer } from './packServer.mjs';
 
 requirePackDist();
@@ -109,7 +109,7 @@ await guard(async () => {
   // The pack host loses exactly one file. Everything else still serves.
   await page.route(GEOMETRY_CHUNK, route => route.abort('failed'));
 
-  await page.click('#play-btn');
+  await startMatch(page);
   await settle(9000);
 
   report.afterGeometryFailure = {
@@ -150,7 +150,7 @@ await guard(async () => {
   // The host is healthy again — a dropped request, not a dead build.
   await page.unroute(GEOMETRY_CHUNK);
   await boot();
-  await page.click('#play-btn');
+  await startMatch(page);
   await settle(9000);
 
   report.retryAfterRecovery = { running: await matchRunning() };
@@ -188,7 +188,7 @@ await guard(async () => {
   await boot();
   // The roster paints pack portraits and icons as DOM `<img>`, then the match
   // loads the same files through p5. Both halves have to happen.
-  await page.click('#play-btn');
+  await startMatch(page);
   await settle(12_000);
   await Promise.all(measured);
 

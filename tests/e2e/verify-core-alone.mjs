@@ -74,7 +74,7 @@
  */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CFG_KEY, startHarness } from './harness.mjs';
+import { CFG_KEY, startHarness, startMatch } from './harness.mjs';
 import { contentPackInstalled } from '../../scripts/installed-packs.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -165,7 +165,7 @@ await harness.guard(async () => {
   check('the menu draws its play button', true);
 
   // ---------------------------------------------------- 2. a match starts
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 60_000,
   });

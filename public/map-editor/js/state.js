@@ -363,6 +363,108 @@ function makeTerrain(type, position, polygon, props) {
   return refreshTerrain(t);
 }
 
+/**
+ * Gộp các terrain dính cạnh thành ít hình hơn — vỏ chỉnh sửa của `Geom.union`.
+ *
+ * Gộp theo TỪNG type và không bao giờ vắt qua, đó là điều làm nó an toàn: một
+ * bụi nằm sát tường dùng chung cạnh với tường y hệt hai mảnh tường dùng chung
+ * cạnh, nên nếu chỉ xét hình học thì bụi bị hàn vào tường và chỗ nấp lặng lẽ
+ * biến thành địa hình. Slot và lane đi thẳng qua: chúng không phải polygon.
+ *
+ * Hình có lỗ thì không gộp. Một terrain chỉ mang MỘT vòng, nên bốn bức tường
+ * quây quanh một khoảng sân sẽ mất cái sân nếu ép thành một hình — sân biến
+ * thành tường đặc. Chỉ riêng nhóm nào sinh ra lỗ mới giữ nguyên mảnh gốc;
+ * phần còn lại của map vẫn gộp bình thường.
+ *
+ * KHÔNG tự chạy. Map mang theo `authoring` là map đã ở dạng người ta vẽ và
+ * phải để yên; map không có thì đang ở dạng đã cắt, và dựng lại hay không là
+ * quyết định của tác giả chứ không phải chuyện tự xảy ra khi mở map lên.
+ */
+function mergeTerrains(list) {
+  const out = [];
+  const byType = new Map();
+  for (const t of list || []) {
+    if (!isPoly(t) || !t.polygon || t.polygon.length < 3) {
+      out.push(t);
+      continue;
+    }
+    if (!byType.has(t.type)) byType.set(t.type, []);
+    byType.get(t.type).push(t);
+  }
+
+  for (const [type, group] of byType) {
+    if (group.length < 2) {
+      out.push(...group);
+      continue;
+    }
+    const world = group.map((t) =>
+      t.polygon.map((p) => [p[0] + t.position[0], p[1] + t.position[1]])
+    );
+    const rings = Geom.union(world);
+    const outers = rings.filter((r) => Geom.signedArea(r) > 0);
+    // Không tin kết quả nếu nó không phủ đúng cái các mảnh gốc phủ. `union`
+    // đã từng gộp Sân Thử Nghiệm thành một vệt chéo cắt ngang map và không có
+    // gì trên đường đi tới màn hình nhận ra — nên phép gộp phải tự chứng minh
+    // trước khi được nhận. Không chứng minh được thì để nguyên mảnh gốc: mất
+    // một tiện ích còn hơn mất map.
+    if (!outers.length || !Geom.unionCovers(world, rings)) {
+      out.push(...group);
+      continue;
+    }
+
+    // Vòng ngoài nào đang ôm một lỗ thì không dựng thành hình được.
+    const holed = new Set();
+    for (const h of rings) {
+      if (Geom.signedArea(h) >= 0) continue;
+      const i = outers.findIndex((o) => Geom.pointInPolygon(h[0][0], h[0][1], o));
+      if (i >= 0) holed.add(i);
+    }
+
+    // Mỗi mảnh gốc thuộc về vòng ngoài NHỎ NHẤT chứa nó — dùng để lấy props
+    // cho hình gộp, và để trả lại nguyên vẹn những mảnh thuộc vòng có lỗ.
+    //
+    // Nhỏ nhất chứ không phải cái đầu tiên tìm thấy: các vòng ngoài lồng nhau
+    // được. Ở Sân Thử Nghiệm, vòng ngoài của khung viền bao gần hết map, nên
+    // "cái đầu tiên" gán cả sáu khối rừng cho nó — khung có lỗ nên bị giữ
+    // nguyên, và sáu khối kia vừa được gộp thành hình mới vừa bị đẩy lại
+    // nguyên bản. 12 mảnh vào, 18 hình ra.
+    const owner = world.map((poly) => {
+      const c = Geom.centroid(poly);
+      let best = -1;
+      let bestArea = Infinity;
+      for (let i = 0; i < outers.length; i++) {
+        if (!Geom.pointInPolygon(c[0], c[1], outers[i])) continue;
+        const a = Geom.area(outers[i]);
+        if (a < bestArea) {
+          bestArea = a;
+          best = i;
+        }
+      }
+      return best;
+    });
+
+    outers.forEach((ring, i) => {
+      if (holed.has(i)) return;
+      const c = Geom.centroid(ring);
+      const origin = [Math.round(c[0]), Math.round(c[1])];
+      const first = owner.indexOf(i);
+      out.push(
+        makeTerrain(
+          type,
+          origin,
+          ring.map((p) => [p[0] - origin[0], p[1] - origin[1]]),
+          first >= 0 ? group[first].props : group[0].props
+        )
+      );
+    });
+    group.forEach((t, gi) => {
+      const i = owner[gi];
+      if (i < 0 || holed.has(i)) out.push(t);
+    });
+  }
+  return out;
+}
+
 /** Đọc dữ liệu đã lưu (kể cả bản firebase cũ, nơi mọi field là chuỗi JSON). */
 function normalizeTerrain(raw) {
   const parse = (v, fb) => {

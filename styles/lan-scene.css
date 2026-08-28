@@ -530,3 +530,13 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* The match-config panel, mounted over the lobby rather than instead of it —
+   the lobby owns a live broker connection and must stay alive underneath. The
+   panel positions itself; this only has to cover what is behind it. */
+.lan-config-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.6);
+}

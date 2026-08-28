@@ -73,7 +73,7 @@
  *
  * Requires a system Chrome install.
  */
-import { PHONE_VIEWPORT as MOBILE_VIEWPORT, startHarness } from './harness.mjs';
+import { PHONE_VIEWPORT as MOBILE_VIEWPORT, startHarness, startMatch } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/lol2d-practice-panel';
 /** Roomy enough that neither of `styles/hud.css`'s full-bleed media queries applies. */
@@ -215,8 +215,8 @@ const closePanel = async () => {
 /** Let the unpaused match actually tick, which is the only thing that flushes adds and sweeps removals. */
 const runMatch = (ms = 700) => page.waitForTimeout(ms);
 
-const startMatch = async () => {
-  await page.click('#play-btn');
+const enterMatch = async () => {
+  await startMatch(page);
   await page.waitForFunction(
     () => window.__lol2d?.scene?.oScene?.game?.inGameHUD?.vueInstance,
     null,
@@ -237,7 +237,7 @@ await guard(async () => {
     { cfgKey: CFG_KEY, kitsKey: KITS_KEY, config: MATCH_CONFIG }
   );
   await page.reload({ waitUntil: 'load' });
-  await startMatch();
+  await enterMatch();
 
   // The cooldown probe: a spell instance that exists *now*, long before the
   // rules tab is ever opened. Parked on `window` because the assertion is that
@@ -953,7 +953,7 @@ await guard(async () => {
   await closePanel();
 
   await page.reload({ waitUntil: 'load' });
-  await startMatch();
+  await enterMatch();
   // Read before anything is touched: this is the match the *stored* config
   // booted, which is the second half of the persistence round trip (the first
   // half — what got written — is asserted below).

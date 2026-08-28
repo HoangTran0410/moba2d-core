@@ -21,7 +21,7 @@
  *
  *   node tests/e2e/verify-update-guard.mjs
  */
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const { url, page, report, check, errors, guard } = await startHarness();
 
@@ -34,7 +34,7 @@ const settle = ms => page.waitForTimeout(ms);
 
 await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });

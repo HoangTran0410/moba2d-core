@@ -30,7 +30,7 @@
  * believing it.
  */
 import { spawn } from 'node:child_process';
-import { startHarness } from './harness.mjs';
+import { startHarness, startMatch } from './harness.mjs';
 
 const RELAY_PORT = 8790 + Math.floor(Math.random() * 500);
 
@@ -62,7 +62,7 @@ const withParams = (mode, transport, room) =>
 await guard(async () => {
   // ------------------------------------------------------------- the host
   await page.goto(withParams('host', 'ws', 'e2e'), { waitUntil: 'load' });
-  await page.click('#play-btn');
+  await startMatch(page);
   await page.waitForFunction(() => window.__lol2d?.scene?.oScene?.game?.objectManager, null, {
     timeout: 30_000,
   });
@@ -71,7 +71,7 @@ await guard(async () => {
   // ------------------------------------------------------------ the client
   const { context: clientContext, page: clientPage } = await openPage({ label: 'client' });
   await clientPage.goto(withParams('join', 'ws', 'e2e'), { waitUntil: 'load' });
-  await clientPage.click('#play-btn');
+  await startMatch(clientPage);
   await clientPage.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
   await clientPage.waitForTimeout(2_000);
 
@@ -784,12 +784,12 @@ await guard(async () => {
   // candidates between the two contexts, which is exactly the same-LAN path.
   const { page: rtcHost } = await openPage({ label: 'rtc-host' });
   await rtcHost.goto(withParams('host', 'rtc', 'e2ertc'), { waitUntil: 'load' });
-  await rtcHost.click('#play-btn');
+  await startMatch(rtcHost);
   await rtcHost.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
 
   const { page: rtcClient } = await openPage({ label: 'rtc-client' });
   await rtcClient.goto(withParams('join', 'rtc', 'e2ertc'), { waitUntil: 'load' });
-  await rtcClient.click('#play-btn');
+  await startMatch(rtcClient);
   await rtcClient.waitForFunction(() => window.__lol2dNet, null, { timeout: 30_000 });
   await rtcClient.waitForTimeout(3_000);
 

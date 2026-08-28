@@ -18,6 +18,7 @@ A 2D MOBA engine that runs entirely in the browser — team fights, bot opponent
 - [Architecture](#architecture)
 - [Content packs](#content-packs)
 - [Assets](#assets)
+- [The map editor](#the-map-editor)
 - [Testing](#testing)
 - [Contributing](#contributing)
 - [Trademarks and third-party assets](#trademarks-and-third-party-assets)
@@ -184,6 +185,21 @@ npm run dev
 Images and JSON live under `assets/`. `npm run assets:generate` walks that tree and emits `src/generated/assetManifest.ts` with a typed `AssetKey` union, so a typo in an asset name is a compile error rather than a broken image at runtime. To add art, drop the file in the right folder and re-run that script. A content pack has the identical pair of scripts, scoped to its own art and its own generated manifest.
 
 `tools/` also holds [shape-maker](./tools/shape-maker/), a standalone p5 app for drawing a map's polygon data.
+
+## The map editor
+
+`public/map-editor/` is a full map editor, served with the game at `<game>/map-editor/` and reachable from the menu's **Tạo map**. It draws terrain, spawn/turret/minion/jungle slots and lanes straight into the `MapGeometry` shape `ContentPack.ts` defines, so a map drawn there installs through `PackRegistry.installData` — the same door a published pack uses, with the same validator — and is playable from the picker without a rebuild.
+
+**It is a separate document on purpose.** Plain HTML and globals, no bundler, one 5KB dependency: it lives in `public/` so Vite copies it verbatim, which is also why nothing in `src/` can import it and no type checker compares the two halves. What holds them together is two `localStorage` keys and two tests that run the *real* editor in a `vm` — `tests/content/localMaps.test.ts` for maps going out to the game, `tests/content/editorCatalog.test.ts` for the map list coming in. **Rename a key on either side and those tests are what tell you.**
+
+**One map screen, and it is the editor's.** The editor's *Map của bạn* lists the author's drafts and, beneath them, every map the game has installed — core publishes that list (`src/content/editorCatalog.ts`) on the way into the editor. It briefly worked the other way, with a picker in the menu, and that was wrong twice over: two map lists holding two different sets that could not see each other, and a panel that could not fit on a landscape phone.
+
+Two things a contributor is most likely to want:
+
+- **Editing a map that already exists.** Open a copy from *Từ game*. The pack's own map is never touched — a pack is read-only — so the edit saves as a new local map, and deleting it takes it back out of the game's picker.
+- **The cut pieces come back together on their own.** A pack map ships *cut*: `TerrainField` and `Vision` are only correct on convex polygons, so Summoner's Rift is 329 pieces for 69 walls. An absent `authoring` block is proof of that rather than a guess, so opening such a map rebuilds the drawn shapes as its own undo step — 329 wall pieces to 69 shapes and 26 water pieces to 2 rivers, in about 240ms. The union is `lib/polygon-clipping.min.js` (28KB, Martinez-Rueda) rather than something hand-written: the hand-written one was wrong on both real maps in a way that matching *areas* did not reveal. Every merge still has to pass `Geom.unionCovers`, a grid-sampling check written from `pointInPolygon` alone so the transform cannot grade itself, and one that fails it leaves the pieces alone. Anywhere else the editor only *offers*: **Sửa → Gộp polygon dính nhau**, and a suggestion bar when a map looks decomposed.
+
+[`docs/MAP_EDITOR.md`](./docs/MAP_EDITOR.md) is the full guide — controls, the object model, the checks it runs, and the code layout.
 
 ## Testing
 
