@@ -12,6 +12,7 @@ import AssetManager from '@/managers/AssetManager';
 import { ensurePackAsset } from '@/game/config/packAsset';
 import { renderAlpha } from '@/game/render/Interpolation';
 import { contentCatalog } from '@/content/catalog';
+import { activeMapOf } from '@/content/activeMap';
 import { resolveMapId } from '@/content/defaultMap';
 import { notePackSpellFailures } from '@/content/runtimePacks';
 import { hideMatchStartFailure, showMatchStartFailure } from './matchStartFailure';
@@ -358,7 +359,7 @@ export default class GameScene extends Scene {
     // champion whose Q did nothing with no way to find out why.
     notePackSpellFailures(failedSpellIds);
 
-    const activeMap = { ...mapSummary, ...geometry };
+    const activeMap = activeMapOf(mapSummary, geometry);
     this.game = new Game(activeMap, plan);
     if (netRequest?.mode === 'host') {
       // Attached after construction, with the plan it was built from so

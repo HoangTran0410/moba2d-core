@@ -1,5 +1,6 @@
 import { loadSpells } from '@/game/spellRegistry';
 import { contentCatalog } from '@/content/catalog';
+import { activeMapOf } from '@/content/activeMap';
 import { readInstalledPacks } from '@/content/installedPackStore';
 import { fetchPackManifest } from '@/content/packSource';
 import { installPackNow } from '@/content/runtimePacks';
@@ -124,7 +125,7 @@ export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetCl
   }
 
   return {
-    activeMap: { ...summary, ...geometry },
+    activeMap: activeMapOf(summary, geometry),
     plan: { player: yourPlan, bots: [] },
     attach: game => new ClientSession(game, channel, hello),
   };
