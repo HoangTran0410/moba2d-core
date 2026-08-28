@@ -304,6 +304,20 @@ export type NetMessage =
    */
   | { t: 'bye' }
   /**
+   * Host → one client: you are out.
+   *
+   * Sent before the socket is dropped, and it is not a courtesy. On a wire
+   * that holds a connection per peer the drop alone would do
+   * (`RtcHostTransport.dropPeer`), but a *relay* host has no frame for closing
+   * somebody else's socket — the relay's protocol does not carry one — so
+   * without this a kicked joiner keeps a live channel to a room that has
+   * forgotten it, and sits in a lobby it is no longer in.
+   *
+   * The client leaves on its own when it reads this, which makes the two
+   * transports behave the same from the player's side.
+   */
+  | { t: 'kicked' }
+  /**
    * Host → everyone, whenever the room's membership changes: who is in it.
    *
    * Broadcast rather than addressed, so one message serves every screen, and
@@ -466,6 +480,8 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
       return { t: 'ping' };
     case 'bye':
       return { t: 'bye' };
+    case 'kicked':
+      return { t: 'kicked' };
     case 'lobby': {
       if (!Array.isArray(message.players)) return null;
       const players: LobbyPlayer[] = [];

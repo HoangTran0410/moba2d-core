@@ -117,6 +117,16 @@ class HeldHostTransport implements HostTransport {
     this.inner.broadcastUnreliable(raw);
   }
 
+  /**
+   * Passed straight through, and only when the wire underneath has one — the
+   * relay has no frame for closing somebody else's socket, so its joiners are
+   * removed by the `kicked` message alone.
+   */
+  dropPeer(peerId: string): void {
+    this.inner.dropPeer?.(peerId);
+    this.peers.delete(peerId);
+  }
+
   close(): void {
     this.inner.close();
     this.peers.clear();
@@ -128,6 +138,19 @@ export interface HostedRoom {
   request: NetUrlRequest;
   /** Everyone in the room right now, the host first. */
   players(): LobbyPlayer[];
+  /**
+   * Remove one joiner, by the id its row carries.
+   *
+   * The lobby's own half of a control the *match* already grew
+   * (`HostSession.kickUnit`): a host who can see a row must be able to act on
+   * it, and until this there was no way to remove anybody from a room at all —
+   * not a stranger who wandered in off the public listing, and not the ghost
+   * left by a phone that went into a tunnel.
+   *
+   * Answers whether the id matched, so a stale row cannot be reported as a
+   * removal.
+   */
+  kick(peerId: string): boolean;
   close(): void;
 }
 
@@ -136,12 +159,48 @@ interface Hosting {
   transport: HeldHostTransport;
   peers: Map<string, Peer>;
   hostName: string;
+  /**
+   * "Membership changed" — the host's own screen *and* every client's, in that
+   * order. Held on the state rather than left a closure inside `openRoom`
+   * because `kickPeer` below has to reach it: writing out the broadcast half
+   * by hand is how a kick came to remove a player from every screen except the
+   * one that pressed the button.
+   */
+  announce: () => void;
 }
 
 let hosting: Hosting | null = null;
 
 const sameRoom = (a: NetUrlRequest, b: NetUrlRequest): boolean =>
   a.room === b.room && a.server === b.server && a.transport === b.transport;
+
+/**
+ * Throw one joiner out of the room.
+ *
+ * Told, then dropped, and both halves are needed for different wires. The
+ * `kicked` frame is what a *relay* joiner acts on — the relay has no way for
+ * one client to close another's socket — and `dropPeer` is what makes an RTC
+ * peer's own channel close so it cannot keep talking to a room that has
+ * forgotten it. A transport that offers no `dropPeer` still gets the frame,
+ * and the peer leaves on its own.
+ *
+ * The roster is rebroadcast last, so every remaining screen agrees about who
+ * is in the room before anything else happens.
+ */
+const kickPeer = (state: Hosting, peerId: string): boolean => {
+  if (!state.peers.has(peerId)) return false;
+  try {
+    state.transport.sendTo(peerId, encodeMessage({ t: 'kicked' }));
+  } catch {
+    /* already gone; the drop below is the rest of it */
+  }
+  state.transport.dropPeer?.(peerId);
+  state.peers.delete(peerId);
+  // `announce`, not a hand-written broadcast: it is the one place that knows
+  // membership has to reach the host's own screen before anyone else's.
+  state.announce();
+  return true;
+};
 
 const rosterOf = (state: Hosting): LobbyPlayer[] => [
   { id: 'host', name: state.hostName, host: true },
@@ -200,6 +259,7 @@ export const openRoom = async (
     peers,
     hostName,
     transport: null as unknown as HeldHostTransport,
+    announce: () => undefined,
   };
   const announce = (): void => {
     onChange(rosterOf(state));
@@ -208,6 +268,7 @@ export const openRoom = async (
     if (peers.size)
       state.transport.broadcast(encodeMessage({ t: 'lobby', players: rosterOf(state) }));
   };
+  state.announce = announce;
   const held = new HeldHostTransport(inner, peers, announce);
   state.transport = held;
 
@@ -288,9 +349,25 @@ export const openRoom = async (
   return {
     request,
     players: () => rosterOf(state),
+    kick: peerId => kickPeer(state, peerId),
     close: closeRoom,
   };
 };
+
+/**
+ * Remove a joiner from whatever room this page is hosting.
+ *
+ * A free function beside `closeRoom` rather than a method on the handle
+ * `openRoom` returns, because the caller is `LanScene.vue` and the handle is
+ * not what it keeps: the room lives in this module's own `hosting`, and the
+ * scene reaches it the same way it reaches `closeRoom` — a dynamic import,
+ * which is also what keeps this file out of the menu's chunk.
+ *
+ * `false` when nothing matched, so a stale row cannot be reported as a
+ * removal.
+ */
+export const kickFromRoom = (peerId: string): boolean =>
+  hosting === null ? false : kickPeer(hosting, peerId);
 
 /**
  * The open room's transport, for `HostSession.attach` — taken, so a second

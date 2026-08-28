@@ -413,6 +413,9 @@ const playerRows = computed(() => {
     return {
       id: player.id,
       isHost: player.host === true,
+      // Only a host has anybody to remove, and never itself. A client's copy
+      // of this list is other people's business.
+      canKick: hostCode.value !== null && player.host !== true,
       role: player.host
         ? hostCode.value
           ? 'Bạn · chủ phòng'
@@ -432,6 +435,20 @@ const playerRows = computed(() => {
     };
   });
 });
+
+/**
+ * Remove one joiner from the room.
+ *
+ * The lobby half of a control the match already had — before this there was no
+ * way to remove anybody from a room at all, so a stranger who wandered in off
+ * the public listing, or the ghost of a phone that went into a tunnel, simply
+ * stayed. `openRoom`'s own `kick` does the telling and the dropping; this only
+ * has to ask, because the roster comes back as an ordinary broadcast.
+ */
+const kickPlayer = async (peerId: string): Promise<void> => {
+  const { kickFromRoom } = await import('@/game/net/lobbyHost');
+  kickFromRoom(peerId);
+};
 
 /** Somebody reached the room and could not be reached back — worth explaining. */
 const anyLinkFailed = computed(() => players.value.some(player => player.link === 'failed'));
@@ -588,6 +605,20 @@ onUnmounted(() => {
                 <i :class="player.icon" aria-hidden="true"></i>
                 <span class="lan-player-role">{{ player.role }}</span>
                 <span class="lan-player-name">{{ player.name }}</span>
+                <!-- The host's own list, so this is where the control belongs;
+                     the block above renders the same rows for a *joiner*, whose
+                     copy is other people's business. `@touchend.prevent` beside
+                     `@click` like every control here. -->
+                <button
+                  v-if="player.canKick"
+                  type="button"
+                  class="lan-player-kick"
+                  :aria-label="`Mời ${player.name} ra khỏi phòng`"
+                  @click="void kickPlayer(player.id)"
+                  @touchend.prevent="void kickPlayer(player.id)"
+                >
+                  <i class="fas fa-xmark" aria-hidden="true"></i>
+                </button>
               </li>
             </ul>
             <p v-if="players.length <= 1" class="lan-hint">

@@ -143,6 +143,47 @@ await guard(async () => {
     `${JSON.stringify(report.hostSeesRoles)} / ${JSON.stringify(report.clientSeesRoles)}`
   );
 
+  // ------------------------------------------------------ the host removes
+  // Only the host's screen offers this, and never on its own row: a client's
+  // copy of the list is other people's business. Until it existed there was no
+  // way to remove *anybody* from a room — not a stranger off the public
+  // listing, not the ghost of a phone that went into a tunnel — and the button
+  // that looked like one lived in the match panel and resolved to nothing.
+  const kickButtons = await page.$$('#lan-players .lan-player-kick');
+  const clientKickButtons = await client.$$('#lan-players .lan-player-kick');
+  report.kickButtons = { host: kickButtons.length, client: clientKickButtons.length };
+  check(
+    'only the host is offered a way to remove somebody, and not itself',
+    kickButtons.length === 1 && clientKickButtons.length === 0,
+    JSON.stringify(report.kickButtons)
+  );
+
+  await kickButtons[0].click();
+  const emptied = await page
+    .waitForFunction(() => document.querySelectorAll('#lan-players .lan-player').length === 1, null, {
+      timeout: 10_000,
+    })
+    .then(() => true)
+    .catch(() => false);
+  check('the room drops the player it removed', emptied, `${emptied}`);
+
+  // The other half, and the one a relay joiner depends on: the relay has no
+  // frame for one client closing another's socket, so a kicked client that was
+  // not *told* would sit in a lobby it is no longer in.
+  const clientLeft = await client
+    .waitForFunction(() => !document.querySelector('#lan-waiting'), null, { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  check('and the removed client stops waiting in it', clientLeft, `${clientLeft}`);
+
+  // Put the room back the way the rest of this script expects it.
+  await client.click('#lan-join');
+  await page.waitForFunction(
+    () => document.querySelectorAll('#lan-players .lan-player').length === 2,
+    null,
+    { timeout: 20_000 }
+  );
+
   // -------------------------------------------------------- the host starts
   await page.click('#lan-start-host');
   await page.waitForFunction(() => window.__moba2dNet, null, { timeout: 45_000 });

@@ -142,6 +142,13 @@ const waitForHello = async (
       const message = decodeMessage(raw);
       if (message?.t === 'hello') {
         hello = message as HelloMessage;
+      } else if (message?.t === 'kicked') {
+        // The host removed us. Not an error to retry — the room said no — so
+        // the wait ends here rather than sitting on a channel the host has
+        // already forgotten. A relay joiner learns it only this way: the relay
+        // has no frame for one client closing another's socket.
+        channel.close();
+        throw new Error('net: chủ phòng đã mời bạn ra khỏi phòng');
       } else if (message?.t === 'lobby') {
         onRoster(message.players);
       } else {
