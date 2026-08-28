@@ -165,7 +165,7 @@ export default class MenuScene extends Scene {
     } catch (thrown) {
       console.error('[editor] could not publish the map list', thrown);
     }
-    window.location.href = './map-editor/index.html';
+    window.open('./map-editor/index.html', '_blank');
   }
 
   exit() {

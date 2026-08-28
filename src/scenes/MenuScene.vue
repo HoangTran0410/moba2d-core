@@ -90,11 +90,13 @@ import { packHealthDismissed, packProblems } from '@/content/packHealth';
  * notice becomes something people click past without reading. The packs screen
  * stays one press away in the row below.
  */
-const NUDGE_KEY = 'lol2d:packNudgeSeen:v1';
+// const NUDGE_KEY = 'lol2d:packNudgeSeen:v1';
 
+let isSeenReadNudge = false;
 const readNudgeSeen = (): boolean => {
   try {
-    return localStorage.getItem(NUDGE_KEY) === '1';
+    return isSeenReadNudge
+    // return localStorage.getItem(NUDGE_KEY) === '1';
   } catch {
     // Storage blocked. Showing the nudge once per launch is the friendlier
     // failure than never showing it at all.
@@ -194,7 +196,8 @@ function pressPlay(): void {
 /** Remember the answer, whichever it was, then act on it. */
 function answerNudge(to: 'packs' | 'play'): void {
   try {
-    localStorage.setItem(NUDGE_KEY, '1');
+    isSeenReadNudge = true;
+    // localStorage.setItem(NUDGE_KEY, '1');
   } catch {
     /* blocked storage just means it asks again next launch */
   }
@@ -381,12 +384,7 @@ const updateState = computed(() => {
   <button id="play-btn" class="hextech-btn" @click="pressPlay" @touchend.prevent="pressPlay">
     Chơi
   </button>
-  <button
-    id="lan-btn"
-    class="hextech-btn"
-    @click="emit('openLan')"
-    @touchend.prevent="emit('openLan')"
-  >
+  <button id="lan-btn" class="hextech-btn" @click="emit('openLan')" @touchend.prevent="emit('openLan')">
     <i class="fas fa-user-group" aria-hidden="true"></i>
     Chơi với bạn
   </button>
@@ -404,21 +402,11 @@ const updateState = computed(() => {
       tướng mặc định.
     </span>
     <div class="pack-banner-actions">
-      <button
-        id="pack-banner-retry"
-        type="button"
-        @click="retryPackInstall"
-        @touchend.prevent="retryPackInstall"
-      >
+      <button id="pack-banner-retry" type="button" @click="retryPackInstall" @touchend.prevent="retryPackInstall">
         Thử lại
       </button>
-      <button
-        id="pack-banner-dismiss"
-        type="button"
-        class="ghost"
-        @click="dismissPackBanner"
-        @touchend.prevent="dismissPackBanner"
-      >
+      <button id="pack-banner-dismiss" type="button" class="ghost" @click="dismissPackBanner"
+        @touchend.prevent="dismissPackBanner">
         Bỏ qua
       </button>
     </div>
@@ -428,24 +416,15 @@ const updateState = computed(() => {
        banner rather than a line in the one above: that one is about this
        boot's install, this one is about a pack the player already has, and
        the way out of each is different. -->
-  <div
-    v-if="packProblem && !packHealthDismissed"
-    class="pack-banner"
-    :class="{ 'pack-banner-broken': packProblem.kind === 'broken' }"
-    role="alert"
-  >
+  <div v-if="packProblem && !packHealthDismissed" class="pack-banner"
+    :class="{ 'pack-banner-broken': packProblem.kind === 'broken' }" role="alert">
     <span>
       {{ packProblemText }}
       <template v-if="packUpdateFailed"> Không cập nhật được — thử lại khi có mạng. </template>
     </span>
     <div class="pack-banner-actions">
-      <button
-        id="pack-update"
-        type="button"
-        :disabled="updatingPack"
-        @click="updateProblemPack"
-        @touchend.prevent="updateProblemPack"
-      >
+      <button id="pack-update" type="button" :disabled="updatingPack" @click="updateProblemPack"
+        @touchend.prevent="updateProblemPack">
         {{
           packProblem.kind === 'dev-changed'
             ? 'Tải lại'
@@ -454,13 +433,8 @@ const updateState = computed(() => {
               : 'Cập nhật'
         }}
       </button>
-      <button
-        id="pack-update-dismiss"
-        type="button"
-        class="ghost"
-        @click="dismissPackProblem"
-        @touchend.prevent="dismissPackProblem"
-      >
+      <button id="pack-update-dismiss" type="button" class="ghost" @click="dismissPackProblem"
+        @touchend.prevent="dismissPackProblem">
         Để sau
       </button>
     </div>
@@ -480,35 +454,20 @@ const updateState = computed(() => {
        All three sit outside the `ready` gate above, for the reason in this
        file's header: none opens game code, so none waits on the warm-up. -->
   <div class="menu-links">
-    <button
-      id="packs-btn"
-      class="menu-link"
-      title="Thêm tướng và map từ pack"
-      @click="emit('openPacks')"
-      @touchend.prevent="emit('openPacks')"
-    >
+    <button id="packs-btn" class="menu-link" title="Thêm tướng và map từ pack" @click="emit('openPacks')"
+      @touchend.prevent="emit('openPacks')">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      <span>Tướng &amp; Map</span>
+      <span>Tải Pack</span>
     </button>
 
-    <button
-      id="editor-btn"
-      class="menu-link"
-      title="Vẽ map của riêng bạn, hoặc sửa một map có sẵn, rồi chơi thử ngay"
-      @click="emit('openEditor')"
-      @touchend.prevent="emit('openEditor')"
-    >
+    <button id="editor-btn" class="menu-link" title="Vẽ map của riêng bạn, hoặc sửa một map có sẵn, rồi chơi thử ngay"
+      @click="emit('openEditor')" @touchend.prevent="emit('openEditor')">
       <i class="fas fa-pen-ruler" aria-hidden="true"></i>
       <span>Tạo map</span>
     </button>
 
-    <button
-      id="about-btn"
-      class="menu-link"
-      title="Giới thiệu"
-      @click="emit('openAbout')"
-      @touchend.prevent="emit('openAbout')"
-    >
+    <button id="about-btn" class="menu-link" title="Giới thiệu" @click="emit('openAbout')"
+      @touchend.prevent="emit('openAbout')">
       <i class="fas fa-circle-info" aria-hidden="true"></i>
       <span>Giới thiệu</span>
     </button>
@@ -520,28 +479,18 @@ const updateState = computed(() => {
        here does: a `GameScene` on the page kills synthesised clicks. -->
   <div v-if="packNudgeOpen" id="pack-nudge" class="pack-nudge" role="dialog" aria-modal="true">
     <div class="pack-nudge-box">
-      <h2>Bạn đang có bản gọn nhất</h2>
+      <h2>Chưa cài pack nào</h2>
       <p>
-        Chưa cài pack nào, nên trận đấu sẽ dùng nội dung mặc định: <b>1 tướng</b> và
-        <b>1 map</b>. Cài một pack là có thêm tướng, map và quái rừng.
+        Trận đấu sẽ dùng nội dung mặc định: <b>1 tướng</b> và
+        <b>1 map</b>. Cài thêm pack để có thêm tướng, map, vật phẩm và quái rừng.
       </p>
       <div class="pack-nudge-actions">
-        <button
-          id="pack-nudge-play"
-          type="button"
-          class="hextech-btn"
-          @click="answerNudge('play')"
-          @touchend.prevent="answerNudge('play')"
-        >
+        <button id="pack-nudge-play" type="button" class="hextech-btn" @click="answerNudge('play')"
+          @touchend.prevent="answerNudge('play')">
           Chơi luôn
         </button>
-        <button
-          id="pack-nudge-packs"
-          type="button"
-          class="menu-link"
-          @click="answerNudge('packs')"
-          @touchend.prevent="answerNudge('packs')"
-        >
+        <button id="pack-nudge-packs" type="button" class="menu-link" @click="answerNudge('packs')"
+          @touchend.prevent="answerNudge('packs')">
           <i class="fas fa-cubes" aria-hidden="true"></i>
           <span>Xem pack</span>
         </button>
@@ -560,11 +509,7 @@ const updateState = computed(() => {
     <!-- Core's own semver, dimmer than the build clock beside it: it matters
          on exactly one day, when a pack refuses to install and its message
          names a number this is the only place to check. -->
-    <span
-      id="menu-core-version"
-      class="menu-version-core"
-      title="Phiên bản core, dùng để kiểm tra pack"
-    >
+    <span id="menu-core-version" class="menu-version-core" title="Phiên bản core, dùng để kiểm tra pack">
       core {{ coreVersion }}
     </span>
     <span v-if="offlineReady" class="menu-version-offline" title="Đã lưu để chơi offline">
@@ -579,20 +524,11 @@ const updateState = computed(() => {
 
        Only ever on the menu, which is the one screen where losing the page
        costs nothing. -->
-  <button
-    v-if="updateDownloading || updateReady"
-    id="menu-update-btn"
-    class="menu-update"
-    :data-state="updateState"
-    :data-downloaded="updateDownloadedCount"
-    :disabled="updating || (updateQueued && !updateReady)"
-    @click="installUpdate"
-  >
-    <i
-      class="fas fa-arrow-rotate-right"
-      :class="{ 'fa-spin': updating || (updateQueued && !updateReady) }"
-      aria-hidden="true"
-    ></i>
+  <button v-if="updateDownloading || updateReady" id="menu-update-btn" class="menu-update" :data-state="updateState"
+    :data-downloaded="updateDownloadedCount" :disabled="updating || (updateQueued && !updateReady)"
+    @click="installUpdate">
+    <i class="fas fa-arrow-rotate-right" :class="{ 'fa-spin': updating || (updateQueued && !updateReady) }"
+      aria-hidden="true"></i>
     <span>{{ updateLabel }}</span>
   </button>
 </template>
