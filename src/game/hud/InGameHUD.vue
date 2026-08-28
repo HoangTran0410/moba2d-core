@@ -46,6 +46,7 @@ import DeathRecapPanel from './DeathRecapPanel.vue';
 import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
+import NetLinkOverlay from './NetLinkOverlay.vue';
 import MatchConfigPanel from './config/MatchConfigPanel.vue';
 import ShopPanel from './shop/ShopPanel.vue';
 import MatchDirectorSource from './config/MatchDirectorSource';
@@ -183,4 +184,10 @@ defineExpose({
        `v-if` here would remount it — and reset its dismissal — on every turn
        of the phone. -->
   <OrientationHint />
+
+  <!-- Above every other layer and outside every `v-if` on `state`: the case it
+       exists for is precisely the one where the match data has stopped
+       arriving, so gating it on that data would hide it exactly when it is
+       needed. It decides for itself whether to show. -->
+  <NetLinkOverlay />
 </template>

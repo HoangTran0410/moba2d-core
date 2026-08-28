@@ -3,6 +3,8 @@ import { RtcClientTransport } from './RtcTransport';
 import { decodeMessage, encodeMessage, type LobbyPlayer, type NetMessage } from './protocol';
 import type { NetUrlRequest } from './netRole';
 import { lobbyDisplayName } from './lobbyName';
+import { netSeat } from './netSeat';
+import { readInstalledPacks } from '@/content/installedPackStore';
 
 /**
  * Joining a LAN room **before the host has started the match**.
@@ -168,6 +170,27 @@ const waitForHello = async (
  * without it a cancelled join leaves a socket the broker still counts, and
  * the host sees a joiner who is not there.
  */
+/**
+ * Who is joining: the display name, the seat, and what content this machine
+ * has.
+ *
+ * One builder rather than a literal at each call site, because the two sites
+ * are the lobby's join and `clientBoot`'s hand-typed `?net=join`, and a seat
+ * sent from only one of them is a reconnect that works from the room list and
+ * not from a URL — the kind of split nobody finds until it matters.
+ *
+ * `packs` is the mirror of `hello.packs`: the host is *offered* what this
+ * client has, so a host whose client picked a champion from an unfamiliar pack
+ * can install it rather than drawing a placeholder for the rest of the match.
+ * Offered, not installed — see `content/peerPacks.ts`.
+ */
+export const iamMessage = (): Extract<NetMessage, { t: 'iam' }> => ({
+  t: 'iam',
+  name: lobbyDisplayName(),
+  seat: netSeat(),
+  packs: readInstalledPacks().map(record => record.manifestUrl),
+});
+
 export const waitForHostToStart = async (
   request: NetUrlRequest,
   abort: AbortSignal,
@@ -198,10 +221,12 @@ export const waitForHostToStart = async (
   abort.addEventListener('abort', onAbort, { once: true });
 
   try {
-    // Announce before waiting: a host still in its lobby answers with the
-    // room's list, and a host already in a match decodes this and finds
-    // nothing to do. One message, both cases.
-    channel.send(encodeMessage({ t: 'iam', name: lobbyDisplayName() }));
+    // Announce before waiting. A host still in its lobby answers with the
+    // room's list; a host already in a match reads the *seat* and decides
+    // whether this is somebody it already has a champion for. One message,
+    // both cases — and it must go before the wait, because the host holds a
+    // joining peer for `SEAT_GRACE_MS` precisely to hear this.
+    channel.send(encodeMessage(iamMessage()));
     // No deadline. This is the wait the whole module exists for: the host may
     // be one press away or five minutes away, and neither is an error.
     const hello = await waitForHello(channel, progress.onRoster ?? (() => {}));

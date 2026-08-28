@@ -61,6 +61,17 @@ export interface HostTransport {
    */
   watchPeerLink?(handler: (peerId: string, link: PeerLink) => void): void;
   drain(): HostFrameEvent[];
+  /**
+   * Hang up on one peer, for the host's own kick.
+   *
+   * Optional for the same reason `watchPeerLink` is: it is a property of a
+   * wire that holds a connection per peer. Dropping a *relay* joiner would
+   * mean asking the relay to close somebody else's socket, which its protocol
+   * has no frame for — so `RelayHostTransport` implements nothing here, and a
+   * kick there is the sweep alone: the champion goes, and the client finds out
+   * the way it finds out about anything else, from the event stream.
+   */
+  dropPeer?(peerId: string): void;
   sendTo(peerId: string, raw: string): void;
   broadcast(raw: string): void;
   /** Snapshot path — may drop or reorder; falls back to `broadcast` where the wire has no such lane. */

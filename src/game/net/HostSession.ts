@@ -24,6 +24,7 @@ import {
 } from '@/game/preset';
 import { loadSpells, spellIdOfClass } from '@/game/spellRegistry';
 import { asKitPlan, planFromPreset } from './kitWire';
+import { notePeerPacks } from '@/content/peerPacks';
 import { isMatchTeamId } from '@/game/config/MatchTeams';
 import { setNetRole, type NetUrlRequest } from './netRole';
 import { disarmNetUrl } from '@/scenes/lanSignal';
@@ -70,6 +71,46 @@ const installedManifestUrls = (): string[] => {
  * or not — the floor under `snapshotUnits`' delta on a lane that drops.
  */
 const SNAPSHOT_HEARTBEAT_MS = 1000;
+
+/**
+ * How long a peer may go completely silent before its champion is treated as
+ * unattended.
+ *
+ * Clients ping on a timer (`protocol.ts`'s `ping`), and a page that is not
+ * running does not run timers — so silence past a few ping intervals means the
+ * tab is frozen, backgrounded or gone, not that the player is standing still.
+ * Generous enough to ride out a lane change or a lock screen glance; short
+ * enough that the other players see the ⏸ before they wonder.
+ */
+const PEER_SILENT_MS = 8_000;
+
+/**
+ * How long an unattended champion is kept for its player to come back to.
+ *
+ * The champion is *held*, not frozen out of the match: it stands there and can
+ * still be killed, because a body that becomes invulnerable the moment its
+ * phone sleeps is an exploit. What the hold buys is that reconnecting inside
+ * this window gives the player their own champion back — the gold, the bag and
+ * the death they missed — instead of a fresh one beside their own corpse.
+ *
+ * A *clean* departure is not this case and never waits: `left` still sweeps at
+ * once (`handleEvent`), because a player who pressed Thoát has said what they
+ * want. This window is only for the departure that sends nothing, which is
+ * every backgrounded phone.
+ */
+const PEER_LOST_MS = 120_000;
+
+/**
+ * How long `onClientJoined` waits to learn which seat a joiner is in.
+ *
+ * The seat rides `iam`, which a client sends as its first frame — so this is
+ * nearly always already answered by the time the joiner's spell chunks have
+ * loaded, and the wait costs nothing. It exists for the ordering it cannot
+ * assume: build a champion before the seat is known and a reconnecting player
+ * gets a second one, which is the bug this whole mechanism is about. A client
+ * too old to send a seat simply spends this long joining.
+ */
+const SEAT_GRACE_MS = 1_500;
 /** The recall pseudo-slot in cast events: `Champion.recall` deliberately lives outside `spells[]`. */
 export const RECALL_SLOT = 100;
 
@@ -89,6 +130,32 @@ export class HostSession implements NetGameHooks {
   private championPlans = new Map<Champion, KitPlan>();
   private nextId = 1;
   private clients = new Map<string, Champion>();
+  /**
+   * Seat → the champion that seat holds, which is not the same map as
+   * `clients` above and is the whole point: `clients` is keyed by *peer id*,
+   * one per `RTCPeerConnection`, so a player who reconnects arrives under a
+   * name the host has never seen and used to be handed a second champion
+   * while the first went on standing in the match. See `netSeat.ts`.
+   */
+  private seats = new Map<string, Champion>();
+  /** Which seat a live peer is sitting in, learned from its `iam`. */
+  private seatOfPeer = new Map<string, string>();
+  /** When each live peer was last heard from at all — any frame counts. */
+  private heardAt = new Map<string, number>();
+  /**
+   * A champion whose player stopped talking without ever saying goodbye, and
+   * the match time it went quiet. Held rather than swept so the player can
+   * take it back; swept once `PEER_LOST_MS` says nobody is coming.
+   */
+  private vacated = new Map<Champion, number>();
+  /**
+   * Peers that announced a deliberate departure (`bye`) — so the `left` that
+   * follows sweeps rather than holding the seat open for a return that was
+   * never coming.
+   */
+  private quitting = new Set<string>();
+  /** Joins parked until their `iam` arrives — see `SEAT_GRACE_MS`. */
+  private seatWaiters = new Map<string, (seat: string | null) => void>();
   /** Last `deathRecap.seq` forwarded per client champion — see `forwardClientDeaths`. */
   private sentRecapSeq = new WeakMap<Champion, number>();
   private pendingEvents: NetEvent[] = [];
@@ -153,9 +220,9 @@ export class HostSession implements NetGameHooks {
     transport.setImmediate(event => this.handleEvent(event));
 
     // Dev-only handle for the e2e driver (`tests/e2e/drive-lan-sync.mjs`),
-    // the same convention as `window.__lol2d`. Stripped from production.
+    // the same convention as `window.__moba2d`. Stripped from production.
     if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__lol2dNet = this;
+      (window as unknown as Record<string, unknown>).__moba2dNet = this;
     }
   }
 
@@ -268,6 +335,7 @@ export class HostSession implements NetGameHooks {
 
   update(): void {
     this.applyClientFrames();
+    this.sweepLostPeers();
     this.discover();
     this.forwardClientDeaths();
     // Events flush every tick (and casts flush inside `onCast` the moment
@@ -439,22 +507,56 @@ export class HostSession implements NetGameHooks {
       return;
     }
     if (event.kind === 'left') {
-      // The champion leaves with its player: marked for the ordinary sweep,
-      // which `discover()` then notices and broadcasts as 'gone', so every
-      // other client's puppet disappears too. A returning player is simply a
-      // new joiner with a fresh champion — v1's whole rejoin story.
+      // A *clean* departure — the channel closed, so the player pressed Thoát
+      // or shut the tab, and has said what they want. The champion goes with
+      // them: marked for the ordinary sweep, which `discover()` notices and
+      // broadcasts as 'gone', so every other client's puppet disappears too.
+      //
+      // Deliberately not the reconnect case, and the distinction is the fix.
+      // A backgrounded phone closes nothing — it simply stops — so it never
+      // reaches here, and `sweepLostPeers()` below is what eventually judges
+      // it. Holding *this* case open for a reclaim would leave a body standing
+      // for two minutes after someone deliberately quit.
       const champion = this.clients.get(event.peerId);
+      const deliberate = this.quitting.delete(event.peerId);
+      this.releasePeer(event.peerId);
       this.clients.delete(event.peerId);
-      if (champion) {
-        champion.toRemove = true;
-        this.championNames.delete(champion);
-        this.championPlans.delete(champion);
+      if (!champion) return;
+      if (!deliberate) {
+        // A close nobody announced: a reload, a crash, a network that went
+        // away. Reconnecting *is* a reload — the overlay does exactly that —
+        // so sweeping here would delete the champion a returning player is
+        // about to ask for, milliseconds before they ask. Hold the seat and
+        // let `sweepLostPeers` be the one that eventually gives up.
+        this.vacated.set(champion, this.game.matchTimeMs);
+        this.pendingEvents.push(this.linkEvent(champion, false));
+        return;
       }
+      this.vacated.delete(champion);
+      for (const [seat, held] of this.seats) if (held === champion) this.seats.delete(seat);
+      champion.toRemove = true;
+      this.championNames.delete(champion);
+      this.championPlans.delete(champion);
       return;
     }
     const message = decodeMessage(event.raw);
+    if (!message) return;
+    // Anything at all from a peer proves it is still running, which is the
+    // only thing `sweepLostPeers` can observe. Above the champion gate on
+    // purpose: a peer whose champion is still being built, and one whose
+    // champion is gone, are both still alive.
+    this.heardAt.set(event.peerId, this.game.matchTimeMs);
+    if (message.t === 'ping') return;
+    if (message.t === 'bye') {
+      this.quitting.add(event.peerId);
+      return;
+    }
+    if (message.t === 'iam') {
+      this.onSeatDeclared(event.peerId, message.seat ?? null, message.packs);
+      return;
+    }
     const champion = this.clients.get(event.peerId);
-    if (!message || !champion) return;
+    if (!champion) return;
     // A kit change is legal on a corpse — picking the next champion while
     // waiting to respawn is half the point of a practice lobby — so it is
     // routed above the dead-champion gate every *order* stops at.
@@ -591,29 +693,219 @@ export class HostSession implements NetGameHooks {
    * `hello` carrying the map, the rules, its own kit and the whole roster —
    * after which it is just another order source.
    */
-  private async onClientJoined(clientId: string): Promise<void> {
-    const team = this.smallerTeam();
-    // The AI respawn re-roll's own plan shape: one coherent random champion,
-    // summoners defaulted off the installed shelf — no summoner named here,
-    // which is what keeps core's vocabulary boundary clean.
-    const plan = planRandomKit();
-    await loadSpells(plan.spellIds);
+  /** "Somebody is / is no longer driving this champion", for every other screen. */
+  private linkEvent(champion: Champion, on: boolean): NetEvent {
+    return { k: 'link', id: this.ids.get(champion) ?? '', on };
+  }
 
-    const champion = attachRecall(
-      new Champion({
-        game: this.game,
-        position: this.game.randomSpawnPoint(team),
-        teamId: team,
-        preset: presetFromPlan(plan),
-      })
-    );
-    this.game.objectManager.addObject(champion);
-    const id = `u${this.nextId++}`;
-    this.ids.set(champion, id);
-    this.tracked.set(id, champion);
-    this.championNames.set(champion, champion.name);
-    this.championPlans.set(champion, plan);
-    this.clients.set(clientId, champion);
+  /**
+   * A client told us what content it has. Offer, never install.
+   *
+   * The reverse direction of `hello.packs` — and deliberately not the same
+   * reflex. See `content/peerPacks.ts` for why a host asks where a client
+   * simply acts: a client picked its host, a host is picked by whoever has the
+   * room code, and a pack is code.
+   */
+  private onClientPacks(manifestUrls: string[]): void {
+    notePeerPacks(manifestUrls);
+  }
+
+  /**
+   * A joiner said who it is: its seat, and what content it has.
+   *
+   * `iam` used to be lobby-only — `HostSession` decoded it and found nothing
+   * to do, on the reading that "a late joiner is not entering a lobby, it is
+   * entering a game". That is still true of the *name*; it is not true of the
+   * seat, which is the only thing that tells a running match that this peer is
+   * somebody it already knows.
+   */
+  private onSeatDeclared(peerId: string, seat: string | null, packs?: string[]): void {
+    if (seat) this.seatOfPeer.set(peerId, seat);
+    if (packs?.length) this.onClientPacks(packs);
+    const waiting = this.seatWaiters.get(peerId);
+    if (waiting) {
+      this.seatWaiters.delete(peerId);
+      waiting(seat);
+    }
+  }
+
+  /**
+   * Which seat this peer is in, waiting up to `SEAT_GRACE_MS` to be told.
+   *
+   * Resolves the moment `iam` lands, so the common path pays nothing. The
+   * timer is the floor for a client that never sends one.
+   */
+  private awaitSeat(peerId: string): Promise<string | null> {
+    const known = this.seatOfPeer.get(peerId);
+    if (known !== undefined) return Promise.resolve(known);
+    return new Promise<string | null>(resolve => {
+      const settle = (seat: string | null): void => resolve(seat);
+      this.seatWaiters.set(peerId, settle);
+      setTimeout(() => {
+        if (this.seatWaiters.get(peerId) !== settle) return;
+        this.seatWaiters.delete(peerId);
+        resolve(this.seatOfPeer.get(peerId) ?? null);
+      }, SEAT_GRACE_MS);
+    });
+  }
+
+  /** Forget everything keyed by a peer id, without touching its champion. */
+  private releasePeer(peerId: string): void {
+    this.seatOfPeer.delete(peerId);
+    this.heardAt.delete(peerId);
+    const waiting = this.seatWaiters.get(peerId);
+    if (waiting) {
+      this.seatWaiters.delete(peerId);
+      waiting(null);
+    }
+  }
+
+  /**
+   * The judgement a closed channel cannot make.
+   *
+   * Runs every tick and is two separate decisions with two separate clocks.
+   * A peer that has gone quiet past `PEER_SILENT_MS` is *unattended*: its
+   * champion stays in the match, still killable, and is marked so the lobby
+   * and the other players can see why it is standing still. Only once
+   * `PEER_LOST_MS` has passed is it swept — which is what finally ends the
+   * body that used to stand there for the rest of the match because its phone
+   * had locked and no `close` was ever sent.
+   *
+   * A peer that has never sent a single frame is not judged at all: it has no
+   * `heardAt` entry, and treating "never heard from" as "gone" would sweep a
+   * client on an older build that does not ping.
+   */
+  private sweepLostPeers(): void {
+    const now = this.game.matchTimeMs;
+    for (const [peerId, champion] of this.clients) {
+      const heard = this.heardAt.get(peerId);
+      if (heard === undefined) continue;
+      if (now - heard < PEER_SILENT_MS) {
+        if (this.vacated.delete(champion)) this.pendingEvents.push(this.linkEvent(champion, true));
+        continue;
+      }
+      if (!this.vacated.has(champion)) {
+        this.vacated.set(champion, now);
+        this.pendingEvents.push(this.linkEvent(champion, false));
+      }
+    }
+    for (const [champion, since] of this.vacated) {
+      if (now - since < PEER_LOST_MS) continue;
+      this.vacated.delete(champion);
+      // The seat goes with it: past this point there is nothing left to
+      // reclaim, so a returning player should be given a fresh champion
+      // rather than handed a corpse that is about to be swept.
+      for (const [seat, held] of this.seats) if (held === champion) this.seats.delete(seat);
+      for (const [peerId, held] of this.clients) {
+        if (held !== champion) continue;
+        this.clients.delete(peerId);
+        this.releasePeer(peerId);
+      }
+      champion.toRemove = true;
+      this.championNames.delete(champion);
+      this.championPlans.delete(champion);
+    }
+  }
+
+  /**
+   * Throw a player out, by the unit id every screen already knows them by.
+   *
+   * The host's own control, for the case the clocks above are too patient for
+   * — someone who will not come back, or should not. Everything a sweep does,
+   * at once, including dropping the wire so a client that *is* still running
+   * learns it has been removed rather than sitting on a channel nobody reads.
+   */
+  kickUnit(unitId: string): boolean {
+    const champion = this.tracked.get(unitId);
+    if (!(champion instanceof Champion)) return false;
+    let found = false;
+    for (const [peerId, held] of this.clients) {
+      if (held !== champion) continue;
+      found = true;
+      this.clients.delete(peerId);
+      this.releasePeer(peerId);
+      this.transport.dropPeer?.(peerId);
+    }
+    if (!found && !this.vacated.has(champion)) return false;
+    this.vacated.delete(champion);
+    for (const [seat, held] of this.seats) if (held === champion) this.seats.delete(seat);
+    champion.toRemove = true;
+    this.championNames.delete(champion);
+    this.championPlans.delete(champion);
+    return true;
+  }
+
+  /** Every champion a client is (or was) driving, for the lobby's own rows. */
+  netClientRows(): Array<{ id: string; name: string; attached: boolean }> {
+    const rows: Array<{ id: string; name: string; attached: boolean }> = [];
+    const seen = new Set<Champion>();
+    for (const champion of this.clients.values()) {
+      if (seen.has(champion)) continue;
+      seen.add(champion);
+      const id = this.ids.get(champion);
+      if (id === undefined) continue;
+      rows.push({ id, name: champion.name, attached: !this.vacated.has(champion) });
+    }
+    return rows;
+  }
+
+  private async onClientJoined(clientId: string): Promise<void> {
+    // Which seat, before anything is built. A champion made first and matched
+    // to a seat afterwards is the bug itself: the player gets a second body
+    // and their own goes on standing in the match.
+    const seat = await this.awaitSeat(clientId);
+    const reclaimed = seat === null ? undefined : this.seats.get(seat);
+    const canReclaim =
+      reclaimed !== undefined && !reclaimed.toRemove && !this.clients.has(clientId);
+
+    let champion: Champion;
+    let plan: KitPlan;
+    let team: string;
+    let id: string;
+
+    if (canReclaim && reclaimed) {
+      // The same body, the same gold, the same corpse if they died while their
+      // phone was asleep. Nothing is rebuilt: the champion never left the
+      // match, it was only unattended (`sweepLostPeers`), and handing back a
+      // *copy* would be the second-champion bug wearing the right name.
+      champion = reclaimed;
+      plan = this.championPlans.get(champion) ?? this.planFromLiveChampion(champion);
+      team = champion.teamId;
+      id = this.ids.get(champion) ?? `u${this.nextId++}`;
+      this.ids.set(champion, id);
+      this.tracked.set(id, champion);
+      this.vacated.delete(champion);
+      this.clients.set(clientId, champion);
+      await loadSpells(plan.spellIds);
+      this.pendingEvents.push(this.linkEvent(champion, true));
+    } else {
+      team = this.smallerTeam();
+      // The AI respawn re-roll's own plan shape: one coherent random champion,
+      // summoners defaulted off the installed shelf — no summoner named here,
+      // which is what keeps core's vocabulary boundary clean.
+      plan = planRandomKit();
+      await loadSpells(plan.spellIds);
+
+      champion = attachRecall(
+        new Champion({
+          game: this.game,
+          position: this.game.randomSpawnPoint(team),
+          teamId: team,
+          preset: presetFromPlan(plan),
+        })
+      );
+      this.game.objectManager.addObject(champion);
+      id = `u${this.nextId++}`;
+      this.ids.set(champion, id);
+      this.tracked.set(id, champion);
+      this.championNames.set(champion, champion.name);
+      this.championPlans.set(champion, plan);
+      this.clients.set(clientId, champion);
+      if (seat !== null) this.seats.set(seat, champion);
+    }
+    // Counted from now either way: a reclaiming peer that goes quiet again must
+    // start its own silence, not inherit the one that sent it away.
+    this.heardAt.set(clientId, this.game.matchTimeMs);
 
     const roster: NetEvent[] = [];
     for (const [unitId, unit] of this.tracked) {
@@ -642,7 +934,10 @@ export class HostSession implements NetGameHooks {
       }
     }
     // Everyone else learns about the new champion through the ordinary event
-    // stream; the joiner's copy arrives inside its own hello roster.
+    // stream; the joiner's copy arrives inside its own hello roster. A
+    // reclaimed champion is already on every screen, so this re-announces what
+    // they have — harmless, and cheaper than a second code path — while the
+    // `link` event pushed above is what actually changes for them.
     this.pendingEvents.push(this.championEvent(id, champion));
 
     this.sendTo(clientId, {

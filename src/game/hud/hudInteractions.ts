@@ -82,6 +82,15 @@ export interface HudInteractions {
    */
   readonly camera: Camera;
   /**
+   * Whether this client has lost the host — `null` on a host, and on any
+   * offline match, which is what "there is no wire to lose" looks like here.
+   *
+   * A getter off `game.net` rather than a copy, for `director`'s own reason:
+   * a session is attached *after* this object is built, and the answer changes
+   * every few seconds once it is.
+   */
+  readonly netLink: { lost: boolean } | null;
+  /**
    * Whether the practice panel is up. Keeps the `SpellsPicker` name it was
    * born with: it is read by all three e2e scripts off
    * `game.inGameHUD.vueInstance.hud`, and renaming it would reach into every
@@ -351,6 +360,9 @@ export function createHudInteractions(game: Game): HudInteractions {
       return director as MatchDirector;
     },
     /** Same lazy `markRaw` getter as `director` above, for the same reasons. */
+    get netLink(): { lost: boolean } | null {
+      return game.net?.link ?? null;
+    },
     get camera(): Camera {
       if (!camera && game.camera) camera = markRaw(game.camera);
       return camera as Camera;

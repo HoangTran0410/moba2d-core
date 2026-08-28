@@ -13,9 +13,35 @@ import { buildHeldItem } from '@/game/economy/ItemShop';
 import { contentCatalog } from '@/content/catalog';
 import { loadSpells } from '@/game/spellRegistry';
 import { setNetRole } from './netRole';
+import { clearNetLink, netLinkLost } from './netLink';
 import { disarmNetUrl } from '@/scenes/lanSignal';
 import type { ClientTransport } from './transport';
-import { decodeMessage, type NetEvent, type NetMessage, type UnitSnap } from './protocol';
+import {
+  decodeMessage,
+  encodeMessage,
+  type NetEvent,
+  type NetMessage,
+  type UnitSnap,
+} from './protocol';
+
+/**
+ * How often this client tells the host it is still running.
+ *
+ * Four to a `PEER_SILENT_MS` window, so a couple of dropped frames on the
+ * reliable lane are not mistaken for a sleeping phone.
+ */
+const PING_INTERVAL_MS = 2_000;
+
+/**
+ * How long the host may say nothing before this client stops believing what
+ * is on screen.
+ *
+ * The host sends a snapshot every 33ms and re-sends unchanged units on a 1s
+ * heartbeat, so this is thirty missed heartbeats — long enough to ride out a
+ * lane change or a garbage-collection stall, short enough that a player does
+ * not go on issuing orders into a match that stopped listening.
+ */
+const HOST_SILENT_MS = 6_000;
 import { InterpolationBuffer } from './InterpolationBuffer';
 import { RECALL_SLOT } from './HostSession';
 import { planFromPreset } from './kitWire';
@@ -120,6 +146,27 @@ export class ClientSession implements NetGameHooks {
   private pendingRecap: DeathRecap | null = null;
   private lastMoveSentAt = 0;
   private lastSteerSentAt = 0;
+  /** When the host was last heard from at all, in `performance.now()` terms. */
+  private lastHeardAt = performance.now();
+  private lastPingAt = 0;
+  /**
+   * Whether the host has gone quiet for longer than a host that is running
+   * ever does.
+   *
+   * `reactive`, and that is load-bearing rather than tidy: the HUD reads this
+   * through a `computed`, and a `computed` over a plain object never
+   * re-evaluates — the flag flipped, `NetLinkOverlay` was told nothing, and
+   * the overlay silently never appeared. Measured exactly that way by
+   * `drive-lan-reconnect.mjs`, which saw `link.lost === true` on the session
+   * and no `#net-link-lost` on the page.
+   *
+   * Read by the HUD, which is the whole point. Before this, a client whose
+   * wire died simply went on drawing the last world it was sent — so a player
+   * whose phone slept came back to a champion standing peacefully in a match
+   * where they had been dead for a minute, with nothing on screen suggesting
+   * otherwise. A stale world shown confidently is worse than no world.
+   */
+  readonly link = { lost: false };
   /** e2e-readable counters — see the dev handle in the constructor. */
   readonly debugStats = { snapshotsReceived: 0, eventsApplied: 0, damageTextsShown: 0 };
 
@@ -154,9 +201,13 @@ export class ClientSession implements NetGameHooks {
   // ------------------------------------------------------------- per tick
 
   update(): void {
+    this.pingHost();
     for (const raw of this.channel.drain()) {
       const message = decodeMessage(raw);
       if (!message) continue;
+      // Any frame at all, decodable or not into something we act on: the host
+      // is running and reachable, which is the only question `link` asks.
+      this.lastHeardAt = performance.now();
       if (message.t === 'snap') {
         this.debugStats.snapshotsReceived++;
         this.buffer.push(message, performance.now());
@@ -167,7 +218,47 @@ export class ClientSession implements NetGameHooks {
         this.onDied(message.recap);
       }
     }
+    this.judgeLink();
     this.applyInterpolated();
+  }
+
+  /**
+   * Tell the host we are still running, on a timer.
+   *
+   * Silence is all a host can observe about a peer that stopped — a player
+   * standing still sends nothing, and neither does a phone whose screen went
+   * off — and a frozen page runs no timers, so this stops the instant the tab
+   * does. That is the property the host's sweep leans on
+   * (`HostSession.PEER_SILENT_MS`); it is a client timer rather than a host
+   * poll for exactly that reason.
+   */
+  private pingHost(): void {
+    const now = performance.now();
+    if (now - this.lastPingAt < PING_INTERVAL_MS) return;
+    this.lastPingAt = now;
+    this.channel.send(encodeMessage({ t: 'ping' }));
+  }
+
+  /**
+   * Has the host gone quiet?
+   *
+   * Two independent signals, and the transport's own is not enough on its
+   * own: a channel reports `closed` when something actually closed it, which
+   * a network that simply stopped carrying packets never does. So silence is
+   * the second test, measured against the host's snapshot cadence — it sends
+   * one every 33ms and re-sends unchanged units on a 1s heartbeat, so seconds
+   * of nothing is not a quiet match, it is no match.
+   */
+  private judgeLink(): void {
+    const silent = performance.now() - this.lastHeardAt > HOST_SILENT_MS;
+    const lost = silent || this.channel.closed === true;
+    // Two homes for one fact, and both are load-bearing. `link` is the
+    // e2e-readable handle beside `debugStats`; `netLinkLost` is the `ref` the
+    // overlay actually renders off, because a plain object reached through a
+    // prop and a getter did not make the component re-render — see
+    // `netLink.ts`.
+    this.link.lost = lost;
+    if (netLinkLost.value !== lost) netLinkLost.value = lost;
   }
 
   /** The host's recap for our own death — apply now if the corpse is already here, else hold. */
@@ -614,7 +705,26 @@ export class ClientSession implements NetGameHooks {
     return out;
   }
 
+  /**
+   * Leave for good.
+   *
+   * `bye` before the close, and the order matters: the host cannot tell a quit
+   * from a reload by watching the channel shut — both look identical — so the
+   * one that is deliberate says so. Without it a quitting player's champion
+   * would be held open for a reclaim that never comes; with it, a *reload*
+   * (which sends nothing, because nothing runs) is what keeps the seat.
+   *
+   * Best-effort: a channel already dead cannot carry it, and that case is
+   * exactly the one where the host's own silence sweep is the right answer
+   * anyway.
+   */
   close(): void {
+    clearNetLink();
+    try {
+      this.channel.send(encodeMessage({ t: 'bye' }));
+    } catch {
+      /* already gone — the host's silence sweep covers this */
+    }
     this.channel.close();
     this.game.net = null;
     setNetRole('off');

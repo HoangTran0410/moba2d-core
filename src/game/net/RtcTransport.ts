@@ -206,6 +206,23 @@ export class RtcHostTransport implements HostTransport {
     }
   }
 
+  /**
+   * Hang up on one peer — the host's kick, and the only way a client that is
+   * still running learns it has been removed.
+   *
+   * Closing the connection fires the client's own `onclose`, so it reports a
+   * lost link and stops, rather than sitting on a channel nobody reads and
+   * showing a match that has moved on without it. The peer is dropped from the
+   * map first so `reliable.onclose` here has nothing left to emit a `left`
+   * for: `HostSession.kickUnit` has already done everything a `left` would.
+   */
+  dropPeer(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+    this.peers.delete(peerId);
+    peer.connection.close();
+  }
+
   close(): void {
     for (const peer of this.peers.values()) peer.connection.close();
     this.peers.clear();

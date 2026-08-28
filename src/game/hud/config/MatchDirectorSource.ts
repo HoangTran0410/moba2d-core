@@ -88,7 +88,14 @@ export interface MatchDirectorHost {
   openShopFor(id: string): void;
   requestExit(): void;
   /** The attached LAN session, if any (`Game.net`) — the Đội tab's read-only LAN rows. */
-  readonly net?: { netRosterUnits(): Champion[] } | null;
+  readonly net?: {
+    netRosterUnits(): Champion[];
+    /**
+     * Throw a LAN player out — host sessions only, hence optional. A client's
+     * own session has no such power and does not implement it.
+     */
+    kickUnit?(unitId: string): boolean;
+  } | null;
 }
 
 /** `spells` is indexed by `SpellHotKeys` — `[A, Q, W, E, R, D, F]` — so abilities are 1‑4. */
@@ -383,7 +390,17 @@ export default class MatchDirectorSource implements MatchConfigSource {
   removeBot(id: string): void {
     if (!this.canEditMatchSettings) return;
     const bot = this.botOf(id);
-    if (bot) this.director.removeBot(bot);
+    if (bot) {
+      this.director.removeBot(bot);
+      return;
+    }
+    // Not a bot: on a host, the Đội tab shows this same control on every LAN
+    // row (`remote` is false there, because a host owns the authoritative copy
+    // of its clients' champions), and it used to resolve to nothing at all —
+    // `botOf` misses, and the press did nothing, for ever. That is the whole
+    // of *"host ko đuổi lan nào ra khỏi phòng đc luôn"*: the button was there
+    // and was never wired to anything.
+    this.host.net?.kickUnit?.(id);
   }
 
   setTeam(id: string, team: MatchTeamId): void {

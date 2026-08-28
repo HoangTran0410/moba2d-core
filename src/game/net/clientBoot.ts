@@ -9,8 +9,8 @@ import type Game from '@/game/Game';
 import { setNetRole, type NetUrlRequest } from './netRole';
 import { RelayClientTransport } from './transport';
 import { RtcClientTransport } from './RtcTransport';
-import { decodeMessage, type NetMessage } from './protocol';
-import { takeHeldRoom } from './lobbyJoin';
+import { decodeMessage, encodeMessage, type NetMessage } from './protocol';
+import { iamMessage, takeHeldRoom } from './lobbyJoin';
 import { ClientSession } from './ClientSession';
 
 /**
@@ -61,11 +61,20 @@ export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetCl
   // for ourselves, with the ordinary deadlines, because in *that* path the
   // host is supposed to already be playing and silence is a real failure.
   const held = takeHeldRoom(request);
+  const dialled = held === null;
   const channel =
     held?.channel ??
     (request.transport === 'ws'
       ? await RelayClientTransport.connect(request.server, request.room)
       : await RtcClientTransport.connect(request.server, request.room));
+
+  // The lobby path already announced itself before it waited
+  // (`lobbyJoin.ts`); a hand-typed `?net=join` has nobody to have done it, and
+  // the host holds a joining peer for `SEAT_GRACE_MS` waiting to hear exactly
+  // this. Without it, reconnecting by URL — which is what the reconnect
+  // overlay does — always looks like a stranger and always gets a second
+  // champion.
+  if (dialled) channel.send(encodeMessage(iamMessage()));
 
   const hello =
     held?.hello ??

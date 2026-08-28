@@ -90,6 +90,27 @@ export interface NetGameHooks {
    * it can mutate, and these are precisely the units it must not.
    */
   netRosterUnits(): Champion[];
+  /**
+   * Whether the wire has gone quiet — a *client* session's own judgement, and
+   * absent on a host, which has no single wire to lose.
+   *
+   * On the interface rather than reached through a cast because the HUD is the
+   * only consumer and `Game.net` is the only handle it has. The implementation
+   * makes it `reactive` — the HUD watches it through a `computed`, which over
+   * a plain object would never re-evaluate.
+   */
+  readonly link?: { lost: boolean };
+  /**
+   * The champions clients are driving, and whether anyone is still on the
+   * wire for each — host sessions only, hence optional.
+   *
+   * `attached: false` is the case that had no name before: a player whose
+   * phone slept closes nothing, so the champion is neither present nor gone.
+   * The Đội tab and `drive-lan-reconnect.mjs` both read it.
+   */
+  netClientRows?(): Array<{ id: string; name: string; attached: boolean }>;
+  /** Throw a client out by unit id — host sessions only. Answers whether it matched. */
+  kickUnit?(unitId: string): boolean;
   /** Tear down: close the socket, clear `Game.net`, reset the net role. */
   close(): void;
 }

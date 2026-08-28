@@ -107,6 +107,25 @@ export interface GoneEvent {
 }
 
 /**
+ * Whether anybody is still driving this champion.
+ *
+ * Not a state of the *unit* — it is fully in the match either way, and can be
+ * killed while `on` is false, because a body that became invulnerable the
+ * moment its phone locked would be an exploit worth causing on purpose. It is
+ * a fact about the wire, and it exists so the other players can tell a
+ * champion that is standing still on purpose from one whose player is gone.
+ *
+ * The host derives it from silence, not from a close: a backgrounded tab stops
+ * running without closing anything, which is exactly the case a `gone` could
+ * never describe (`HostSession.sweepLostPeers`).
+ */
+export interface LinkEvent {
+  k: 'link';
+  id: string;
+  on: boolean;
+}
+
+/**
  * A damage number over `id`'s head — the post-mitigation figure the host's
  * own `CombatText` just floated. A client cannot compute any of these (its
  * `takeDamage` is gated shut), so without this stream a LAN client's match
@@ -151,6 +170,7 @@ export type NetEvent =
   | ChampionSpawnEvent
   | MinionSpawnEvent
   | GoneEvent
+  | LinkEvent
   | BagEvent
   | CastEvent
   | DamageNumberNetEvent
@@ -246,7 +266,43 @@ export type NetMessage =
    * finds nothing to do), which is exactly right: a late joiner is not
    * entering a lobby, it is entering a game.
    */
-  | { t: 'iam'; name: string }
+  | { t: 'iam'; name: string; seat?: string; packs?: string[] }
+  /**
+   * Client → host, on a timer: still here.
+   *
+   * Silence is the only thing a host can observe about a peer that stopped
+   * running, and without this it cannot tell *idle* from *gone* — a player
+   * standing still sends nothing, and so does a phone whose screen went off.
+   * `reliable.onclose` is not the answer on its own: it is what a clean
+   * departure sends, and a backgrounded mobile tab makes no such departure,
+   * which is how a champion came to stand in a match its player had left
+   * (`HostSession.PEER_LOST_MS`).
+   *
+   * A frozen page runs no timers, so the silence starts immediately and ends
+   * the moment the tab is resumed — the property this relies on, and the
+   * reason it is a client timer rather than a host poll.
+   *
+   * Optional in every sense: a client on an older build simply never sends
+   * one, and `HostSession` treats a peer it has never heard a ping from as
+   * one it cannot judge, rather than sweeping it.
+   */
+  | { t: 'ping' }
+  /**
+   * Client → host: I am leaving on purpose.
+   *
+   * The one thing a closing channel cannot say for itself. A host sees the
+   * same `left` whether the tab was closed, the page reloaded, or the network
+   * dropped — and the right answer differs: a player who *quit* should take
+   * their champion with them, while a page that reloaded is about to come
+   * straight back and wants it kept (`netSeat.ts`).
+   *
+   * Without this the reconnect cannot work at all, because reconnecting *is* a
+   * reload: the channel closes cleanly on the way out, the host sweeps, and
+   * the returning player finds nothing left to reclaim. So departure is
+   * announced and absence is inferred, rather than both being guessed from
+   * one event.
+   */
+  | { t: 'bye' }
   /**
    * Host → everyone, whenever the room's membership changes: who is in it.
    *
@@ -381,9 +437,35 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
     case 'team':
       return typeof message.team === 'string' ? { t: 'team', team: message.team } : null;
     case 'iam':
+      // The seat is rebuilt field by field like every other decoded frame, and
+      // bounded like the name beside it: it is matched against a map key on
+      // the host, so an unbounded string off the wire has no business becoming
+      // one. A frame from a client that predates seats simply carries none.
       return typeof message.name === 'string'
-        ? { t: 'iam', name: message.name.slice(0, 40) }
+        ? {
+            t: 'iam',
+            name: message.name.slice(0, 40),
+            ...(typeof message.seat === 'string' && message.seat
+              ? { seat: message.seat.slice(0, 64) }
+              : {}),
+            // The client's own pack list, so the host can offer to install
+            // what it is missing — the mirror of `hello.packs`, which has
+            // always gone the other way. Bounded in both directions because
+            // it is a list off the wire that a person will be shown.
+            ...(Array.isArray(message.packs)
+              ? {
+                  packs: message.packs
+                    .filter((url): url is string => typeof url === 'string')
+                    .slice(0, 16)
+                    .map(url => url.slice(0, 512)),
+                }
+              : {}),
+          }
         : null;
+    case 'ping':
+      return { t: 'ping' };
+    case 'bye':
+      return { t: 'bye' };
     case 'lobby': {
       if (!Array.isArray(message.players)) return null;
       const players: LobbyPlayer[] = [];

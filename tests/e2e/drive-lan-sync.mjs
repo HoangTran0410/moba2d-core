@@ -755,10 +755,19 @@ await guard(async () => {
 
   // The WS pages keep running as the RTC leg boots two more matches in the
   // same browser; closing the WS client trims one full game's CPU out of the
-  // latency measurements below. It doubles as the leave test: the socket
-  // drop must sweep the departed player's champion off the host ("thoát
-  // phòng mà champ vẫn đứng chỗ cũ" was v1's deliberate cut, now closed).
+  // latency measurements below. It doubles as the leave test: a departing
+  // player's champion must not be left standing ("thoát phòng mà champ vẫn
+  // đứng chỗ cũ" was v1's deliberate cut, now closed).
+  //
+  // **`close()` first, and that is now the whole distinction.** A host cannot
+  // tell a quit from a reload by watching a channel shut, so the deliberate
+  // one announces itself (`bye`, `protocol.ts`) and everything else is held
+  // for a reclaim — because reconnecting *is* a reload, and sweeping on the
+  // close would delete the champion the returning player is about to ask for.
+  // Killing the context alone therefore no longer sweeps, on purpose; it is
+  // what a phone going into a tunnel looks like. This is the quit.
   const departedName = clientKit.name;
+  await clientPage.evaluate(() => window.__moba2dNet.close());
   await clientContext.close();
   const swept = await page
     .waitForFunction(

@@ -51,6 +51,13 @@ import {
 } from '@/game/config/PregameConfig';
 import { MatchTeam, type MatchTeamId } from '@/game/config/MatchTeams';
 import type { SpellDisplay } from '@/game/config/spellCatalog';
+import {
+  acceptPeerPack,
+  forgetPeerPack,
+  peerPackOrigin,
+  peerPacks,
+  peerPacksDismissed,
+} from '@/content/peerPacks';
 import LoadoutEditorModal from '@/scenes/setup/LoadoutEditorModal.vue';
 import SpellPreviewModal from '@/scenes/setup/SpellPreviewModal.vue';
 
@@ -378,6 +385,35 @@ defineExpose({
       Trận đấu mạng: đội hình do <strong>chủ phòng</strong> quyết. Bạn vẫn đổi được tướng và phe của
       mình.
     </p>
+
+    <!-- What a client brought that this machine has never downloaded.
+         Deliberately an offer and not an install: a pack is spell code, and a
+         room code is all it takes to join. The origin is shown because it is
+         the part worth reading before pressing. See `content/peerPacks.ts`. -->
+    <section v-if="canEditMatch && !peerPacksDismissed && peerPacks.length" id="peer-pack-offer"
+      class="practice-note peer-pack-offer" role="alert">
+      <p>
+        Người chơi khác đang dùng nội dung máy bạn chưa có — tướng của họ hiện ô chữ cái thay
+        vì ảnh.
+      </p>
+      <div v-for="pack in peerPacks" :key="pack.manifestUrl" class="peer-pack-row">
+        <span class="peer-pack-origin">{{ peerPackOrigin(pack.manifestUrl) }}</span>
+        <span v-if="pack.failed" class="peer-pack-failed">Tải không được</span>
+        <button type="button" class="peer-pack-accept" :disabled="pack.installing"
+          @click="acceptPeerPack(pack.manifestUrl)"
+          @touchend.prevent="acceptPeerPack(pack.manifestUrl)">
+          {{ pack.installing ? 'Đang tải…' : pack.failed ? 'Thử lại' : 'Cài pack này' }}
+        </button>
+        <button type="button" class="peer-pack-skip" @click="forgetPeerPack(pack.manifestUrl)"
+          @touchend.prevent="forgetPeerPack(pack.manifestUrl)">
+          Bỏ qua
+        </button>
+      </div>
+      <button type="button" class="peer-pack-dismiss" @click="peerPacksDismissed = true"
+        @touchend.prevent="peerPacksDismissed = true">
+        Không hỏi lại trận này
+      </button>
+    </section>
 
     <section
       v-for="team of teams"
