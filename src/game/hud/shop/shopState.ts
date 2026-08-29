@@ -11,7 +11,7 @@ import {
 } from '@/game/economy/ItemShop';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { packAsset } from '@/game/config/packAsset';
-import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
+import { statLinesFor, type StatLine } from '@/game/hud/itemStatLines';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import type { QualifiedItem } from '@/content/PackRegistry';
 
@@ -30,42 +30,6 @@ import type { QualifiedItem } from '@/content/PackRegistry';
  * a purchase that says no.
  */
 
-/**
- * What each stat is called on a shop card.
- *
- * Written out rather than derived from the key, because the derivation would
- * be "insert spaces and capitalise", which produces `Magic Resist` — English,
- * in a UI that is Vietnamese everywhere else.
- */
-const STAT_LABEL: Record<ItemStatKey, string> = {
-  maxHealth: 'Máu tối đa',
-  maxMana: 'Năng lượng tối đa',
-  healthRegen: 'Hồi máu',
-  manaRegen: 'Hồi năng lượng',
-  speed: 'Tốc chạy',
-  attackDamage: 'Sát thương',
-  abilityPower: 'Sức mạnh phép',
-  cooldownReduction: 'Giảm hồi chiêu',
-  attackSpeed: 'Tốc đánh',
-  attackRange: 'Tầm đánh',
-  armor: 'Giáp',
-  magicResist: 'Kháng phép',
-  critChance: 'Chí mạng',
-  critDamage: 'Sát thương chí mạng',
-  omnivamp: 'Hút máu',
-  onHitDamage: 'Sát thương cộng thêm',
-  visionRadius: 'Tầm nhìn',
-};
-
-/** Stats a player reads as a percentage rather than as points. */
-const AS_PERCENT = new Set<ItemStatKey>([
-  'critChance',
-  'critDamage',
-  'omnivamp',
-  'abilityPower',
-  'cooldownReduction',
-]);
-
 /** Why the shop said no, in the player's own language. */
 export const REFUSAL_TEXT: Record<ShopRefusal | SellRefusal, string> = {
   NOT_AT_FOUNTAIN: 'Phải đứng ở bệ đá',
@@ -74,12 +38,6 @@ export const REFUSAL_TEXT: Record<ShopRefusal | SellRefusal, string> = {
   NOT_LOADED: 'Đang tải…',
   EMPTY: 'Ô trống',
 };
-
-export interface StatLine {
-  label: string;
-  /** Already formatted — `+40`, `+8%`. */
-  amount: string;
-}
 
 /**
  * One edge of the build tree, in either direction — a part this item is made
@@ -139,27 +97,6 @@ export interface ShopRow {
   /** '' when there is no refusal. See `REFUSAL_TEXT`. */
   reason: string;
 }
-
-const formatAmount = (key: ItemStatKey, amount: number): string => {
-  const sign = amount < 0 ? '' : '+';
-  if (AS_PERCENT.has(key)) return `${sign}${Math.round(amount * 100)}%`;
-  return `${sign}${Math.round(amount * 100) / 100}`;
-};
-
-/**
- * `ITEM_STAT_KEYS` order, not the def's own key order, so two items that grant
- * the same pair of stats list them the same way round — a card a player can
- * compare against the card beside it.
- */
-const statLines = (def: QualifiedItem): StatLine[] => {
-  const lines: StatLine[] = [];
-  for (const key of ITEM_STAT_KEYS) {
-    const amount = def.stats?.[key];
-    if (typeof amount !== 'number' || amount === 0) continue;
-    lines.push({ label: STAT_LABEL[key], amount: formatAmount(key, amount) });
-  }
-  return lines;
-};
 
 /**
  * The icon path, or '' — the same guarded lookup `ItemShop.iconOf` does, for
@@ -237,7 +174,7 @@ export function shopRows(champion: Champion, host: ShopHost, mode: ShopMode = 'P
         image: iconPath(def),
         cost: def.cost,
         price: priceFor(champion, def),
-        stats: statLines(def),
+        stats: statLinesFor(def),
         hasActive: def.active !== undefined,
         recipe,
         buildsInto,

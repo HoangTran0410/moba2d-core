@@ -420,6 +420,26 @@
   color: #9ed4ff;
 }
 
+/* The item stat block, above the prose. Mirrors `.shop-detail-stats` in
+   shop.css line for line, so the same item reads the same way in the bag as
+   it does on the shelf — `hud/itemStatLines.ts` builds both lists. */
+.spell-info .hover-stats {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.82em;
+  color: #b9c4d2;
+}
+
+.spell-info .hover-stats .amount {
+  color: #8fe0a8;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
 .spell-info .body {
   margin-top: 10px;
   color: #eee;

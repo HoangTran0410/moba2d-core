@@ -125,7 +125,22 @@ const lifted = (slot: number): boolean => {
         >
       </div>
     </div>
-    <p class="body" v-html="hud.spellHover.description"></p>
+    <!--
+      The stat block, above the prose and only for an item — a spell hover
+      carries no `stats` at all, so `v-if` is the whole of the distinction and
+      the panel needs no second variant.
+
+      One stat to a line, matching the shop card exactly (`itemStatLines.ts`
+      builds both). The packs used to write this block into the description as
+      a sentence, which the shop then printed a second time under its own list
+      and the inventory printed in one undifferentiated grey.
+    -->
+    <ul v-if="hud.spellHover.stats?.length" class="hover-stats">
+      <li v-for="line of hud.spellHover.stats" :key="line.label">
+        <span class="amount">{{ line.amount }}</span> {{ line.label }}
+      </li>
+    </ul>
+    <p v-if="hud.spellHover.description" class="body" v-html="hud.spellHover.description"></p>
   </div>
 
   <div v-if="state.avatar" class="bottom-HUD">

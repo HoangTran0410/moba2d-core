@@ -13,6 +13,7 @@ import { HotKeys, ItemHotKeys, SpellHotKeys } from '@/game/constants';
 import { INVENTORY_SIZE } from '@/game/items/Item';
 import { atOwnFountain } from '@/game/economy/ItemShop';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
+import { statLinesFor, type StatLine } from '@/game/hud/itemStatLines';
 
 function ensureVisibleAsset(asset: Pick<AssetHandle, 'key' | 'status'> | undefined): void {
   if (asset?.key && asset.status === 'idle') {
@@ -157,6 +158,19 @@ export interface ItemSlotDisplay {
   /** '' for an empty slot, and for an item whose pack named art nothing registered. */
   image: string;
   name: string;
+  /**
+   * What this item grants, one stat to a line — the same lines the shop card
+   * shows, from the same function, so the two never disagree about what an
+   * item is worth or what order to read it in.
+   *
+   * The tooltip had none of this and the packs worked around that by opening
+   * every description with its own stat block in prose. That put the numbers
+   * on screen twice inside the shop and in one flat colour outside it. With
+   * the list here, a description can go back to being the passive, the active
+   * and the notes.
+   */
+  stats: StatLine[];
+  /** The passive, the active, the notes. **Not** the stat block above. */
   description: string;
   /**
    * '1'..'6', or **''** for an item with no active.
@@ -315,6 +329,7 @@ const EMPTY_SLOT: Omit<ItemSlotDisplay, 'hotKey'> = {
   filled: false,
   image: '',
   name: '',
+  stats: [],
   description: '',
   hasActive: false,
   coolDownPercent: 0,
@@ -358,6 +373,7 @@ function buildItems(player: any): ItemSlotDisplay[] {
       filled: true,
       image: item.icon?.path ?? '',
       name: item.def?.name ?? '',
+      stats: statLinesFor(item.def),
       // **Not** rescaled, unlike a spell's. An item's abilities are the one
       // population `economy/ItemShop` opts out of ability power by hand
       // (`damageScalesWithAbilityPower = false`, because they already read

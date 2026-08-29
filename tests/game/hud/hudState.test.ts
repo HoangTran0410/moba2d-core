@@ -360,6 +360,41 @@ describe('computeHudState honours match rules', () => {
     expect(state?.spells[0].description).toBe('Gây <span class="damage">15 sát thương</span>');
   });
 
+  it('lists what an item grants, in the order the shop lists it', () => {
+    // The tooltip had no stat list, so the packs opened every description by
+    // restating the stat block in prose — which the shop then printed twice
+    // and the tooltip printed in one flat colour. Both lists come from
+    // `hud/itemStatLines.ts` now, so they cannot disagree about the numbers or
+    // about the order.
+    const state = computeHudState({
+      player: fakePlayer({
+        items: [
+          {
+            def: {
+              name: 'Giáp Gai',
+              stats: { armor: 45, maxHealth: 30, abilityPower: 0.5 },
+            },
+            icon: null,
+            active: null,
+          },
+        ],
+      }),
+    } as never);
+
+    // `ITEM_STAT_KEYS` order, not the object literal's — health, then ability
+    // power, then armour — which is what makes two cards comparable.
+    expect(state?.items[0].stats).toEqual([
+      { label: 'Máu tối đa', amount: '+30' },
+      { label: 'Sức mạnh phép', amount: '+50%' },
+      { label: 'Giáp', amount: '+45' },
+    ]);
+  });
+
+  it('and leaves an empty slot carrying no stats at all', () => {
+    const state = computeHudState({ player: fakePlayer({ items: [] }) } as never);
+    expect(state?.items[0].stats).toEqual([]);
+  });
+
   it('leaves an item description alone however much power the holder bought', () => {
     // The opposite rule from a spell's, and the reason is `economy/ItemShop`:
     // it builds every item passive and active with
