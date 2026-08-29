@@ -19,11 +19,14 @@ import Spell from '../../../src/game/gameObject/Spell';
 const power = (value: number) => ({ stats: { abilityPower: { value } } });
 
 describe('scaling the printed damage', () => {
-  it('multiplies the figure a damage span opens with', () => {
+  it('keeps the pack\'s own figure and states what the build adds', () => {
+    // `15 (+30)`, not `45`. The total alone answers what the spell hits for
+    // and loses what the item is contributing, which is the question somebody
+    // reading this text is usually asking.
     const text = 'Gây <span class="damage">15 sát thương</span> lên kẻ địch';
 
     expect(amplifiedDamageText(text, power(2))).toBe(
-      'Gây <span class="damage">45 sát thương</span> lên kẻ địch'
+      'Gây <span class="damage">15 (+30) sát thương</span> lên kẻ địch'
     );
   });
 
@@ -41,7 +44,8 @@ describe('scaling the printed damage', () => {
       '<span class="damage">20 sát thương</span> rồi <span class="damage">4 sát thương</span>';
 
     expect(amplifiedDamageText(text, power(1))).toBe(
-      '<span class="damage">40 sát thương</span> rồi <span class="damage">8 sát thương</span>'
+      '<span class="damage">20 (+20) sát thương</span> rồi' +
+        ' <span class="damage">4 (+4) sát thương</span>'
     );
   });
 
@@ -54,22 +58,33 @@ describe('scaling the printed damage', () => {
 
     expect(amplifiedDamageText(text, power(1))).toBe(
       'Khiên <span class="buff">70</span> trong <span class="time">5 giây</span>, ' +
-        'gây <span class="damage">20 sát thương</span> trong <span>150px</span>'
+        'gây <span class="damage">10 (+10) sát thương</span> trong <span>150px</span>'
     );
   });
 
   it('keeps a decimal readable rather than printing a float', () => {
     const text = '<span class="damage">4 sát thương</span> mỗi 0.5 giây';
 
-    // 4 × 1.35 is 5.4000000000000004 in binary floating point.
+    // The bonus is 1.4000000000000004 in binary floating point.
     expect(amplifiedDamageText(text, power(0.35))).toBe(
-      '<span class="damage">5.4 sát thương</span> mỗi 0.5 giây'
+      '<span class="damage">4 (+1.4) sát thương</span> mỗi 0.5 giây'
     );
   });
 
   it('and drops a trailing .0 rather than showing one', () => {
     const text = '<span class="damage">10 sát thương</span>';
-    expect(amplifiedDamageText(text, power(0.5))).toBe('<span class="damage">15 sát thương</span>');
+    expect(amplifiedDamageText(text, power(0.5))).toBe(
+      '<span class="damage">10 (+5) sát thương</span>'
+    );
+  });
+
+  it('prints a suppression as a subtraction rather than as (+-5)', () => {
+    // `Stats.abilityPower` floors at -1, so a strong enough suppression is a
+    // real state and not a hypothetical.
+    const text = '<span class="damage">20 sát thương</span>';
+    expect(amplifiedDamageText(text, power(-0.25))).toBe(
+      '<span class="damage">20 (-5) sát thương</span>'
+    );
   });
 
   it('refuses a percentage, which no amount of power changes', () => {
@@ -81,7 +96,7 @@ describe('scaling the printed damage', () => {
 
     expect(amplifiedDamageText(text, power(2))).toBe(
       'sát thương từ <span class="damage">40%</span> tới <span class="damage">100%</span>' +
-        ' của <span class="damage">90</span>'
+        ' của <span class="damage">30 (+60)</span>'
     );
   });
 
@@ -104,7 +119,7 @@ describe('the spell that owns the description', () => {
 
   it('reports what this owner actually hits for', () => {
     const spell = new Probe(wielder(1) as never);
-    expect(spell.effectiveDescription).toBe('Gây <span class="damage">60 sát thương</span>');
+    expect(spell.effectiveDescription).toBe('Gây <span class="damage">30 (+30) sát thương</span>');
   });
 
   it('but not for a spell that declined the scaling rule', () => {

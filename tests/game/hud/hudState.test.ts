@@ -337,13 +337,15 @@ describe('computeHudState honours match rules', () => {
         spells: [
           ruled({
             description: 'Gây <span class="damage">15 sát thương</span>',
-            effectiveDescription: 'Gây <span class="damage">45 sát thương</span>',
+            effectiveDescription: 'Gây <span class="damage">15 (+30) sát thương</span>',
           }),
         ],
       }),
     } as never);
 
-    expect(state?.spells[0].description).toBe('Gây <span class="damage">45 sát thương</span>');
+    expect(state?.spells[0].description).toBe(
+      'Gây <span class="damage">15 (+30) sát thương</span>'
+    );
   });
 
   it('and falls back to the raw one for a spell too old to offer it', () => {
@@ -356,6 +358,56 @@ describe('computeHudState honours match rules', () => {
     } as never);
 
     expect(state?.spells[0].description).toBe('Gây <span class="damage">15 sát thương</span>');
+  });
+
+  it('scales an item description for the champion holding it', () => {
+    // An item active is a `Spell`, so `takeDamage` amplifies it exactly like
+    // an ability — and the shop text promising a flat 30 was wrong for the
+    // same reason the spell bar was.
+    const state = computeHudState({
+      player: fakePlayer({
+        stats: {
+          health: { value: 100 },
+          maxHealth: { value: 100 },
+          mana: { value: 100 },
+          maxMana: { value: 100 },
+          abilityPower: { value: 2 },
+        },
+        items: [
+          {
+            def: {
+              name: 'Vĩnh Sương',
+              description: 'Kích hoạt: gây <span class="damage">30 sát thương phép</span>.',
+            },
+            icon: null,
+            active: null,
+          },
+        ],
+      }),
+    } as never);
+
+    expect(state?.items[0].description).toBe(
+      'Kích hoạt: gây <span class="damage">30 (+60) sát thương phép</span>.'
+    );
+  });
+
+  it('and leaves a plain item sentence exactly as the pack wrote it', () => {
+    // Every item that states no damage, which is almost all of them: an
+    // untagged "+45 armour" must not move however much power is bought.
+    const state = computeHudState({
+      player: fakePlayer({
+        stats: {
+          health: { value: 100 },
+          maxHealth: { value: 100 },
+          mana: { value: 100 },
+          maxMana: { value: 100 },
+          abilityPower: { value: 2 },
+        },
+        items: [{ def: { name: 'Giáp Lụa', description: 'Tăng 18 giáp.' }, icon: null, active: null }],
+      }),
+    } as never);
+
+    expect(state?.items[0].description).toBe('Tăng 18 giáp.');
   });
 
   it('fills the sweep against the reduced duration', () => {

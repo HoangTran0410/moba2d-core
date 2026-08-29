@@ -11,6 +11,7 @@ import {
 } from '@/game/economy/ItemShop';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { packAsset } from '@/game/config/packAsset';
+import { amplifiedDamageText } from '@/game/combat/Amplification';
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import type { QualifiedItem } from '@/content/PackRegistry';
@@ -228,7 +229,10 @@ export function shopRows(champion: Champion, host: ShopHost, mode: ShopMode = 'P
       return {
         id: def.id,
         name: def.name,
-        description: def.description ?? '',
+        // The buyer's own build, so a card answers "what will this be worth
+        // to *me*" rather than "what did it say on the first frame". The
+        // champion is already here for `priceFor`.
+        description: amplifiedDamageText(def.description ?? '', champion),
         image: iconPath(def),
         cost: def.cost,
         price: priceFor(champion, def),

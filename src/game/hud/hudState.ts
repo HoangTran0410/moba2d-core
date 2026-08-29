@@ -10,6 +10,7 @@
  */
 import type Game from '@/game/Game';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from '@/game/constants';
+import { amplifiedDamageText } from '@/game/combat/Amplification';
 import { INVENTORY_SIZE } from '@/game/items/Item';
 import { atOwnFountain } from '@/game/economy/ItemShop';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
@@ -358,7 +359,12 @@ function buildItems(player: any): ItemSlotDisplay[] {
       filled: true,
       image: item.icon?.path ?? '',
       name: item.def?.name ?? '',
-      description: item.def?.description ?? '',
+      // Rescaled for the holder, like a spell's — an item active is a `Spell`
+      // and `takeDamage` amplifies it, so the shop text promising a flat 30
+      // was wrong for exactly the same reason the spell bar was. Untagged
+      // text is returned byte for byte, which is every item that states no
+      // damage at all.
+      description: amplifiedDamageText(item.def?.description ?? '', player),
       hotKey: active ? key : '',
       hasActive: !!active,
       coolDownPercent: coolDown > 0 ? Math.min((currentCooldown / coolDown) * 100, 100) : 0,

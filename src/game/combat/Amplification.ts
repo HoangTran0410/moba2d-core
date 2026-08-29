@@ -99,8 +99,23 @@ const DAMAGE_SPAN = /(<span class="damage">)([\s\S]*?)(<\/span>)/g;
 const LEADING_NUMBER = /^(\s*)(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/;
 
 /** At most one decimal, and no trailing `.0` — `45`, not `45.0`. */
-const printable = (value: number): string =>
-  (Math.round(value * 10) / 10).toString();
+const printable = (value: number): string => (Math.round(value * 10) / 10).toString();
+
+/**
+ * `15 (+30)` — the pack's own number, then what this build adds to it.
+ *
+ * A bare total would answer "what does this hit for" and lose the question a
+ * player is usually asking while shopping, which is "what is this item doing
+ * for me". Both numbers together answer both, and the base staying visible is
+ * also what makes the sentence recognisable as the one the pack wrote.
+ *
+ * A suppression (a multiplier under 1) prints `15 (-5)` rather than `(+-5)`.
+ */
+const withBonus = (base: number, multiplier: number): string => {
+  const bonus = base * multiplier - base;
+  const sign = bonus < 0 ? '-' : '+';
+  return `${printable(base)} (${sign}${printable(Math.abs(bonus))})`;
+};
 
 /**
  * The same amplification, applied to the number a player *reads* instead of
@@ -111,6 +126,10 @@ const printable = (value: number): string =>
  * and the bar still promised 15. The arithmetic was right and the only place
  * a player could check it was wrong, which is the worse half — an item that
  * silently works is indistinguishable from an item that silently does not.
+ *
+ * Printed as `15 (+30)`, not as `45`. The total alone would answer what the
+ * spell hits for and lose what the build is contributing, which is the
+ * question being asked at the moment somebody is reading item text at all.
  *
  * Only the leading figure of a `damage` span moves, and only when it is a
  * flat one — a percentage, or a span whose text does not open with a number
@@ -138,7 +157,7 @@ export function amplifiedDamageText(
     const scaled = inner.replace(
       LEADING_NUMBER,
       (_match: string, space: string, digits: string) =>
-        space + printable(Number(digits) * multiplier)
+        space + withBonus(Number(digits), multiplier)
     );
     return open + scaled + close;
   });

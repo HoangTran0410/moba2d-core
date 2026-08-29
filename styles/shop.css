@@ -429,6 +429,21 @@
   color: #97a3b3;
 }
 
+/* The same three spans a spell description uses — see hud.css's
+   `.spell-info .body` rules, which this mirrors so one sentence does not
+   change colour depending on which panel is showing it. */
+.shop-detail-text .damage {
+  color: var(--spell-damage);
+}
+
+.shop-detail-text .buff {
+  color: var(--spell-buff);
+}
+
+.shop-detail-text .time {
+  color: var(--spell-time);
+}
+
 .shop-detail-section {
   margin-top: 10px;
   padding-top: 8px;

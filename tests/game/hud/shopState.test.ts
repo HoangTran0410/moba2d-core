@@ -66,6 +66,25 @@ describe('shopRows', () => {
     expect(row.reason).toBe('');
   });
 
+  it('prices the card in gold and its damage in this buyer\'s ability power', () => {
+    // A card answers "what will this be worth to *me*", not "what did it say
+    // on the first frame of the match" — the same rule the spell bar follows.
+    // Only tagged damage moves; the stat line beside it is untouched.
+    stock = [
+      item({
+        description:
+          'Tăng 45 kháng phép. Kích hoạt: gây <span class="damage">30 sát thương phép</span>.',
+      }),
+    ];
+    champion.stats.abilityPower.baseValue = 2;
+
+    const [row] = shopRows(champion, host);
+
+    expect(row.description).toBe(
+      'Tăng 45 kháng phép. Kích hoạt: gây <span class="damage">30 (+60) sát thương phép</span>.'
+    );
+  });
+
   it('carries the refusal *and* its sentence, so the card never has to guess', () => {
     champion.position.set(2_000, 0);
     const [row] = shopRows(champion, host);
