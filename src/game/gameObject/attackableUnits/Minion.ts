@@ -784,66 +784,54 @@ export default class Minion extends AttackableUnit {
   }
 
   /**
-   * The siege body: a wheeled cart with a barrel out front.
+   * The siege body: an armoured wagon with a barrel out front.
    *
-   * Wheels are drawn first so the chassis sits over them, which is the whole
-   * trick that makes four dark circles read as running gear rather than as
-   * four dots. The barrel reaches past the chassis, which is why this style
-   * widens its own display box — see `getDisplayBoundingBox`.
+   * Curves rather than corners, and that is the whole of the second pass at
+   * it. The first drew the chassis as two `quad`s, which at a lane's zoom is a
+   * grey oblong with a stick on it — a shape that reads as *unfinished* beside
+   * the round bodies it walks with rather than as a different kind of unit.
+   * An ellipse hull, round wheels, a capped barrel and a lit muzzle are the
+   * same nine draw calls and the same silhouette, with nothing square left in
+   * it to catch the eye.
+   *
+   * Order matters twice: the wheels go down first so the hull sits over their
+   * tops, and the barrel before the hull so it reads as emerging from the body
+   * rather than as glued to the front of it.
+   *
+   * This is the one body that can afford nine calls — at most one per wave per
+   * lane, three on the board in an ordinary minute, against forty of the
+   * others.
    */
   private drawCart(size: number): void {
     const { body, trim } = this.colors;
-    const halfLength = size * 0.52;
-    const halfWidth = size * 0.34;
-    const wheel = size * 0.32;
-    const axle = halfWidth + wheel * 0.34;
+    const axle = size * 0.42;
+    const wheel = size * 0.36;
+    const muzzle = size * 0.86;
 
-    fill(26, 28, 36, 240);
-    circle(-halfLength * 0.5, -axle, wheel);
-    circle(-halfLength * 0.5, axle, wheel);
-    circle(halfLength * 0.45, -axle, wheel);
-    circle(halfLength * 0.45, axle, wheel);
+    fill(22, 24, 32, 242);
+    circle(-size * 0.08, -axle, wheel);
+    circle(-size * 0.08, axle, wheel);
+    fill(trim[0], trim[1], trim[2], 210);
+    circle(-size * 0.08, -axle, wheel * 0.4);
+    circle(-size * 0.08, axle, wheel * 0.4);
 
-    // chassis, trim first as a border the body sits inside
-    const lip = size * 0.07;
+    stroke(56, 60, 74, 245);
+    strokeWeight(size * 0.26);
+    strokeCap(ROUND);
+    line(size * 0.1, 0, muzzle, 0);
+    noStroke();
+
     fill(trim[0], trim[1], trim[2], 235);
-    quad(
-      -halfLength - lip,
-      -halfWidth - lip,
-      halfLength + lip,
-      -halfWidth - lip,
-      halfLength + lip,
-      halfWidth + lip,
-      -halfLength - lip,
-      halfWidth + lip
-    );
+    ellipse(0, 0, size * 1.16, size * 0.98);
     fill(body[0], body[1], body[2]);
-    quad(
-      -halfLength,
-      -halfWidth,
-      halfLength,
-      -halfWidth,
-      halfLength,
-      halfWidth,
-      -halfLength,
-      halfWidth
-    );
+    ellipse(0, 0, size * 1.0, size * 0.82);
+    // a soft highlight along the top-left, so the hull reads as rounded metal
+    // rather than as a flat disc with a gun on it
+    fill(255, 255, 255, 55);
+    ellipse(-size * 0.1, -size * 0.16, size * 0.52, size * 0.24);
 
-    // barrel, tapering forward, with a lit muzzle
-    const muzzle = size * 0.92;
-    fill(52, 56, 70, 245);
-    quad(
-      halfLength * 0.2,
-      -size * 0.15,
-      muzzle,
-      -size * 0.1,
-      muzzle,
-      size * 0.1,
-      halfLength * 0.2,
-      size * 0.15
-    );
-    fill(255, 215, 120, 235);
-    circle(muzzle, 0, size * 0.22);
+    fill(255, 214, 128, 240);
+    circle(muzzle, 0, size * 0.2);
   }
 
   /** Lights a cheap circle for the player team; minions carry no combat sight. */

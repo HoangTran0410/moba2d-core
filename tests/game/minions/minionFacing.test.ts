@@ -122,12 +122,13 @@ describe('the cart’s display box', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('is wide enough for the barrel the other two bodies do not have', () => {
-    // `drawCart` reaches `size * 0.92` past the centre for the muzzle. The
-    // 1.4 box every minion used to share is half that wide, so a cannon would
-    // lose its gun a beat before the rest of it at the edge of the screen.
+    // `drawCart`'s muzzle sits at `size * 0.86` and is `size * 0.2` across, so
+    // the shape reaches `0.96` past the centre. The 1.4 box every minion used
+    // to share is half that wide, so a cannon would lose its gun a beat before
+    // the rest of it at the edge of the screen.
     const cannon = spawn(game, 0, 0, MinionPresets.cannon);
     const box = cannon.getDisplayBoundingBox()!;
-    const reach = MinionPresets.cannon.size * 0.92;
+    const reach = MinionPresets.cannon.size * 0.96;
 
     expect(box.w / 2).toBeGreaterThan(reach);
   });

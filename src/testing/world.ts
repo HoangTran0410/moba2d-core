@@ -245,6 +245,7 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     'noFill',
     'noStroke',
     'strokeWeight',
+    'strokeCap',
     'rect',
     'line',
     'circle',
@@ -264,7 +265,18 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     spies[name] = vi.fn();
     vi.stubGlobal(name, spies[name]);
   }
-  for (const name of ['CENTER', 'CLOSE', 'RIGHT', 'LEFT', 'BOTTOM', 'BASELINE', 'TOP']) {
+  for (const name of [
+    'CENTER',
+    'CLOSE',
+    'RIGHT',
+    'LEFT',
+    'BOTTOM',
+    'BASELINE',
+    'TOP',
+    'ROUND',
+    'SQUARE',
+    'PROJECT',
+  ]) {
     vi.stubGlobal(name, name);
   }
   return spies;
