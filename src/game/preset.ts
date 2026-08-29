@@ -784,6 +784,7 @@ const bareMonsterBodyPreset = (
   attackColor: member.attackColor,
   temperament: member.temperament,
   anchored: member.anchored,
+  wanderSpeed: member.wanderSpeed,
   chaseMargin: member.chaseMargin,
   giveUpDelayMs: member.giveUpDelayMs,
   regenDelayMs: member.regenDelayMs,

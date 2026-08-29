@@ -115,17 +115,21 @@ describe('temperament', () => {
     expect(camp.targetLock).toBeNull();
   });
 
-  it('skittish runs from a champion that only walked close', () => {
-    // Aggressive camps deliberately do not wake on proximity. The skittish
-    // scan is the one exception and rides the idle phase's existing 250ms
-    // beat, so the first idle tick is enough.
+  it('skittish lets a champion walk right up to it', () => {
+    // **This assertion is the reverse of what it used to be.** `skittish`
+    // ran a proximity scan from IDLE and bolted from anyone inside
+    // `aggroRange`, which made the one camp using it — a river crab —
+    // unapproachable rather than shy: you could never stand next to it, and
+    // the source game's crab strolls about until something actually hits it.
+    // The retreat now starts where every other fight does, in `aggroOn` off
+    // `takeDamage`, and IDLE has no proximity exception left in it.
     const camp = makeCamp({ temperament: 'skittish' });
     const champion = championAt(120);
     indexObjects(game, [camp, champion]);
 
     camp.update();
 
-    expect(camp.phase).toBe(Monster.PHASES.FLEE);
+    expect(camp.phase).toBe(Monster.PHASES.IDLE);
   });
 
   it('an aggressive camp still ignores a champion that only walked close', () => {
@@ -138,30 +142,36 @@ describe('temperament', () => {
     expect(camp.phase).toBe(Monster.PHASES.IDLE);
   });
 
-  it('skittish ignores a champion outside its aggro range', () => {
+  it('and gives up the chase once the threat is outside that aggro range', () => {
+    // What `aggroRange` still answers now that the idle scan is gone: not
+    // "does this startle me" but "is the thing I am running from still near
+    // enough to keep running from". Asserted through `nearestThreat`, which is
+    // the one query `updateFlee` re-runs on its own beat.
     const camp = makeCamp({ temperament: 'skittish', aggroRange: 100 });
-    const champion = championAt(260);
-    indexObjects(game, [camp, champion]);
+    const near = championAt(60);
+    indexObjects(game, [camp, near]);
+    expect(camp.nearestThreat()).toBe(near);
 
-    camp.update();
-
-    expect(camp.phase).toBe(Monster.PHASES.IDLE);
+    near.position.set(CAMP.x + 260, CAMP.y);
+    indexObjects(game, [camp, near]);
+    expect(camp.nearestThreat()).toBeNull();
   });
 
-  it('does not startle at a champion hiding in a bush', () => {
+  it('cannot see a champion hiding in a bush, so it stops running from one', () => {
     // The threat scan goes through `PredefinedFilters.visibleTo`, which is
     // what `check-seams`' `target-vision` rule requires of any query that
     // picks a unit. A camp has `visionRadius = 0` and still sees normally —
     // `Vision.viewIsClear` range-gates only borrowed eyes — so what the gate
-    // actually buys here is bush cover.
+    // actually buys here is bush cover. It used to keep a crab from startling;
+    // with the proximity scan gone it is what lets a chased one calm down when
+    // its pursuer ducks into the brush.
     const camp = makeCamp({ temperament: 'skittish' });
     const champion = championAt(120);
-    champion.isInsideBush = true;
     indexObjects(game, [camp, champion]);
+    expect(camp.nearestThreat()).toBe(champion);
 
-    camp.update();
-
-    expect(camp.phase).toBe(Monster.PHASES.IDLE);
+    champion.isInsideBush = true;
+    expect(camp.nearestThreat()).toBeNull();
   });
 
   it('but a hit from that bush still sends it running', () => {

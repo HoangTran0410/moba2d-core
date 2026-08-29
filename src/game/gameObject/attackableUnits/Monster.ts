@@ -75,8 +75,12 @@ export interface MonsterAbility {
  *   its leash and walks home. Absent means this, so no existing camp moves.
  * - `passive` — never fights. `aggroOn` is a no-op and a hit does not wake
  *   the pack, so it can be killed and does nothing about it.
- * - `skittish` — never fights *and* runs. A champion inside `aggroRange`, or
- *   any damage at all, puts it in `FLEE`.
+ * - `skittish` — never fights *and* runs. Damage puts it in `FLEE`, through
+ *   the same `aggroOn` seam a fight starts at. It used to bolt from anything
+ *   that came inside `aggroRange` too; that made the one camp using it
+ *   unapproachable rather than shy, and `aggroRange` now answers only the
+ *   question `updateFlee` asks — is the thing I am running from still near
+ *   enough to keep running from.
  *
  * Deliberately three named values rather than a pair of booleans
  * (`canFight`, `flees`): the fourth combination — "runs away but also
@@ -161,6 +165,19 @@ export interface MonsterPresetData {
   /** Defaults to `{ kind: 'camp' }` — see the type. */
   roam?: MonsterRoam;
   /**
+   * How fast it drifts around its roam region while nothing is happening.
+   * Absent, or zero, means it does not drift at all — which is every camp
+   * written before this and every camp that should be *found* where the map
+   * put it.
+   *
+   * One field rather than a `wanders` flag beside a speed, because the two
+   * questions have one answer: a camp that ambles has a pace it ambles at, and
+   * a camp with no such pace does not amble. It is deliberately not `speed`
+   * — that is what the body moves at once something is after it, and an animal
+   * that strolls and bolts at the same rate is an animal doing neither.
+   */
+  wanderSpeed?: number;
+  /**
    * Extra chase distance past this camp's pit/reach. Defaults to
    * `MONSTER_CHASE_MARGIN`.
    *
@@ -237,6 +254,16 @@ export const MONSTER_REGEN_DELAY_MS = 4000;
  * than stand still.
  */
 export const MONSTER_FLEE_STEPS = [420, 260, 130] as const;
+
+/** How long a wandering body rests at the end of one leg before picking the
+ *  next. Long enough that the walk reads as ambling rather than as patrolling. */
+export const MONSTER_WANDER_PAUSE_MS = 2200;
+/** How far one leg of that walk tries to go, longest first — read like
+ *  `MONSTER_FLEE_STEPS`, and short because this is a stroll. */
+export const MONSTER_WANDER_STEPS = [260, 150, 80] as const;
+/** How many directions each of those lengths is tried in before giving up on
+ *  the leg entirely and resting instead. */
+export const MONSTER_WANDER_TRIES = 6;
 
 /**
  * Turns applied to "directly away from the threat", in radians, tried in
@@ -329,6 +356,12 @@ export default class Monster extends AttackableUnit {
 
   /** Whether this body can close a gap under its own power. */
   hasLegs = true;
+  /** What it moves at once something is after it — the preset's own `speed`. */
+  runSpeed: number;
+  /** What it ambles at while nothing is. Zero means it does not amble. */
+  wanderSpeed: number;
+  /** ms left of the rest between two legs of that amble. */
+  _wanderRest = 0;
   /** ms left before the next swing. */
   _attackCooldown = 0;
   /** Latched once `onSpawn` has been announced for this life. */
@@ -377,6 +410,8 @@ export default class Monster extends AttackableUnit {
     // still ask for it.
     this.hasLegs = preset.speed > 0;
     this.isImmovable = preset.anchored ?? !this.hasLegs;
+    this.runSpeed = preset.speed;
+    this.wanderSpeed = preset.wanderSpeed ?? 0;
 
     this.attackRange = preset.attackRange;
     this.reviveTime = preset.reviveTime;
@@ -424,6 +459,20 @@ export default class Monster extends AttackableUnit {
             ? this._leashRegen
             : 0;
 
+    // The two paces, picked by phase for the same reason the regen rate above
+    // is: `Stats.update()` runs inside `super.update()`, so what this body is
+    // about to move at has to be in place before we call up.
+    //
+    // Guarded, and the guard is the point: only a body that ambles has two
+    // paces, so only that body's `speed.baseValue` is ever written. Every camp
+    // that declared no `wanderSpeed` keeps the one the constructor gave it,
+    // untouched, for the whole match — which is what makes this cost nothing
+    // and change nothing for the nine camps that predate it.
+    if (this.wanderSpeed > 0) {
+      this.stats.speed.baseValue =
+        this.phase === Monster.PHASES.IDLE ? this.wanderSpeed : this.runSpeed;
+    }
+
     super.update();
 
     // Buffs ran inside super.update(); undo anything that tried to move us.
@@ -453,6 +502,7 @@ export default class Monster extends AttackableUnit {
     }
 
     if (this._attackCooldown > 0) this._attackCooldown -= deltaTime;
+    if (this._wanderRest > 0) this._wanderRest -= deltaTime;
     for (let i = 0; i < this._abilityCooldowns.length; i++) {
       if (this._abilityCooldowns[i] > 0) this._abilityCooldowns[i] -= deltaTime;
     }
@@ -483,19 +533,74 @@ export default class Monster extends AttackableUnit {
 
     // Camps no longer wake on proximity: a champion can walk straight through a
     // pit untouched. A camp only enters ATTACK when something damages it —
-    // `takeDamage` calls `aggroOn(attacker)`. IDLE is now a genuinely passive
-    // state whose only job is to hold the camp point and regen.
+    // `takeDamage` calls `aggroOn(attacker)`. IDLE holds the camp point,
+    // regenerates, and — for a body with a `wanderSpeed` — ambles.
     //
-    // A `skittish` camp is the one exception, and it is not a re-opening of
-    // that rule: proximity here starts a *retreat*, never a fight. The scan
-    // rides the 250ms cooldown above — which this phase already spends and
-    // nothing else was using — so an aggressive camp still runs no query at
-    // all and the cost of the exception is one string comparison per body per
-    // quarter second.
-    if (this.temperament === 'skittish') {
-      const threat = this.nearestThreat();
-      if (threat) this.fleeFrom(threat);
+    // **`skittish` used to be the exception here** and no longer is: it ran a
+    // proximity scan and bolted from anyone who came near. That made the one
+    // camp using it unapproachable rather than shy, and it is not what the
+    // source game's river crab does either — that one strolls until something
+    // actually hits it. So the retreat now starts where every other fight
+    // does, in `aggroOn` off `takeDamage`, and IDLE has no exception left in
+    // it. `nearestThreat` still exists for `updateFlee`, which asks whether
+    // the thing it is running from is still there.
+    if (this.wanderSpeed > 0) this.wanderOn();
+  }
+
+  /**
+   * One leg of an amble, or the rest between two.
+   *
+   * Runs on the same 250ms beat as everything else in IDLE, and reads its
+   * state off the body rather than off a flag: a destination not yet reached
+   * *is* "mid-leg", so the rest clock is simply held at full while walking and
+   * starts counting the moment the body stops. Nothing has to be told that a
+   * leg finished.
+   */
+  wanderOn(): void {
+    if (!withinRadius(this.position, this.destination, MONSTER_HOME_TOLERANCE)) {
+      this._wanderRest = MONSTER_WANDER_PAUSE_MS;
+      return;
     }
+    if (this._wanderRest > 0) return;
+
+    const point = this.wanderPoint();
+    // Cornered — nowhere legal within a stroll's reach. Rest and try again
+    // rather than re-rolling eighteen samples every quarter second for ever.
+    if (!point) {
+      this._wanderRest = MONSTER_WANDER_PAUSE_MS;
+      return;
+    }
+    // Set when the leg is *ordered*, not when it ends: the branch above holds
+    // it at full for as long as the body is still walking, so it only starts
+    // counting once the body stops. Setting it on arrival instead would mean
+    // there is no rest at all when a leg is short enough to be finished
+    // between two scans, which is a rule with a hole in it rather than a rule.
+    this._wanderRest = MONSTER_WANDER_PAUSE_MS;
+    this.navigateTo(point.x, point.y);
+  }
+
+  /**
+   * Somewhere nearby this body is allowed to stand, or nothing.
+   *
+   * Both gates, for the reason `fleePoint` documents at length: the roam
+   * region refuses "out of the river" and the nav grid refuses "inside that
+   * rock", and a point can pass either one alone and still be somewhere the
+   * body cannot go. Random directions rather than a fan, because a stroll has
+   * no direction it is trying to get away from.
+   */
+  wanderPoint(): { x: number; y: number } | null {
+    const radius = this.stats.size.value / 2;
+    for (const distance of MONSTER_WANDER_STEPS) {
+      for (let attempt = 0; attempt < MONSTER_WANDER_TRIES; attempt++) {
+        const angle = random(TWO_PI);
+        const x = this.position.x + Math.cos(angle) * distance;
+        const y = this.position.y + Math.sin(angle) * distance;
+        if (!this.roamContains(x, y)) continue;
+        if (!this.canStandAt(x, y, radius)) continue;
+        return { x, y };
+      }
+    }
+    return null;
   }
 
   /**

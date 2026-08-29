@@ -402,6 +402,17 @@ export interface MonsterBody {
    */
   anchored?: boolean;
   /**
+   * How fast this body drifts around its roam region while nothing is
+   * happening. Absent, or zero, means it holds its spot — which is what every
+   * camp written before this field does.
+   *
+   * Beside `roam` and for the same reason: *where* a body may wander and
+   * *whether* it does are one decision, taken by whoever knows what the
+   * creature is. It is separate from `speed`, which is what it moves at once
+   * something is after it.
+   */
+  wanderSpeed?: number;
+  /**
    * How far past its own ground this body will follow. Absent means
    * `MONSTER_CHASE_MARGIN`; a map may replace it for every camp at once
    * (`MonsterTuning.chaseMargin`) and a slot for one camp.

@@ -615,7 +615,7 @@ function checkMonsterBehaviour(
 
   checkAttackStyle(path, value.attackStyle, errors);
 
-  for (const key of ['chaseMargin', 'giveUpDelayMs', 'regenDelayMs'] as const) {
+  for (const key of ['chaseMargin', 'giveUpDelayMs', 'regenDelayMs', 'wanderSpeed'] as const) {
     if (value[key] !== undefined && !isFiniteNumber(value[key])) {
       errors.push(`${path}.${key}: must be a finite number`);
     }

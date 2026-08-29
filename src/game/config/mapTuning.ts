@@ -288,6 +288,12 @@ export function resolveMonsterPreset(
     ...base,
     health: num(own.health, both('healthMult', base.health)),
     speed: both('speedMult', base.speed),
+    // Scaled by the same multiplier its running pace is, and left `undefined`
+    // rather than floored to 0 when the body declares none: a jungle a map has
+    // slowed down should not have one camp still strolling at full speed, and
+    // "does not wander" has to survive the merge as the absence it is.
+    wanderSpeed:
+      base.wanderSpeed === undefined ? undefined : both('speedMult', base.wanderSpeed),
     attackRange: num(own.attackRange, base.attackRange),
     reviveTime: num(own.reviveTime, both('reviveTimeMult', base.reviveTime)),
     damage: optional(own.damage, base.damage, map.damageMult),
