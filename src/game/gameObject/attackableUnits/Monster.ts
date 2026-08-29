@@ -246,6 +246,44 @@ export const MONSTER_GIVE_UP_DELAY_MS = 2000;
 export const MONSTER_REGEN_DELAY_MS = 4000;
 
 /**
+ * How long a camp takes to refill its own bar, from empty.
+ *
+ * ## Why these are seconds and used to be frames
+ *
+ * They were `health / 120` and `health / 60`, written as a per-frame amount
+ * because `Stats.update` adds `healthRegen` to the pool **once per frame with
+ * no `deltaTime`**. Two things followed, and both were reported from a real
+ * match before either was measured.
+ *
+ * The first is arithmetic: `health / 60` per frame is a full bar in sixty
+ * frames, which at 60Hz is *one second*. A drake that had chased a champion
+ * across half the river turned round and refilled a 2,600-point bar between
+ * two blinks, which does not read as a camp resetting — it reads as a bug.
+ *
+ * The second is that the rate was **frame-rate dependent**, so the same camp
+ * healed in 0.42s on a 144Hz screen and 2s on a 30Hz one. Nothing about a
+ * jungle camp should be faster on a better monitor. `update` converts a
+ * per-second rate through `deltaTime` now, which is the fix for that and the
+ * reason these constants can be stated in a unit a person can check.
+ *
+ * ## Why a reset stays fast
+ *
+ * A camp *must* return to full, or a player chips it down over several
+ * passes and takes it for nothing — the genre's own answer, and the reason
+ * these numbers are seconds rather than tens of seconds. With
+ * `MONSTER_REGEN_DELAY_MS` in front of it, walking away costs the full
+ * `4 + 8` seconds before the bar is back; coming back inside that window
+ * means never really having left.
+ *
+ * Walking home is the faster of the two on purpose: that walk is a camp
+ * visibly giving up, and by the time it is standing on its own spot the fight
+ * should be over rather than half-remembered.
+ */
+export const MONSTER_IDLE_REGEN_SECONDS = 8;
+/** See `MONSTER_IDLE_REGEN_SECONDS`. */
+export const MONSTER_LEASH_REGEN_SECONDS = 4;
+
+/**
  * How far a fleeing body tries to get in one order, longest first.
  *
  * Three lengths rather than one because the first is a *preference*, not a
@@ -436,9 +474,8 @@ export default class Monster extends AttackableUnit {
     this.abilities = preset.abilities ?? [];
     this._abilityCooldowns = this.abilities.map(() => 0);
 
-    // camps reset in ~2s when left alone, faster while walking home
-    this._idleRegen = preset.health / 120;
-    this._leashRegen = preset.health / 60;
+    this._idleRegen = preset.health / MONSTER_IDLE_REGEN_SECONDS;
+    this._leashRegen = preset.health / MONSTER_LEASH_REGEN_SECONDS;
   }
 
   update() {
@@ -450,7 +487,7 @@ export default class Monster extends AttackableUnit {
     // BACK_TO_CAMP the moment its target steps out of reach, and a camp that
     // wins reaches IDLE on the same frame the last blow lands.
     if (this._regenHold > 0) this._regenHold -= deltaTime;
-    this.stats.healthRegen.baseValue =
+    const perSecond =
       this.isDead || this._regenHold > 0
         ? 0
         : this.phase === Monster.PHASES.IDLE
@@ -458,6 +495,9 @@ export default class Monster extends AttackableUnit {
           : this.phase === Monster.PHASES.BACK_TO_CAMP
             ? this._leashRegen
             : 0;
+    // Converted here, because `Stats.update` adds `healthRegen` **once per
+    // frame with no `deltaTime`** — see `MONSTER_LEASH_REGEN_SECONDS`.
+    this.stats.healthRegen.baseValue = (perSecond * deltaTime) / 1_000;
 
     // The two paces, picked by phase for the same reason the regen rate above
     // is: `Stats.update()` runs inside `super.update()`, so what this body is
