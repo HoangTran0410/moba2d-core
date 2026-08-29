@@ -72,6 +72,12 @@ export async function publishPackMaps(registry: PackRegistry): Promise<void> {
         name: summary.name,
         size: summary.size,
         factions: summary.factions,
+        // Without this, opening a shipped map in the editor and exporting it
+        // again silently strips the numbers it arrived with, and the map
+        // looks perfectly fine. Spread explicitly rather than passed as
+        // `tuning: summary.tuning`, so a map that tunes nothing round-trips
+        // with no key at all rather than with an `undefined` one.
+        ...(summary.tuning === undefined ? {} : { tuning: summary.tuning }),
         ...geometry,
       });
     } catch (thrown) {

@@ -52,7 +52,7 @@ interface EditorRun {
  * matching minion slots or core rejects the whole thing — which is the
  * behaviour the last case here pins.
  */
-function runEditor(): EditorRun {
+function runEditor(tuning?: unknown): EditorRun {
   const written: EditorRun = { published: null, key: null };
   const store = new Map<string, string>();
 
@@ -90,7 +90,9 @@ function runEditor(): EditorRun {
     `
     E.mapName = 'Thung Lũng';
     E.mapSize = [4000, 4000];
-    E.meta = { id: 'thung-lung', factions: ['amber', 'jade'] };
+    E.meta = { id: 'thung-lung', factions: ['amber', 'jade']${
+      tuning === undefined ? '' : `, tuning: ${JSON.stringify(tuning)}`
+    } };
     E.terrains = [
       normalizeTerrain({ type: 'wall', position: [1000, 1000], polygon: ${JSON.stringify(CONCAVE_C)} }),
       normalizeTerrain({ type: 'bush', position: [2000, 2000], polygon: [[0,0],[200,0],[200,200],[0,200]] }),
@@ -109,6 +111,54 @@ function runEditor(): EditorRun {
   );
 
   return written;
+}
+
+/**
+ * Run the editor's own `parseMapJSON` on a document and report both what it
+ * put in `meta` and what `mapSummary()` would then export — the two ends of
+ * the round trip a pack map makes through the editor.
+ */
+function parseInEditor(doc: unknown): {
+  meta: { tuning?: unknown };
+  summaryTuning: unknown;
+} {
+  const store = new Map<string, string>();
+  const sandbox: Record<string, unknown> = {
+    console,
+    JSON,
+    Math,
+    Date,
+    setTimeout,
+    clearTimeout,
+    localStorage: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    },
+    document: {
+      createElement: () => ({ style: {}, appendChild() {}, click() {}, remove() {} }),
+      body: { appendChild() {} },
+    },
+  };
+  sandbox.window = sandbox;
+  const context = vm.createContext(sandbox);
+  vm.runInContext(editorFile('lib/decomp.min.js'), context);
+  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
+  for (const file of ['js/geom.js', 'js/state.js', 'js/storage.js']) {
+    vm.runInContext(editorFile(file), context);
+  }
+  return vm.runInContext(
+    `
+    (() => {
+      const parsed = Store.parseMapJSON(${JSON.stringify(JSON.stringify(doc))}, 'M');
+      E.mapName = parsed.name;
+      E.mapSize = parsed.mapSize;
+      E.meta = parsed.meta;
+      return { meta: parsed.meta, summaryTuning: Store.mapSummary().tuning };
+    })()
+    `,
+    context
+  );
 }
 
 /** Point core's `localStorage` reads at a value the editor produced. */
@@ -157,6 +207,72 @@ describe('local maps', () => {
     // editor can reopen its own map instead of a heap of triangles.
     expect(geometry.authoring?.terrain.wall).toHaveLength(1);
     expect(geometry.authoring?.terrain.wall[0]).toHaveLength(CONCAVE_C.length);
+  });
+
+  it("publishes a map's own tuning beside its factions", () => {
+    // `MapSummary.tuning` — the same tier as `factions`, not inside the
+    // geometry. Miss this and "Chơi thử" runs the map on core's own numbers
+    // while the exported file carries the author's, which is two different
+    // maps from one drawing with nothing saying so.
+    const run = runEditor({
+      turrets: { damage: 40 },
+      terrain: { water: { speedMultiplier: 0.5 } },
+    });
+    stubStorage(run.published);
+
+    const [map] = readLocalMaps();
+    expect(map.tuning).toEqual({
+      turrets: { damage: 40 },
+      terrain: { water: { speedMultiplier: 0.5 } },
+    });
+
+    const registry = new PackRegistry();
+    installLocalMaps(registry);
+    const installed = registry.maps().find(m => m.id === 'local:thung-lung');
+    expect(installed?.tuning).toEqual(map.tuning);
+  });
+
+  it('writes no tuning key at all for a map that tunes nothing', () => {
+    stubStorage(published);
+    const [map] = readLocalMaps();
+    expect('tuning' in map).toBe(false);
+  });
+
+  it('drops a group the author emptied rather than shipping a hollow one', () => {
+    // The config panel makes this easy to produce: type a number into a
+    // group, delete it again, and an empty object is left behind. It must not
+    // reach the export, where it is a promise of rules that are not there.
+    const run = runEditor({ turrets: {}, monsters: {} });
+    stubStorage(run.published);
+    expect('tuning' in readLocalMaps()[0]).toBe(false);
+  });
+
+  it('reads tuning back out of a document it is given', () => {
+    // The other direction, and the one that loses data silently: a pack map
+    // arrives through `PACK_MAPS_KEY`, the author edits its walls, exports —
+    // and without this the numbers it came with are gone and the map looks
+    // perfectly fine.
+    const parsed = parseInEditor({
+      id: 'm',
+      name: 'M',
+      size: 2000,
+      factions: [{ id: 'amber' }, { id: 'jade' }],
+      tuning: { monsters: { healthMult: 2 } },
+      terrain: {
+        wall: [
+          [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        ],
+        bush: [],
+        water: [],
+      },
+      slots: { spawn: [], minion: [], structure: [], neutral: [] },
+    });
+    expect(parsed.meta.tuning).toEqual({ monsters: { healthMult: 2 } });
+    expect(parsed.summaryTuning).toEqual({ monsters: { healthMult: 2 } });
   });
 
   it('drops a map core would refuse, and installs the rest', () => {

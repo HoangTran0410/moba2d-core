@@ -52,8 +52,7 @@ const packWith = async (files: Record<string, unknown>): Promise<string> => {
   return root;
 };
 
-const run = (cwd: string, ...args: string[]) =>
-  spawnSync(bin, args, { cwd, encoding: 'utf8' });
+const run = (cwd: string, ...args: string[]) => spawnSync(bin, args, { cwd, encoding: 'utf8' });
 
 const geometryOf = (cwd: string, base: string) =>
   JSON.parse(readFileSync(join(cwd, 'generated/maps', `${base}.geometry.json`), 'utf8'));
@@ -103,8 +102,9 @@ describe('moba2d-generate-maps bin', () => {
     run(cwd);
 
     expect('authoring' in geometryOf(cwd, 'twistedTreeline')).toBe(false);
-    expect(JSON.parse(readFileSync(join(cwd, 'maps/twistedTreeline_map.json'), 'utf8')).authoring)
-      .toBeDefined();
+    expect(
+      JSON.parse(readFileSync(join(cwd, 'maps/twistedTreeline_map.json'), 'utf8')).authoring
+    ).toBeDefined();
   });
 
   it('writes the picker half with no polygons and no id', async () => {
@@ -116,6 +116,35 @@ describe('moba2d-generate-maps bin', () => {
     expect(meta).toMatch(/"size":6400/);
     expect(meta).not.toMatch(/map-nhap-vao/);
     expect(meta).not.toMatch(/terrain|wall|slots/);
+  });
+
+  it("carries a map's own tuning into the picker half, not the geometry", async () => {
+    // `tuning` is declared on `MapSummary`, so it has to arrive with the name
+    // and the size or `ActiveMap` never sees it. The geometry file is exactly
+    // terrain/slots/lanes by construction, which is what would have dropped it.
+    const cwd = await packWith({
+      'twistedTreeline_map.json': {
+        ...EXPORT,
+        tuning: { turrets: { damage: 40 }, terrain: { water: { speedMultiplier: 0.5 } } },
+      },
+    });
+    run(cwd);
+
+    const meta = readFileSync(join(cwd, 'generated/maps/mapMeta.ts'), 'utf8');
+    expect(meta).toMatch(/"tuning":\{"turrets":\{"damage":40\}/);
+    expect(Object.keys(geometryOf(cwd, 'twistedTreeline'))).not.toContain('tuning');
+  });
+
+  it('omits the key entirely for a map that tunes nothing', async () => {
+    // So a pack that has not opted in generates byte-identically to before
+    // this existed, and its staleness check stays quiet.
+    const cwd = await packWith({ 'twistedTreeline_map.json': EXPORT });
+    run(cwd);
+
+    // The quoted key, not the bare word: the generated header comment
+    // legitimately mentions tuning, and asserting on prose would make this
+    // case fail the next time that sentence is reworded.
+    expect(readFileSync(join(cwd, 'generated/maps/mapMeta.ts'), 'utf8')).not.toMatch(/"tuning"/);
   });
 
   /**

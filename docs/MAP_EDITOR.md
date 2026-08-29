@@ -240,6 +240,44 @@ cuối cùng còn kịp sửa.
   geometry thật của Proving Grounds: nhập vào rồi export ra, cả 12 polygon
   tường, 2 bụi, 10 slot và 10 waypoint của lane đều **giống hệt** bản gốc.
 
+## Cấu hình map (chỉ số riêng)
+
+Bảng thuộc tính có mục **Cấu hình map**: sát thương và tầm bắn của trụ, mức
+hồi máu ở bệ đá cổ, hệ số máu/sát thương/tầm đuổi của quái rừng, tốc độ đi
+trong bụi và dưới sông, thời gian hồi sinh của tướng, và cả **danh sách loại
+lính** của riêng map.
+
+**Ô trống = dùng mặc định của core**, và số mặc định hiện mờ ngay trong ô nên
+không phải mở mã nguồn engine ra tra. Map không chỉnh gì thì export ra **y hệt
+như trước khi có tính năng này** — không có khoá `tuning` nào cả.
+
+Ba tầng, tầng trong thắng: **core → cấu hình map → ghi đè trên từng slot.**
+Chọn một cái trụ thì mục *Ghi đè chỉ số* của nó cho phép trụ đó khác mọi trụ
+còn lại — đây mới là thứ làm hai map dựng từ cùng bộ phận chơi khác nhau thật
+sự. Bãi quái cũng vậy, và ở đó còn có ô **Tính khí** (`aggressive` / `passive`
+/ `skittish`) để một map cho con cua bình thường hiền lành quay ra cắn người.
+
+Quái rừng ở tầng map là **hệ số nhân** chứ không phải số tuyệt đối: map không
+biết pack nào sẽ lấp vào slot của nó, nên "×1.5 sát thương" là câu duy nhất
+nói được mà vẫn đúng với mọi pack. Ghi đè trên từng slot thì cho số tuyệt đối,
+vì lúc đó bạn đang nhắm đúng một bãi cụ thể trên đúng một map.
+
+**Lính** khác mọi mục còn lại: khai `types` là **thay hẳn** ba loại của core
+chứ không trộn vào. Nên có nút *Chép 3 loại mặc định* — map chỉ muốn lính cận
+chiến trâu hơn vẫn phải khai đủ ba loại, và nút đó khiến việc ấy là một cú
+bấm chứ không phải chép tay 24 con số. Mỗi loại có ô **Kiểu**
+(`melee`/`ranged`/`cannon`) tách rời khỏi id: id là tên loại, còn *Kiểu* mới
+quyết định nó đánh gần hay bắn xa và vẽ ra sao. Đặt tên `siege` mà quên chọn
+Kiểu thì nó đánh như lính cận chiến.
+
+Mọi thay đổi ở đây **hoàn tác được** bằng `Ctrl+Z` như mọi thao tác khác.
+
+`tuning` đi cùng tầng với `factions` (`MapSummary.tuning`), nên nó có mặt ở cả
+bốn đường ra: lưu nháp, *Chơi thử*, export JSON và export TypeScript — và
+`moba2d-generate-maps` đưa nó vào `mapMeta.ts` chứ không vào file geometry.
+Chiều ngược lại cũng vậy: mở một map của pack ra sửa thì chỉ số của nó theo
+về nguyên vẹn, chứ không bị nuốt mất.
+
 ## Sửa map có sẵn
 
 Màn hình **Map của bạn** (`Ctrl+M`) có hai phần: bản nháp của bạn ở trên, và

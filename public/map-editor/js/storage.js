@@ -48,7 +48,14 @@ const Store = (() => {
       .filter((f) => typeof f === "string" && f.trim())
       .map((f) => f.trim());
     if (!factions.length) factions = ["amber", "jade"];
-    return { id: m.id || slugify(name), factions };
+    const out = { id: m.id || slugify(name), factions };
+    // `MapTuning` sống trong `meta` chứ không phải một khoá riêng, và đó là
+    // quyết định có chủ đích: bản ghi trong kho editor đã lưu `meta` sẵn rồi,
+    // nên tuning tự động đi theo mọi đường lưu/mở/tạo mà không phải sờ vào
+    // đường nào. Editor không đọc nội dung bên trong — core mới là bên hiểu
+    // nó — nên ở đây chỉ giữ nguyên vẹn cái object.
+    if (m.tuning && typeof m.tuning === "object") out.tuning = m.tuning;
+    return out;
   }
 
   const readIndex = () => {
@@ -562,7 +569,7 @@ const Store = (() => {
 
     if (isMapGeometry(parsed)) {
       const meta = normalizeMeta(
-        { id: parsed.id, factions: parsed.factions },
+        { id: parsed.id, factions: parsed.factions, tuning: parsed.tuning },
         parsed.name || fallbackName
       );
       // Phe phải có sẵn trước khi dựng slot, vì withDefaults tra vào đây.
@@ -715,13 +722,39 @@ const Store = (() => {
 
   /** `MapSummary` — nửa nhẹ của map, thứ picker liệt kê. */
   function mapSummary() {
-    return {
+    const sum = {
       id: E.meta.id || slugify(E.mapName),
       name: E.mapName,
       // MapSummary.size là MỘT số: map moba2d hình vuông.
       size: Math.max(E.mapSize[0], E.mapSize[1]),
       factions: E.meta.factions.map((id) => ({ id })),
     };
+    // Chỉ ghi khi có thật: map không chỉnh gì phải export ra y hệt như trước
+    // khi có tính năng này, không thì mọi pack chưa dùng đều bị coi là "đã
+    // đổi" và `generate-maps` báo lỗi cũ.
+    const tuning = liveTuning();
+    if (tuning) sum.tuning = tuning;
+    return sum;
+  }
+
+  /**
+   * `meta.tuning` nếu nó thực sự nói điều gì, còn không thì `null`.
+   *
+   * Một object rỗng — hoặc chỉ toàn nhóm rỗng, thứ mà panel cấu hình rất dễ
+   * để lại sau khi người ta gõ vào rồi xoá đi — không phải là "map này có
+   * luật riêng". Nó phải biến mất khỏi bản export chứ không nằm đó như một
+   * lời hứa suông.
+   */
+  function liveTuning() {
+    const raw = E.meta && E.meta.tuning;
+    if (!raw || typeof raw !== "object") return null;
+    const out = {};
+    for (const [group, body] of Object.entries(raw)) {
+      if (!body || typeof body !== "object") continue;
+      if (!Object.keys(body).length) continue;
+      out[group] = body;
+    }
+    return Object.keys(out).length ? out : null;
   }
 
   /**
@@ -917,7 +950,8 @@ export const ${name}Map: MapDefinition = {
   name: ${q(sum.name)},
   size: ${sum.size},
   factions: [${sum.factions.map((f) => `{ id: ${q(f.id)} }`).join(", ")}],
-  geometry: () => import('./${name}Geometry').then(module => module.${name}Geometry),
+${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
+` : ""}  geometry: () => import('./${name}Geometry').then(module => module.${name}Geometry),
 };
 `;
   }
@@ -1034,6 +1068,10 @@ export const ${name}Map: MapDefinition = {
       id: sum.id, name: sum.name, size: sum.size,
       factions: sum.factions, geometry,
     };
+    // `MapSummary.tuning`, cùng tầng với `factions`. Quên dòng này thì "Chơi
+    // thử" chạy map với chỉ số mặc định của core còn bản export lại có luật
+    // riêng — hai thứ khác nhau từ cùng một map, mà không báo gì.
+    if (sum.tuning) entry.tuning = sum.tuning;
 
     let list = [];
     try {

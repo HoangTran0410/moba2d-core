@@ -191,15 +191,65 @@ const Cmd = (() => {
   }
 
   /** Sửa một thuộc tính của mọi đối tượng đang chọn. */
+  /**
+   * Ghi một giá trị vào `obj.a.b.c`, tự tạo các tầng trên đường đi.
+   *
+   * Xoá thì phải **dọn ngược lên**: một `stats: {}` còn sót lại sau khi người
+   * ta gõ vào rồi xoá đi sẽ đi thẳng vào bản export và ra tới validator của
+   * core, nơi nó là một khối rỗng chẳng nói gì. Map không ghi đè gì phải
+   * export ra y hệt như trước khi có tính năng này.
+   */
+  function setDeep(root, path, value) {
+    const keys = path.split(".");
+    const last = keys.pop();
+    const chain = [root];
+    let node = root;
+    for (const k of keys) {
+      if (!node[k] || typeof node[k] !== "object") {
+        if (value === "" || value == null) return;
+        node[k] = {};
+      }
+      node = node[k];
+      chain.push(node);
+    }
+    if (value === "" || value == null) delete node[last];
+    else node[last] = value;
+
+    for (let i = chain.length - 1; i > 0; i--) {
+      if (Object.keys(chain[i]).length) break;
+      delete chain[i - 1][keys[i - 1]];
+    }
+  }
+
   function setProp(key, value) {
     if (!hasSel()) return;
     for (const t of E.selection) {
       if (!t.props) t.props = {};
-      if (value === "" || value == null) delete t.props[key];
+      // Khoá có dấu chấm (`stats.damage`) là ghi đè theo slot — cùng một
+      // đường ghi, cùng một lệnh undo được, chỉ khác chỗ đến.
+      if (key.includes(".")) setDeep(t.props, key, value);
+      else if (value === "" || value == null) delete t.props[key];
       else t.props[key] = value;
       t.props = withDefaults(t.type, t.props);
       refreshTerrain(t);
     }
+    commit();
+  }
+
+  /**
+   * Một ô trong "Cấu hình map" — `E.meta.tuning.<đường dẫn>`.
+   *
+   * Undo được như mọi thao tác khác trong editor: `commit()` là thứ đẩy trạng
+   * thái vào lịch sử, và một panel cấu hình không undo được sẽ là chỗ duy
+   * nhất trong editor này mà Ctrl+Z không cứu được.
+   */
+  function setTuning(path, value) {
+    if (!E.meta.tuning || typeof E.meta.tuning !== "object") {
+      if (value === "" || value == null) return;
+      E.meta.tuning = {};
+    }
+    setDeep(E.meta.tuning, path, value);
+    if (!Object.keys(E.meta.tuning).length) delete E.meta.tuning;
     commit();
   }
 
@@ -708,6 +758,52 @@ const Cmd = (() => {
   });
   def("shape.type", { label: "Đổi loại", icon: "check", run: setType });
   def("shape.prop", { label: "Đổi thuộc tính", icon: "settings", run: (a) => setProp(a[0], a[1]) });
+  def("map.tuning", { label: "Đổi cấu hình map", icon: "settings", run: (a) => setTuning(a[0], a[1]) });
+  def("map.tuningSeedMinions", {
+    label: "Chép 3 loại lính mặc định", icon: "plus",
+    run: () => {
+      // `MinionTuning.types` thay hẳn bảng của core chứ không trộn vào, nên
+      // map chỉ muốn sửa một con số vẫn phải khai đủ ba loại. Nút này là lý
+      // do việc đó không phải là chép tay — số ở đây khớp `MinionPresets`.
+      if (!E.meta.tuning) E.meta.tuning = {};
+      if (!E.meta.tuning.minions) E.meta.tuning.minions = {};
+      E.meta.tuning.minions.types = {
+        melee: { name: "Lính Cận Chiến", style: "melee", speed: 2.6, size: 34, health: 140, damage: 5, attackInterval: 1100, attackRange: 40, aggroRange: 300 },
+        ranged: { name: "Lính Phép Sư", style: "ranged", speed: 2.6, size: 30, health: 90, damage: 3, attackInterval: 1500, attackRange: 280, aggroRange: 340 },
+        cannon: { name: "Lính Xe Pháo", style: "cannon", speed: 2.6, size: 38, health: 260, damage: 8, attackInterval: 1650, attackRange: 300, aggroRange: 360 },
+      };
+      commit();
+    },
+  });
+  def("map.tuningAddMinion", {
+    label: "Thêm loại lính", icon: "plus",
+    run: (a) => {
+      const id = String((a && a[0]) || "").trim();
+      if (!id) return;
+      if (!E.meta.tuning) E.meta.tuning = {};
+      if (!E.meta.tuning.minions) E.meta.tuning.minions = {};
+      if (!E.meta.tuning.minions.types) E.meta.tuning.minions.types = {};
+      if (E.meta.tuning.minions.types[id]) return;
+      E.meta.tuning.minions.types[id] = {
+        name: id, style: "melee", speed: 2.6, size: 34,
+        health: 140, damage: 5, attackInterval: 1100, attackRange: 40, aggroRange: 300,
+      };
+      commit();
+    },
+  });
+  def("map.tuningRemoveMinion", {
+    label: "Xoá loại lính", icon: "trash",
+    run: (a) => {
+      const id = a && a[0];
+      const types = E.meta.tuning && E.meta.tuning.minions && E.meta.tuning.minions.types;
+      if (!types || !types[id]) return;
+      delete types[id];
+      if (!Object.keys(types).length) delete E.meta.tuning.minions.types;
+      if (!Object.keys(E.meta.tuning.minions).length) delete E.meta.tuning.minions;
+      if (!Object.keys(E.meta.tuning).length) delete E.meta.tuning;
+      commit();
+    },
+  });
   def("shape.addKind", { label: "Thêm đối tượng", icon: "plus", run: addObject });
 
   /** Menu “+” — mọi thứ có thể đặt lên map, gom theo nhóm của MapGeometry. */

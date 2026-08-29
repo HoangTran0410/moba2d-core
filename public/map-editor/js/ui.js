@@ -457,6 +457,11 @@ const UI = (() => {
     <div class="sec-title" style="margin:12px 0 8px">Phe <span id="faction-count" class="mono"></span></div>
     <div id="faction-list"></div>
     <button class="btn block" id="faction-add" style="margin-top:6px">${ico("plus", "ico ico-sm")} Thêm phe</button>
+    <div class="sec-title" style="margin:12px 0 4px">Cấu hình map <span id="tuning-count" class="mono"></span></div>
+    <p class="muted" style="margin:0 0 6px">
+      Chỉ số riêng của map này. Ô trống = dùng mặc định của core (số mờ trong ô).
+    </p>
+    <div id="tuning-groups"></div>
     <div class="sec-title" style="margin:12px 0 8px">Ảnh nền</div>
     <button class="toggle" id="tg-bg"><span>Hiện ảnh nền</span><span class="sw"></span></button>
     <div class="row" style="margin-top:7px">
@@ -493,10 +498,20 @@ const UI = (() => {
     spawn: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
+      { group: "Ghi đè chỉ số" },
+      { key: "stats.healPercent", label: "Hồi máu", kind: "number", unit: "×", min: 0, ph: "0.12" },
+      { key: "stats.manaPercent", label: "Hồi mana", kind: "number", unit: "×", min: 0, ph: "0.12" },
+      { key: "stats.tickInterval", label: "Nhịp hồi", kind: "number", unit: "ms", min: 0, ph: "500" },
     ],
     structure: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "kind", label: "Kiểu", kind: "static", value: "turret" },
+      { group: "Ghi đè chỉ số" },
+      { key: "stats.health", label: "Máu", kind: "number", unit: "hp", min: 0, ph: "400" },
+      { key: "stats.damage", label: "Sát thương", kind: "number", unit: "dmg", min: 0, ph: "12" },
+      { key: "stats.attackRange", label: "Tầm bắn", kind: "number", unit: "px", min: 0, ph: "430" },
+      { key: "stats.attackInterval", label: "Nhịp bắn", kind: "number", unit: "ms", min: 0, ph: "1300" },
+      { key: "stats.rebuildTime", label: "Xây lại", kind: "number", unit: "ms", min: 0, ph: "30000" },
     ],
     minion: [
       { key: "faction", label: "Phe", kind: "faction" },
@@ -507,6 +522,17 @@ const UI = (() => {
       { key: "role", label: "Role", kind: "text", placeholder: "warden" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
       { key: "rotationDeg", label: "Xoay camp", kind: "number", unit: "°", hint: "xoay bố cục quái bên trong" },
+      { group: "Ghi đè chỉ số" },
+      { key: "stats.healthMult", label: "Máu", kind: "number", unit: "×", min: 0, ph: "1" },
+      { key: "stats.damageMult", label: "Sát thương", kind: "number", unit: "×", min: 0, ph: "1" },
+      { key: "stats.aggroRange", label: "Tầm phát hiện", kind: "number", unit: "px", min: 0, hint: "số tuyệt đối, không phải hệ số" },
+      { key: "stats.chaseMargin", label: "Tầm đuổi thêm", kind: "number", unit: "px", min: 0, ph: "350" },
+      { key: "stats.reviveTime", label: "Hồi sinh", kind: "number", unit: "ms", min: 0 },
+      {
+        key: "stats.temperament", label: "Tính khí", kind: "choice",
+        options: ["", "aggressive", "passive", "skittish"],
+        hint: "để trống = theo pack khai",
+      },
     ],
     // Lane KHÔNG có ô "từ phe / tới phe": engine không đọc hai field đó
     // (setActiveLanes chỉ lấy id + waypoints), và giá trị của chúng bị ràng
@@ -537,6 +563,7 @@ const UI = (() => {
       mapW: g("map-w"), mapH: g("map-h"), bgSelect: g("bg-select"),
       squareWarn: g("map-square-warn"), factions: g("faction-list"),
       factionCount: g("faction-count"), check: g("check-box"),
+      tuning: g("tuning-groups"), tuningCount: g("tuning-count"),
     };
 
     // các lớp bật/tắt, chia theo nhóm của MapGeometry
@@ -666,19 +693,37 @@ const UI = (() => {
     if (!fields) return;
 
     for (const f of fields) {
+      // Một dải ngăn cách, không phải một ô: mấy field bên dưới nó ghi đè chỉ
+      // số của core, khác hẳn về ý nghĩa với toạ độ và phe ở trên.
+      if (f.group) {
+        R.objProps.appendChild(el("div", {
+          class: "sec-title", style: "margin:12px 0 2px", text: f.group,
+        }));
+        R.objProps.appendChild(el("p", { class: "muted", style: "margin:0 0 2px" },
+          "Để trống = dùng chỉ số của map, rồi tới của core."));
+        continue;
+      }
+
       const row = el("div", { class: "row", style: "margin-top:7px" });
       row.appendChild(el("label", { text: f.label, title: f.hint || f.label }));
 
       let input;
       if (f.kind === "faction" || f.kind === "lane") {
         input = el("select", { class: "inp" });
+      } else if (f.kind === "choice") {
+        input = el("select", { class: "inp" });
+        input.innerHTML = f.options
+          .map((o) => `<option value="${esc(o)}">${esc(o || "— mặc định —")}</option>`)
+          .join("");
       } else if (f.kind === "static") {
         input = el("input", { class: "inp", type: "text", value: f.value, disabled: "" });
       } else {
         input = el("input", {
           class: "inp",
           type: f.kind === "number" ? "number" : "text",
-          placeholder: f.placeholder || "",
+          // Số mặc định của core làm placeholder: người vẽ map thấy ngay mình
+          // đang đi lệch khỏi cái gì mà không phải mở mã nguồn ra tra.
+          placeholder: f.placeholder || f.ph || "",
           min: f.min,
         });
         if (f.kind === "text") input.style.fontFamily = "var(--font)";
@@ -720,6 +765,16 @@ const UI = (() => {
     }
   }
 
+  /** `obj.a.b.c`, hoặc `undefined` nếu bất kỳ tầng nào chưa tồn tại. */
+  function readDeep(obj, path) {
+    let node = obj;
+    for (const k of path.split(".")) {
+      if (!node || typeof node !== "object") return undefined;
+      node = node[k];
+    }
+    return node;
+  }
+
   function fillProps(kind) {
     const fields = PROP_FIELDS[kind];
     if (!fields) return;
@@ -728,6 +783,13 @@ const UI = (() => {
     R.objProps.querySelectorAll("[data-prop]").forEach((input) => {
       const key = input.dataset.prop;
       const pkind = input.dataset.pkind;
+
+      if (key.includes(".")) {
+        if (document.activeElement === input) return;
+        const v = readDeep(src, key);
+        input.value = v == null ? "" : v;
+        return;
+      }
 
       if (pkind === "faction" || pkind === "lane") {
         const opts = pkind === "faction" ? E.meta.factions : laneIds();
@@ -931,8 +993,235 @@ const UI = (() => {
 
   function syncHistory() { syncToolbar(); }
 
+  /**
+   * Mọi ô trong "Cấu hình map", theo đúng thứ tự `MapTuning` khai báo chúng.
+   *
+   * `ph` là số mặc định của core, hiện làm placeholder. Đó không phải trang
+   * trí: người vẽ map cần thấy mình đang đi lệch khỏi cái gì ngay tại ô đang
+   * gõ, chứ không phải mở mã nguồn engine ra tra.
+   */
+  const TUNING_SCHEMA = [
+    { key: "champions", label: "Tướng", fields: [
+      { key: "reviveTime", label: "Hồi sinh", unit: "ms", ph: "5000" },
+      { key: "reviveCurve.base", label: "Hồi sinh — mốc đầu", unit: "ms", hint: "khai cả ba ô thì đường cong thắng ô phẳng ở trên" },
+      { key: "reviveCurve.perMinute", label: "Cộng mỗi phút", unit: "ms" },
+      { key: "reviveCurve.max", label: "Trần", unit: "ms" },
+    ]},
+    { key: "turrets", label: "Trụ", fields: [
+      { key: "health", label: "Máu", unit: "hp", ph: "400" },
+      { key: "damage", label: "Sát thương", unit: "dmg", ph: "12" },
+      { key: "attackRange", label: "Tầm bắn", unit: "px", ph: "430" },
+      { key: "attackInterval", label: "Nhịp bắn", unit: "ms", ph: "1300" },
+      { key: "size", label: "Kích thước", unit: "px", ph: "92" },
+      { key: "rebuildTime", label: "Xây lại", unit: "ms", ph: "30000" },
+      { key: "repairDelay", label: "Chờ tự sửa", unit: "ms", ph: "6000" },
+      { key: "repairRate", label: "Tốc tự sửa", unit: "hp/frame", ph: "0.4" },
+    ]},
+    { key: "fountain", label: "Bệ đá cổ", fields: [
+      { key: "tickInterval", label: "Nhịp hồi", unit: "ms", ph: "500" },
+      { key: "healPercent", label: "Hồi máu", unit: "×", ph: "0.12" },
+      { key: "manaPercent", label: "Hồi mana", unit: "×", ph: "0.12" },
+    ]},
+    { key: "monsters", label: "Quái rừng", fields: [
+      { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
+      { key: "damageMult", label: "Sát thương", unit: "×", ph: "1" },
+      { key: "speedMult", label: "Tốc chạy", unit: "×", ph: "1" },
+      { key: "attackIntervalMult", label: "Nhịp đánh", unit: "×", ph: "1" },
+      { key: "aggroRangeMult", label: "Tầm phát hiện", unit: "×", ph: "1" },
+      { key: "reviveTimeMult", label: "Hồi sinh", unit: "×", ph: "1" },
+      { key: "chaseMargin", label: "Tầm đuổi thêm", unit: "px", ph: "350" },
+      { key: "giveUpDelayMs", label: "Chờ bỏ cuộc", unit: "ms", ph: "2000" },
+    ]},
+    { key: "terrain", label: "Địa hình", fields: [
+      { key: "bush.speedMultiplier", label: "Tốc trong bụi", unit: "×", ph: "1" },
+      { key: "water.speedMultiplier", label: "Tốc dưới sông", unit: "×", ph: "1" },
+    ]},
+    { key: "minions", label: "Lính", minions: true, fields: [
+      { key: "waves.intervalMs", label: "Cách wave", unit: "ms", ph: "30000" },
+      { key: "waves.firstDelayMs", label: "Wave đầu sau", unit: "ms", ph: "1000" },
+      { key: "waves.releaseIntervalMs", label: "Cách từng con", unit: "ms", ph: "650" },
+      { key: "waves.liveCap", label: "Trần lính sống", unit: "con", ph: "160" },
+    ]},
+  ];
+
+  /** Các ô số của một loại lính, dùng lại cho mọi loại map khai ra. */
+  const MINION_TYPE_FIELDS = [
+    { key: "health", label: "Máu", unit: "hp" },
+    { key: "damage", label: "Sát thương", unit: "dmg" },
+    { key: "speed", label: "Tốc chạy", unit: "px/frame" },
+    { key: "size", label: "Kích thước", unit: "px" },
+    { key: "attackRange", label: "Tầm đánh", unit: "px" },
+    { key: "attackInterval", label: "Nhịp đánh", unit: "ms" },
+    { key: "aggroRange", label: "Tầm phát hiện", unit: "px" },
+    { key: "goldBounty", label: "Vàng", unit: "g" },
+  ];
+
+  let tuningOpen = new Set();
+
+  function tuningRow(label, hint, path, value, unit, ph) {
+    const row = el("div", { class: "row", style: "margin-top:6px" });
+    row.appendChild(el("label", { text: label, title: hint || label }));
+    const input = el("input", {
+      class: "inp", type: "number", min: 0, placeholder: ph || "",
+      value: value == null ? "" : value,
+    });
+    const send = () => {
+      const raw = input.value;
+      Cmd.run("map.tuning", [path, raw === "" ? "" : Number(raw)]);
+      syncTuning();
+    };
+    input.addEventListener("change", send);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { send(); input.blur(); } });
+    const field = el("div", { class: "field" });
+    field.appendChild(input);
+    if (unit) field.appendChild(el("span", { class: "unit", text: unit }));
+    row.appendChild(field);
+    return row;
+  }
+
+  /**
+   * Vẽ lại toàn bộ panel cấu hình.
+   *
+   * Dựng lại từ đầu chứ không vá tại chỗ: panel này không nằm trên đường vẽ
+   * mỗi frame, số ô thì thay đổi theo số loại lính map khai, và một cây DOM
+   * dựng lại được là cây không bao giờ lệch khỏi `E.meta.tuning`.
+   */
+  function syncTuning() {
+    if (!R.tuning) return;
+    const tuning = (E.meta && E.meta.tuning) || {};
+    const groups = Object.keys(tuning).length;
+    R.tuningCount.textContent = groups ? `${groups} nhóm` : "";
+    R.tuning.innerHTML = "";
+
+    for (const group of TUNING_SCHEMA) {
+      const body = tuning[group.key] || {};
+      const touched = Object.keys(body).length;
+      const open = tuningOpen.has(group.key);
+
+      const head = el("button", {
+        class: "btn block", style: "margin-top:6px;text-align:left",
+        onclick: () => {
+          if (open) tuningOpen.delete(group.key); else tuningOpen.add(group.key);
+          syncTuning();
+        },
+      }, `<span style="display:inline-block;transition:transform .12s${open ? "" : ";transform:rotate(-90deg)"}">` +
+         `${ico("chevron-down", "ico ico-sm")}</span> ${esc(group.label)}` +
+         (touched ? ` <span class="mono" style="color:var(--accent)">${touched}</span>` : ""));
+      R.tuning.appendChild(head);
+      if (!open) continue;
+
+      const box = el("div", { style: "padding:0 0 6px 8px;border-left:1px solid var(--bd)" });
+      for (const f of group.fields) {
+        box.appendChild(tuningRow(f.label, f.hint, `${group.key}.${f.key}`, readDeep(body, f.key), f.unit, f.ph));
+      }
+      if (group.minions) box.appendChild(minionTypesBox(body));
+      R.tuning.appendChild(box);
+    }
+  }
+
+  /**
+   * Danh sách loại lính của map.
+   *
+   * `MinionTuning.types` **thay hẳn** ba loại của core chứ không trộn vào, nên
+   * nút "Chép 3 loại mặc định" không phải tiện tay: nó là cách duy nhất để
+   * "map này chỉ muốn lính cận chiến trâu hơn" không biến thành chép tay 24
+   * con số. Đó cũng là lý do bảng này trống mặc định — trống nghĩa là dùng
+   * lính của core, chứ không phải map không có lính.
+   */
+  function minionTypesBox(body) {
+    const box = el("div", { style: "margin-top:8px" });
+    const types = body.types || {};
+    const ids = Object.keys(types);
+
+    box.appendChild(el("div", { class: "sec-title", style: "margin:8px 0 2px" }, "Loại lính"));
+    box.appendChild(el("p", { class: "muted", style: "margin:0 0 6px" },
+      ids.length
+        ? "Bảng này thay hẳn 3 loại của core."
+        : "Trống = dùng 3 loại của core."));
+
+    for (const id of ids) {
+      const def = types[id] || {};
+      const head = el("div", { class: "row", style: "margin-top:8px" });
+      head.appendChild(el("label", { text: id, title: id }));
+      head.appendChild(el("button", {
+        class: "btn", title: "Xoá loại này",
+        onclick: () => { Cmd.run("map.tuningRemoveMinion", [id]); syncTuning(); },
+      }, ico("trash", "ico ico-sm")));
+      box.appendChild(head);
+
+      const nameRow = el("div", { class: "row", style: "margin-top:6px" });
+      nameRow.appendChild(el("label", { text: "Tên" }));
+      const nameInput = el("input", { class: "inp", type: "text", value: def.name || "" });
+      nameInput.style.fontFamily = "var(--font)";
+      nameInput.addEventListener("change", () => {
+        Cmd.run("map.tuning", [`minions.types.${id}.name`, nameInput.value]);
+      });
+      const nameField = el("div", { class: "field" });
+      nameField.appendChild(nameInput);
+      nameRow.appendChild(nameField);
+      box.appendChild(nameRow);
+
+      const styleRow = el("div", { class: "row", style: "margin-top:6px" });
+      styleRow.appendChild(el("label", {
+        text: "Kiểu", title: "Quyết định đánh gần hay bắn, và vẽ ra sao — không phải id",
+      }));
+      const styleSelect = el("select", { class: "inp" });
+      styleSelect.innerHTML = ["melee", "ranged", "cannon"]
+        .map((o) => `<option value="${o}"${(def.style || "melee") === o ? " selected" : ""}>${o}</option>`)
+        .join("");
+      styleSelect.addEventListener("change", () => {
+        Cmd.run("map.tuning", [`minions.types.${id}.style`, styleSelect.value]);
+      });
+      const styleField = el("div", { class: "field" });
+      styleField.appendChild(styleSelect);
+      styleRow.appendChild(styleField);
+      box.appendChild(styleRow);
+
+      for (const f of MINION_TYPE_FIELDS) {
+        box.appendChild(tuningRow(f.label, f.hint, `minions.types.${id}.${f.key}`, def[f.key], f.unit));
+      }
+    }
+
+    const addRow = el("div", { class: "row", style: "margin-top:8px" });
+    const newId = el("input", { class: "inp", type: "text", placeholder: "siege" });
+    newId.style.fontFamily = "var(--font)";
+    addRow.appendChild(newId);
+    addRow.appendChild(el("button", {
+      class: "btn",
+      onclick: () => { Cmd.run("map.tuningAddMinion", [newId.value]); syncTuning(); },
+    }, `${ico("plus", "ico ico-sm")} Thêm`));
+    box.appendChild(addRow);
+
+    if (!ids.length) {
+      box.appendChild(el("button", {
+        class: "btn block", style: "margin-top:6px",
+        onclick: () => { Cmd.run("map.tuningSeedMinions"); syncTuning(); },
+      }, `${ico("plus", "ico ico-sm")} Chép 3 loại mặc định`));
+    }
+
+    const compRow = el("div", { class: "row", style: "margin-top:8px" });
+    compRow.appendChild(el("label", { text: "Đội hình", title: "id các loại, cách nhau bằng dấu phẩy" }));
+    const comp = el("input", {
+      class: "inp", type: "text", placeholder: "melee, melee, ranged",
+      value: ((body.waves && body.waves.composition) || []).join(", "),
+    });
+    comp.style.fontFamily = "var(--font)";
+    comp.addEventListener("change", () => {
+      const list = comp.value.split(",").map((x) => x.trim()).filter(Boolean);
+      Cmd.run("map.tuning", ["minions.waves.composition", list.length ? list : ""]);
+      syncTuning();
+    });
+    const compField = el("div", { class: "field" });
+    compField.appendChild(comp);
+    compRow.appendChild(compField);
+    box.appendChild(compRow);
+
+    return box;
+  }
+
   function syncAll() {
     syncMap();
+    syncTuning();
     syncView();
     syncLayers();
     syncSelection();

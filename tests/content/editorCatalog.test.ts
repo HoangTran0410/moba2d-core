@@ -172,7 +172,7 @@ function editorOver(store: Map<string, string>): EditorSession {
     vm.runInContext(editorFile(file), context);
   }
 
-  const run = <T,>(code: string): T => vm.runInContext(code, context) as T;
+  const run = <T>(code: string): T => vm.runInContext(code, context) as T;
   const count = (): number =>
     JSON.parse(store.get('moba2d-local-maps-v1') ?? '[]').length as number;
 
@@ -219,6 +219,27 @@ describe('editor catalog', () => {
     await publishPackMaps(registryWith([CUT_MAP, AUTHORED_MAP]));
 
     expect(editorOver(store).catalogNames()).toEqual(['Sân Thử Nghiệm', 'Vẽ Tay']);
+  });
+
+  it("carries a map's own tuning out to the editor", async () => {
+    // The data-loss trap this whole direction exists to avoid: without it, an
+    // author opens a shipped map, moves one wall, exports — and the numbers
+    // the map arrived with are gone, silently, with the map looking fine.
+    const tuned = {
+      ...CUT_MAP,
+      tuning: { turrets: { damage: 40 }, monsters: { healthMult: 2 } },
+    };
+    await publishPackMaps(registryWith([tuned]));
+
+    const published = JSON.parse(store.get(PACK_MAPS_KEY) as string) as { tuning?: unknown }[];
+    expect(published[0].tuning).toEqual({ turrets: { damage: 40 }, monsters: { healthMult: 2 } });
+  });
+
+  it('writes no tuning key for a map that has none', async () => {
+    await publishPackMaps(registryWith([CUT_MAP]));
+
+    const published = JSON.parse(store.get(PACK_MAPS_KEY) as string) as object[];
+    expect('tuning' in published[0]).toBe(false);
   });
 
   it('opens a pack map as a copy, named so the two are told apart', async () => {
