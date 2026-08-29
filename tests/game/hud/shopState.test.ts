@@ -66,10 +66,14 @@ describe('shopRows', () => {
     expect(row.reason).toBe('');
   });
 
-  it('prices the card in gold and its damage in this buyer\'s ability power', () => {
-    // A card answers "what will this be worth to *me*", not "what did it say
-    // on the first frame of the match" — the same rule the spell bar follows.
-    // Only tagged damage moves; the stat line beside it is untouched.
+  it('prints the item text as the pack wrote it, ability power or not', () => {
+    // The card is priced for this buyer (`priceFor`) and its *sentence* is
+    // not, which looks like an inconsistency and is the rule. Item abilities
+    // are the one population `economy/ItemShop` opts out of ability power by
+    // hand — they already read `attackDamage`, and paying one purchase out of
+    // two stats is what that flag exists to stop — so a card promising
+    // `30 (+60)` would be promising damage the active will never deal. It did,
+    // for one commit.
     stock = [
       item({
         description:
@@ -81,7 +85,7 @@ describe('shopRows', () => {
     const [row] = shopRows(champion, host);
 
     expect(row.description).toBe(
-      'Tăng 45 kháng phép. Kích hoạt: gây <span class="damage">30 (+60) sát thương phép</span>.'
+      'Tăng 45 kháng phép. Kích hoạt: gây <span class="damage">30 sát thương phép</span>.'
     );
   });
 

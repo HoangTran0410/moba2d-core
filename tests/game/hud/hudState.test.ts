@@ -360,10 +360,14 @@ describe('computeHudState honours match rules', () => {
     expect(state?.spells[0].description).toBe('Gây <span class="damage">15 sát thương</span>');
   });
 
-  it('scales an item description for the champion holding it', () => {
-    // An item active is a `Spell`, so `takeDamage` amplifies it exactly like
-    // an ability — and the shop text promising a flat 30 was wrong for the
-    // same reason the spell bar was.
+  it('leaves an item description alone however much power the holder bought', () => {
+    // The opposite rule from a spell's, and the reason is `economy/ItemShop`:
+    // it builds every item passive and active with
+    // `damageScalesWithAbilityPower = false`, because an item's damage already
+    // reads `attackDamage` and paying one purchase out of two stats is what
+    // that flag exists to stop. So an item that says 30 deals 30 at 200%
+    // ability power, and a tooltip reading `30 (+60)` is the rescaling telling
+    // the same lie it was written to catch. It did, for one commit.
     const state = computeHudState({
       player: fakePlayer({
         stats: {
@@ -387,7 +391,7 @@ describe('computeHudState honours match rules', () => {
     } as never);
 
     expect(state?.items[0].description).toBe(
-      'Kích hoạt: gây <span class="damage">30 (+60) sát thương phép</span>.'
+      'Kích hoạt: gây <span class="damage">30 sát thương phép</span>.'
     );
   });
 

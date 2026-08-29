@@ -10,7 +10,6 @@
  */
 import type Game from '@/game/Game';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from '@/game/constants';
-import { amplifiedDamageText } from '@/game/combat/Amplification';
 import { INVENTORY_SIZE } from '@/game/items/Item';
 import { atOwnFountain } from '@/game/economy/ItemShop';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
@@ -359,12 +358,15 @@ function buildItems(player: any): ItemSlotDisplay[] {
       filled: true,
       image: item.icon?.path ?? '',
       name: item.def?.name ?? '',
-      // Rescaled for the holder, like a spell's — an item active is a `Spell`
-      // and `takeDamage` amplifies it, so the shop text promising a flat 30
-      // was wrong for exactly the same reason the spell bar was. Untagged
-      // text is returned byte for byte, which is every item that states no
-      // damage at all.
-      description: amplifiedDamageText(item.def?.description ?? '', player),
+      // **Not** rescaled, unlike a spell's. An item's abilities are the one
+      // population `economy/ItemShop` opts out of ability power by hand
+      // (`damageScalesWithAbilityPower = false`, because they already read
+      // `attackDamage` and must not be paid for out of two stats), so an
+      // item's printed damage is the damage it deals at every point in the
+      // match. This line ran through `amplifiedDamageText` for one commit and
+      // promised a flat 30 as `30 (+60)` — the exact failure the rescaling
+      // exists to prevent, pointed the other way.
+      description: item.def?.description ?? '',
       hotKey: active ? key : '',
       hasActive: !!active,
       coolDownPercent: coolDown > 0 ? Math.min((currentCooldown / coolDown) * 100, 100) : 0,

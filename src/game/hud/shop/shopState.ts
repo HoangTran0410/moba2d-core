@@ -11,7 +11,6 @@ import {
 } from '@/game/economy/ItemShop';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { packAsset } from '@/game/config/packAsset';
-import { amplifiedDamageText } from '@/game/combat/Amplification';
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import type { QualifiedItem } from '@/content/PackRegistry';
@@ -229,10 +228,12 @@ export function shopRows(champion: Champion, host: ShopHost, mode: ShopMode = 'P
       return {
         id: def.id,
         name: def.name,
-        // The buyer's own build, so a card answers "what will this be worth
-        // to *me*" rather than "what did it say on the first frame". The
-        // champion is already here for `priceFor`.
-        description: amplifiedDamageText(def.description ?? '', champion),
+        // As the pack wrote it. A shop card is the one place it is tempting
+        // to rescale — the champion is right here for `priceFor` — and it is
+        // the wrong place: `economy/ItemShop` builds every item ability with
+        // `damageScalesWithAbilityPower = false`, so an item's damage figure
+        // is already the whole truth. See `hudState.ts`'s own item slot.
+        description: def.description ?? '',
         image: iconPath(def),
         cost: def.cost,
         price: priceFor(champion, def),

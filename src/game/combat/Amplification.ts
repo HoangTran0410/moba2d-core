@@ -143,6 +143,16 @@ const withBonus = (base: number, multiplier: number): string => {
  * the player in a second way, since that class is what paints the number in
  * the damage colour.
  *
+ * **Whose text may be passed in is the caller's question, not this
+ * function's.** It rescales whatever it is handed, so the gate belongs where
+ * the owner is known: `Spell.effectiveDescription` asks its own
+ * `damageScalesWithAbilityPower` first. The population that answers *no* is
+ * not hypothetical — `economy/ItemShop` sets it false on every item passive
+ * and active, since those already read `attackDamage`. An item description
+ * therefore goes to the HUD and the shop card exactly as the pack wrote it,
+ * and it did not for one commit: Vĩnh Sương's flat 30 was printed as
+ * `30 (+60)`, which is this module's own failure mode aimed the other way.
+ *
  * Returns the input unchanged at a multiplier of 1, which is every unit in
  * the game until an item or a buff grants some.
  */

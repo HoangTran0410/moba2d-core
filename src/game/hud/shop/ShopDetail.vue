@@ -119,10 +119,10 @@ const held = computed(() => (props.row ? bagSlotOf(props.bag, props.row.id) : nu
           </li>
         </ul>
 
-        <!-- Never `v-html`: this sentence comes from a stranger's content pack. -->
         <!-- `v-html`, matching the spell panel: an item description is
              pack-authored HTML with the same `damage`/`buff`/`time` spans, and
-             interpolating it printed the markup at the player. -->
+             interpolating it printed the markup at the player. The pack's own
+             `tests/items.test.ts` is what keeps that to those three spans. -->
         <p v-if="row.description" class="shop-detail-text" v-html="row.description"></p>
 
         <section v-if="tree.length" class="shop-detail-section">
