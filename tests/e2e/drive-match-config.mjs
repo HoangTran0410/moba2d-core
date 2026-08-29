@@ -34,7 +34,7 @@
  *
  *   node tests/e2e/drive-match-config.mjs [outPrefix]
  */
-import { CFG_KEY, DESKTOP_VIEWPORT, startHarness } from './harness.mjs';
+import { CFG_KEY, DESKTOP_VIEWPORT, openSetup, startHarness } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/moba2d-match-config';
 
@@ -55,7 +55,7 @@ await openMenu();
 check('menu offers Play without opening the config first', await page.isVisible('#play-btn'));
 
 // ------------------------------------------------- 2. the panel, no match
-await page.click('#config-btn');
+await openSetup(page);
 await page.waitForSelector('#practice-tab-roster', { timeout: 30_000 });
 
 const tabs = await page.$$eval('.practice-tab', nodes => nodes.map(n => n.textContent.trim()));
@@ -126,7 +126,24 @@ const storedDifficulty = () =>
   );
 
 check('a bot starts on the default tier', (await storedDifficulty()) === 'normal');
-await page.dispatchEvent(`#practice-difficulty-easy-${difficultyRow}`, 'touchend');
+// A whole tap, not a lone `touchend`. The control moved from
+// `@touchend.prevent` to `v-tap` (`src/game/hud/tapGuard.ts`), whose entire
+// purpose is that a bare touchend does *not* fire a handler — it is the
+// touchend of a *scroll* that used to. So the one-event version of this check
+// stopped proving the control was reachable and started proving the guard
+// exists, and reported that as a failure. The id never changed, which is why
+// `tests/scripts/e2eSelectors.test.ts` cannot see this class: a gesture
+// contract is not a selector.
+await page.evaluate(selector => {
+  const el = document.querySelector(selector);
+  const touch = new Touch({ identifier: 1, target: el, clientX: 0, clientY: 0 });
+  const emit = (type, touches) =>
+    el.dispatchEvent(
+      new TouchEvent(type, { touches, changedTouches: [touch], bubbles: true, cancelable: true })
+    );
+  emit('touchstart', [touch]);
+  emit('touchend', []);
+}, `#practice-difficulty-easy-${difficultyRow}`);
 check('a touch on the difficulty control reaches the setter', (await storedDifficulty()) === 'easy');
 await page.click(`#practice-difficulty-hard-${difficultyRow}`);
 check('and so does a click', (await storedDifficulty()) === 'hard');

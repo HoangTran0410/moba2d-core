@@ -25,7 +25,7 @@
  *
  *   node tests/e2e/verify-runtime-pack.mjs
  */
-import { CFG_KEY, startHarness } from './harness.mjs';
+import { CFG_KEY, openSetup, startHarness } from './harness.mjs';
 import { requirePackDist, startPackServer } from './packServer.mjs';
 
 requirePackDist();
@@ -94,8 +94,7 @@ await guard(
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('#play-btn', { timeout: 45_000 });
 
-    await page.click('#config-btn');
-    await page.waitForSelector('#pregame-scene', { state: 'visible', timeout: 30_000 });
+    await openSetup(page);
     await page.click('.practice-roster-main:has(#practice-row-toggle-0) .practice-roster-open');
     await page.waitForSelector('.loadout-modal', { state: 'visible', timeout: 30_000 });
 
@@ -271,8 +270,7 @@ await guard(
       "dismissing it is the player's own act, and it sticks",
       !(await page.locator('.pack-banner').isVisible())
     );
-    await page.click('#config-btn');
-    await page.waitForSelector('#pregame-scene', { state: 'visible', timeout: 30_000 });
+    await openSetup(page);
     await page.click('#practice-close');
     await page.waitForSelector('#play-btn', { timeout: 30_000 });
     check(

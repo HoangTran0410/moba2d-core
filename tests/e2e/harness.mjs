@@ -52,12 +52,15 @@ export const KITS_KEY = 'moba2d:savedKits:v1';
  * where a badge overlapped its neighbour's hotkey was invisible at 1x.
  */
 /**
- * Chơi, then Bắt Đầu — the presses a match now takes from the menu.
+ * Chơi, and stop on the match-config panel.
  *
- * It used to be one: `#play-btn` went straight to `GameScene`, and every
- * driver here clicked it. Chơi opens the match-config panel now (the menu's
- * separate Cấu hình link is gone, and configuring *is* the pregame step), so a
- * script that clicks Play and waits for a game waits for ever.
+ * The menu used to carry a separate Cấu hình link, and eleven call sites
+ * across six scripts opened this panel with `page.click('#config-btn')`.
+ * `MenuScene.ts` made Chơi the only way in — configuring *is* the pregame
+ * step — and the link went away, which turned every one of those clicks into
+ * a thirty-second auto-wait that nothing in `npm run verify` could see.
+ * `tests/scripts/e2eSelectors.test.ts` is now what sees it; this is where the
+ * scripts it caught were pointed.
  *
  * One helper rather than two lines in forty scripts, for the reason this whole
  * module exists: the preamble is not what any of them is testing, and it was
@@ -66,17 +69,16 @@ export const KITS_KEY = 'moba2d:savedKits:v1';
  * Callers that only wait for `#play-btn` to *exist* — "is the menu up yet" —
  * are unaffected and still do that directly.
  */
-export const startMatch = async (page, { timeout = 30_000 } = {}) => {
+export const openSetup = async (page, { timeout = 30_000 } = {}) => {
   await page.waitForSelector('#play-btn', { timeout });
   await page.click('#play-btn');
-  // Sometimes three. A player whose catalog holds only core's own champion
-  // meets the no-roster nudge here *instead of* the setup panel
-  // (`MenuScene.vue`'s `pressPlay`), and a checkout of this repository alone
-  // ships exactly that catalog — so the two-press version waited out its
-  // timeout on the one configuration CI actually runs, `e2e:core-alone`. Wait
-  // on both and answer whichever came: "Chơi luôn" is the nudge's own way on
-  // to the panel, so a script that was not asking about the nudge still ends
-  // up where it meant to be.
+  // A player whose catalog holds only core's own champion meets the no-roster
+  // nudge here *instead of* the setup panel (`MenuScene.vue`'s `pressPlay`),
+  // and a checkout of this repository alone ships exactly that catalog — so
+  // the version without this waited out its timeout on the one configuration
+  // CI actually runs, `e2e:core-alone`. Wait on both and answer whichever
+  // came: "Chơi luôn" is the nudge's own way on to the panel, so a script that
+  // was not asking about the nudge still ends up where it meant to be.
   //
   // `drive-menu-flow.mjs` keeps driving the nudge by hand and does not call
   // this, because there the nudge *is* the subject — a helper that clicks it
@@ -86,6 +88,16 @@ export const startMatch = async (page, { timeout = 30_000 } = {}) => {
     await page.click('#pack-nudge-play');
     await page.waitForSelector('#pregame-start-btn', { timeout });
   }
+};
+
+/**
+ * Chơi, then Bắt Đầu — the presses a match takes from the menu, end to end.
+ *
+ * `openSetup` plus the one press that leaves it, because a script that wants a
+ * *match* should not have to know that the panel is on the way there.
+ */
+export const startMatch = async (page, { timeout = 30_000 } = {}) => {
+  await openSetup(page, { timeout });
   await page.click('#pregame-start-btn');
 };
 

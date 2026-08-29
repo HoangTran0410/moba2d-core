@@ -120,6 +120,27 @@ out is the exit button in the panel's Trận đấu tab, behind a two-step confi
   start its own server or browser. The **gesture** stays each script's own.
   `drive-game.mjs` and `verify-pwa-offline.mjs` are out on purpose.
   `MOBA2D_CHROME_CHANNEL=` (empty) swaps in Playwright's bundled Chromium.
+- **An `id` a script waits on must be an id `src/` can render.**
+  `tests/scripts/e2eSelectors.test.ts` checks it in milliseconds, inside
+  `verify`, because nothing else can: no Playwright script runs in the gate, so
+  `#config-btn` survived its own deletion in eleven `page.click` calls across
+  six files, each a thirty-second timeout nobody was there to see. The scan
+  reads only the calls that *hang* — `click`, `waitForSelector`, `fill`,
+  `$eval` — and ignores `page.$`, `isVisible` and `document.querySelector`,
+  which is how a script asserts an absence on purpose. Reach the setup panel
+  through `harness.mjs`'s `openSetup` and a match through `startMatch` rather
+  than naming those ids again.
+- **A script asserts its own screen and no other.** `drive-lan-lobby.mjs`
+  checked the *menu's* button shape: a copy edit inside the LAN lobby then came
+  back reporting a menu failure, and the check went on asserting a link that
+  had been deleted, because nobody editing the menu thinks to read the LAN
+  script. It lives in `drive-menu-flow.mjs` now.
+- **Assert a prefix, not a sentence.** `drive-lan-lobby.mjs` checks
+  `includes('Không kết nối được')` rather than the whole line, so rewording the
+  rest of it costs nothing. Copy is the most-edited thing on any screen;
+  structure — an id, a count, a class — is what a test should hold on to. And
+  when the claim is *only* about structure or copy, a jsdom test in
+  `tests/scenes/` reaches it faster than a browser can boot.
 - **Every test must be shown to fail.** Write it, run it, *read* the message.
   Two shapes have shipped here repeatedly: asserting on state the code under test
   already produced, and a check that computes its expected value by calling the
@@ -175,7 +196,7 @@ a lobby, and none of them guessable from the file.
 
 The three that reach outside that directory:
 
-- **The menu offers exactly two big buttons** — Chơi and Chơi với bạn — and
+- **The menu offers exactly two big buttons** — Chơi and Online — and
   **Chơi opens the match-config panel, not a match**. The panel's Bắt Đầu is what
   reaches `GameScene`, so an e2e driver takes two presses; `startMatch(page)` in
   `tests/e2e/harness.mjs` is the one place that knows it.

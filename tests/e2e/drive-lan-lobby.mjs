@@ -9,9 +9,14 @@
  * header says why), so what has to be measured changed with it: a panel that
  * fits the viewport it owns, rather than a drawer that fits a column.
  *
+ * The menu's own shape used to be asserted here too — two big buttons, Cấu
+ * hình a link rather than a third one. It has moved to `drive-menu-flow.mjs`,
+ * which is the menu's script. Keeping it here meant a copy edit inside the LAN
+ * lobby came back reporting a *menu* failure, and meant this script went on
+ * asserting `config-btn` existed for however long after the link was removed —
+ * a check about somebody else's screen is a check nobody maintains.
+ *
  * Asserts, at a landscape phone viewport (844×390, real touch):
- *   - the menu offers exactly the two match buttons, and Cấu hình is a link
- *     rather than a third one — the regression the redesign exists to prevent;
  *   - the lobby panel fits the viewport in both axes, and its body scrolls if
  *     the content is taller (programmatically *and* under a real touch drag,
  *     because `GameScene`-era preventDefault habits have killed thumb-scrolling
@@ -101,31 +106,6 @@ const rectOf = (targetPage, selector) =>
   }, selector);
 
 await guard(async () => {
-  // ------------------------------------------------ the menu it is reached from
-  await page.goto(menuUrl, { waitUntil: 'load' });
-  await page.waitForSelector('#lan-btn', { timeout: 60_000 });
-  const menuShape = await page.evaluate(() => ({
-    bigButtons: [...document.querySelectorAll('#menu-scene .hextech-btn')].map(el => el.id),
-    links: [...document.querySelectorAll('#menu-scene .menu-link')].map(el => el.id),
-  }));
-  report.menuShape = menuShape;
-  check(
-    'the menu offers exactly the two match buttons',
-    menuShape.bigButtons.length === 2 &&
-      menuShape.bigButtons.includes('play-btn') &&
-      menuShape.bigButtons.includes('lan-btn'),
-    JSON.stringify(menuShape.bigButtons)
-  );
-  check(
-    'Cấu hình is a link, not a third big button',
-    menuShape.links.includes('config-btn'),
-    JSON.stringify(menuShape.links)
-  );
-  // The one shot of the menu itself: the counts above say the shape is right,
-  // and this says whether it *looks* right. One screenshot, not a run's worth
-  // — see the "keeping a pass cheap" note in CLAUDE.md.
-  await page.screenshot({ path: '/tmp/lan-lobby-menu.png' });
-
   // ------------------------------------------------ landscape phone, touch
 
   // The code row is measured **before** Tạo phòng, because hosting is the one

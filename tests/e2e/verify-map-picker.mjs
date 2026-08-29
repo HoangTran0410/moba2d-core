@@ -78,7 +78,7 @@
  *   node tests/e2e/verify-map-picker.mjs
  *   MOBA2D_CHROME_CHANNEL= node tests/e2e/verify-map-picker.mjs   # bundled Chromium
  */
-import { CFG_KEY, startHarness, startMatch } from './harness.mjs';
+import { CFG_KEY, openSetup, startHarness, startMatch } from './harness.mjs';
 
 const SUMMONERS_RIFT_ID = 'lol:summoners-rift';
 const PROVING_GROUNDS_ID = 'reference:proving-grounds';
@@ -223,8 +223,7 @@ await harness.guard(async () => {
 
   // ------------------------------------------- 3. the picker lists both
   await seedAndLoad(baseConfig(undefined));
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup(page);
   await page.click('#practice-tab-rules');
   await page.waitForSelector('#practice-map', { timeout: 30_000 });
 

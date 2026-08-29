@@ -99,6 +99,27 @@ const expect = (label, actual, expected) => {
  * the sides. That id carries the position in the *full* roster (0 is the
  * player), which is the thing this helper's argument actually means.
  */
+/**
+ * Chơi, and stop on the setup panel — this script's four entries into it.
+ *
+ * It was `page.click('#config-btn')`, and the menu's Cấu hình link is gone
+ * (`MenuScene.ts`: Chơi opens the panel, configuring *is* the pregame step),
+ * so all four sites were auto-waiting thirty seconds for an element that
+ * cannot appear. `harness.mjs` exports `openSetup` for exactly this, but this
+ * script boots its own server and browser on purpose and so is not a harness
+ * importer — `tests/scripts/e2eHarness.test.ts` bans being half of one.
+ *
+ * Answers the no-roster nudge if it comes: a checkout of this repository
+ * alone ships the one catalog that raises it (`MenuScene.vue`'s `pressPlay`).
+ */
+const openSetup = async () => {
+  await page.waitForSelector('#play-btn', { state: 'visible', timeout: 30_000 });
+  await page.click('#play-btn');
+  await page.waitForSelector('#pregame-scene, #pack-nudge-play', { state: 'visible' });
+  if (await page.$('#pack-nudge-play')) await page.click('#pack-nudge-play');
+  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+};
+
 const openParticipantAt = n =>
   page.click(`.practice-roster-main:has(#practice-row-toggle-${n - 1}) .practice-roster-open`);
 /**
@@ -134,7 +155,8 @@ const selectSlot = index => page.click(`.kit-slot-bar .kit-slot-pill:nth-child($
 const openShelf = name =>
   evaluate(n => {
     const shelf = document.querySelector(`.kit-shelf[data-champion="${n}"]`);
-    if (shelf && !shelf.classList.contains('open')) shelf.querySelector('.kit-shelf-apply')?.click();
+    if (shelf && !shelf.classList.contains('open'))
+      shelf.querySelector('.kit-shelf-apply')?.click();
   }, name);
 
 /**
@@ -153,7 +175,8 @@ const pickSpell = async id => {
   await evaluate(s => {
     const card = document.querySelector(`.catalog-spell-card[data-spell="${s}"]`);
     const shelf = card?.closest('.kit-shelf');
-    if (shelf && !shelf.classList.contains('open')) shelf.querySelector('.kit-shelf-apply')?.click();
+    if (shelf && !shelf.classList.contains('open'))
+      shelf.querySelector('.kit-shelf-apply')?.click();
   }, id);
   await page.click(`.catalog-spell-card[data-spell="${id}"]`);
 };
@@ -226,8 +249,7 @@ const editPlayer = async steps => {
 try {
   await page.goto(url, { waitUntil: 'load' });
   await evaluate(k => localStorage.removeItem(k), CFG);
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup();
   await page.waitForTimeout(150);
 
   // 1. one roster, whole catalogue, standalone abilities reachable
@@ -478,9 +500,7 @@ try {
   // every step after this waited for a menu that was not coming.
   // `onExitRequested` is the seam the panel's own exit button calls.
   await evaluate(() => window.__moba2d.scene.oScene.game.onExitRequested());
-  await page.waitForSelector('#config-btn', { state: 'visible' });
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup();
   await page.waitForSelector('.practice-roster-body', { state: 'visible' });
   await page.waitForTimeout(120);
 
@@ -708,8 +728,7 @@ try {
     );
   });
   await page.reload({ waitUntil: 'load' });
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup();
   await page.waitForTimeout(150);
   const legacyBotCount = await evaluate(
     () => document.querySelectorAll('.practice-roster-row:not(.is-player)').length
@@ -843,8 +862,7 @@ try {
   // old version of this script hid the fact that everything above it drove a
   // layout no default player ever saw.
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup();
   await openParticipantAt(1);
   await page.waitForSelector('.loadout-modal', { state: 'visible' });
   await page.waitForTimeout(150);
@@ -880,7 +898,11 @@ try {
   // Every shelf that has a kit, and only those: the two that are not a champion
   // are opened by selecting the slot they serve, never by being tapped.
   expect('rosterClosed.shelvesVisible', report.rosterClosed.shelvesVisible, report.catalog.withKit);
-  expect('rosterClosed.nonChampionShelvesVisible', report.rosterClosed.nonChampionShelvesVisible, 0);
+  expect(
+    'rosterClosed.nonChampionShelvesVisible',
+    report.rosterClosed.nonChampionShelvesVisible,
+    0
+  );
   // The whole point of the rework: nothing is pickable and nothing is
   // committable until a tile is opened, so a stray tap on the grid cannot
   // replace the kit.
@@ -904,12 +926,7 @@ try {
   await openShelf('Ahri');
   report.rosterOpen = await rosterShown();
   expect('rosterOpen.open', report.rosterOpen.open, 'Ahri');
-  expect('rosterOpen.cardIds', report.rosterOpen.cardIds, [
-    'Ahri_Q',
-    'Ahri_W',
-    'Ahri_E',
-    'Ahri_R',
-  ]);
+  expect('rosterOpen.cardIds', report.rosterOpen.cardIds, ['Ahri_Q', 'Ahri_W', 'Ahri_E', 'Ahri_R']);
   expect('rosterOpen.wholeKitButtonsVisible', report.rosterOpen.wholeKitButtonsVisible, 1);
 
   await openShelf('Lux');

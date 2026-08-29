@@ -26,7 +26,7 @@
  *
  *   node tests/e2e/verify-pack-management.mjs
  */
-import { CFG_KEY, startHarness } from './harness.mjs';
+import { CFG_KEY, openSetup, startHarness } from './harness.mjs';
 import { requirePackDist, startPackServer } from './packServer.mjs';
 
 requirePackDist();
@@ -62,8 +62,7 @@ const { url, page, report, check, errors, guard } = await startHarness();
  * the menu. Called from the menu; returns to the menu.
  */
 const readRosterFromMenu = async () => {
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible', timeout: 30_000 });
+  await openSetup(page);
   await page.click('.practice-roster-main:has(#practice-row-toggle-0) .practice-roster-open');
   await page.waitForSelector('.loadout-modal', { state: 'visible', timeout: 30_000 });
   const champions = await page.evaluate(() =>

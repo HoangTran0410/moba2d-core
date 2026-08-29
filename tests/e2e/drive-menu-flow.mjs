@@ -30,6 +30,16 @@ await guard(async () => {
   await page.waitForSelector('#play-btn');
 
   check('the menu carries no Cấu hình link any more', (await page.$('#config-btn')) === null);
+  // Moved here from `drive-lan-lobby.mjs`, which had no business asserting it:
+  // the regression the menu redesign exists to prevent is a *third* full-size
+  // button competing with the two that start a match.
+  check(
+    'the menu offers exactly the two match buttons',
+    await page.evaluate(() => {
+      const big = [...document.querySelectorAll('#menu-scene .hextech-btn')].map(el => el.id);
+      return big.length === 2 && big.includes('play-btn') && big.includes('lan-btn');
+    })
+  );
   check(
     'and Play is offered without waiting out the warm-up',
     await page.evaluate(() => !document.querySelector('#play-btn').disabled)
@@ -59,8 +69,10 @@ await guard(async () => {
   await page.goto(`${url}?ice=none`, { waitUntil: 'load' });
   await page.waitForSelector('#lan-btn');
   await page.click('#lan-btn');
-  const hostBtn = await page.waitForSelector('#lan-host-room, .lan-primary', { timeout: 20_000 });
-  await hostBtn.click();
+  // `#lan-host-room` was the first name for this button and had been carried
+  // here as a dead alternative ever since; `LanScene.vue` calls it `#lan-host`.
+  await page.waitForSelector('#lan-host', { timeout: 20_000 });
+  await page.click('#lan-host');
   await page.waitForSelector('#lan-config-host', { timeout: 30_000 });
   await page.click('#lan-config-host');
   await page.waitForSelector('.match-config-panel', { timeout: 20_000 });

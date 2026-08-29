@@ -56,7 +56,7 @@
  *   node tests/e2e/verify-pack-champion.mjs
  *   MOBA2D_CHROME_CHANNEL= node tests/e2e/verify-pack-champion.mjs   # bundled Chromium
  */
-import { CFG_KEY, startHarness } from './harness.mjs';
+import { CFG_KEY, openSetup, startHarness } from './harness.mjs';
 
 const CFG_SEED = {
   player: {
@@ -92,8 +92,7 @@ await guard(async () => {
   await page.goto(url, { waitUntil: 'load' });
 
   // ---------------------------------------------------- 1. offered by name
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup(page);
   await page.waitForTimeout(150);
   await page.click('.practice-roster-main:has(#practice-row-toggle-0) .practice-roster-open');
   await page.waitForSelector('.loadout-modal', { state: 'visible' });
@@ -209,8 +208,7 @@ await guard(async () => {
   // follows would still spawn the real Vera and pass by accident, hiding
   // exactly the bug this phase exists to catch.
   await page.goto(url, { waitUntil: 'load' });
-  await page.click('#config-btn');
-  await page.waitForSelector('#pregame-scene', { state: 'visible' });
+  await openSetup(page);
   await page.waitForTimeout(150);
   await page.click('.practice-roster-main:has(#practice-row-toggle-0) .practice-roster-open');
   await page.waitForSelector('.loadout-modal', { state: 'visible' });
