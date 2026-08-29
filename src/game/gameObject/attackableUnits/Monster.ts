@@ -43,6 +43,38 @@ export interface MonsterAbility {
   onKilled?(monster: Monster, killer: AttackableUnit): void;
 }
 
+/**
+ * How a camp answers a champion.
+ *
+ * - `aggressive` — the default, and what every camp written before this was:
+ *   it fights whatever damaged it (`takeDamage` → `aggroOn`), chases inside
+ *   its leash and walks home. Absent means this, so no existing camp moves.
+ * - `passive` — never fights. `aggroOn` is a no-op and a hit does not wake
+ *   the pack, so it can be killed and does nothing about it.
+ * - `skittish` — never fights *and* runs. A champion inside `aggroRange`, or
+ *   any damage at all, puts it in `FLEE`.
+ *
+ * Deliberately three named values rather than a pair of booleans
+ * (`canFight`, `flees`): the fourth combination — "runs away but also
+ * swings" — is not a camp anyone has asked for, and a type that cannot
+ * express it is one fewer state to reason about in `update`.
+ */
+export type MonsterTemperament = 'aggressive' | 'passive' | 'skittish';
+
+/**
+ * Where a body may wander — the region `isOutsideCamp` leashes against and
+ * the one a flee destination has to land in.
+ *
+ * `camp` is the `camp.r` circle every camp used before this existed, and is
+ * the default.
+ *
+ * `terrain` is the region "anywhere inside this map layer", which exists for
+ * a camp whose home is a *shape* rather than a circle — a river crab that
+ * should stay in the water no matter how the river bends. A circle cannot
+ * express that: sized to hold the river it also holds both banks.
+ */
+export type MonsterRoam = { kind: 'camp' } | { kind: 'terrain'; layer: 'water' | 'bush' };
+
 export interface MonsterPresetData {
   name: string;
   /**
@@ -81,6 +113,22 @@ export interface MonsterPresetData {
   attackInterval?: number;
   /** Champions this close wake the camp up. Defaults to attackRange + 120. */
   aggroRange?: number;
+  /** Defaults to `'aggressive'` — see the type. */
+  temperament?: MonsterTemperament;
+  /** Defaults to `{ kind: 'camp' }` — see the type. */
+  roam?: MonsterRoam;
+  /**
+   * A body that is removed when it dies instead of coming back.
+   *
+   * There is no number that means this. `AttackableUnit.die` schedules
+   * `{ reviveAfter: reviveTime }` and `update` respawns the moment that
+   * counter reaches zero, so `reviveTime: 0` is not "never returns", it is
+   * "returns next frame"; `Infinity` never elapses but leaves a corpse in
+   * the object list for the rest of the match. A body that exists until
+   * killed — a split child, a summon — is a shape the engine was missing,
+   * not a duration anyone can pick.
+   */
+  ephemeral?: boolean;
   /** Tried in order, one per frame. A camp that declares none just swings. */
   abilities?: MonsterAbility[];
 }
@@ -106,6 +154,38 @@ export const MONSTER_CHASE_MARGIN = 350;
 /** Grace after a camp's target leaves the chase leash before it turns for
  *  home, so a target that ducks out and back is still pursued. */
 export const MONSTER_GIVE_UP_DELAY_MS = 2000;
+
+/**
+ * How far a fleeing body tries to get in one order, longest first.
+ *
+ * Three lengths rather than one because the first is a *preference*, not a
+ * requirement: a body cornered against the end of its roam region has no
+ * 420px hop that stays inside it, and should still take the 130px one rather
+ * than stand still.
+ */
+export const MONSTER_FLEE_STEPS = [420, 260, 130] as const;
+
+/**
+ * Turns applied to "directly away from the threat", in radians, tried in
+ * order.
+ *
+ * Straight away is usually not available to the camp this exists for: a crab
+ * in a river cannot leave the water, and the water bends. So it fans to
+ * either side — symmetric, widening — before giving up on the direction.
+ */
+export const MONSTER_FLEE_FAN = [0, 0.6, -0.6, 1.2, -1.2, 2.0, -2.0] as const;
+
+/**
+ * Just enough of the game context to ask one terrain question.
+ *
+ * Structural and optional, the shape `Vision.ts` and `DynamicTerrain.ts`
+ * already use for the same reason: a headless context with no map at all is a
+ * legal caller — the spell suites build one by the hundred — so this has to
+ * read as "cannot answer", never as a crash.
+ */
+type TerrainQueryHost = {
+  terrainMap?: { containsPoint?(x: number, y: number, terrainType: string): boolean };
+};
 
 /**
  * What a camp is when nobody said. Deliberately anonymous and at the origin.
@@ -140,6 +220,8 @@ export default class Monster extends AttackableUnit {
     IDLE: 'IDLE',
     ATTACK: 'ATTACK',
     BACK_TO_CAMP: 'BACK_TO_CAMP',
+    /** Only a `skittish` camp is ever in this one. */
+    FLEE: 'FLEE',
   };
 
   /** Between AttackableUnit and Champion: monsters must not paint over players. */
@@ -154,6 +236,9 @@ export default class Monster extends AttackableUnit {
   attackInterval: number;
   damage: number;
   aggroRange: number;
+  temperament: MonsterTemperament;
+  roam: MonsterRoam;
+  ephemeral: boolean;
   reviveTime = 0;
   targetLock: AttackableUnit | null = null;
 
@@ -170,6 +255,12 @@ export default class Monster extends AttackableUnit {
   _scanCooldown = 0;
   /** Grace left before a camp whose target left the chase leash turns for home. */
   _giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+  /**
+   * What a fleeing camp last saw, refreshed on the same 250ms scan that picks
+   * its next destination. Held only so `updateFlee` can run the give-up clock
+   * every frame rather than in 250ms jumps; never a target, never attacked.
+   */
+  _fleeThreat: AttackableUnit | null = null;
   /** Per-frame regen applied by Stats.update(), picked per phase. */
   _idleRegen: number;
   _leashRegen: number;
@@ -200,6 +291,9 @@ export default class Monster extends AttackableUnit {
     this.attackInterval = preset.attackInterval ?? 1500;
     this.damage = preset.damage ?? Math.min(25, Math.max(3, Math.round(preset.health / 25)));
     this.aggroRange = preset.aggroRange ?? preset.attackRange + 120;
+    this.temperament = preset.temperament ?? 'aggressive';
+    this.roam = preset.roam ?? { kind: 'camp' };
+    this.ephemeral = preset.ephemeral ?? false;
     this.abilities = preset.abilities ?? [];
     this._abilityCooldowns = this.abilities.map(() => 0);
 
@@ -247,6 +341,7 @@ export default class Monster extends AttackableUnit {
     if (this.phase === Monster.PHASES.IDLE) this.updateIdle();
     else if (this.phase === Monster.PHASES.ATTACK) this.updateAttack();
     else if (this.phase === Monster.PHASES.BACK_TO_CAMP) this.updateBackToCamp();
+    else if (this.phase === Monster.PHASES.FLEE) this.updateFlee();
   }
 
   updateIdle() {
@@ -271,6 +366,17 @@ export default class Monster extends AttackableUnit {
     // pit untouched. A camp only enters ATTACK when something damages it —
     // `takeDamage` calls `aggroOn(attacker)`. IDLE is now a genuinely passive
     // state whose only job is to hold the camp point and regen.
+    //
+    // A `skittish` camp is the one exception, and it is not a re-opening of
+    // that rule: proximity here starts a *retreat*, never a fight. The scan
+    // rides the 250ms cooldown above — which this phase already spends and
+    // nothing else was using — so an aggressive camp still runs no query at
+    // all and the cost of the exception is one string comparison per body per
+    // quarter second.
+    if (this.temperament === 'skittish') {
+      const threat = this.nearestThreat();
+      if (threat) this.fleeFrom(threat);
+    }
   }
 
   /**
@@ -283,7 +389,26 @@ export default class Monster extends AttackableUnit {
    * the tolerance: how far a body may wander is a property of the camp.
    */
   isOutsideCamp(): boolean {
-    return !withinRadius(this.position, this.home, this.camp.r);
+    return !this.roamContains(this.position.x, this.position.y);
+  }
+
+  /**
+   * Whether a point is somewhere this body is allowed to be — the leash
+   * question and the flee-destination question, which are the same question.
+   *
+   * A `terrain` roam whose map cannot answer (a headless context, or a layer
+   * the map does not have) falls back to the camp circle rather than to
+   * "nowhere": a crab whose river was edited out from under it should behave
+   * like an ordinary camp, not freeze.
+   */
+  roamContains(x: number, y: number): boolean {
+    if (this.roam.kind === 'terrain') {
+      const terrain = (this.game as TerrainQueryHost | undefined)?.terrainMap;
+      if (typeof terrain?.containsPoint === 'function') {
+        return terrain.containsPoint(x, y, this.roam.layer);
+      }
+    }
+    return withinRadius({ x, y }, this.home, this.camp.r);
   }
 
   /**
@@ -426,8 +551,22 @@ export default class Monster extends AttackableUnit {
     this.navigateTo(this.home.x, this.home.y);
   }
 
+  /**
+   * The one gate temperament needs.
+   *
+   * Every path into a fight goes through here — `takeDamage` for the body
+   * that was hit, `alertCamp` for its packmates — so `passive` and `skittish`
+   * are enforced once, at the seam, rather than at each caller. That is the
+   * same reasoning `BotBrain.mayFight` rests on, and for the same reason:
+   * a rule spread over three call sites is a rule with a hole in it.
+   */
   aggroOn(unit?: AttackableUnit) {
     if (!unit || unit === this) return;
+    if (this.temperament === 'passive') return;
+    if (this.temperament === 'skittish') {
+      this.fleeFrom(unit);
+      return;
+    }
     this.targetLock = unit;
     this.phase = Monster.PHASES.ATTACK;
     this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
@@ -435,8 +574,139 @@ export default class Monster extends AttackableUnit {
 
   goBackToCamp() {
     this.targetLock = null;
+    this._fleeThreat = null;
     this.phase = Monster.PHASES.BACK_TO_CAMP;
     this.navigateTo(this.home.x, this.home.y);
+  }
+
+  /** Turns a body away from `threat` and orders the first step of the retreat. */
+  fleeFrom(threat: AttackableUnit) {
+    this.targetLock = null;
+    this._fleeThreat = threat;
+    this.phase = Monster.PHASES.FLEE;
+    this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+    const point = this.fleePoint(threat);
+    this.navigateTo(point.x, point.y);
+  }
+
+  /**
+   * Keeps running while something is close, then goes home.
+   *
+   * The destination is re-picked on the same 250ms beat the other phases scan
+   * on — often enough to keep away from a champion walking after it, rarely
+   * enough that this is not a pathfind per frame. The give-up clock runs on
+   * `deltaTime` rather than on that beat, so `_fleeThreat` is held between
+   * scans purely to answer "is anything still after me" every frame.
+   */
+  updateFlee() {
+    this._scanCooldown -= deltaTime;
+    if (this._scanCooldown <= 0) {
+      this._scanCooldown = 250;
+      this._fleeThreat = this.nearestThreat();
+      if (this._fleeThreat) {
+        const point = this.fleePoint(this._fleeThreat);
+        this.navigateTo(point.x, point.y);
+      }
+    }
+
+    if (this._fleeThreat) {
+      this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+      return;
+    }
+
+    this._giveUpTimer -= deltaTime;
+    if (this._giveUpTimer <= 0) this.goBackToCamp();
+  }
+
+  /**
+   * The nearest champion inside `aggroRange`, or nothing.
+   *
+   * Champions of every team: a neutral camp has no side, so "enemy" is not a
+   * question it can ask. The quadtree answers by bounding box, so the real
+   * distance is re-checked here — a champion in a neighbouring cell is a
+   * retrieve hit and not a threat.
+   *
+   * **Gated on sight**, through the same `visibleTo` seam every scan that
+   * *picks* a unit goes through (`check-seams`' `target-vision` refuses this
+   * query without it). It is not merely a rule obeyed: a camp with
+   * `visionRadius = 0` still sees normally here, because `Vision.viewIsClear`
+   * range-gates only *borrowed* eyes — so what the filter actually buys is
+   * bush cover and walls. Standing in the brush beside a crab no longer
+   * startles it, which is the behaviour anyone would expect and is not
+   * something this method would have got right on its own.
+   */
+  nearestThreat(): AttackableUnit | null {
+    if (!this.game?.objectManager) return null;
+
+    const found = this.game.objectManager.queryObjects({
+      area: new Circle({ x: this.position.x, y: this.position.y, r: this.aggroRange }),
+      filters: [
+        PredefinedFilters.type(Champion),
+        PredefinedFilters.excludeDead,
+        PredefinedFilters.excludeStealthed,
+        PredefinedFilters.visibleTo(this),
+      ],
+    }) as AttackableUnit[];
+
+    let nearest: AttackableUnit | null = null;
+    let nearestDistance = Infinity;
+    for (const champion of found) {
+      if (champion === this || !champion.position) continue;
+      const distance = p5.Vector.dist(this.position, champion.position);
+      if (distance > this.aggroRange || distance >= nearestDistance) continue;
+      nearest = champion;
+      nearestDistance = distance;
+    }
+    return nearest;
+  }
+
+  /**
+   * Where to run: directly away from the threat if that is allowed, otherwise
+   * the best of a widening fan (`MONSTER_FLEE_FAN`) at a shortening distance
+   * (`MONSTER_FLEE_STEPS`).
+   *
+   * A candidate has to satisfy both halves — inside the roam region *and*
+   * standable — because they refuse different things. The region says "not out
+   * of the river"; the nav grid says "not inside that rock". A point can pass
+   * either one alone and still be somewhere the body cannot go.
+   *
+   * Falls back to `home`, which the region contains by construction: a body
+   * with nowhere legal to run walks back to its own spot rather than standing
+   * still while something eats it.
+   */
+  fleePoint(threat: AttackableUnit): { x: number; y: number } {
+    const away = p5.Vector.sub(this.position, threat.position);
+    // Standing exactly on the threat has no "away" — any direction is as good
+    // as another, and normalising a zero vector yields NaN, which is a body
+    // ordered to nowhere.
+    if (away.magSq() === 0) away.set(1, 0);
+    away.normalize();
+
+    const radius = this.stats.size.value / 2;
+    for (const distance of MONSTER_FLEE_STEPS) {
+      for (const turn of MONSTER_FLEE_FAN) {
+        const direction = away.copy().rotate(turn);
+        const x = this.position.x + direction.x * distance;
+        const y = this.position.y + direction.y * distance;
+        if (!this.roamContains(x, y)) continue;
+        if (!this.canStandAt(x, y, radius)) continue;
+        return { x, y };
+      }
+    }
+    return { x: this.home.x, y: this.home.y };
+  }
+
+  /**
+   * Whether a body of `radius` fits at a point.
+   *
+   * No navigation is a real context — every headless spell test builds one —
+   * and there "anywhere" is the honest answer, which is exactly what
+   * `navigateTo` already degrades to in the same situation.
+   */
+  canStandAt(x: number, y: number, radius: number): boolean {
+    const grid = this.game?.navigation?.grid;
+    if (!grid) return true;
+    return grid.isWalkable(x, y, radius);
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
@@ -570,13 +840,32 @@ export default class Monster extends AttackableUnit {
       for (const ability of this.abilities) ability.onKilled?.(this, deathData.attacker);
     }
     this.targetLock = null;
+    this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this.stopMovement();
+
+    // Set after `super.die` rather than instead of it: the body still dies
+    // normally — its bounty is paid, its abilities' `onKilled` have run — it
+    // simply is not around for the revive timer to reach. `ObjectManager`
+    // retires it on its next pass.
+    if (this.ephemeral) this.toRemove = true;
   }
 
   respawn() {
+    // Belt and braces, the same guard `Minion.respawn` carries and for the
+    // same reason: `toRemove` is what keeps an ephemeral body off the revive
+    // path, but the object is only retired on `ObjectManager`'s *next* pass
+    // while `AttackableUnit.update` runs the revive timer in this one. A
+    // split child with a short `reviveTime` can therefore reach here once,
+    // and coming back would undo the whole point of it.
+    if (this.ephemeral) {
+      this.toRemove = true;
+      return;
+    }
+
     super.respawn();
     this.targetLock = null;
+    this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this._attackCooldown = 0;
     this._attackFlash = 0;

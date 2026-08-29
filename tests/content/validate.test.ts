@@ -410,6 +410,88 @@ describe('validatePack', () => {
     expect(result.ok).toBe(true);
   });
 
+  // ---------------------------------------------------------- behaviour fields
+  //
+  // `temperament`, `roam` and `ephemeral` are the three optional fields on a
+  // `MonsterBody` whose failure mode is *silence*. A published pack is JSON by
+  // the time it reaches here, so the union types are gone: a misspelled
+  // temperament reads as "not aggressive" at every comparison in `Monster` and
+  // the camp installs fine, then stands there while you kill it. An
+  // unrecognised `roam.kind` is worse — it falls through to the camp circle,
+  // which *works*, so a river crab quietly becomes an ordinary one.
+
+  const behaviouralWolves = (body: Record<string, unknown>) => ({
+    manifest: goodManifest,
+    monsters: {
+      wolves: {
+        id: 'wolves',
+        name: 'Wolves',
+        fills: ['wolves'],
+        members: [
+          {
+            name: 'Wolf',
+            avatar: 'monster_wolf',
+            speed: 2,
+            size: 40,
+            attackRange: 50,
+            reviveTime: 3000,
+            health: 100,
+            offset: { x: 0, y: 0 },
+            ...body,
+          },
+        ],
+      },
+    },
+  });
+
+  it('accepts the three behaviour fields when they are spelled right', () => {
+    const result = validatePack(
+      behaviouralWolves({
+        temperament: 'skittish',
+        roam: { kind: 'terrain', layer: 'water' },
+        ephemeral: true,
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a body that declares none of them — they are all optional', () => {
+    expect(validatePack(behaviouralWolves({})).ok).toBe(true);
+  });
+
+  it('rejects a misspelled temperament rather than reading it as not-aggressive', () => {
+    const result = validatePack(behaviouralWolves({ temperament: 'agressive' }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toMatch(/temperament/);
+      // Names what core does provide, so the fix is in the message.
+      expect(result.errors.join(' ')).toMatch(/skittish/);
+    }
+  });
+
+  it('rejects an unknown roam kind rather than falling through to the camp circle', () => {
+    const result = validatePack(behaviouralWolves({ roam: { kind: 'river' } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/roam\.kind/);
+  });
+
+  it('rejects a terrain roam naming a layer that is not a region', () => {
+    // `wall` is a layer, but not one anything can stand in.
+    const result = validatePack(behaviouralWolves({ roam: { kind: 'terrain', layer: 'wall' } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/roam\.layer/);
+  });
+
+  it('accepts an explicit camp roam', () => {
+    expect(validatePack(behaviouralWolves({ roam: { kind: 'camp' } })).ok).toBe(true);
+  });
+
+  it('rejects a non-boolean ephemeral', () => {
+    const result = validatePack(behaviouralWolves({ ephemeral: 'yes' }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/ephemeral/);
+  });
+
   it('rejects a spells entry that is not a class', () => {
     // The success cast claims spells: Record<string, SpellClass>. A string
     // sitting where a constructor belongs must be named at load, not `new`-ed

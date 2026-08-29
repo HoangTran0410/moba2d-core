@@ -287,6 +287,33 @@ export default class TerrainMap {
   }
 
   /**
+   * Whether a world point is inside a given terrain layer.
+   *
+   * The layers other than `wall` are *regions*, not obstacles — nothing
+   * collides with a bush — and until now the only way to ask about one was to
+   * repeat the retrieve-then-`pointPolygon` pair that `update()` does inline
+   * for the champion pass. A camp that has to stay in the river is the second
+   * caller, so the pair becomes a method rather than a second copy.
+   *
+   * A 1px query circle rather than the bare point: `Quadtree.retrieve` takes
+   * an area, and a zero-sized one sits exactly on cell boundaries, where which
+   * cell it lands in is a rounding question. One pixel of slop costs nothing —
+   * the answer is decided by `pointPolygon` on the real vertices afterwards,
+   * not by which cells came back.
+   *
+   * Obstacle vertices are already in world space (see the constructor: every
+   * `Obstacle` is built at the origin), which is why there is no position
+   * offset here and none in `update()` either.
+   */
+  containsPoint(x: number, y: number, terrainType: string): boolean {
+    const area = new Circle({ x, y, r: 1 });
+    for (const obstacle of this.getObstaclesInArea(area, [terrainType])) {
+      if (CollideUtils.pointPolygon(x, y, obstacle.vertices)) return true;
+    }
+    return false;
+  }
+
+  /**
    * `radius` overrides what the unit sees for itself. A minion or a turret has
    * `visionRadius = 0` on purpose — no combat sight — yet still grants the team
    * a circle through `fogRevealRadius`, and the fog casts a polygon inside that

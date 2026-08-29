@@ -104,6 +104,8 @@ export type {
   MinionSlot,
   MonsterAbility,
   MonsterDef,
+  MonsterRoam,
+  MonsterTemperament,
   NeutralSlot,
   PackManifest,
   SpawnSlot,

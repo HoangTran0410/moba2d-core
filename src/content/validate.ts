@@ -1,8 +1,11 @@
 import {
+  MONSTER_ROAM_LAYERS,
+  MONSTER_TEMPERAMENTS,
   STRUCTURE_KINDS,
   type ContentPack,
   type ContentPackCode,
   type ContentPackData,
+  type MonsterTemperament,
   type StructureKind,
 } from './ContentPack';
 
@@ -555,6 +558,61 @@ function checkMonsterBody(path: string, value: unknown, errors: string[]): void 
     !isFiniteNumber(value.offset.y)
   ) {
     errors.push(`${path}.offset: must be {x, y} finite numbers`);
+  }
+  checkMonsterBehaviour(path, value, errors);
+}
+
+/**
+ * The three optional behaviour fields, checked by vocabulary rather than by
+ * shape alone.
+ *
+ * Each one's failure is silent in a way `tsc` cannot see, because a published
+ * pack is JSON by the time it gets here: a misspelled temperament reads as
+ * "not aggressive" at every comparison in `Monster`, so the camp installs
+ * fine and then stands there while you kill it. `roam` is worse — an
+ * unrecognised `kind` falls through to the camp circle, which *works*, so a
+ * river crab silently becomes an ordinary one and nobody finds out until they
+ * wonder why it never swims.
+ */
+function checkMonsterBehaviour(
+  path: string,
+  value: Record<string, unknown>,
+  errors: string[]
+): void {
+  if (
+    value.temperament !== undefined &&
+    !MONSTER_TEMPERAMENTS.includes(value.temperament as MonsterTemperament)
+  ) {
+    errors.push(
+      `${path}.temperament: unknown ${JSON.stringify(value.temperament)}; ` +
+        `core provides ${MONSTER_TEMPERAMENTS.join(', ')}`
+    );
+  }
+
+  if (value.ephemeral !== undefined && typeof value.ephemeral !== 'boolean') {
+    errors.push(`${path}.ephemeral: must be a boolean`);
+  }
+
+  if (value.roam === undefined) return;
+  if (!isObject(value.roam)) {
+    errors.push(`${path}.roam: must be an object`);
+    return;
+  }
+  const roam = value.roam;
+  if (roam.kind === 'camp') {
+    return;
+  }
+  if (roam.kind !== 'terrain') {
+    errors.push(
+      `${path}.roam.kind: unknown ${JSON.stringify(roam.kind)}; core provides camp, terrain`
+    );
+    return;
+  }
+  if (!MONSTER_ROAM_LAYERS.includes(roam.layer as 'water' | 'bush')) {
+    errors.push(
+      `${path}.roam.layer: unknown ${JSON.stringify(roam.layer)}; ` +
+        `core provides ${MONSTER_ROAM_LAYERS.join(', ')}`
+    );
   }
 }
 

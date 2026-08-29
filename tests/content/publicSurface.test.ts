@@ -307,8 +307,18 @@ describe('what each subpath actually publishes, not just that it exists', () => 
   });
 
   it('./content/ContentPack exports exactly this list', () => {
+    // `MONSTER_TEMPERAMENTS` / `MONSTER_ROAM_LAYERS` join `STRUCTURE_KINDS`
+    // as runtime vocabularies for the same reason it is one: the union type
+    // is erased by the time a published pack's JSON reaches `validate.ts`, so
+    // the list of legal values has to survive to runtime to be checked at all.
     expect(Object.keys(contentPack).sort()).toEqual(
-      ['STRUCTURE_KINDS', 'isSpellLoader', 'lazy'].sort()
+      [
+        'MONSTER_ROAM_LAYERS',
+        'MONSTER_TEMPERAMENTS',
+        'STRUCTURE_KINDS',
+        'isSpellLoader',
+        'lazy',
+      ].sort()
     );
   });
 

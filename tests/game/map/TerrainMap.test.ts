@@ -72,6 +72,44 @@ describe('TerrainMap', () => {
     ]);
   });
 
+  describe('containsPoint', () => {
+    // The layers other than `wall` are regions, not obstacles — nothing
+    // collides with a bush — and a camp that has to stay in the river is the
+    // first caller that needs to ask about one by point. Before this, the only
+    // way was to repeat the retrieve-then-`pointPolygon` pair `update()` does
+    // inline for its champion pass.
+
+    it('answers true inside a layer polygon and false outside it', () => {
+      const terrainMap = new TerrainMap({}, activeMap(6_400));
+      expect(terrainMap.containsPoint(320, 320, TerrainType.BUSH)).toBe(true);
+      expect(terrainMap.containsPoint(500, 500, TerrainType.BUSH)).toBe(false);
+    });
+
+    it('answers for the layer asked for, not for whatever polygon is there', () => {
+      // The point below is inside the *wall*. A `containsPoint` that only
+      // checked "did the quadtree hand anything back" would call it bush.
+      const terrainMap = new TerrainMap({}, activeMap(6_400));
+      expect(terrainMap.containsPoint(150, 150, TerrainType.WALL)).toBe(true);
+      expect(terrainMap.containsPoint(150, 150, TerrainType.BUSH)).toBe(false);
+      expect(terrainMap.containsPoint(320, 320, TerrainType.WATER)).toBe(false);
+    });
+
+    it('is false for a layer the map does not have at all', () => {
+      // `activeMap` ships no water. "No such layer" has to read as "not in
+      // it", never as a throw — a camp asking is not a bug.
+      const terrainMap = new TerrainMap({}, activeMap(6_400));
+      expect(terrainMap.containsPoint(320, 320, TerrainType.WATER)).toBe(false);
+    });
+
+    it('does not report a point just outside a polygon edge as inside', () => {
+      // The 1px query circle widens what the quadtree hands back, never what
+      // counts as inside — `pointPolygon` on the real vertices decides.
+      const terrainMap = new TerrainMap({}, activeMap(6_400));
+      expect(terrainMap.containsPoint(299, 320, TerrainType.BUSH)).toBe(false);
+      expect(terrainMap.containsPoint(301, 320, TerrainType.BUSH)).toBe(true);
+    });
+  });
+
   it('a second map with a different size and terrain builds an independent quadtree', () => {
     // Regression for a `TerrainMap` that quietly kept a module-level default:
     // two instances built back to back must not share state.

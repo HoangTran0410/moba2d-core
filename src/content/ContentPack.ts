@@ -1,8 +1,20 @@
 import type { ContentApi } from './ContentApi';
-import type { MonsterAbility } from '@/game/gameObject/attackableUnits/Monster';
+import type {
+  MonsterAbility,
+  MonsterRoam,
+  MonsterTemperament,
+} from '@/game/gameObject/attackableUnits/Monster';
 
-/** Re-exported so a pack may `import type { MonsterAbility } from '@/content/types'`. */
-export type { MonsterAbility };
+/**
+ * Re-exported so a pack may `import type { MonsterAbility } from '@/content/types'`.
+ *
+ * `MonsterTemperament` and `MonsterRoam` ride the same door for the same
+ * reason and are declared in the same place: core is what *implements* them
+ * — a pack naming a fourth temperament would be naming behaviour that does
+ * not exist — so the vocabulary is core's, while which one a given camp has
+ * is the pack's to say.
+ */
+export type { MonsterAbility, MonsterRoam, MonsterTemperament };
 
 /**
  * What a content pack is, and why the code half is a function.
@@ -343,6 +355,21 @@ export interface MonsterBody {
   attackInterval?: number;
   /** Champions this close wake the camp. Defaults to `attackRange + 120`. */
   aggroRange?: number;
+  /**
+   * How this body answers a champion. Absent means `'aggressive'` — every
+   * camp written before this field existed, unchanged.
+   */
+  temperament?: MonsterTemperament;
+  /**
+   * Where this body may wander. Absent means the camp circle.
+   *
+   * Deliberately declared here and **not** overridable per map slot, unlike
+   * the numbers beside it: a roam region that disagrees with where the map
+   * actually put the water is not a playstyle, it is a broken camp.
+   */
+  roam?: MonsterRoam;
+  /** Removed on death instead of respawning — see `MonsterPresetData`. */
+  ephemeral?: boolean;
   /** This body's position relative to the slot's `{x, y}`. */
   offset: { x: number; y: number };
 }
@@ -607,3 +634,18 @@ export interface ContentPackCode {
 export type ContentPack = ContentPackData & ContentPackCode;
 
 export const STRUCTURE_KINDS: readonly StructureKind[] = Object.freeze(['turret']);
+
+/**
+ * The vocabularies `validate.ts` checks a `MonsterBody` against, beside
+ * `STRUCTURE_KINDS` and for the same reason: the type is erased at runtime,
+ * so a pack shipping `temperament: 'agressive'` would otherwise install
+ * cleanly and produce a camp that quietly never fights.
+ */
+export const MONSTER_TEMPERAMENTS: readonly MonsterTemperament[] = Object.freeze([
+  'aggressive',
+  'passive',
+  'skittish',
+]);
+
+/** Layers a `roam: { kind: 'terrain' }` may name — the two region layers. */
+export const MONSTER_ROAM_LAYERS: readonly ('water' | 'bush')[] = Object.freeze(['water', 'bush']);

@@ -761,6 +761,9 @@ export const monsterBodyPreset = (
   damage: member.damage,
   attackInterval: member.attackInterval,
   aggroRange: member.aggroRange,
+  temperament: member.temperament,
+  roam: member.roam,
+  ephemeral: member.ephemeral,
   abilities: contentRegistry().abilitiesFor(monster.id),
 });
 
