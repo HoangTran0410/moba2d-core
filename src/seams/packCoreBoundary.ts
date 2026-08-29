@@ -151,6 +151,14 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     naming it is a spell that cannot run, caught by the pack's own
  *     runtime the first time that code path executes, not a hole in what
  *     ships.
+ *   - `/testing/items` — `describeItemShop`, the assertions a pack's shop has
+ *     to satisfy because they are facts about what *core* does with an item.
+ *     A value import for the plainest reason: it is a function a test calls,
+ *     and it value-imports core's `Item` and `Stats` for the two constants
+ *     (`INVENTORY_SIZE`, `MAX_COOLDOWN_REDUCTION`) it exists so that no pack
+ *     copies. Out of the `/testing` barrel for exactly `/testing/spells`'
+ *     reason: `export *` evaluates the whole module, and a pack test that
+ *     only wanted `createGame` should not pay for the engine's item graph.
  *   - `/pack-webp` and `/pack-assets` — the two build helpers a pack's own
  *     tooling runs: a Vite plugin that re-encodes art on the way into
  *     `dist/`, and the asset-manifest generator (a bin, but a pack test may
@@ -169,6 +177,7 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/spells`,
   `${CORE_PACKAGE}/testing/vitest`,
   `${CORE_PACKAGE}/testing/setup`,
+  `${CORE_PACKAGE}/testing/items`,
   `${CORE_PACKAGE}/seams`,
   `${CORE_PACKAGE}/pack-webp`,
   `${CORE_PACKAGE}/pack-assets`,
