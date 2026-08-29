@@ -102,8 +102,11 @@ function runEditor(tuning?: unknown): EditorRun {
       normalizeTerrain({ type: 'spawn', position: [3600, 3600], props: { faction: 'jade', r: 150 } }),
       normalizeTerrain({ type: 'minion', position: [700, 700], props: { faction: 'amber', lane: 'mid' } }),
       normalizeTerrain({ type: 'minion', position: [3300, 3300], props: { faction: 'jade', lane: 'mid' } }),
-      normalizeTerrain({ type: 'structure', position: [900, 900], props: { faction: 'amber', kind: 'turret' } }),
+      normalizeTerrain({ type: 'structure', position: [900, 900],
+                         props: { faction: 'amber', kind: 'turret', stats: { health: 900, attackRange: 700 } } }),
       normalizeTerrain({ type: 'structure', position: [3100, 3100], props: { faction: 'jade', kind: 'turret' } }),
+      normalizeTerrain({ type: 'neutral', position: [2000, 1000],
+                         props: { role: 'warden', r: 200, stats: { aggroRange: 800 } } }),
     ];
     Store.publishLocal();
     `,
@@ -121,6 +124,8 @@ function runEditor(tuning?: unknown): EditorRun {
 function parseInEditor(doc: unknown): {
   meta: { tuning?: unknown };
   summaryTuning: unknown;
+  /** The first structure slot's own `stats`, as the editor read them back. */
+  structureStats: unknown;
 } {
   const store = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
@@ -154,7 +159,12 @@ function parseInEditor(doc: unknown): {
       E.mapName = parsed.name;
       E.mapSize = parsed.mapSize;
       E.meta = parsed.meta;
-      return { meta: parsed.meta, summaryTuning: Store.mapSummary().tuning };
+      const turret = (parsed.terrains || []).find(t => t.type === 'structure');
+      return {
+        meta: parsed.meta,
+        summaryTuning: Store.mapSummary().tuning,
+        structureStats: turret && turret.props ? turret.props.stats : undefined,
+      };
     })()
     `,
     context
@@ -230,6 +240,56 @@ describe('local maps', () => {
     installLocalMaps(registry);
     const installed = registry.maps().find(m => m.id === 'local:thung-lung');
     expect(installed?.tuning).toEqual(map.tuning);
+  });
+
+  it("carries a slot's own stat overrides, which is what makes the inspector mean anything", () => {
+    // The editor's inspector offers `stats.health` on a turret,
+    // `stats.aggroRange` on a camp and `stats.healPercent` on a fountain, and
+    // `commands.js` wrote every one of them into `props.stats` — and the
+    // exporter listed slot fields by hand and did not list `stats`. So every
+    // per-slot override typed into that panel was dropped on the way out, in
+    // silence: the player edited a turret, pressed Chơi thử, and core
+    // (`resolveTurretPreset`) received a slot with nothing to override.
+    const geometry = JSON.parse(published)[0].geometry;
+
+    expect(geometry.slots.structure[0].stats).toEqual({ health: 900, attackRange: 700 });
+    expect(geometry.slots.neutral[0].stats).toEqual({ aggroRange: 800 });
+    // And a slot that overrides nothing still exports clean — an empty
+    // `stats: {}` would reach core's validator as a block saying nothing.
+    expect(geometry.slots.structure[1].stats).toBeUndefined();
+  });
+
+  it('and reads them back, so reopening a map does not wipe them', () => {
+    // The other half of the same bug: the importer built its marker props by
+    // hand too. Export was fixed alone, the next Save would have written the
+    // overrides straight back out again as absent.
+    const parsed = parseInEditor({
+      id: 'thung-lung',
+      name: 'Thung Lũng',
+      size: 4000,
+      factions: [{ id: 'amber' }, { id: 'jade' }],
+      // One wall, because `parseMapJSON` refuses a document with no terrain at
+      // all — the slot is the subject, the wall is the price of entry.
+      terrain: {
+        wall: [
+          [
+            { x: 100, y: 100 },
+            { x: 300, y: 100 },
+            { x: 300, y: 300 },
+          ],
+        ],
+        bush: [],
+        water: [],
+      },
+      slots: {
+        spawn: [],
+        minion: [],
+        structure: [{ faction: 'amber', kind: 'turret', x: 900, y: 900, stats: { health: 900 } }],
+        neutral: [],
+      },
+    });
+
+    expect(parsed.structureStats).toEqual({ health: 900 });
   });
 
   it('writes no tuning key at all for a map that tunes nothing', () => {

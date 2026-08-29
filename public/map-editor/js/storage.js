@@ -511,8 +511,16 @@ const Store = (() => {
         polygon: [], polygons: [], props,
       });
     };
-    for (const s of (slots.spawn || [])) marker("spawn", s, { faction: s.faction, r: +s.r || 150 });
-    for (const s of (slots.structure || [])) marker("structure", s, { faction: s.faction, kind: "turret" });
+    // `stats` đi cả hai chiều — xem `withStats`. Không đọc lại thì mở chính
+    // file mình vừa xuất ra là mất sạch phần ghi đè, lần lưu sau ghi đè luôn.
+    const keepStats = (s, p) => {
+      if (s.stats && typeof s.stats === "object" && Object.keys(s.stats).length) p.stats = s.stats;
+      return p;
+    };
+    for (const s of (slots.spawn || []))
+      marker("spawn", s, keepStats(s, { faction: s.faction, r: +s.r || 150 }));
+    for (const s of (slots.structure || []))
+      marker("structure", s, keepStats(s, { faction: s.faction, kind: "turret" }));
     for (const s of (slots.minion || [])) {
       const p = { faction: s.faction, lane: s.lane };
       if (s.scatter != null) p.scatter = +s.scatter;
@@ -521,7 +529,7 @@ const Store = (() => {
     for (const s of (slots.neutral || [])) {
       const p = { role: s.role, r: +s.r || 150 };
       if (s.rotationDeg) p.rotationDeg = +s.rotationDeg;
-      marker("neutral", s, p);
+      marker("neutral", s, keepStats(s, p));
     }
     return out;
   }
@@ -801,10 +809,10 @@ const Store = (() => {
 
       switch (t.type) {
         case "spawn":
-          g.slots.spawn.push({ faction: p.faction || "", x: px, y: py, r: R(circleR(t)) });
+          g.slots.spawn.push(withStats(p, { faction: p.faction || "", x: px, y: py, r: R(circleR(t)) }));
           break;
         case "structure":
-          g.slots.structure.push({ faction: p.faction || "", kind: "turret", x: px, y: py });
+          g.slots.structure.push(withStats(p, { faction: p.faction || "", kind: "turret", x: px, y: py }));
           break;
         case "minion": {
           const m = { faction: p.faction || "", lane: p.lane || "", x: px, y: py };
@@ -815,7 +823,7 @@ const Store = (() => {
         case "neutral": {
           const n = { role: p.role || "", x: px, y: py, r: R(circleR(t)) };
           if (p.rotationDeg) n.rotationDeg = Number(p.rotationDeg);
-          g.slots.neutral.push(n);
+          g.slots.neutral.push(withStats(p, n));
           break;
         }
       }
@@ -888,12 +896,38 @@ const Store = (() => {
     ).join("\n") + `\n${indent}],`;
   }
 
+  /**
+   * Kèm theo `stats` của slot, nếu có.
+   *
+   * **Ba chỗ từng làm rơi nó và không chỗ nào báo gì.** Inspector cho gõ
+   * `stats.health` cho trụ, `stats.healPercent` cho bệ đá, `stats.aggroRange`
+   * cho bãi quái — `commands.js`'s `setDeep` ghi đúng vào `t.props.stats` —
+   * rồi hàm export này dựng slot bằng cách liệt kê từng field một và không
+   * liệt kê `stats`. Người chơi sửa chỉ số, bấm Chơi thử, và không thấy gì
+   * thay đổi cả, vì core (`config/mapTuning.ts`'s `resolveTurretPreset`) nhận
+   * được một slot chẳng có gì để ghi đè.
+   *
+   * `setDeep` đã tự dọn `stats: {}` rỗng, nên tới đây `stats` mà tồn tại thì
+   * chắc chắn có nội dung.
+   */
+  function withStats(props, slot) {
+    if (props.stats && typeof props.stats === "object" && Object.keys(props.stats).length) {
+      slot.stats = props.stats;
+    }
+    return slot;
+  }
+
+  const fmtValue = (value) =>
+    typeof value === "string" ? q(value) : typeof value === "object" ? JSON.stringify(value) : value;
+
   function fmtObjList(list, indent, keys) {
     if (!list.length) return "[],";
     const inner = indent + "  ";
     return "[\n" + list.map((o) => {
       const body = keys.filter((k) => o[k] !== undefined)
-        .map((k) => `${k}: ${typeof o[k] === "string" ? q(o[k]) : o[k]}`).join(", ");
+        // `stats` là object lồng, không phải số hay chuỗi — `JSON.stringify`
+        // ra đúng cú pháp object literal của TS cho một khối toàn số.
+        .map((k) => `${k}: ${fmtValue(o[k])}`).join(", ");
       return `${inner}{ ${body} },`;
     }).join("\n") + `\n${indent}],`;
   }
@@ -920,10 +954,10 @@ export const ${name}Geometry: MapGeometry = {
     water: ${fmtPolyList(g.terrain.water, "    ")}
   },
   slots: {
-    spawn: ${fmtObjList(g.slots.spawn, "    ", ["faction", "x", "y", "r"])}
+    spawn: ${fmtObjList(g.slots.spawn, "    ", ["faction", "x", "y", "r", "stats"])}
     minion: ${fmtObjList(g.slots.minion, "    ", ["faction", "lane", "x", "y", "scatter"])}
-    structure: ${fmtObjList(g.slots.structure, "    ", ["faction", "kind", "x", "y"])}
-    neutral: ${fmtObjList(g.slots.neutral, "    ", ["role", "x", "y", "r", "rotationDeg"])}
+    structure: ${fmtObjList(g.slots.structure, "    ", ["faction", "kind", "x", "y", "stats"])}
+    neutral: ${fmtObjList(g.slots.neutral, "    ", ["role", "x", "y", "r", "rotationDeg", "stats"])}
   },${g.lanes ? `
   lanes: [
 ${g.lanes.map((l) => `    {

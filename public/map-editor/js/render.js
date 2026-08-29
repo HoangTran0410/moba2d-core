@@ -277,6 +277,44 @@ const Renderer = (() => {
     }
   }
 
+  /**
+   * Các mặc định của core, chép sang đây vì không import được.
+   *
+   * `public/map-editor/` là HTML + global thuần, không bundler, nên `src/`
+   * không với tới được và ngược lại. Ba số này là `DEFAULT_TURRET_PRESET`
+   * (`structures/Turret.ts`) và `MONSTER_CHASE_MARGIN` (`Monster.ts`); nếu
+   * bên kia đổi thì vòng tròn ở đây chỉ vẽ sai một chút chứ không hỏng gì —
+   * đây là bản xem trước, không phải nguồn sự thật.
+   */
+  const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350 };
+
+  /** Đọc `stats` của slot rồi tới tuning của map — đúng thứ tự core merge. */
+  function slotNumber(t, key, group, fallback) {
+    const own = t.props && t.props.stats ? t.props.stats[key] : undefined;
+    if (Number.isFinite(+own)) return +own;
+    const tuning = (E.meta && E.meta.tuning && E.meta.tuning[group]) || {};
+    if (Number.isFinite(+tuning[key])) return +tuning[key];
+    return fallback;
+  }
+
+  /**
+   * Một vòng tròn "tầm với", vẽ mảnh và nhạt.
+   *
+   * Chấm chấm và không tô: đây là **thông tin**, không phải hình người ta vẽ,
+   * và nó phải đọc được là khác loại với đường viền của chính slot — nếu
+   * không thì trông như slot to hơn thật.
+   */
+  function drawReach(radius, s, color, dash) {
+    if (!(radius > 0)) return;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Geom.TAU);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2 / s;
+    ctx.setLineDash(dash.map((d) => d / s));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   /** Điểm đánh dấu (trụ, điểm lính): cỡ cố định theo màn hình nên zoom mức
    *  nào cũng thấy và bấm trúng. */
   function drawMarker(t, s, hot, selected) {
@@ -301,6 +339,15 @@ const Renderer = (() => {
     ctx.arc(0, 0, r * 0.22, 0, Geom.TAU);
     ctx.fillStyle = hot ? LINE_HI[t.type] : LINE[t.type];
     ctx.fill();
+
+    // Tầm bắn, ở đúng kích thước thật. Cái ô vuông cố định theo màn hình nói
+    // được "có một cái trụ ở đây" và không nói được điều duy nhất quyết định
+    // chỗ đặt nó: nó với tới đâu. Hai trụ cách nhau bao nhiêu thì vùng bắn
+    // còn chồng nhau là câu hỏi phải nhìn thấy mới trả lời được.
+    if (t.type === "structure") {
+      drawReach(slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
+        s, LINE_HI[t.type], [9, 6]);
+    }
   }
 
   /** Vòng tròn có bán kính thật (điểm hồi sinh, bãi quái). */
@@ -322,6 +369,25 @@ const Renderer = (() => {
     ctx.moveTo(0, -c); ctx.lineTo(0, c);
     ctx.lineWidth = 1.4 / s;
     ctx.stroke();
+
+    // Hai tầm của một bãi quái, vẽ riêng vì chúng trả lời hai câu khác nhau.
+    //
+    // Vòng nét đứt của chính slot là `r` — chỗ quái *đứng*, và cũng là cái
+    // người ta kéo để chỉnh. Nó không nói gì về việc đứng gần tới đâu thì bị
+    // đánh, hay bị đuổi tới đâu thì quái quay về, mà đó mới là hai thứ quyết
+    // định đặt bãi ở đâu cho an toàn.
+    //
+    // **Tầm phát hiện chỉ vẽ khi map thật sự khai báo.** Không khai thì nó là
+    // của *con quái* (`MonsterBody.aggroRange`, nằm trong pack), và editor
+    // không đọc được pack — vẽ một con số bịa ra còn tệ hơn không vẽ gì.
+    // Tầm đuổi thì luôn vẽ được: `max(r, aggroRange) + chaseMargin` là công
+    // thức của `Monster.chaseLeashRange`, và cả hai vế đều có mặc định.
+    if (t.type === "neutral") {
+      const aggro = slotNumber(t, "aggroRange", "monsters", 0);
+      const margin = slotNumber(t, "chaseMargin", "monsters", CORE_DEFAULTS.chaseMargin);
+      drawReach(aggro, s, "rgba(255,196,92,.75)", [4, 5]);
+      drawReach(Math.max(r, aggro) + margin, s, "rgba(255,120,120,.6)", [12, 8]);
+    }
 
     // Bãi quái có thể xoay bố cục quái bên trong — vẽ kim chỉ hướng.
     if (t.type === "neutral" && t.props && t.props.rotationDeg) {
