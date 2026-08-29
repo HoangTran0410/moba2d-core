@@ -29,6 +29,36 @@ describe('AreaSpellObject', () => {
     expect(events).toEqual(['enter', 'tick', 'exit']);
   });
 
+  it('stands where its centre is, not where its caster was', () => {
+    // `SpellObject` seeds `position` from the owner and this class answers
+    // every geometric question from `center`, so the two used to disagree for
+    // anything reading the zone from outside. `FogOfWar` is that outside:
+    // it builds its revealer list off `obj.position`, so a lit zone — a ward,
+    // a shrine — was painted around whoever made it instead of around itself.
+    const game = createGame();
+    const owner = createUnit(game);
+    owner.position.set(900, -400);
+
+    const area = new AreaSpellObject(owner, { x: 120, y: 60 }, 10, { candidates: () => [] });
+
+    expect(area.position.x).toBe(120);
+    expect(area.position.y).toBe(60);
+  });
+
+  it('and follows a centre that moves, because a caller may pass a live one', () => {
+    const game = createGame();
+    const owner = createUnit(game);
+    const centre = { x: 0, y: 0 };
+    const area = new AreaSpellObject(owner, centre, 10, { candidates: () => [] });
+
+    centre.x = 350;
+    centre.y = -75;
+    area.update(16);
+
+    expect(area.position.x).toBe(350);
+    expect(area.position.y).toBe(-75);
+  });
+
   it('grows an area radius over its configured duration', () => {
     const game = createGame();
     const area = new AreaSpellObject(createUnit(game), { x: 10, y: 20 }, 10, {

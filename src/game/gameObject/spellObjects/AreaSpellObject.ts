@@ -39,6 +39,15 @@ export default class AreaSpellObject extends SpellObject {
     this.validateInterval('durationMs', options.durationMs);
     this.center = center;
     this.radius = radius;
+    // **`position` is the centre, and has to be said out loud.** `SpellObject`
+    // seeds it from the owner, and every geometric answer this class gives —
+    // `contains`, `queryCandidates`, `getDisplayBoundingBox` — reads `center`
+    // instead. So anything locating the zone from *outside* got the point the
+    // caster happened to be standing on when the zone was made: `FogOfWar`
+    // builds its revealer list off `obj.position`, which lit a ward-like zone
+    // at its owner rather than at itself. Re-stated in `update` as well,
+    // because a caller may pass a live vector and expect the zone to follow.
+    this.syncPosition();
     this.candidates = options.candidates;
     this.candidateFilter = options.candidateFilter ?? (() => true);
     this.tickEveryMs = options.tickEveryMs;
@@ -58,6 +67,7 @@ export default class AreaSpellObject extends SpellObject {
     const elapsed = Math.min(Math.max(0, deltaMs), remainingMs);
     this.elapsedMs += elapsed;
     if (this.radiusAt) this.radius = Math.max(0, this.radiusAt(this.elapsedMs));
+    this.syncPosition();
 
     const current = new Set<AttackableUnit>();
     for (const target of this.queryCandidates()) {
@@ -96,6 +106,11 @@ export default class AreaSpellObject extends SpellObject {
       h: this.radius * 2,
       data: this,
     });
+  }
+
+  /** See the constructor: `position` is the centre, for everything outside. */
+  private syncPosition(): void {
+    this.position.set(this.center.x, this.center.y);
   }
 
   private contains(target: AttackableUnit): boolean {
