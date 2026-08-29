@@ -481,6 +481,19 @@ basic attack, and damaging everything it covers would multiply a boss
 camp's output by however many people are contesting it — a balance change
 wearing a graphics change's clothes.
 
+### 7.6 `MonsterAbility.onSpawn` — added 2026-08-29
+
+`onKilled`'s counterpart, and the seam a camp needs to say something
+*before* anyone fights it: `cast` runs only once a fight is underway, and
+`onKilled` runs a life too late. Called once per life on the body's first
+`update()` — not in the constructor, so the world the callback reaches for
+(`monster.game.objectManager`) is one an object can actually be added to —
+and reset by `respawn()`.
+
+It exists because a pit whose contents rotate has to be readable from
+across the map, or the rotation is not a decision but a surprise. See
+§11.2's element ring, which is its only caller today.
+
 ## 8. Validation
 
 New `checkMapTuning()` in `src/content/validate.ts`, called from
@@ -662,6 +675,41 @@ walking away from is what makes that telegraph mean anything.
 real `Monster` and measures it, rather than reading a table core does not
 use — six of the nine bodies leave `damage` out and let core derive it,
 which is how this went unnoticed.
+
+**And a kit, same day.** The retune above fixed the number and left the
+shape: the dragon was still the only boss with nothing to *do*. It has two
+abilities now.
+
+`WINGBEAT`, shared by every drake: a half-second rear-up, then everything
+hostile within 330px of the pit is thrown out to 560px and takes 10. It
+fires on the first frame of the fight for free — `_abilityCooldowns` starts
+at zero and `castAbility` runs before the reach check — so "hit it and it
+takes off" needs no trigger of its own, and unlike a once-per-life trigger
+it recurs. It **pushes** rather than knocking up on purpose: Baron's `SLAM`
+already owns airborne (§11 has both), and two bosses with the same verb are
+one fight in two skins. The price is the walk back, not being pinned.
+
+`RITE`, one ability that branches on `elementFor(monster.camp)`, so the
+rotation decides the fight as well as the reward:
+
+| drake | rite | why not another pool |
+|---|---|---|
+| Rồng Lửa | a burn on its target | Baron and Vilemaw already own ground pools |
+| Rồng Nước | heals **itself** 7% per cast | nothing else in the pack heals; makes the pit a damage check |
+| Rồng Gió | slows everything in the pit | wind is displacement, which the wingbeat sets up |
+| Rồng Đất | shields itself for 140 | nothing else in the pack shields; makes the pit a burst check |
+
+Two of the four deal no damage at all, which is the point of four fights
+rather than four damage numbers.
+
+**The pit wears a ring in its element's colour**, spawned through
+`MonsterAbility.onSpawn` (§7.6) and guarded by a `WeakSet` keyed on the
+camp so a pit gains one ring, not one per respawn. It is ground art
+(`api.layers.GROUND_Z_INDEX` — `Z_INDEX_MAP` is keyed by exact constructor,
+so a subclass naming no layer draws over champions) and it **outlives the
+body on purpose**: the rotation advances on death, so the sixty seconds the
+pit stands empty are exactly when a team decides whether to contest the
+next drake.
 
 Both are exported constants in the pack file, per this repo's rule that
 tuning values are importable by tests rather than edited into them.

@@ -51,6 +51,20 @@ export interface MonsterAbility {
    * ledger, so the killer's bounty gold is already in their wallet.
    */
   onKilled?(monster: Monster, killer: AttackableUnit): void;
+  /**
+   * The camp entering the world alive — once per life, on its first frame,
+   * and again after every respawn. `onKilled`'s counterpart.
+   *
+   * It exists for the thing a camp wants to say *before* anyone fights it. A
+   * pit whose contents rotate has to be readable from across the map or the
+   * rotation is not a decision, it is a surprise — and until this hook there
+   * was no moment a pack could hang that on: `cast` runs only once a fight is
+   * already underway, and `onKilled` runs a life too late. Deliberately on
+   * the first `update()` rather than in the constructor, so the world the
+   * callback reaches for (`monster.game.objectManager`) is one an object can
+   * actually be added to.
+   */
+  onSpawn?(monster: Monster): void;
 }
 
 /**
@@ -285,6 +299,8 @@ export default class Monster extends AttackableUnit {
 
   /** ms left before the next swing. */
   _attackCooldown = 0;
+  /** Latched once `onSpawn` has been announced for this life. */
+  _announcedSpawn = false;
   /** ms left before the next idle aggro scan. */
   _scanCooldown = 0;
   /** Grace left before a camp whose target left the chase leash turns for home. */
@@ -374,6 +390,11 @@ export default class Monster extends AttackableUnit {
     }
 
     if (this.isDead) return;
+
+    if (!this._announcedSpawn) {
+      this._announcedSpawn = true;
+      for (const ability of this.abilities) ability.onSpawn?.(this);
+    }
 
     if (this._attackCooldown > 0) this._attackCooldown -= deltaTime;
     for (let i = 0; i < this._abilityCooldowns.length; i++) {
@@ -942,6 +963,7 @@ export default class Monster extends AttackableUnit {
     this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this._attackCooldown = 0;
+    this._announcedSpawn = false;
     this._abilityCooldowns = this._abilityCooldowns.map(() => 0);
     // `super.respawn()` drops every unit on a spawn point; a camp belongs on
     // its own spot — `home`, not `camp`. Using the shared camp point here is
