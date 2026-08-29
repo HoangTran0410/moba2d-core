@@ -254,8 +254,14 @@ như trước khi có tính năng này** — không có khoá `tuning` nào cả
 Ba tầng, tầng trong thắng: **core → cấu hình map → ghi đè trên từng slot.**
 Chọn một cái trụ thì mục *Ghi đè chỉ số* của nó cho phép trụ đó khác mọi trụ
 còn lại — đây mới là thứ làm hai map dựng từ cùng bộ phận chơi khác nhau thật
-sự. Bãi quái cũng vậy, và ở đó còn có ô **Tính khí** (`aggressive` / `passive`
-/ `skittish`) để một map cho con cua bình thường hiền lành quay ra cắn người.
+sự. Bãi quái cũng vậy, và ở đó còn có hai ô chữ: **Tính khí** (`aggressive` /
+`passive` / `skittish`) để một map cho con cua bình thường hiền lành quay ra
+cắn người, và **Kiểu đánh** (`melee` / `ranged` / `breath`) để đổi hẳn hình
+đòn đánh thường của bãi đó — vuốt cào, phun đạn, hay phun một nón lửa.
+
+Để trống ô *Kiểu đánh* thì core tự suy ra từ tầm đánh: tầm ngắn thì cào, tầm
+xa thì phun đạn. Chỉ khai khi câu trả lời tự suy đó sai — trong pack `lol`
+đúng một bãi cần khai, là con rồng.
 
 Quái rừng ở tầng map là **hệ số nhân** chứ không phải số tuyệt đối: map không
 biết pack nào sẽ lấp vào slot của nó, nên "×1.5 sát thương" là câu duy nhất

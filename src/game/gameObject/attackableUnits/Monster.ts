@@ -7,6 +7,16 @@ import AttackableUnit from './AttackableUnit';
 import type { AttackableUnitRenderOptions } from './AttackableUnit';
 import type { AttackableUnitOptions, UnitDeathData } from './AttackableUnit';
 import Champion from './Champion';
+import {
+  DEFAULT_MONSTER_ATTACK_COLOR,
+  MONSTER_MELEE_REACH,
+  MonsterBreath,
+  MonsterClaw,
+  MonsterSpit,
+  type MonsterAttackStyle,
+} from './monsterAttacks';
+
+export type { MonsterAttackStyle };
 
 /**
  * Something a camp can do besides swing — a ranged spit, a melee slam,
@@ -113,6 +123,15 @@ export interface MonsterPresetData {
   attackInterval?: number;
   /** Champions this close wake the camp up. Defaults to attackRange + 120. */
   aggroRange?: number;
+  /**
+   * What a swing looks like and how its damage travels. Defaults to `melee`
+   * for a camp that fights by touching you (`attackRange` at or under
+   * `MONSTER_MELEE_REACH`) and `ranged` for anything further out — see
+   * `monsterAttacks.ts`.
+   */
+  attackStyle?: MonsterAttackStyle;
+  /** `[r, g, b]` for this camp's attack art. Defaults to the old flash amber. */
+  attackColor?: number[];
   /** Defaults to `'aggressive'` — see the type. */
   temperament?: MonsterTemperament;
   /** Defaults to `{ kind: 'camp' }` — see the type. */
@@ -245,6 +264,10 @@ export default class Monster extends AttackableUnit {
   home: { x: number; y: number };
   attackRange: number;
   attackInterval: number;
+  /** How this camp's swing is drawn, and how its damage travels. */
+  attackStyle: MonsterAttackStyle;
+  /** `[r, g, b]` for that art. */
+  attackColor: number[];
   damage: number;
   aggroRange: number;
   temperament: MonsterTemperament;
@@ -262,8 +285,6 @@ export default class Monster extends AttackableUnit {
 
   /** ms left before the next swing. */
   _attackCooldown = 0;
-  /** ms left on the swing flash — purely cosmetic. */
-  _attackFlash = 0;
   /** ms left before the next idle aggro scan. */
   _scanCooldown = 0;
   /** Grace left before a camp whose target left the chase leash turns for home. */
@@ -304,6 +325,12 @@ export default class Monster extends AttackableUnit {
     this.attackInterval = preset.attackInterval ?? 1500;
     this.damage = preset.damage ?? Math.min(25, Math.max(3, Math.round(preset.health / 25)));
     this.aggroRange = preset.aggroRange ?? preset.attackRange + 120;
+    // Derived from reach, not defaulted to melee: every camp in every pack
+    // predates the field, and a boss with a 400px reach clawing the air where
+    // it stands is a worse default than no default at all.
+    this.attackStyle =
+      preset.attackStyle ?? (preset.attackRange <= MONSTER_MELEE_REACH ? 'melee' : 'ranged');
+    this.attackColor = preset.attackColor ?? [...DEFAULT_MONSTER_ATTACK_COLOR];
     this.temperament = preset.temperament ?? 'aggressive';
     this.roam = preset.roam ?? { kind: 'camp' };
     this.ephemeral = preset.ephemeral ?? false;
@@ -348,7 +375,6 @@ export default class Monster extends AttackableUnit {
 
     if (this.isDead) return;
 
-    if (this._attackFlash > 0) this._attackFlash -= deltaTime;
     if (this._attackCooldown > 0) this._attackCooldown -= deltaTime;
     for (let i = 0; i < this._abilityCooldowns.length; i++) {
       if (this._abilityCooldowns[i] > 0) this._abilityCooldowns[i] -= deltaTime;
@@ -504,10 +530,52 @@ export default class Monster extends AttackableUnit {
       // the beat right through the control that was supposed to stop it.
       if (this.canAttack && this._attackCooldown <= 0) {
         this._attackCooldown = this.attackInterval;
-        this._attackFlash = 180;
-        target.takeDamage(this.damage, this);
+        this.launchAttack(target, reach);
       }
     }
+  }
+
+  /**
+   * The swing, as a real object with a real travel time.
+   *
+   * Damage used to land on the frame the cooldown allowed it, with a 180ms
+   * stroke drawn from the body to the target as the only sign anything had
+   * happened — unreadable for a melee camp and invisible for one whose reach
+   * runs to hundreds of pixels. `Minion.launchAttack` had solved the same
+   * problem long before; this is that, plus a cone for a camp that breathes.
+   *
+   * The object owns the damage from here: it re-checks the target (and this
+   * camp) at its own strike instant, so a target that dies, blinks or walks
+   * out during the wind-up takes nothing.
+   */
+  launchAttack(target: AttackableUnit, reach: number): void {
+    const objects = this.game.objectManager;
+
+    if (this.attackStyle === 'ranged') {
+      const spit = new MonsterSpit(this);
+      spit.target = target;
+      spit.damage = this.damage;
+      spit.color = this.attackColor;
+      spit.position.set(this.position.x, this.position.y);
+      spit.destination.set(target.position.x, target.position.y);
+      objects.addObject(spit);
+      return;
+    }
+
+    if (this.attackStyle === 'breath') {
+      const breath = new MonsterBreath(this, target);
+      breath.damage = this.damage;
+      breath.color = this.attackColor;
+      breath.reach = reach;
+      objects.addObject(breath);
+      return;
+    }
+
+    const claw = new MonsterClaw(this, target);
+    claw.damage = this.damage;
+    claw.color = this.attackColor;
+    claw.reach = reach;
+    objects.addObject(claw);
   }
 
   /**
@@ -728,20 +796,10 @@ export default class Monster extends AttackableUnit {
   draw(options: AttackableUnitRenderOptions = {}) {
     if (this.isDead) return;
     super.draw(options);
-
-    // swing flash
-    if (this._attackFlash > 0 && this.targetLock?.position) {
-      const pos = this.position;
-      const dir = p5.Vector.sub(this.targetLock.position, pos);
-      if (dir.magSq() > 0) {
-        dir.setMag(this.animatedValues.displaySize / 2 + 14);
-        push();
-        stroke(255, 190, 80, Math.min(255, this._attackFlash * 1.6));
-        strokeWeight(7);
-        line(pos.x, pos.y, pos.x + dir.x, pos.y + dir.y);
-        pop();
-      }
-    }
+    // The swing itself is drawn by the object `launchAttack` spawned, not from
+    // here: an effect that reaches past its own body has to outlive the frame
+    // and survive its caster being culled (`CLAUDE.md`, rendering traps). The
+    // 180ms stroke that used to live here is what "hits like Bluetooth" meant.
   }
 
   drawDir() {
@@ -884,7 +942,6 @@ export default class Monster extends AttackableUnit {
     this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this._attackCooldown = 0;
-    this._attackFlash = 0;
     this._abilityCooldowns = this._abilityCooldowns.map(() => 0);
     // `super.respawn()` drops every unit on a spawn point; a camp belongs on
     // its own spot — `home`, not `camp`. Using the shared camp point here is

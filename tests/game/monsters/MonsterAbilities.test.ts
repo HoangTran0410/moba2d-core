@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Monster, { type MonsterAbility } from '../../../src/game/gameObject/attackableUnits/Monster';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
+import { MonsterSpit } from '../../../src/game/gameObject/attackableUnits/monsterAttacks';
 import Stun from '../../../src/game/gameObject/buffs/Stun';
 import { createGame, indexObjects, stubGameGlobals, TEST_AVATAR_KEY, type TestGame } from '../fixtures';
 
@@ -163,12 +164,22 @@ describe('a camp casts the abilities its preset declares', () => {
     expect(casts).toEqual([]);
   });
 
-  it('leaves a camp with no abilities exactly as it was', () => {
+  it('leaves a camp with no abilities swinging, which is all it can do', () => {
+    // The swing is an object with a wind-up now (`monsterAttacks.ts`), so the
+    // health bar says nothing on this frame. What matters here is unchanged:
+    // a camp that declares no kit still fights.
     const { camp, champion } = engaged([]);
     const health = champion.stats.health.value;
     camp._attackCooldown = 0;
 
     camp.updateAttack();
+    // Reach 400 on this fixture, so the derived style is `ranged` — the same
+    // answer core gives Baron, whose numbers this camp is modelled on.
+    const spit = [...game.objectManager.objects, ...game.objectManager._objectToBeAdd].find(
+      object => object instanceof MonsterSpit
+    ) as MonsterSpit | undefined;
+    expect(spit, 'the camp threw no swing at all').toBeTruthy();
+    for (let frame = 0; frame < 300 && !spit!.toRemove; frame += 1) spit!.update();
 
     expect(champion.stats.health.value).toBe(health - camp.damage);
   });

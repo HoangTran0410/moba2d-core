@@ -1,5 +1,6 @@
 import {
   MINION_STYLES,
+  MONSTER_ATTACK_STYLES,
   MONSTER_ROAM_LAYERS,
   MONSTER_TEMPERAMENTS,
   STRUCTURE_KINDS,
@@ -7,6 +8,7 @@ import {
   type ContentPackCode,
   type ContentPackData,
   type MinionStyle,
+  type MonsterAttackStyle,
   type MonsterTemperament,
   type StructureKind,
 } from './ContentPack';
@@ -576,6 +578,20 @@ function checkMonsterBody(path: string, value: unknown, errors: string[]): void 
  * river crab silently becomes an ordinary one and nobody finds out until they
  * wonder why it never swims.
  */
+/**
+ * The one vocabulary both a `MonsterBody` and a map's own slot may name, so
+ * both call this rather than repeating the message.
+ */
+function checkAttackStyle(path: string, value: unknown, errors: string[]): void {
+  if (value === undefined) return;
+  if (!MONSTER_ATTACK_STYLES.includes(value as MonsterAttackStyle)) {
+    errors.push(
+      `${path}.attackStyle: unknown ${JSON.stringify(value)}; ` +
+        `core provides ${MONSTER_ATTACK_STYLES.join(', ')}`
+    );
+  }
+}
+
 function checkMonsterBehaviour(
   path: string,
   value: Record<string, unknown>,
@@ -593,6 +609,15 @@ function checkMonsterBehaviour(
 
   if (value.ephemeral !== undefined && typeof value.ephemeral !== 'boolean') {
     errors.push(`${path}.ephemeral: must be a boolean`);
+  }
+
+  checkAttackStyle(path, value.attackStyle, errors);
+
+  if (value.attackColor !== undefined) {
+    const color = value.attackColor;
+    if (!Array.isArray(color) || color.length !== 3 || !color.every(isFiniteNumber)) {
+      errors.push(`${path}.attackColor: must be [r, g, b] finite numbers`);
+    }
   }
 
   if (value.roam === undefined) return;
@@ -752,7 +777,7 @@ function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): 
     errors.push(`${path}: must be an object`);
     return;
   }
-  const { temperament, ...numbers } = value;
+  const { temperament, attackStyle, ...numbers } = value;
   if (
     temperament !== undefined &&
     !MONSTER_TEMPERAMENTS.includes(temperament as MonsterTemperament)
@@ -762,6 +787,7 @@ function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): 
         `core provides ${MONSTER_TEMPERAMENTS.join(', ')}`
     );
   }
+  checkAttackStyle(path, attackStyle, errors);
   checkNumberBag(path, numbers, MONSTER_SLOT_NUMBER_KEYS, errors);
 }
 

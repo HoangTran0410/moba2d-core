@@ -449,6 +449,38 @@ what a monster *is*. `temperament` is additionally overridable per-slot
 that disagrees with where the map put the water is not a playstyle, it is a
 bug.
 
+### 7.5 Attack style — added 2026-08-29, after the milestones below
+
+Not in the original design, and found by playing it: a camp's basic attack
+resolved damage on the frame `updateAttack` allowed a swing and drew a
+180ms line from the body to its target as the only evidence. Legible for
+nothing, and invisible for a boss whose reach runs to hundreds of pixels —
+"hit like Bluetooth", in the report that prompted it. `Minion.launchAttack`
+had had the answer since long before this spec (`MinionBolt`,
+`MinionSwing`: damage on arrival), and camps had simply never been given
+it.
+
+`MonsterAttackStyle` — `melee` | `ranged` | `breath` — declared on
+`MonsterBody` beside `temperament`, with `attackColor` beside it, and
+overridable per slot exactly as `temperament` is (§4) so a map may decide a
+pit breathes where the pack said it claws. Three objects in
+`gameObject/attackableUnits/monsterAttacks.ts` — `MonsterClaw`,
+`MonsterSpit`, `MonsterBreath` — each resolving damage exactly once at its
+own strike instant and re-checking the target first, so a dodge during a
+wind-up is a real dodge.
+
+**Absent means core derives one from `attackRange`** (`MONSTER_MELEE_REACH`,
+100). That default is what carries every camp in every pack written before
+the field: farm camps sit at tens of pixels of reach and bosses in the
+hundreds, so the split lands cleanly and no pack had to be edited. The one
+declaration the `lol` pack makes is the dragon's `breath`, whose reach
+would otherwise have derived a spat projectile.
+
+The `breath` cone is **single-target on purpose**: it is aimed art over a
+basic attack, and damaging everything it covers would multiply a boss
+camp's output by however many people are contesting it — a balance change
+wearing a graphics change's clothes.
+
 ## 8. Validation
 
 New `checkMapTuning()` in `src/content/validate.ts`, called from

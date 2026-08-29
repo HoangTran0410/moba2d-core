@@ -562,6 +562,11 @@ const UI = (() => {
         options: ["", "aggressive", "passive", "skittish"],
         hint: "để trống = theo pack khai",
       },
+      {
+        key: "stats.attackStyle", label: "Kiểu đánh", kind: "choice",
+        options: ["", "melee", "ranged", "breath"],
+        hint: "melee = vuốt, ranged = phun đạn, breath = phun lửa hình nón",
+      },
     ],
     // Lane KHÔNG có ô "từ phe / tới phe": engine không đọc hai field đó
     // (setActiveLanes chỉ lấy id + waypoints), và giá trị của chúng bị ràng

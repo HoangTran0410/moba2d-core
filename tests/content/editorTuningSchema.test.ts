@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validatePack } from '@/content/validate';
+import { MONSTER_ATTACK_STYLES, MONSTER_TEMPERAMENTS } from '@/content/ContentPack';
 
 /**
  * Every field the editor's config panel offers is a field core actually reads.
@@ -100,6 +101,29 @@ describe('the map editor\'s config panel', () => {
     // Named rather than a bare boolean: the validator's own message says which
     // key it did not recognise, which is the whole value of failing here.
     expect(result.ok ? [] : result.errors).toEqual([]);
+  });
+
+  it('offers a neutral slot only the vocabularies core can read back', () => {
+    /*
+     * The slot inspector's two `choice` fields are the same drift risk as the
+     * global schema above, one layer down: they write a *string* straight into
+     * `slot.stats`, and a value core does not know is a map refused at install
+     * (`checkMonsterSlotStats`). Read out of `ui.js` so adding a fourth
+     * temperament in core without adding it to the panel — or the reverse —
+     * shows up here rather than in somebody's console.
+     */
+    const options = (key: string): string[] => {
+      const at = UI.indexOf(`key: "${key}", label:`);
+      expect(at, `${key} is gone from the slot inspector`).toBeGreaterThan(-1);
+      const list = UI.indexOf('options:', at);
+      const line = UI.slice(list, UI.indexOf(']', list));
+      return [...line.matchAll(/"([a-z]*)"/g)]
+        .map(match => match[1])
+        .filter(value => value !== '');
+    };
+
+    expect(options('stats.attackStyle')).toEqual([...MONSTER_ATTACK_STYLES]);
+    expect(options('stats.temperament')).toEqual([...MONSTER_TEMPERAMENTS]);
   });
 
   it('and would fail loudly if it offered one core does not know', () => {

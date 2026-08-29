@@ -2,6 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Monster, {
   MONSTER_HOME_TOLERANCE,
 } from '../../../src/game/gameObject/attackableUnits/Monster';
+import { MonsterClaw } from '../../../src/game/gameObject/attackableUnits/monsterAttacks';
+
+/**
+ * Every claw this camp's world holds, settled or not.
+ *
+ * A camp's damage no longer lands on the frame it swings — `launchAttack`
+ * hands it to an object that resolves on its own clock
+ * (`monsterAttacks.ts`) — so "did it swing" is a question about the object,
+ * and `ObjectManager.addObject` parks that in `_objectToBeAdd` until its own
+ * next `update()`.
+ */
+const clawsThrown = (camp: Monster): MonsterClaw[] => {
+  const manager = camp.game.objectManager as unknown as {
+    objects: unknown[];
+    _objectToBeAdd: unknown[];
+  };
+  return [...manager.objects, ...manager._objectToBeAdd].filter(
+    object => object instanceof MonsterClaw
+  ) as MonsterClaw[];
+};
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import Airborne from '../../../src/game/gameObject/buffs/Airborne';
 import Stun from '../../../src/game/gameObject/buffs/Stun';
@@ -118,6 +138,26 @@ describe('Monster', () => {
       camp._attackCooldown = 0;
     };
 
+    /**
+     * How many swings have actually been thrown.
+     *
+     * A camp's damage no longer lands on the frame it swings — `launchAttack`
+     * hands it to a `MonsterClaw`/`MonsterSpit`/`MonsterBreath` that resolves
+     * on its own clock (`monsterAttacks.ts`). So "did the control stop it" is
+     * a question about the swing, not about the health bar: reading health
+     * here would now pass for a camp that swung freely and simply had not
+     * connected yet.
+     */
+    const swings = (): number => {
+      const manager = game.objectManager as unknown as {
+        objects: unknown[];
+        _objectToBeAdd: unknown[];
+      };
+      return [...manager.objects, ...manager._objectToBeAdd].filter(
+        object => object instanceof MonsterClaw
+      ).length;
+    };
+
     it('does not swing while it is knocked up', () => {
       const camp = makeCamp();
       const champion = new Champion({ game, teamId: 'other' });
@@ -130,7 +170,7 @@ describe('Monster', () => {
       camp.updateAttack();
 
       expect(champion.stats.health.value).toBe(health);
-      expect(camp._attackFlash).toBe(0);
+      expect(swings()).toBe(0);
     });
 
     it('does not swing while it is stunned', () => {
@@ -158,12 +198,13 @@ describe('Monster', () => {
       camp.updateBuffs();
       camp.updateAttack();
 
+      expect(swings(), 'the camp swung while it was in the air').toBe(0);
+
       buff.deactivateBuff();
       camp.updateBuffs();
-      const health = champion.stats.health.value;
       camp.updateAttack();
 
-      expect(champion.stats.health.value).toBe(health - camp.damage);
+      expect(swings()).toBe(1);
     });
   });
 
@@ -216,11 +257,14 @@ describe('Monster', () => {
       baron.teleportTo(CAMP.x + 400, CAMP.y);
       baron.update();
       baron._attackCooldown = 0;
-      const health = champion.stats.health.value;
+      // Counted from here: `update()` above already ran a full frame, and this
+      // is about the swing that follows the displacement, not that one.
+      const before = clawsThrown(baron);
       baron.updateAttack();
 
-      expect(champion.stats.health.value).toBe(health - baron.damage);
-      expect(baron._attackFlash).toBeGreaterThan(0);
+      const thrown = clawsThrown(baron);
+      expect(thrown).toHaveLength(before.length + 1);
+      expect(thrown[thrown.length - 1].target).toBe(champion);
     });
 
     it('leaves a camp with legs to walk its own way home', () => {

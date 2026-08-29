@@ -459,6 +459,31 @@ describe('validatePack', () => {
     expect(validatePack(behaviouralWolves({})).ok).toBe(true);
   });
 
+  it('accepts a declared attack style and its colour', () => {
+    const result = validatePack(
+      behaviouralWolves({ attackStyle: 'breath', attackColor: [255, 138, 58] })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a misspelled attack style rather than falling through to ranged', () => {
+    const result = validatePack(behaviouralWolves({ attackStyle: 'meele' }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toMatch(/attackStyle/);
+      expect(result.errors.join(' ')).toMatch(/breath/);
+    }
+  });
+
+  it('rejects an attack colour that is not three numbers', () => {
+    // A two-entry array reaches `fill(r, g, b, a)` as `fill(255, 138,
+    // undefined, alpha)`, which p5 reads as a greyscale call — the camp's art
+    // silently turns grey instead of failing.
+    const result = validatePack(behaviouralWolves({ attackColor: [255, 138] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/attackColor/);
+  });
+
   it('rejects a misspelled temperament rather than reading it as not-aggressive', () => {
     const result = validatePack(behaviouralWolves({ temperament: 'agressive' }));
     expect(result.ok).toBe(false);
@@ -729,6 +754,26 @@ describe('validatePack', () => {
     const bad = validatePack(mapWith({ geometry: geometryWith({ temperament: 'skitish' }) }));
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/temperament/);
+  });
+
+  it('accepts a neutral slot naming an attack style and rejects a misspelled one', () => {
+    const geometryWith = (stats: Record<string, unknown>) => ({
+      terrain: { wall: [], bush: [], water: [] },
+      slots: {
+        spawn: [],
+        minion: [],
+        structure: [],
+        neutral: [{ role: 'dragon', x: 1, y: 1, r: 10, stats }],
+      },
+    });
+    expect(validatePack(mapWith({ geometry: geometryWith({ attackStyle: 'breath' }) })).ok).toBe(
+      true
+    );
+    // Without the destructure in `checkMonsterSlotStats` this reads as an
+    // unknown *number* key, so the message would name the wrong problem.
+    const bad = validatePack(mapWith({ geometry: geometryWith({ attackStyle: 'breth' }) }));
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/attackStyle/);
   });
 
   it('rejects a spells entry that is not a class', () => {

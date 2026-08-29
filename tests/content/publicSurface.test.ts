@@ -315,6 +315,7 @@ describe('what each subpath actually publishes, not just that it exists', () => 
     expect(Object.keys(contentPack).sort()).toEqual(
       [
         'MINION_STYLES',
+        'MONSTER_ATTACK_STYLES',
         'MONSTER_ROAM_LAYERS',
         'MONSTER_TEMPERAMENTS',
         'STRUCTURE_KINDS',

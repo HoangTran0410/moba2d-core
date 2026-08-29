@@ -780,6 +780,8 @@ const bareMonsterBodyPreset = (
   damage: member.damage,
   attackInterval: member.attackInterval,
   aggroRange: member.aggroRange,
+  attackStyle: member.attackStyle,
+  attackColor: member.attackColor,
   temperament: member.temperament,
   roam: member.roam,
   ephemeral: member.ephemeral,

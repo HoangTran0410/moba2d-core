@@ -1,6 +1,7 @@
 import type { ContentApi } from './ContentApi';
 import type {
   MonsterAbility,
+  MonsterAttackStyle,
   MonsterRoam,
   MonsterTemperament,
 } from '@/game/gameObject/attackableUnits/Monster';
@@ -15,7 +16,7 @@ import type { MinionStyle } from '@/game/gameObject/attackableUnits/Minion';
  * not exist — so the vocabulary is core's, while which one a given camp has
  * is the pack's to say.
  */
-export type { MonsterAbility, MonsterRoam, MonsterTemperament };
+export type { MonsterAbility, MonsterAttackStyle, MonsterRoam, MonsterTemperament };
 
 /** Re-exported beside the monster vocabularies, and core's for the same reason. */
 export type { MinionStyle };
@@ -360,6 +361,21 @@ export interface MonsterBody {
   /** Champions this close wake the camp. Defaults to `attackRange + 120`. */
   aggroRange?: number;
   /**
+   * How this body's basic attack is drawn, and how its damage travels.
+   *
+   * Absent means core derives one from `attackRange`: a body that fights by
+   * touching you claws, anything with real reach spits. That default is what
+   * lets every camp written before this field stop dealing damage from
+   * nowhere without a single pack being edited — declare it only when the
+   * derived answer is wrong, which for this pack means the dragon.
+   */
+  attackStyle?: MonsterAttackStyle;
+  /**
+   * `[r, g, b]` for that art. Absent means the amber the old swing flash
+   * used, so an undeclared body looks like it always did, only legible.
+   */
+  attackColor?: number[];
+  /**
    * How this body answers a champion. Absent means `'aggressive'` — every
    * camp written before this field existed, unchanged.
    */
@@ -657,6 +673,13 @@ export interface MonsterSlotStats extends MonsterScale {
    * put the water is not a playstyle, it is a broken camp.
    */
   temperament?: MonsterTemperament;
+  /**
+   * Lets one map decide a camp breathes fire where the pack said it claws.
+   * Overridable for the same reason `temperament` is: it changes how the camp
+   * *plays* — a cone is telegraphed and a claw is not — and unlike `roam` it
+   * cannot disagree with the map's own geometry.
+   */
+  attackStyle?: MonsterAttackStyle;
 }
 
 /**
@@ -933,3 +956,14 @@ export const MINION_STYLES: readonly MinionStyle[] = Object.freeze(['melee', 'ra
 
 /** Layers a `roam: { kind: 'terrain' }` may name — the two region layers. */
 export const MONSTER_ROAM_LAYERS: readonly ('water' | 'bush')[] = Object.freeze(['water', 'bush']);
+
+/**
+ * The three shapes core knows how to draw a camp's swing as. Runtime for the
+ * same reason the temperaments are: a pack shipping `attackStyle: 'melee '`
+ * would otherwise install cleanly and fall through to the `ranged` branch.
+ */
+export const MONSTER_ATTACK_STYLES: readonly MonsterAttackStyle[] = Object.freeze([
+  'melee',
+  'ranged',
+  'breath',
+]);

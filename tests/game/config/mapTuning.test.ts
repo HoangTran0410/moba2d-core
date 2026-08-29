@@ -214,6 +214,27 @@ describe('monsters', () => {
     expect(resolved.temperament).toBe('skittish');
   });
 
+  it('lets a slot decide a camp breathes where the pack said it claws', () => {
+    // The knob a map author reaches for to change how a pit *plays*: a cone
+    // is telegraphed and a claw is not.
+    const resolved = resolveMonsterPreset(packBody(), undefined, {
+      stats: { attackStyle: 'breath' },
+    });
+    expect(resolved.attackStyle).toBe('breath');
+  });
+
+  it('keeps the pack attack style when no slot overrides it', () => {
+    const base = { ...packBody(), attackStyle: 'breath' as const };
+    expect(resolveMonsterPreset(base, { monsters: { healthMult: 2 } }).attackStyle).toBe('breath');
+  });
+
+  it('leaves the attack style unset when nobody names one, so core derives it', () => {
+    // `undefined` here is not a missing value — it is what makes `Monster`'s
+    // constructor read `attackRange` and answer for the camp. Writing a
+    // literal default in this layer would freeze every pack at `melee`.
+    expect(resolveMonsterPreset(packBody(), undefined).attackStyle).toBeUndefined();
+  });
+
   it('keeps the pack temperament when no slot overrides it', () => {
     const base = { ...packBody(), temperament: 'skittish' as const };
     expect(resolveMonsterPreset(base, { monsters: { healthMult: 2 } }).temperament).toBe(

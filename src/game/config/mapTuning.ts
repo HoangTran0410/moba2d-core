@@ -290,6 +290,7 @@ export function resolveMonsterPreset(
     attackInterval: optional(undefined, base.attackInterval, map.attackIntervalMult),
     aggroRange: optional(own.aggroRange, base.aggroRange, map.aggroRangeMult),
     temperament: own.temperament ?? base.temperament,
+    attackStyle: own.attackStyle ?? base.attackStyle,
     chaseMargin: num(own.chaseMargin, num(tuning?.monsters?.chaseMargin, MONSTER_CHASE_MARGIN)),
     giveUpDelayMs: num(tuning?.monsters?.giveUpDelayMs, MONSTER_GIVE_UP_DELAY_MS),
   };
