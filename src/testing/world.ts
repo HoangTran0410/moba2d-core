@@ -228,6 +228,11 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
   // world coordinate.
   vi.stubGlobal('width', 1280);
   vi.stubGlobal('height', 800);
+  // Anything that animates off the clock rather than off its own state reads
+  // this — `ExecuteMarks`, `Taunt`, a minion caster's orb. Zero rather than a
+  // spy: it is a number every one of them does arithmetic on, and `undefined`
+  // turns that arithmetic into `NaN` inside a `fill` nobody is looking at.
+  vi.stubGlobal('frameCount', 0);
 
   const spies: Record<string, ReturnType<typeof vi.fn>> = {};
   for (const name of [
@@ -245,6 +250,8 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     'circle',
     'ellipse',
     'arc',
+    'triangle',
+    'quad',
     'image',
     'tint',
     'text',

@@ -61,8 +61,41 @@ export interface MinionPresetData {
  * Three bodies, all intentionally cheap. The melee line tanks, casters poke from
  * behind it, and the periodic cannon is a slower, tougher ranged siege body.
  *
- * Numbers are picked so a lane fight resolves in roughly ten seconds — long
- * enough to watch, short enough that two waves never stack into a blob.
+ * ## Sized against the champion, which for a long time they were not
+ *
+ * These numbers used to be picked against each other alone — "a lane fight
+ * resolves in roughly ten seconds" — and never against the thing that has to
+ * walk through them. Measured against `DEFAULT_CHAMPION_ATTACK` and
+ * `DEFAULT_CHAMPION_DEFENCE`, the wave they described was not an obstacle, it
+ * was the strongest unit on the board:
+ *
+ *   - A melee minion had **140 health against a champion's 100** — more than
+ *     every body but a tank's, in a pack that ships six of them. `Champion.ts`
+ *     and `content/ContentPack.ts` both name that number as the thing wrong
+ *     with the champion; it was equally the thing wrong with the minion.
+ *   - The opening wave was 690 health, and a champion swinging at the default
+ *     15.4 damage a second needed **45 seconds** of uninterrupted autoing to
+ *     clear it. Waves arrive every `WAVE_INTERVAL_MS` — thirty. A lane could
+ *     not be cleared as fast as it filled, by anyone, ever.
+ *   - That same wave dealt **19.6 damage a second**, against the champion's
+ *     15.4. Six minions out-damaged the player they were walking at, which is
+ *     the whole of "I am more afraid of the wave than of the enemy laner".
+ *
+ * So health comes down by half and damage with it, holding the minion-versus-
+ * minion clock roughly where it was (three melee focusing one still take it
+ * down in about nine seconds, against ten before) while moving both numbers
+ * back under the champion's. `minionBalance.test.ts` holds all three of the
+ * bounds above as arithmetic over these constants and the champion's, so a
+ * future retune of either side cannot quietly cross them again.
+ *
+ * ## The cannon is the wave's payday
+ *
+ * It is the one body worth stopping for — three times the melee bounty, the
+ * way the source game prices its siege minion — and `MinionSpawner` leaves a
+ * `goldBounty` a type names for itself alone, so a map that retunes
+ * `economy.minionBounty` retunes the other two and not this one. That is the
+ * documented behaviour of the field rather than a surprise: a type that
+ * priced itself said something more specific than the map did.
  */
 export const MinionPresets: Record<MinionKind, MinionPresetData> = {
   melee: {
@@ -71,8 +104,8 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     style: 'melee',
     speed: 2.6,
     size: 34,
-    health: 140,
-    damage: 5,
+    health: 70,
+    damage: 3,
     attackInterval: 1_100,
     attackRange: 40,
     aggroRange: 300,
@@ -83,8 +116,8 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     style: 'ranged',
     speed: 2.6,
     size: 30,
-    health: 90,
-    damage: 3,
+    health: 45,
+    damage: 2,
     attackInterval: 1_500,
     attackRange: 280,
     aggroRange: 340,
@@ -93,10 +126,11 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     name: 'Lính Xe Pháo',
     kind: 'cannon',
     style: 'cannon',
+    goldBounty: 60,
     speed: 2.6,
     size: 38,
-    health: 260,
-    damage: 8,
+    health: 150,
+    damage: 5,
     attackInterval: 1_650,
     attackRange: 300,
     aggroRange: 360,
@@ -235,6 +269,8 @@ export default class Minion extends AttackableUnit {
   _attackCooldown = 0;
   /** ms left before the next aggro scan, jittered so a wave does not scan in lockstep. */
   _scanCooldown: number;
+  /** Last angle `aimAngle` had an answer for. See there. */
+  _heading = 0;
 
   constructor({
     game,
@@ -615,46 +651,70 @@ export default class Minion extends AttackableUnit {
   }
 
   /**
+   * Which way this body is pointing.
+   *
+   * Nothing on `AttackableUnit` answers this for a minion: `drawDir` is the
+   * champion's mouse heading and this class overrides it to nothing, and
+   * `moveTo` leaves no facing behind it. Two of the three silhouettes below
+   * are asymmetric and need one, so it is derived rather than stored — what
+   * it is hitting if it is hitting anything, else the waypoint it is walking
+   * at.
+   *
+   * The last answer is kept and reused when there is no aim at all, so a
+   * minion standing on its final waypoint with nothing in range holds the
+   * heading it arrived on instead of snapping east.
+   */
+  aimAngle(): number {
+    const lock = this.targetLock;
+    const aim = lock && !lock.isDead && lock.position ? lock.position : this.currentWaypoint;
+    if (aim) {
+      const dx = aim.x - this.position.x;
+      const dy = aim.y - this.position.y;
+      if (dx !== 0 || dy !== 0) this._heading = Math.atan2(dy, dx);
+    }
+    return this._heading;
+  }
+
+  /**
    * Team colour directly rather than `isAllied`, so both sides keep their own
    * stable map identity regardless of which team the local player belongs to.
    *
    * Hand-drawn on purpose — no avatar, no particle system, no trail. There can
    * be dozens of these on screen and each one has to stay a handful of
    * draw calls.
+   *
+   * ## Three silhouettes, not three decorations on one silhouette
+   *
+   * All three used to be the same disc wearing a different ring: a caster was
+   * a disc with one ring, a cannon a disc with two. At the zoom a lane is
+   * actually played at, one ring against two is not a difference anybody reads
+   * — and the cannon is the body a player most needs to pick out of a wave,
+   * being the one worth three times the gold and the one that shells a turret.
+   *
+   * So each style now has its own *shape*, which survives being small: the
+   * front line is a round body with a blade out front, the back line is a
+   * smaller body carrying a lit orb, and the siege body is a wheeled cart with
+   * a barrel. Everything is drawn in a frame rotated to `aimAngle`, which is
+   * what makes the last two read as facing something rather than as ornaments.
+   *
+   * The cart costs about nine calls against the other two's four. It is at
+   * most one per wave per lane — three on the board in an ordinary minute
+   * against forty of the others — so it is the one body that can afford them.
    */
   draw({ compactUnits = false }: AttackableUnitRenderOptions = {}) {
     if (this.isDead) return;
 
-    const pos = this.position;
     const size = this.stats.size.value;
-    const { body, trim } = this.colors;
 
     push();
+    translate(this.position.x, this.position.y);
+    rotate(this.aimAngle());
     noStroke();
-    fill(trim[0], trim[1], trim[2], 200);
-    circle(pos.x, pos.y, size * 1.12);
-    fill(body[0], body[1], body[2]);
-    circle(pos.x, pos.y, size);
 
-    if (this.style === 'cannon') {
-      // A double ring reads as a wheeled siege body without adding an image or
-      // particle system to a unit that can appear in every lane at once.
-      noFill();
-      stroke(255, 215, 120, 230);
-      strokeWeight(3);
-      circle(pos.x, pos.y, size * 0.68);
-      circle(pos.x, pos.y, size * 0.36);
-    } else if (this.style === 'ranged') {
-      // a caster reads as a ring rather than a disc, so the back line of a wave
-      // is separable from the front one at a glance
-      noFill();
-      stroke(255, 235, 190, 220);
-      strokeWeight(3);
-      circle(pos.x, pos.y, size * 0.5);
-    } else {
-      fill(255, 255, 255, 90);
-      circle(pos.x - size * 0.14, pos.y - size * 0.14, size * 0.34);
-    }
+    if (this.style === 'cannon') this.drawCart(size);
+    else if (this.style === 'ranged') this.drawCaster(size);
+    else this.drawSoldier(size);
+
     pop();
 
     // the swing/bolt objects spawned by launchAttack() draw themselves as
@@ -664,6 +724,126 @@ export default class Minion extends AttackableUnit {
     // usually is
     this.drawBuffs(compactUnits);
     this.drawHealthBar();
+  }
+
+  /**
+   * The front line: a round body, a shield plate across the leading edge and a
+   * short blade past it. The disc is what every minion used to be, kept here
+   * because this is the body a player reads as "the ordinary one".
+   *
+   * Drawn in the rotated frame, so `+x` is forward.
+   */
+  private drawSoldier(size: number): void {
+    const { body, trim } = this.colors;
+
+    fill(trim[0], trim[1], trim[2], 200);
+    circle(0, 0, size * 1.12);
+    fill(body[0], body[1], body[2]);
+    circle(0, 0, size);
+
+    // blade — a bright wedge past the front, the one thing that says which way
+    // this is facing
+    fill(238, 242, 250, 235);
+    triangle(size * 0.34, -size * 0.11, size * 0.34, size * 0.11, size * 0.82, 0);
+
+    // shield boss, offset off the axis so the blade is not drawn through it
+    fill(trim[0], trim[1], trim[2], 245);
+    circle(size * 0.2, size * 0.24, size * 0.34);
+  }
+
+  /**
+   * The back line: a smaller body with a lit orb held out in front of it, on a
+   * staff. Smaller *and* a different shape — a caster that was only smaller
+   * would be a melee minion at range, which is what the old ring amounted to.
+   *
+   * The orb breathes on `frameCount` rather than on any state of this minion,
+   * so a whole back line does not pulse in lockstep only by accident: each
+   * body offsets the phase by its own attack cooldown, which is already
+   * jittered per minion.
+   */
+  private drawCaster(size: number): void {
+    const { body, trim } = this.colors;
+    const orbX = size * 0.5;
+    const orbY = -size * 0.26;
+    const breath = 1 + 0.12 * Math.sin(frameCount * 0.08 + this._scanCooldown);
+
+    fill(trim[0], trim[1], trim[2], 200);
+    circle(0, 0, size * 1.02);
+    fill(body[0], body[1], body[2]);
+    circle(0, 0, size * 0.88);
+
+    stroke(228, 220, 200, 210);
+    strokeWeight(Math.max(1.5, size * 0.07));
+    line(size * 0.06, size * 0.1, orbX, orbY);
+    noStroke();
+
+    fill(255, 235, 190, 110);
+    circle(orbX, orbY, size * 0.44 * breath);
+    fill(255, 255, 255, 235);
+    circle(orbX, orbY, size * 0.2);
+  }
+
+  /**
+   * The siege body: a wheeled cart with a barrel out front.
+   *
+   * Wheels are drawn first so the chassis sits over them, which is the whole
+   * trick that makes four dark circles read as running gear rather than as
+   * four dots. The barrel reaches past the chassis, which is why this style
+   * widens its own display box — see `getDisplayBoundingBox`.
+   */
+  private drawCart(size: number): void {
+    const { body, trim } = this.colors;
+    const halfLength = size * 0.52;
+    const halfWidth = size * 0.34;
+    const wheel = size * 0.32;
+    const axle = halfWidth + wheel * 0.34;
+
+    fill(26, 28, 36, 240);
+    circle(-halfLength * 0.5, -axle, wheel);
+    circle(-halfLength * 0.5, axle, wheel);
+    circle(halfLength * 0.45, -axle, wheel);
+    circle(halfLength * 0.45, axle, wheel);
+
+    // chassis, trim first as a border the body sits inside
+    const lip = size * 0.07;
+    fill(trim[0], trim[1], trim[2], 235);
+    quad(
+      -halfLength - lip,
+      -halfWidth - lip,
+      halfLength + lip,
+      -halfWidth - lip,
+      halfLength + lip,
+      halfWidth + lip,
+      -halfLength - lip,
+      halfWidth + lip
+    );
+    fill(body[0], body[1], body[2]);
+    quad(
+      -halfLength,
+      -halfWidth,
+      halfLength,
+      -halfWidth,
+      halfLength,
+      halfWidth,
+      -halfLength,
+      halfWidth
+    );
+
+    // barrel, tapering forward, with a lit muzzle
+    const muzzle = size * 0.92;
+    fill(52, 56, 70, 245);
+    quad(
+      halfLength * 0.2,
+      -size * 0.15,
+      muzzle,
+      -size * 0.1,
+      muzzle,
+      size * 0.1,
+      halfLength * 0.2,
+      size * 0.15
+    );
+    fill(255, 215, 120, 235);
+    circle(muzzle, 0, size * 0.22);
   }
 
   /** Lights a cheap circle for the player team; minions carry no combat sight. */
@@ -696,8 +876,11 @@ export default class Minion extends AttackableUnit {
 
   getDisplayBoundingBox() {
     // the base sizes an allied unit's box by its vision radius; a minion grants
-    // no vision, so its box is just its body
-    return this.squareDisplayBoundingBox(this.stats.size.value * 1.4);
+    // no vision, so its box is just its body — except the cart, whose barrel
+    // reaches nearly a full body length past its centre and would be culled at
+    // the screen edge a beat before the rest of it (`drawCart`).
+    const spread = this.style === 'cannon' ? 2.3 : 1.4;
+    return this.squareDisplayBoundingBox(this.stats.size.value * spread);
   }
 }
 
