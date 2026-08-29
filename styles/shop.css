@@ -464,6 +464,10 @@
   color: var(--spell-damage);
 }
 
+.shop-detail-text .heal {
+  color: var(--spell-heal);
+}
+
 .shop-detail-text .buff {
   color: var(--spell-buff);
 }

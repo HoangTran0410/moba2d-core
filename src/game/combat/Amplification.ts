@@ -73,11 +73,24 @@ export function amplifiedAbilityDamage(
 }
 
 /**
- * A damage number inside a spell's own description, as a pack writes it:
- * `<span class="damage">15 sát thương</span>`. Non-greedy, so two of them on
- * one line stay two.
+ * A number inside a spell's own description that this caster's ability power
+ * multiplies, as a pack writes it: `<span class="damage">15 sát thương</span>`
+ * or `<span class="heal">40 máu</span>`. Non-greedy, so two of them on one
+ * line stay two.
+ *
+ * **Two classes, one claim.** They differ only in the colour the stylesheet
+ * paints — a heal printed in the damage red is a heal a player reads as a
+ * hit — and both mean exactly "a flat number the engine amplifies". `buff`
+ * and `time` make no such claim and are never touched: a 30% slow is 30%
+ * however much power you buy, and so is a four-second duration.
+ *
+ * `heal` arrived with the engine half of the same fact. Heals and shields
+ * were not amplified at all until `takeHeal` and `buffs/Shield` were wired to
+ * the same gate damage goes through, so until then a pack wanting to promise
+ * the bonus on a heal had only `damage` to tag it with — which printed the
+ * number in red and, worse, promised a scaling that did not happen.
  */
-const DAMAGE_SPAN = /(<span class="damage">)([\s\S]*?)(<\/span>)/g;
+const SCALING_SPAN = /(<span class="(?:damage|heal)">)([\s\S]*?)(<\/span>)/g;
 
 /**
  * The figure at the front of such a span, which is the part a build changes.
@@ -135,13 +148,15 @@ const withBonus = (base: number, multiplier: number): string => {
  * flat one — a percentage, or a span whose text does not open with a number
  * at all, is left exactly as written rather than guessed at.
  *
- * **`class="damage"` is a claim, and it is the pack's to make**: it means
- * "a flat number `takeDamage` will multiply by this caster's ability power".
- * A heal, a shield and a duration are none of them amplified — only
- * `takeDamage` calls `amplifiedAbilityDamage` — so a pack that tags one of
- * those as damage is asking this to lie for it. It is also already lying to
- * the player in a second way, since that class is what paints the number in
- * the damage colour.
+ * **`class="damage"` and `class="heal"` are a claim, and it is the pack's to
+ * make**: each means "a flat number the engine will multiply by this caster's
+ * ability power", and they differ only in what colour it is painted. That is
+ * now true of all three funnels — `takeDamage`, `AttackableUnit.takeHeal` and
+ * `buffs/Shield` all ask `abilityPowerScales()` and call in here — where for
+ * a long time it was true only of the first, and a pack tagging a heal as
+ * damage was asking this to lie for it in two ways at once. A duration and a
+ * percentage are still not amplified by anything, so `buff` and `time` are
+ * still outside this and a number tagged with either is printed as written.
  *
  * **Whose text may be passed in is the caller's question, not this
  * function's.** It rescales whatever it is handed, so the gate belongs where
@@ -162,7 +177,7 @@ export function amplifiedDamageText(
 ): string {
   const multiplier = abilityPowerMultiplier(source);
   if (multiplier === 1) return description;
-  return description.replace(DAMAGE_SPAN, (whole, open, inner, close) => {
+  return description.replace(SCALING_SPAN, (whole, open, inner, close) => {
     if (!LEADING_NUMBER.test(inner)) return whole;
     const scaled = inner.replace(
       LEADING_NUMBER,

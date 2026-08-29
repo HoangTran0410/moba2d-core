@@ -8,6 +8,10 @@
     --spell-damage: #ff5858;
     --spell-buff: #88f;
     --spell-time: #c1ffb6;
+    /* A heal is the same claim as `--spell-damage` — a flat number ability
+       power multiplies — in the colour the floating combat text already uses
+       for one, so a restored number never reads as a hit taken. */
+    --spell-heal: #6ee787;
 
     /* Hextech palette. Same story as the three above, for the same reason:
        the loadout picker exists twice — before the match (pregame-scene.css)

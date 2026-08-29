@@ -1678,6 +1678,10 @@
   color: var(--spell-time);
 }
 
+.spell-detail-body .heal {
+  color: var(--spell-heal);
+}
+
 /* ------------------------------------------------------------------ nav */
 
 .pregame-actions {

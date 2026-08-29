@@ -461,6 +461,10 @@
   color: var(--spell-buff);
 }
 
+.spell-info .body .heal {
+  color: var(--spell-heal);
+}
+
 .spell-info .body .time {
   color: var(--spell-time);
 }

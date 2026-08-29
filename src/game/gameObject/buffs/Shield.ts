@@ -1,5 +1,7 @@
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
+import { amplifiedAbilityDamage } from '@/game/combat/Amplification';
+import { abilityPowerScales } from '@/game/combat/DamageAttribution';
 import CombatText from '@/game/gameObject/helpers/CombatText';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 
@@ -27,7 +29,29 @@ export default class Shield extends Buff {
     return this.toRemove ? 0 : this.amount;
   }
 
+  /**
+   * Ability power lands here, not at the call site.
+   *
+   * A shield is the third funnel `Stats.abilityPower` was designed around and
+   * the second one that was never wired up (see `AttackableUnit.takeHeal`).
+   * An installed pack's shield ability is the case that reported it: its
+   * description already promised `30 (+200)` — the HUD rescales a tagged
+   * number by the reader's ability power — and the shield it actually applied
+   * was thirty. The text was right about the design and the engine was the
+   * half that had not been written.
+   *
+   * `onCreate` rather than the caster's own code because `addBuff` runs inside
+   * the cast, so `abilityPowerScales()` is still answering for the spell that
+   * is applying this — which means no pack sets `amount` differently from
+   * how it already did, and a shield an *item* grants is not amplified, exactly as
+   * an item's damage is not.
+   *
+   * Before `_initialAmount`, which is what the bar draws a fraction against: a
+   * shield that started at 230 and reads as 30/30 full is a worse bug than the
+   * one being fixed.
+   */
   onCreate(): void {
+    if (abilityPowerScales()) this.amount = amplifiedAbilityDamage(this.amount, this.sourceUnit);
     this._initialAmount = this.amount;
   }
 

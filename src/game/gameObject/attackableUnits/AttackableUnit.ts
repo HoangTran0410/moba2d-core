@@ -25,7 +25,10 @@ import {
   currentAttributionName,
   endAttribution,
 } from '@/game/combat/DamageAttribution';
-import { amplifiedAbilityDamage } from '@/game/combat/Amplification';
+import {
+  amplifiedAbilityDamage,
+  type AmplificationSource,
+} from '@/game/combat/Amplification';
 import { isNetClient } from '@/game/net/netRole';
 
 export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
@@ -589,8 +592,34 @@ export default class AttackableUnit extends GameObject {
     this.stats.mana.baseValue = constrain(this.stats.mana.baseValue + amount, 0, max);
   }
 
-  takeHeal(heal: number, _healer?: HealSource): void {
+  /**
+   * Put health back. The seam every heal in the game goes through.
+   *
+   * ## Ability power reaches here too, and did not for a long time
+   *
+   * `Stats.abilityPower` was built as "one multiplier at the funnel every
+   * ability already passes through", and only one of the three funnels was
+   * wired up. Damage was amplified; heals and shields were not — so a support
+   * with a full ability build healed for exactly what it healed for on the
+   * first frame of the match, which is the complaint `Amplification.ts`'s own
+   * header opens with, aimed at the half of the roster that does not deal
+   * damage. Reported from a real match: "my ability power is huge and the
+   * heals still restore almost nothing".
+   *
+   * The gate is the same `abilityPowerScales()` the damage funnel asks, so a
+   * heal an ability cast is amplified and a heal an item's passive gave is not
+   * — no pack names the stat, and nothing that was not already an ability
+   * starts scaling.
+   *
+   * **`healer`, which used to be `_healer`.** The parameter has been in the
+   * signature since heals existed and had never been read; every caller in
+   * both packs already passes the caster, which is why this needed no pack
+   * edit at all.
+   */
+  takeHeal(heal: number, healer?: HealSource): void {
     if (this.isDead) return;
+
+    if (abilityPowerScales()) heal = amplifiedAbilityDamage(heal, healer as AmplificationSource);
 
     // whole points, for the same reason takeDamage rounds
     heal = Math.round(heal);
@@ -741,7 +770,19 @@ export default class AttackableUnit extends GameObject {
     // not a cost.
     if (attacker && attacker !== this && !attacker.isDead) {
       const vamp = attacker.stats?.omnivamp?.value ?? 0;
-      if (vamp > 0) attacker.takeHeal(damage * vamp, attacker);
+      if (vamp > 0) {
+        // Outside the attribution, deliberately. `damage` has *already* been
+        // through `amplifiedAbilityDamage` a few lines up, so healing a share
+        // of it under the same ambient would multiply this caster's ability
+        // power into the same number twice. Draining life off an ability is
+        // not a second ability effect; it is a fraction of the first one.
+        const previous = beginAttribution(null);
+        try {
+          attacker.takeHeal(damage * vamp, attacker);
+        } finally {
+          endAttribution(previous);
+        }
+      }
     }
 
     // Before the death check, for the same reason omnivamp is: a hit that kills
