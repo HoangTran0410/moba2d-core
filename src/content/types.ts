@@ -96,6 +96,7 @@ export type {
   ContentPackFactory,
   Faction,
   ChampionTuning,
+  EconomyTuning,
   FountainStats,
   FountainTuning,
   LaneDefinition,

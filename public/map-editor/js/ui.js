@@ -390,7 +390,40 @@ const UI = (() => {
 
   let R = {};  // các tham chiếu DOM trong inspector
 
+  /**
+   * Two panes, one segmented control.
+   *
+   * The rules used to be an accordion wedged between *Phe* and *Ảnh nền*, in
+   * the middle of a panel that scrolls — which is a fine place to put
+   * something nobody needs to find. A whole subsystem cannot live below the
+   * fold of a section about map metadata: a person here to draw walls has no
+   * reason to scroll past the background picker, so for them the feature does
+   * not exist.
+   *
+   * A tab is always visible, costs one row, and stays out of the way — `Vẽ` is
+   * the default because drawing is still the job. The badge is what closes the
+   * loop: a map that has rules says so on the tab, from the drawing pane,
+   * without being opened.
+   */
   const INSPECTOR_HTML = `
+  <div class="seg center" id="inspector-tabs" style="grid-auto-flow:column;margin:0 0 10px">
+    <button id="tab-draw" class="on">Vẽ</button>
+    <button id="tab-rules">Luật chơi <span id="tab-rules-badge" class="mono"></span></button>
+  </div>
+
+  <div id="pane-rules" class="hidden">
+    <div class="sec">
+      <div class="sec-title">Luật chơi của map <span id="tuning-count" class="mono"></span></div>
+      <p class="muted" style="margin:0 0 8px">
+        Chỉ số riêng của map này. Ô trống = dùng mặc định của core — số mờ trong
+        ô chính là mặc định đó.
+      </p>
+      <div id="tuning-summary" class="muted" style="margin:0 0 10px"></div>
+      <div id="tuning-groups"></div>
+    </div>
+  </div>
+
+  <div id="pane-draw">
   <div class="sec" id="s-obj">
     <div class="sec-title"><span id="obj-title">Đối tượng</span><span id="obj-sub" class="mono"></span></div>
     <div class="seg" id="obj-types" style="grid-template-columns:1fr 1fr"></div>
@@ -457,11 +490,6 @@ const UI = (() => {
     <div class="sec-title" style="margin:12px 0 8px">Phe <span id="faction-count" class="mono"></span></div>
     <div id="faction-list"></div>
     <button class="btn block" id="faction-add" style="margin-top:6px">${ico("plus", "ico ico-sm")} Thêm phe</button>
-    <div class="sec-title" style="margin:12px 0 4px">Cấu hình map <span id="tuning-count" class="mono"></span></div>
-    <p class="muted" style="margin:0 0 6px">
-      Chỉ số riêng của map này. Ô trống = dùng mặc định của core (số mờ trong ô).
-    </p>
-    <div id="tuning-groups"></div>
     <div class="sec-title" style="margin:12px 0 8px">Ảnh nền</div>
     <button class="toggle" id="tg-bg"><span>Hiện ảnh nền</span><span class="sw"></span></button>
     <div class="row" style="margin-top:7px">
@@ -491,6 +519,7 @@ const UI = (() => {
   <div class="sec">
     <div class="sec-title">Kiểm tra</div>
     <div id="check-box" class="muted">—</div>
+  </div>
   </div>`;
 
   /** Các field thuộc tính của từng loại — bám đúng schema của moba2d. */
@@ -498,7 +527,7 @@ const UI = (() => {
     spawn: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
-      { group: "Ghi đè chỉ số" },
+      { group: "Ghi đè chỉ số cho bệ đá này", groupKey: "fountain" },
       { key: "stats.healPercent", label: "Hồi máu", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.manaPercent", label: "Hồi mana", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.tickInterval", label: "Nhịp hồi", kind: "number", unit: "ms", min: 0, ph: "500" },
@@ -506,7 +535,7 @@ const UI = (() => {
     structure: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "kind", label: "Kiểu", kind: "static", value: "turret" },
-      { group: "Ghi đè chỉ số" },
+      { group: "Ghi đè chỉ số cho trụ này", groupKey: "turrets" },
       { key: "stats.health", label: "Máu", kind: "number", unit: "hp", min: 0, ph: "400" },
       { key: "stats.damage", label: "Sát thương", kind: "number", unit: "dmg", min: 0, ph: "12" },
       { key: "stats.attackRange", label: "Tầm bắn", kind: "number", unit: "px", min: 0, ph: "430" },
@@ -522,7 +551,7 @@ const UI = (() => {
       { key: "role", label: "Role", kind: "text", placeholder: "warden" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
       { key: "rotationDeg", label: "Xoay camp", kind: "number", unit: "°", hint: "xoay bố cục quái bên trong" },
-      { group: "Ghi đè chỉ số" },
+      { group: "Ghi đè chỉ số cho bãi này", groupKey: "monsters" },
       { key: "stats.healthMult", label: "Máu", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.damageMult", label: "Sát thương", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.aggroRange", label: "Tầm phát hiện", kind: "number", unit: "px", min: 0, hint: "số tuyệt đối, không phải hệ số" },
@@ -564,6 +593,9 @@ const UI = (() => {
       squareWarn: g("map-square-warn"), factions: g("faction-list"),
       factionCount: g("faction-count"), check: g("check-box"),
       tuning: g("tuning-groups"), tuningCount: g("tuning-count"),
+      tuningSummary: g("tuning-summary"), tabsBadge: g("tab-rules-badge"),
+      paneDraw: g("pane-draw"), paneRules: g("pane-rules"),
+      tabDraw: g("tab-draw"), tabRules: g("tab-rules"),
     };
 
     // các lớp bật/tắt, chia theo nhóm của MapGeometry
@@ -672,6 +704,8 @@ const UI = (() => {
     };
     g("map-resize").onclick = () => Cmd.run("map.resize");
     g("faction-add").onclick = () => Cmd.run("map.addFaction");
+    R.tabDraw.onclick = () => showTab("draw");
+    R.tabRules.onclick = () => showTab("rules");
 
     R.bgSelect.addEventListener("change", () => {
       const v = R.bgSelect.value;
@@ -700,7 +734,14 @@ const UI = (() => {
           class: "sec-title", style: "margin:12px 0 2px", text: f.group,
         }));
         R.objProps.appendChild(el("p", { class: "muted", style: "margin:0 0 2px" },
-          "Để trống = dùng chỉ số của map, rồi tới của core."));
+          "Chỉ riêng cái này. Để trống = theo chỉ số của map, rồi tới của core."));
+        // The link is what keeps the two halves from reading as two features.
+        // Someone editing one turret is exactly the person who might mean
+        // "every turret", and this is the only place they will think of it.
+        R.objProps.appendChild(el("button", {
+          class: "btn block", style: "margin:4px 0 2px",
+          onclick: () => openRules(f.groupKey),
+        }, `${ico("settings", "ico ico-sm")} Đổi cho tất cả ở tab Luật chơi…`));
         continue;
       }
 
@@ -1001,13 +1042,34 @@ const UI = (() => {
    * gõ, chứ không phải mở mã nguồn engine ra tra.
    */
   const TUNING_SCHEMA = [
-    { key: "champions", label: "Tướng", fields: [
+    {
+      key: "champions",
+      label: "Tướng",
+      hint: "Chết bao lâu thì sống lại.",
+      fields: [
       { key: "reviveTime", label: "Hồi sinh", unit: "ms", ph: "5000" },
       { key: "reviveCurve.base", label: "Hồi sinh — mốc đầu", unit: "ms", hint: "khai cả ba ô thì đường cong thắng ô phẳng ở trên" },
       { key: "reviveCurve.perMinute", label: "Cộng mỗi phút", unit: "ms" },
       { key: "reviveCurve.max", label: "Trần", unit: "ms" },
     ]},
-    { key: "turrets", label: "Trụ", fields: [
+    {
+      key: "economy",
+      label: "Kinh tế",
+      hint: "Vàng khởi đầu, thu nhập, và giết cái gì được bao nhiêu. Đây là cần gạt đổi nhịp trận mạnh nhất mà không phải vẽ lại gì.",
+      fields: [
+        { key: "startingGold", label: "Vàng khởi đầu", unit: "g", ph: "500" },
+        { key: "passiveGoldPerSecond", label: "Vàng mỗi giây", unit: "g/s", ph: "2" },
+        { key: "minionBounty", label: "Giết lính", unit: "g", ph: "20" },
+        { key: "monsterBounty", label: "Giết quái", unit: "g", ph: "32" },
+        { key: "championBounty", label: "Giết tướng", unit: "g", ph: "200" },
+        { key: "turretBounty", label: "Phá trụ", unit: "g", ph: "150" },
+      ],
+    },
+    {
+      key: "turrets",
+      label: "Trụ",
+      hint: "Trụ đánh mạnh cỡ nào, xa cỡ nào, gãy xong bao lâu mọc lại.",
+      fields: [
       { key: "health", label: "Máu", unit: "hp", ph: "400" },
       { key: "damage", label: "Sát thương", unit: "dmg", ph: "12" },
       { key: "attackRange", label: "Tầm bắn", unit: "px", ph: "430" },
@@ -1017,12 +1079,20 @@ const UI = (() => {
       { key: "repairDelay", label: "Chờ tự sửa", unit: "ms", ph: "6000" },
       { key: "repairRate", label: "Tốc tự sửa", unit: "hp/frame", ph: "0.4" },
     ]},
-    { key: "fountain", label: "Bệ đá cổ", fields: [
+    {
+      key: "fountain",
+      label: "Bệ đá cổ",
+      hint: "Về nhà hồi máu/mana nhanh hay chậm.",
+      fields: [
       { key: "tickInterval", label: "Nhịp hồi", unit: "ms", ph: "500" },
       { key: "healPercent", label: "Hồi máu", unit: "×", ph: "0.12" },
       { key: "manaPercent", label: "Hồi mana", unit: "×", ph: "0.12" },
     ]},
-    { key: "monsters", label: "Quái rừng", fields: [
+    {
+      key: "monsters",
+      label: "Quái rừng",
+      hint: "Hệ số nhân lên chỉ số pack khai, và quái đuổi xa tới đâu.",
+      fields: [
       { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
       { key: "damageMult", label: "Sát thương", unit: "×", ph: "1" },
       { key: "speedMult", label: "Tốc chạy", unit: "×", ph: "1" },
@@ -1032,11 +1102,20 @@ const UI = (() => {
       { key: "chaseMargin", label: "Tầm đuổi thêm", unit: "px", ph: "350" },
       { key: "giveUpDelayMs", label: "Chờ bỏ cuộc", unit: "ms", ph: "2000" },
     ]},
-    { key: "terrain", label: "Địa hình", fields: [
+    {
+      key: "terrain",
+      label: "Địa hình",
+      hint: "Đi trong bụi và dưới sông nhanh chậm thế nào.",
+      fields: [
       { key: "bush.speedMultiplier", label: "Tốc trong bụi", unit: "×", ph: "1" },
       { key: "water.speedMultiplier", label: "Tốc dưới sông", unit: "×", ph: "1" },
     ]},
-    { key: "minions", label: "Lính", minions: true, fields: [
+    {
+      key: "minions",
+      label: "Lính",
+      hint: "Nhịp ra wave, và map có thể tự khai loại lính của riêng nó.",
+      minions: true,
+      fields: [
       { key: "waves.intervalMs", label: "Cách wave", unit: "ms", ph: "30000" },
       { key: "waves.firstDelayMs", label: "Wave đầu sau", unit: "ms", ph: "1000" },
       { key: "waves.releaseIntervalMs", label: "Cách từng con", unit: "ms", ph: "650" },
@@ -1057,6 +1136,93 @@ const UI = (() => {
   ];
 
   let tuningOpen = new Set();
+  /**
+   * Which pane is showing. Module state rather than persisted: this is a
+   * drawing tool, so every session should open on the drawing pane no matter
+   * where the last one ended.
+   */
+  let inspectorTab = "draw";
+
+  function showTab(tab) {
+    inspectorTab = tab;
+    if (!R.paneDraw) return;
+    R.paneDraw.classList.toggle("hidden", tab !== "draw");
+    R.paneRules.classList.toggle("hidden", tab !== "rules");
+    R.tabDraw.classList.toggle("on", tab === "draw");
+    R.tabRules.classList.toggle("on", tab === "rules");
+    requestRender();
+  }
+
+  /** Jump to the rules pane — used by the cross-link on a slot's own overrides. */
+  function openRules(groupKey) {
+    if (groupKey) tuningOpen.add(groupKey);
+    showTab("rules");
+    syncTuning();
+  }
+
+  /**
+   * The map's rules as a sentence, not a form.
+   *
+   * A count of touched groups tells you *that* something is different; this
+   * tells you **what**, which is the difference between a badge and an
+   * answer. It reads off the same object the fields write to, so it cannot
+   * describe a rule the map does not have.
+   */
+  function tuningSummary(tuning) {
+    const bits = [];
+    const n = (v) => (Math.round(v * 100) / 100).toString();
+
+    const c = tuning.champions || {};
+    if (c.reviveTime != null) bits.push(`hồi sinh ${n(c.reviveTime / 1000)}s`);
+    if (c.reviveCurve) bits.push("hồi sinh tăng dần");
+
+    const e = tuning.economy || {};
+    if (e.startingGold != null) bits.push(`vàng đầu ${n(e.startingGold)}`);
+    if (e.passiveGoldPerSecond != null) bits.push(`${n(e.passiveGoldPerSecond)} vàng/giây`);
+    for (const [key, label] of [
+      ["minionBounty", "lính"],
+      ["monsterBounty", "quái"],
+      ["championBounty", "tướng"],
+      ["turretBounty", "trụ"],
+    ]) {
+      if (e[key] != null) bits.push(`${label} ${n(e[key])}g`);
+    }
+
+    const t = tuning.turrets || {};
+    if (t.damage != null) bits.push(`trụ ${n(t.damage)} sát thương`);
+    if (t.attackRange != null) bits.push(`trụ tầm ${n(t.attackRange)}`);
+    if (t.health != null) bits.push(`trụ ${n(t.health)} máu`);
+
+    const f = tuning.fountain || {};
+    if (f.healPercent != null) bits.push(`bệ đá hồi ${n(f.healPercent * 100)}%`);
+
+    const m = tuning.monsters || {};
+    for (const [key, label] of [
+      ["healthMult", "máu"],
+      ["damageMult", "sát thương"],
+      ["speedMult", "tốc"],
+    ]) {
+      if (m[key] != null) bits.push(`quái ×${n(m[key])} ${label}`);
+    }
+    if (m.chaseMargin != null) bits.push(`quái đuổi +${n(m.chaseMargin)}`);
+
+    const terrain = tuning.terrain || {};
+    if (terrain.bush && terrain.bush.speedMultiplier != null) {
+      bits.push(`bụi ×${n(terrain.bush.speedMultiplier)} tốc`);
+    }
+    if (terrain.water && terrain.water.speedMultiplier != null) {
+      bits.push(`sông ×${n(terrain.water.speedMultiplier)} tốc`);
+    }
+
+    const mi = tuning.minions || {};
+    const typeCount = mi.types ? Object.keys(mi.types).length : 0;
+    if (typeCount) bits.push(`lính: ${typeCount} loại riêng`);
+    if (mi.waves && mi.waves.intervalMs != null) {
+      bits.push(`wave mỗi ${n(mi.waves.intervalMs / 1000)}s`);
+    }
+
+    return bits;
+  }
 
   function tuningRow(label, hint, path, value, unit, ph) {
     const row = el("div", { class: "row", style: "margin-top:6px" });
@@ -1091,6 +1257,24 @@ const UI = (() => {
     const tuning = (E.meta && E.meta.tuning) || {};
     const groups = Object.keys(tuning).length;
     R.tuningCount.textContent = groups ? `${groups} nhóm` : "";
+
+    // The badge is the whole discoverability story from the drawing pane: a
+    // map with rules says so without being opened.
+    R.tabsBadge.textContent = groups ? String(groups) : "";
+    R.tabsBadge.style.color = groups ? "var(--accent)" : "";
+
+    const bits = tuningSummary(tuning);
+    if (!bits.length) {
+      R.tuningSummary.textContent = "Map này đang chơi bằng chỉ số mặc định của core.";
+    } else {
+      // Capped: a summary that runs to twenty phrases is a form again.
+      const shown = bits.slice(0, 6);
+      const rest = bits.length - shown.length;
+      R.tuningSummary.innerHTML =
+        `<span style="color:var(--tx)">${esc(shown.join(" · "))}</span>` +
+        (rest > 0 ? `<span style="color:var(--tx-3)"> · +${rest} nữa</span>` : "");
+    }
+
     R.tuning.innerHTML = "";
 
     for (const group of TUNING_SCHEMA) {
@@ -1110,11 +1294,23 @@ const UI = (() => {
       R.tuning.appendChild(head);
       if (!open) continue;
 
-      const box = el("div", { style: "padding:0 0 6px 8px;border-left:1px solid var(--bd)" });
+      const box = el("div", { style: "padding:0 0 6px 8px;border-left:1px solid var(--line)" });
+      // A one-line answer to "what is this group for", inside the group rather
+      // than in a doc nobody opens while drawing.
+      if (group.hint) {
+        box.appendChild(el("p", { class: "muted", style: "margin:6px 0 2px" }, esc(group.hint)));
+      }
       for (const f of group.fields) {
         box.appendChild(tuningRow(f.label, f.hint, `${group.key}.${f.key}`, readDeep(body, f.key), f.unit, f.ph));
       }
       if (group.minions) box.appendChild(minionTypesBox(body));
+      if (touched) {
+        box.appendChild(el("button", {
+          class: "btn block", style: "margin-top:8px",
+          title: "Bỏ mọi ghi đè của nhóm này, quay về mặc định của core",
+          onclick: () => { Cmd.run("map.tuningResetGroup", [group.key]); syncTuning(); },
+        }, `${ico("undo", "ico ico-sm")} Về mặc định (${touched} ô)`));
+      }
       R.tuning.appendChild(box);
     }
   }

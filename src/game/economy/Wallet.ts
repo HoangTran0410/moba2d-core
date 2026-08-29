@@ -85,7 +85,18 @@ export default class Wallet {
    */
   private _earnedTotal = 0;
 
-  constructor(startingGold = 0) {
+  /**
+   * Gold per second this purse earns for existing.
+   *
+   * An instance field rather than a module read, so a map may set the pace of
+   * its own economy (`EconomyTuning.passiveGoldPerSecond`). Defaulted to the
+   * constant, so a `new Wallet(500)` written before this existed behaves
+   * exactly as it did.
+   */
+  passivePerSecond: number;
+
+  constructor(startingGold = 0, passivePerSecond = PASSIVE_GOLD_PER_SECOND) {
+    this.passivePerSecond = passivePerSecond;
     this.earn(startingGold);
   }
 
@@ -146,6 +157,6 @@ export default class Wallet {
    */
   accrue(deltaMs: number): void {
     if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
-    this.earn((deltaMs / 1000) * PASSIVE_GOLD_PER_SECOND);
+    this.earn((deltaMs / 1000) * this.passivePerSecond);
   }
 }

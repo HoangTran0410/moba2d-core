@@ -4,7 +4,7 @@ import Minion, {
   type MinionPresetData,
 } from '@/game/gameObject/attackableUnits/Minion';
 import type { MapTuning, WaveStage } from '@/content/ContentPack';
-import { resolveMinionTypes } from '@/game/config/mapTuning';
+import { resolveEconomy, resolveMinionTypes, type ResolvedEconomy } from '@/game/config/mapTuning';
 import type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import type Fountain from '@/game/gameObject/structures/Fountain';
 import type { MinionMusterPoint } from '@/game/preset';
@@ -188,6 +188,8 @@ export default class MinionSpawner {
    * re-resolving per wave would rebuild the type table sixty times a minute.
    */
   readonly plan: WavePlan;
+  /** The map's economy, resolved once beside the wave plan. */
+  readonly economy: ResolvedEconomy;
 
   /**
    * The wave clock. Off stops queueing and releasing; it does not stop pruning,
@@ -208,6 +210,7 @@ export default class MinionSpawner {
   constructor(game: MinionSpawnerContext) {
     this.game = game;
     this.plan = resolveWavePlan(game.mapTuning);
+    this.economy = resolveEconomy(game.mapTuning);
     this._nextWaveIn = this.plan.firstDelayMs;
   }
 
@@ -342,6 +345,11 @@ export default class MinionSpawner {
       preset,
       startWaypointIndex,
     });
+
+    // A type that named its own `goldBounty` keeps it: it said something more
+    // specific than the map's blanket number, the same precedence every other
+    // layer in `MapTuning` follows.
+    if (preset.goldBounty === undefined) minion.goldBounty = this.economy.minionBounty;
 
     this.minions.push(minion);
     this.game.objectManager.addObject(minion);

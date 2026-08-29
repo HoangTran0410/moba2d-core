@@ -791,6 +791,16 @@ const Cmd = (() => {
       commit();
     },
   });
+  def("map.tuningResetGroup", {
+    label: "Về mặc định", icon: "undo",
+    run: (a) => {
+      const group = a && a[0];
+      if (!E.meta.tuning || !group || !E.meta.tuning[group]) return;
+      delete E.meta.tuning[group];
+      if (!Object.keys(E.meta.tuning).length) delete E.meta.tuning;
+      commit();
+    },
+  });
   def("map.tuningRemoveMinion", {
     label: "Xoá loại lính", icon: "trash",
     run: (a) => {

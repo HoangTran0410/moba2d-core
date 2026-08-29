@@ -6,6 +6,7 @@ import type {
   StructureSlot,
 } from '@/content/ContentPack';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
+import { resolveEconomy } from './config/mapTuning';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
 import Champion from './gameObject/attackableUnits/Champion';
@@ -557,6 +558,7 @@ export default class Game {
    * is a property of the camp and not of one wolf.
    */
   spawnJungle() {
+    const economy = resolveEconomy(this.mapTuning);
     for (const slot of this.neutralSlots) {
       const monster = monsterFillingSlot(slot);
       if (!monster) continue;
@@ -564,6 +566,7 @@ export default class Game {
       for (const member of monster.members) {
         const preset = monsterBodyPreset(monster, member, slot, this.mapTuning);
         const body = new Monster({ game: this, preset });
+        body.goldBounty = economy.monsterBounty;
         this.monsters.push(body);
         this.objectManager.addObject(body);
       }
@@ -584,8 +587,13 @@ export default class Game {
     factions: ActiveMap['factions'],
     tuning?: MapTuning
   ) {
+    const economy = resolveEconomy(tuning);
     for (const { x, y, teamId, preset } of turretsFromSlots(structureSlots, factions, tuning)) {
       const turret = new Turret({ game: this, position: createVector(x, y), teamId, preset });
+      // What a turret is *worth* is a statement about the economy, so it comes
+      // from that group rather than from `TurretStats` beside its other
+      // numbers — see `EconomyTuning`'s own doc comment.
+      turret.goldBounty = economy.turretBounty;
       this.turrets.push(turret);
       this.objectManager.addObject(turret);
     }

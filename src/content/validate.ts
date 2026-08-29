@@ -891,7 +891,24 @@ function checkComposition(
  * makes a real group read as a typo, and the two failing tests that caught
  * exactly that are why it is one constant now instead of an inline literal.
  */
-const TUNING_GROUPS = ['champions', 'turrets', 'fountain', 'minions', 'monsters', 'terrain'];
+const TUNING_GROUPS = [
+  'champions',
+  'economy',
+  'turrets',
+  'fountain',
+  'minions',
+  'monsters',
+  'terrain',
+];
+
+const ECONOMY_KEYS = [
+  'startingGold',
+  'passiveGoldPerSecond',
+  'minionBounty',
+  'monsterBounty',
+  'championBounty',
+  'turretBounty',
+] as const;
 
 /**
  * A map's own numbers.
@@ -934,6 +951,9 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
     }
   }
 
+  if (tuning.economy !== undefined) {
+    checkNumberBag(`${name}.tuning.economy`, tuning.economy, ECONOMY_KEYS, errors);
+  }
   if (tuning.turrets !== undefined) {
     checkNumberBag(`${name}.tuning.turrets`, tuning.turrets, TURRET_STAT_KEYS, errors);
   }

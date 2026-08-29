@@ -11,8 +11,10 @@ import { describe, expect, it } from 'vitest';
 import type { MapTuning } from '../../../src/content/ContentPack';
 import {
   DEFAULT_CHAMPION_REVIVE_MS,
+  DEFAULT_ECONOMY,
   DEFAULT_FOUNTAIN_STATS,
   resolveChampionRevive,
+  resolveEconomy,
   resolveFountainStats,
   resolveMonsterPreset,
   resolveTerrainTuning,
@@ -68,6 +70,34 @@ describe('champion respawn', () => {
       champions: { reviveTime: 999, reviveCurve: { base: 5_000, perMinute: 0, max: 60_000 } },
     };
     expect(resolveChampionRevive(tuning, 0)).toBe(5_000);
+  });
+});
+
+describe('economy', () => {
+  it('with no tuning is exactly what Wallet.ts declares', () => {
+    expect(resolveEconomy(undefined)).toEqual({ ...DEFAULT_ECONOMY });
+  });
+
+  it('takes a map\'s own numbers', () => {
+    const economy = resolveEconomy({
+      economy: { startingGold: 1_500, passiveGoldPerSecond: 8, turretBounty: 40 },
+    });
+    expect(economy.startingGold).toBe(1_500);
+    expect(economy.passiveGoldPerSecond).toBe(8);
+    expect(economy.turretBounty).toBe(40);
+    // Untouched fields still come from core, which is what makes a map able to
+    // move one number without restating the other five.
+    expect(economy.minionBounty).toBe(DEFAULT_ECONOMY.minionBounty);
+  });
+
+  it('refuses a negative purse rather than paying out debt', () => {
+    expect(resolveEconomy({ economy: { startingGold: -100 } }).startingGold).toBe(0);
+  });
+
+  it('ignores a non-finite number rather than propagating it', () => {
+    expect(resolveEconomy({ economy: { minionBounty: NaN } }).minionBounty).toBe(
+      DEFAULT_ECONOMY.minionBounty
+    );
   });
 });
 

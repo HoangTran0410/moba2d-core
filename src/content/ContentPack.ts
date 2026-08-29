@@ -450,11 +450,49 @@ export interface Faction {
  */
 export interface MapTuning {
   champions?: ChampionTuning;
+  economy?: EconomyTuning;
   turrets?: TurretTuning;
   fountain?: FountainTuning;
   minions?: MinionTuning;
   monsters?: MonsterTuning;
   terrain?: TerrainTuning;
+}
+
+/**
+ * What things are worth, and how fast gold arrives.
+ *
+ * **One group, and it has to be one group.** `Wallet.ts` says it plainly of
+ * its own constants: an economy is a set of numbers that only mean anything
+ * *relative to each other*, and one of them living somewhere else is how the
+ * set gets retuned by halves. So bounties sit here rather than beside the
+ * unit they belong to — `turretBounty` is not in `TurretTuning` even though
+ * every other turret number is, because what a turret is *worth* is a
+ * statement about the economy and what it *does* is a statement about the
+ * turret.
+ *
+ * This is the biggest lever a map has for changing pace without changing a
+ * single shape: a short skirmish map wants a full purse at the fountain and
+ * fast passive income, a long macro map wants neither.
+ *
+ * `SELL_REFUND_FRACTION` is deliberately **absent**. It is read by the shop
+ * panel as well as by the shop itself, and the panel is HUD code with no map
+ * in scope — threading one fraction through `MatchConfigSource` to reach it
+ * would be a larger change than the lever is worth, and a half-done version
+ * would leave the panel quoting a refund the shop does not pay.
+ */
+export interface EconomyTuning {
+  /** What a champion leaves the fountain with. Default 500. */
+  startingGold?: number;
+  /** Gold per second, to everyone, for existing. Default 2. */
+  passiveGoldPerSecond?: number;
+  /** Default 20. */
+  minionBounty?: number;
+  /** Default 32. */
+  monsterBounty?: number;
+  /** Default 200. */
+  championBounty?: number;
+  /** Default 150. */
+  turretBounty?: number;
 }
 
 /**

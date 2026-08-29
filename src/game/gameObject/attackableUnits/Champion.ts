@@ -1,5 +1,5 @@
 import AssetManager, { type AssetHandle, type AssetKey } from '@/managers/AssetManager';
-import { resolveChampionRevive } from '@/game/config/mapTuning';
+import { resolveChampionRevive, resolveEconomy } from '@/game/config/mapTuning';
 import { packAssetOrPlaceholder } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
@@ -363,6 +363,17 @@ export default class Champion extends AttackableUnit {
         (preset?.avatar ? packAssetOrPlaceholder(preset.avatar, preset.name ?? '') : undefined),
       stats,
     });
+
+    // The map's economy, applied before anything can spend or be killed.
+    // Unconditional, and it costs nothing to be: with no tuning
+    // `resolveEconomy` returns core's own constants, so this rebuilds the
+    // purse the field initialiser above just made, identically. A rebuild
+    // rather than a top-up, because "start with 800" and "start with 500 and
+    // find 300" are different states — the second shows up as income in a
+    // match tally.
+    const economy = resolveEconomy(this.game?.mapTuning);
+    this.wallet = new Wallet(economy.startingGold, economy.passiveGoldPerSecond);
+    this.goldBounty = economy.championBounty;
 
     // A champion with no preset at all is still a champion: it gets the default
     // attack profile rather than a unit that cannot swing.

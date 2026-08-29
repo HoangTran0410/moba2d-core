@@ -1,5 +1,14 @@
+import {
+  CHAMPION_BOUNTY,
+  MINION_BOUNTY,
+  MONSTER_BOUNTY,
+  PASSIVE_GOLD_PER_SECOND,
+  STARTING_GOLD,
+  TURRET_BOUNTY,
+} from '@/game/economy/Wallet';
 import type {
   ChampionTuning,
+  EconomyTuning,
   FountainStats,
   MapTuning,
   MonsterScale,
@@ -108,6 +117,50 @@ export function resolveChampionRevive(tuning: MapTuning | undefined, matchTimeMs
     return Math.max(0, Math.min(grown, num(curve.max, Infinity)));
   }
   return Math.max(0, num(champions?.reviveTime, DEFAULT_CHAMPION_REVIVE_MS));
+}
+
+// ----------------------------------------------------------------- economy
+
+/**
+ * Core's own economy, stated once so `resolveEconomy` has a base to fall to.
+ *
+ * Typed as plain numbers rather than left to inference: `Object.freeze` on a
+ * literal narrows every field to *that number*, so `startingGold` would be
+ * the type `500` and a resolver returning 800 would not typecheck.
+ */
+export const DEFAULT_ECONOMY: Readonly<Required<EconomyTuning>> = Object.freeze({
+  startingGold: STARTING_GOLD,
+  passiveGoldPerSecond: PASSIVE_GOLD_PER_SECOND,
+  minionBounty: MINION_BOUNTY,
+  monsterBounty: MONSTER_BOUNTY,
+  championBounty: CHAMPION_BOUNTY,
+  turretBounty: TURRET_BOUNTY,
+});
+
+export type ResolvedEconomy = Required<EconomyTuning>;
+
+/**
+ * The whole economy at once, never a field at a time.
+ *
+ * Callers take the resolved object and read what they need from it, rather
+ * than each asking for its own number — `Wallet.ts`'s own header is the
+ * argument for that, and it applies harder here: a map author looking at six
+ * numbers together can see whether they still make sense against each other,
+ * and six separate resolvers would invite retuning three of them.
+ */
+export function resolveEconomy(tuning: MapTuning | undefined): ResolvedEconomy {
+  const own: EconomyTuning = tuning?.economy ?? {};
+  return {
+    startingGold: Math.max(0, num(own.startingGold, DEFAULT_ECONOMY.startingGold)),
+    passiveGoldPerSecond: Math.max(
+      0,
+      num(own.passiveGoldPerSecond, DEFAULT_ECONOMY.passiveGoldPerSecond)
+    ),
+    minionBounty: Math.max(0, num(own.minionBounty, DEFAULT_ECONOMY.minionBounty)),
+    monsterBounty: Math.max(0, num(own.monsterBounty, DEFAULT_ECONOMY.monsterBounty)),
+    championBounty: Math.max(0, num(own.championBounty, DEFAULT_ECONOMY.championBounty)),
+    turretBounty: Math.max(0, num(own.turretBounty, DEFAULT_ECONOMY.turretBounty)),
+  };
 }
 
 // ----------------------------------------------------------------- turrets
