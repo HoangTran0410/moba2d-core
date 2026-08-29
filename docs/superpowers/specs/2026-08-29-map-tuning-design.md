@@ -643,6 +643,26 @@ reviveTime:  60_000   (the user's ceiling for this game's pace)
 durationMs: 180_000
 ```
 
+**Retuned 2026-08-29, after §7.5 made the swing visible.** As shipped the
+dragon was `damage: 10` at `1_800`ms — 5.6 dps, and the *weakest fighting
+camp in the jungle*: a raptor pit does 14.0, a buff camp 8.0. It survived
+review because Baron (6.0) and Vilemaw (5.5) read as similarly modest, and
+they can afford to — their kits carry roughly 8.6 and 4.7 dps more. This
+camp has no kit at all. `makeDragonAbilities` returns one entry and that
+entry is the blessing paid on death, never cast, so its basic attack is the
+whole fight.
+
+Now `damage: 24` at `1_600`ms — 15.0 dps, just past the raptors and a shade
+over Baron's swing-plus-kit total. A large single hit on a ~100 health
+champion on purpose: the swing is a `breath` cone whose wind-up re-checks
+reach before it lands, so it is dodgeable by walking, and a number worth
+walking away from is what makes that telegraph mean anything.
+
+`lol/tests/monsters/campPower.test.ts` builds every camp in the pack as a
+real `Monster` and measures it, rather than reading a table core does not
+use — six of the nine bodies leave `damage` out and let core derive it,
+which is how this went unnoticed.
+
 Both are exported constants in the pack file, per this repo's rule that
 tuning values are importable by tests rather than edited into them.
 
