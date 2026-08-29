@@ -3,6 +3,8 @@ import Champion, { type ChampionOptions, type ChampionPresetData } from './Champ
 import type AttackableUnit from './AttackableUnit';
 import { type BotDifficulty, DEFAULT_DIFFICULTY } from '@/game/ai/Difficulty';
 import BotBrain from '@/game/ai/BotBrain';
+import { BOT_SHOP_INTERVAL_MS, botShopTick } from '@/game/ai/BotShopper';
+import type { ShopHost } from '@/game/economy/ItemShop';
 
 /** `avatar` is a pack's own asset key — see `ChampionPresetData.avatar`'s doc comment. */
 export type ChampionPresetFactory = () => ChampionPresetData & { avatar: string };
@@ -102,6 +104,8 @@ export default class AIChampion extends Champion {
   _difficulty: BotDifficulty = DEFAULT_DIFFICULTY;
   /** ms until the next scan, jittered on construction. */
   _attackScanCooldown = Math.random() * AI_ATTACK_SCAN_INTERVAL_MS;
+  /** ms until the next look at the shop, jittered for the same reason. */
+  _shopCooldown = Math.random() * BOT_SHOP_INTERVAL_MS;
   /**
    * Everything this bot decides. `AIChampion` is the body: it owns the clock,
    * the walking and the attack order, and asks the brain what to do with them.
@@ -129,6 +133,36 @@ export default class AIChampion extends Champion {
     // frame length, which is a duration and needs no domain.
     this.brain.update(this.game.matchTimeMs ?? 0, deltaTime);
     this.updateAttackTargeting();
+    this.updateShopping();
+  }
+
+  /**
+   * Spends the gold. On its own slow clock and outside the brain for the same
+   * reason `updateAttackTargeting` is outside it: this is not a decision about
+   * the next second, it is bookkeeping about the whole match, and it is only
+   * ever *possible* in the few seconds a bot spends dead or standing on its
+   * own platform.
+   *
+   * Bots existed for the entire life of the shop without ever opening it —
+   * see `ai/BotShopper.ts` for what that did to a match. There is no behaviour
+   * flag for it, unlike the three above: a bot that does not spend its gold is
+   * not a differently-behaved bot, it is a broken one, and an owner who wants
+   * to hand-build a bot's bag through the practice panel already gets that by
+   * filling the six slots (a full bag has nothing this can buy).
+   *
+   * The host is read off `game` structurally, the way `BotBrain.retreatPoint`
+   * reads the turrets it retreats to: `GameObjectRuntimeContext` is the
+   * surface a *game object* needs and deliberately does not carry the match's
+   * structures. One small object every two seconds, against a cast that would
+   * have to be `as unknown as`.
+   */
+  updateShopping(): void {
+    this._shopCooldown -= deltaTime;
+    if (this._shopCooldown > 0) return;
+    this._shopCooldown = BOT_SHOP_INTERVAL_MS;
+
+    const { fountains = [] } = this.game as { fountains?: ShopHost['fountains'] };
+    botShopTick(this, { fountains }, { difficulty: this._difficulty, rng: this.brain.rng });
   }
 
   /**
