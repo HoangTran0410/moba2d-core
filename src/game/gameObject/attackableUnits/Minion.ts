@@ -12,7 +12,9 @@ import type {
   AttackableUnitRenderOptions,
   UnitDeathData,
 } from './AttackableUnit';
+import Champion from './Champion';
 import Monster from './Monster';
+import { pickAggroTarget, type AggroLadder } from '@/game/combat/AggroPriority';
 
 /**
  * How a minion fights and draws — core's three built-in bodies, and the only
@@ -294,7 +296,12 @@ export default class Minion extends AttackableUnit {
       // range. Checked before the scan so a minion already out of position
       // cannot re-acquire the target that dragged it there.
       const leashed = this.distanceToLane() > MINION_LEASH_RANGE;
-      this.targetLock = leashed ? null : this.findTarget();
+      // The lock is *carried into* the scan rather than thrown away by it, so
+      // a minion finishes what it started and only a better rung of the ladder
+      // takes it off — `combat/AggroPriority`. `updateAttack` drops a stale
+      // lock every frame, which is what makes "am I still holding one" a fair
+      // question to ask here once every scan.
+      this.targetLock = leashed ? null : this.findTarget(this.targetLock);
       this.phase = this.targetLock ? Minion.PHASES.ATTACK : Minion.PHASES.WALK;
       if (wasAttacking && this.phase === Minion.PHASES.WALK) this.resyncWaypoint();
     }
@@ -456,13 +463,46 @@ export default class Minion extends AttackableUnit {
   }
 
   /**
-   * Nearest hostile minion if there is one, otherwise the nearest of anything
-   * else hostile — that ordering is what makes a wave fight the other wave
-   * instead of peeling off after whichever champion wandered past. Jungle camps
-   * are excluded outright: a lane minion has no business clearing the jungle,
-   * and the camps leash anyway so it would be a fight nobody wins.
+   * A wave's ladder, in the source game's own order.
+   *
+   * The floor is what this method used to be in its entirety — nearest minion,
+   * else nearest of anything else hostile — and that ordering is still what
+   * makes a wave fight the other wave instead of peeling off after whichever
+   * champion wandered past. What is above the floor is new, and it is the
+   * thing players mean by "the minions turned on me": hit an enemy champion
+   * while their wave is in range and their wave answers, whatever it was doing.
+   *
+   * Rung 4 is written as "anything else already in the candidate set" rather
+   * than as `instanceof Turret`, and cannot be written the other way: `Turret`
+   * imports this module, so this module cannot import `Turret`. A tower
+   * shelling the wave is the case it exists for; a hostile `Pet` doing the
+   * same also satisfies it, which is the right answer for the same reason.
+   * `Monster` never reaches it — the query below excludes the whole class.
    */
-  findTarget(): AttackableUnit | null {
+  private static readonly LADDER: AggroLadder<AttackableUnit> = {
+    defend: [
+      { attacker: unit => unit instanceof Champion, victim: ally => ally instanceof Champion },
+      { attacker: unit => unit instanceof Minion, victim: ally => ally instanceof Champion },
+      { attacker: unit => unit instanceof Minion, victim: ally => ally instanceof Minion },
+      {
+        attacker: unit => !(unit instanceof Champion) && !(unit instanceof Minion),
+        victim: ally => ally instanceof Minion,
+      },
+      { attacker: unit => unit instanceof Champion, victim: ally => ally instanceof Minion },
+    ],
+    nearest: [unit => unit instanceof Minion, () => true],
+  };
+
+  /**
+   * What this minion should be hitting.
+   *
+   * Jungle camps are excluded outright: a lane minion has no business clearing
+   * the jungle, and the camps leash anyway so it would be a fight nobody wins.
+   *
+   * @param current The lock being carried in, or null. Only a better rung of
+   *   the ladder takes it away — see `combat/AggroPriority`.
+   */
+  findTarget(current: AttackableUnit | null = null): AttackableUnit | null {
     const found = this.game.objectManager.queryObjects({
       area: new Circle({
         x: this.position.x,
@@ -477,29 +517,50 @@ export default class Minion extends AttackableUnit {
         PredefinedFilters.excludeStealthed,
         PredefinedFilters.visibleTo(this),
       ],
-    });
+    }) as AttackableUnit[];
 
-    let nearestMinion: AttackableUnit | null = null;
-    let nearestMinionDist = Infinity;
-    let nearestOther: AttackableUnit | null = null;
-    let nearestOtherDist = Infinity;
-
+    // The quadtree answers by bounding box, so the circle is re-checked here.
+    const candidates: AttackableUnit[] = [];
     for (const unit of found) {
       if (unit === this) continue;
-      const d = p5.Vector.dist(this.position, unit.position);
-      if (d > this.aggroRange) continue;
-      if (unit instanceof Minion) {
-        if (d < nearestMinionDist) {
-          nearestMinionDist = d;
-          nearestMinion = unit;
-        }
-      } else if (d < nearestOtherDist) {
-        nearestOtherDist = d;
-        nearestOther = unit;
-      }
+      if (p5.Vector.dist(this.position, unit.position) > this.aggroRange) continue;
+      candidates.push(unit);
     }
 
-    return nearestMinion ?? nearestOther;
+    // Nothing in range is the state a minion spends most of its walk in, and
+    // it means there is nothing to defend either — so the ally query below
+    // never runs for a wave with an empty lane in front of it.
+    if (candidates.length === 0) return null;
+
+    const held = !!current && candidates.includes(current);
+
+    return pickAggroTarget<AttackableUnit>({
+      origin: this.position,
+      current: held ? current : null,
+      held,
+      candidates,
+      allies: this.alliesInRange(),
+      ladder: Minion.LADDER,
+    });
+  }
+
+  /**
+   * The allied champions and minions near enough for this one to answer for.
+   *
+   * No vision filter, unlike the hostile query: you always see your own team,
+   * and an ally taking hits from something *this* minion cannot see is still
+   * an ally taking hits — the ladder refuses that attacker anyway, because a
+   * rung only counts when the attacker is in the candidate set.
+   */
+  private alliesInRange(): AttackableUnit[] {
+    return this.game.objectManager.queryObjects({
+      area: new Circle({ x: this.position.x, y: this.position.y, r: this.aggroRange }),
+      filters: [
+        PredefinedFilters.includeTypes([Champion, Minion]),
+        PredefinedFilters.teamId(this.teamId),
+        PredefinedFilters.excludeDead,
+      ],
+    }) as AttackableUnit[];
   }
 
   /**

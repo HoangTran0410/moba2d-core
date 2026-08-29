@@ -12,6 +12,7 @@ import Minion, {
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
+import { pickAggroTarget, type AggroLadder } from '@/game/combat/AggroPriority';
 
 export interface TurretPresetData {
   health: number;
@@ -157,11 +158,16 @@ export default class Turret extends AttackableUnit {
     // change or walking out of range still break aggro on the frame they
     // happen — only *acquiring* a new target waits for the next scan, and it
     // rescans immediately when the current one is lost.
+    // A target that is still shootable is *kept*, not re-picked: see
+    // `combat/AggroPriority`. Re-picking "nearest" every scan is what made a
+    // tower spread its shots over a whole wave and kill none of it.
     this._scanCooldown -= deltaTime;
-    if (this._scanCooldown <= 0 || !this.stillValidTarget(this.target)) {
+    const holds = this.stillValidTarget(this.target);
+    if (this._scanCooldown <= 0 || !holds) {
       this._scanCooldown = AGGRO_SCAN_INTERVAL_MS;
-      this.target = this.findTarget();
+      this.target = this.findTarget(holds ? this.target : null);
     }
+
     // `canAttack` for the same reason minions and camps need it: a building
     // fires on its own timer and never went through `BasicAttackController`, so
     // crowd control spent on a turret bought nothing at all.
@@ -172,14 +178,6 @@ export default class Turret extends AttackableUnit {
     }
   }
 
-  /**
-   * Nearest hostile minion, else nearest hostile champion. Minions come first
-   * because that is what makes a turret a lane obstacle rather than a champion
-   * tax: a wave under an enemy turret soaks the shots while its champion pushes.
-   *
-   * Still champions and minions only — a turret next to a jungle camp would
-   * otherwise farm it forever, and one next to another turret would shoot that.
-   */
   /**
    * The predicates `findTarget` filters on, re-checked against a single unit
    * we already hold. Kept in step with the filter list below by hand — there
@@ -200,8 +198,35 @@ export default class Turret extends AttackableUnit {
     return canSee(this, target);
   }
 
-  findTarget(): AttackableUnit | null {
-    const found = this.game.objectManager.queryObjects({
+  /**
+   * A tower's ladder, in the source game's own order: defend a champion from a
+   * champion, then from a minion, then shoot the nearest minion, then the
+   * nearest champion.
+   *
+   * Minions before champions on the floor is what makes a turret a lane
+   * obstacle rather than a champion tax — a wave under an enemy tower soaks
+   * the shots while its champion pushes. The two rungs above it are what makes
+   * standing under your own tower safe, and rung 2 is new: a minion beating on
+   * an allied champion used to be answered only if it happened to be the
+   * nearest thing in range.
+   *
+   * Champions and minions only, as before. A tower next to a jungle camp would
+   * otherwise farm it for ever, and one next to another tower would shoot that.
+   */
+  private static readonly LADDER: AggroLadder<AttackableUnit> = {
+    defend: [
+      { attacker: unit => unit instanceof Champion, victim: ally => ally instanceof Champion },
+      { attacker: unit => unit instanceof Minion, victim: ally => ally instanceof Champion },
+    ],
+    nearest: [unit => unit instanceof Minion, unit => unit instanceof Champion],
+  };
+
+  /**
+   * @param current The target being held, or null when there is none to keep —
+   *   `update` passes it only while `stillValidTarget` still says yes.
+   */
+  findTarget(current: AttackableUnit | null = null): AttackableUnit | null {
+    const candidates = this.game.objectManager.queryObjects({
       area: new Circle({
         x: this.position.x,
         y: this.position.y,
@@ -213,78 +238,34 @@ export default class Turret extends AttackableUnit {
         PredefinedFilters.visibleTo(this),
         PredefinedFilters.excludeStealthed,
       ],
+    }) as AttackableUnit[];
+
+    // Nothing to shoot means nothing to defend either, and this is the state a
+    // turret spends most of the match in — so the ally query below never runs
+    // for a tower standing in an empty lane.
+    if (candidates.length === 0) return null;
+
+    return pickAggroTarget<AttackableUnit>({
+      origin: this.position,
+      current,
+      held: current !== null,
+      candidates,
+      allies: this.alliesInRange(),
+      ladder: Turret.LADDER,
     });
-
-    // Ally protection: an enemy champion attacking an allied champion under this
-    // turret is shot before anything else — the reason standing under your own
-    // tower is safe. Only enemies already in `found` (in range, visible, not
-    // stealthed) qualify, so the switch always lands on a shootable target.
-    const defender = this.findAllyAttacker(found as AttackableUnit[]);
-    if (defender) return defender;
-
-    let nearestMinion: AttackableUnit | null = null;
-    let nearestMinionDist = Infinity;
-    let nearestChampion: AttackableUnit | null = null;
-    let nearestChampionDist = Infinity;
-
-    for (const unit of found) {
-      // Squared: these two numbers are only ever compared with each other, and
-      // squaring is monotonic, so the nearest unit is the same one without the
-      // per-candidate sqrt (and without p5.Vector.dist's copy/sub pair).
-      const dx = unit.position.x - this.position.x;
-      const dy = unit.position.y - this.position.y;
-      const d = dx * dx + dy * dy;
-      if (unit instanceof Minion) {
-        if (d < nearestMinionDist) {
-          nearestMinionDist = d;
-          nearestMinion = unit;
-        }
-      } else if (d < nearestChampionDist) {
-        nearestChampionDist = d;
-        nearestChampion = unit;
-      }
-    }
-
-    return nearestMinion ?? nearestChampion;
   }
 
   /**
-   * The enemy champion in range currently attacking an allied champion under
-   * this turret, nearest to the turret — or null. Runs only on the aggro scan
-   * cadence, not every frame, and reuses the freshly queried enemy set, so it
-   * costs one extra ally query only when an enemy champion is actually present.
+   * The allied champions standing under this turret — the units its ladder
+   * defends, and the only ones: `recentAttacker` on an allied *minion* is not
+   * a rung a tower has, because a tower that answered every minion trading in
+   * front of it would never shoot the wave it is supposed to hold.
    */
-  private findAllyAttacker(enemiesInRange: AttackableUnit[]): AttackableUnit | null {
-    let hasEnemyChampion = false;
-    for (const enemy of enemiesInRange) {
-      if (enemy instanceof Champion) {
-        hasEnemyChampion = true;
-        break;
-      }
-    }
-    if (!hasEnemyChampion) return null;
-
-    const inRange = new Set(enemiesInRange);
-    const allies = this.game.objectManager.queryObjects({
+  private alliesInRange(): AttackableUnit[] {
+    return this.game.objectManager.queryObjects({
       area: new Circle({ x: this.position.x, y: this.position.y, r: this.attackRange }),
       filters: [PredefinedFilters.type(Champion), PredefinedFilters.teamId(this.teamId)],
     }) as AttackableUnit[];
-
-    let best: AttackableUnit | null = null;
-    let bestDist = Infinity;
-    for (const ally of allies) {
-      if (ally.isDead) continue;
-      const enemy = ally.recentAttacker;
-      if (!enemy || !(enemy instanceof Champion) || !inRange.has(enemy)) continue;
-      const dx = enemy.position.x - this.position.x;
-      const dy = enemy.position.y - this.position.y;
-      const d = dx * dx + dy * dy;
-      if (d < bestDist) {
-        bestDist = d;
-        best = enemy;
-      }
-    }
-    return best;
   }
 
   /** A turret lights its own reach for the team; it carries no combat sight. */
