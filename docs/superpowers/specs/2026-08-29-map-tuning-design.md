@@ -494,6 +494,38 @@ It exists because a pit whose contents rotate has to be readable from
 across the map, or the rotation is not a decision but a surprise. See
 §11.2's element ring, which is its only caller today.
 
+### 7.7 Regen delay, and a rooted camp that does not forget — 2026-08-30
+
+Two bugs that read as one, both found by playing the dragon.
+
+**Regen is applied per frame with no `deltaTime`** — `Stats.update()` adds
+`healthRegen.value` straight onto `health.baseValue` — and a camp's
+walking-home rate is `health / 60`. That is a full bar in sixty frames: one
+second. Every camp in the game reset almost instantly whenever a fight
+paused.
+
+**A rooted camp dropped its target the frame it left reach.** `updateAttack`
+called `goBackToCamp()` in the `isImmovable` branch, bypassing the give-up
+leash entirely — so on any `speed: 0` boss, stepping over an invisible line
+was a complete heal. The dragon made it obvious because its own wingbeat
+threw the target past its reach: a signature ability whose whole effect was
+to end its own fight and hand the boss a reset.
+
+Fixes, both in `Monster`:
+
+- `MONSTER_REGEN_DELAY_MS` (4000), refreshed by every `takeDamage`, checked
+  *before* the phase and outranking it — the phase is not a reliable answer
+  to "is this fight over", since a rooted boss reaches BACK_TO_CAMP the
+  moment a target steps back and a winning camp reaches IDLE on the frame
+  the last blow lands. Overridable per body (`MonsterPresetData`) and per
+  map (`MonsterTuning.regenDelayMs`, editor field *Trễ hồi máu*). Zero
+  restores the old behaviour exactly.
+- The `isImmovable` branch holds the lock and stops moving instead of going
+  home. The leash ends the fight, the same as for a camp with legs; being
+  rooted only means it waits where it stands. This reverses a documented
+  decision — `tests/game/monsters/Monster.test.ts`'s "holds a target it can
+  see but could never walk to" carries the old rule and why it lost.
+
 ## 8. Validation
 
 New `checkMapTuning()` in `src/content/validate.ts`, called from

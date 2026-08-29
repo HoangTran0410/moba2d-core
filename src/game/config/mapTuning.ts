@@ -23,6 +23,7 @@ import { DEFAULT_TURRET_PRESET, type TurretPresetData } from '@/game/gameObject/
 import {
   MONSTER_CHASE_MARGIN,
   MONSTER_GIVE_UP_DELAY_MS,
+  MONSTER_REGEN_DELAY_MS,
   type MonsterPresetData,
 } from '@/game/gameObject/attackableUnits/Monster';
 import { MinionPresets, type MinionPresetData } from '@/game/gameObject/attackableUnits/Minion';
@@ -293,6 +294,7 @@ export function resolveMonsterPreset(
     attackStyle: own.attackStyle ?? base.attackStyle,
     chaseMargin: num(own.chaseMargin, num(tuning?.monsters?.chaseMargin, MONSTER_CHASE_MARGIN)),
     giveUpDelayMs: num(tuning?.monsters?.giveUpDelayMs, MONSTER_GIVE_UP_DELAY_MS),
+    regenDelayMs: num(tuning?.monsters?.regenDelayMs, MONSTER_REGEN_DELAY_MS),
   };
 }
 

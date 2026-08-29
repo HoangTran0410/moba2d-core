@@ -161,6 +161,9 @@ export interface MonsterPresetData {
   chaseMargin?: number;
   /** Grace before a camp that lost its target turns for home. */
   giveUpDelayMs?: number;
+  /** Quiet time after being hurt before it starts healing. Defaults to
+   *  `MONSTER_REGEN_DELAY_MS`. */
+  regenDelayMs?: number;
   /**
    * A body that is removed when it dies instead of coming back.
    *
@@ -198,6 +201,22 @@ export const MONSTER_CHASE_MARGIN = 350;
 /** Grace after a camp's target leaves the chase leash before it turns for
  *  home, so a target that ducks out and back is still pursued. */
 export const MONSTER_GIVE_UP_DELAY_MS = 2000;
+/**
+ * How long after being hurt a camp refuses to regenerate at all.
+ *
+ * Without it a camp resets **instantly**: regen is applied per frame with no
+ * `deltaTime` (`Stats.update`), and the walking-home rate is `health / 60` —
+ * a full bar in sixty frames, one second. So the moment a fight paused, for
+ * any reason, every point of damage done to the camp was gone before a player
+ * could walk back. A rooted boss made that worse still: stepping outside its
+ * reach used to drop its target on the spot, so "leave range for a second"
+ * was a complete heal.
+ *
+ * Four seconds is a *pause in the fight*, not a leash: it is shorter than any
+ * camp's respawn and longer than the time to reposition, so kiting a camp is
+ * still free and abandoning one is still a reset.
+ */
+export const MONSTER_REGEN_DELAY_MS = 4000;
 
 /**
  * How far a fleeing body tries to get in one order, longest first.
@@ -289,6 +308,7 @@ export default class Monster extends AttackableUnit {
   ephemeral: boolean;
   chaseMargin: number;
   giveUpDelayMs: number;
+  regenDelayMs: number;
   reviveTime = 0;
   targetLock: AttackableUnit | null = null;
 
@@ -301,6 +321,8 @@ export default class Monster extends AttackableUnit {
   _attackCooldown = 0;
   /** Latched once `onSpawn` has been announced for this life. */
   _announcedSpawn = false;
+  /** ms of enforced no-healing left, refreshed by every hit taken. */
+  _regenHold = 0;
   /** ms left before the next idle aggro scan. */
   _scanCooldown = 0;
   /** Grace left before a camp whose target left the chase leash turns for home. */
@@ -352,6 +374,7 @@ export default class Monster extends AttackableUnit {
     this.ephemeral = preset.ephemeral ?? false;
     this.chaseMargin = preset.chaseMargin ?? MONSTER_CHASE_MARGIN;
     this.giveUpDelayMs = preset.giveUpDelayMs ?? MONSTER_GIVE_UP_DELAY_MS;
+    this.regenDelayMs = preset.regenDelayMs ?? MONSTER_REGEN_DELAY_MS;
     this._giveUpTimer = this.giveUpDelayMs;
     this.abilities = preset.abilities ?? [];
     this._abilityCooldowns = this.abilities.map(() => 0);
@@ -364,13 +387,20 @@ export default class Monster extends AttackableUnit {
   update() {
     // Stats.update() (inside super.update()) is what actually applies regen, so
     // the phase rate has to be in place before we call up.
-    this.stats.healthRegen.baseValue = this.isDead
-      ? 0
-      : this.phase === Monster.PHASES.IDLE
-        ? this._idleRegen
-        : this.phase === Monster.PHASES.BACK_TO_CAMP
-          ? this._leashRegen
-          : 0;
+    //
+    // The hold is checked first and outranks the phase, because the phase is
+    // not a reliable answer to "is this fight over": a rooted boss reaches
+    // BACK_TO_CAMP the moment its target steps out of reach, and a camp that
+    // wins reaches IDLE on the same frame the last blow lands.
+    if (this._regenHold > 0) this._regenHold -= deltaTime;
+    this.stats.healthRegen.baseValue =
+      this.isDead || this._regenHold > 0
+        ? 0
+        : this.phase === Monster.PHASES.IDLE
+          ? this._idleRegen
+          : this.phase === Monster.PHASES.BACK_TO_CAMP
+            ? this._leashRegen
+            : 0;
 
     super.update();
 
@@ -534,11 +564,15 @@ export default class Monster extends AttackableUnit {
     const distance = p5.Vector.dist(pos, target.position);
 
     if (distance > reach) {
-      // A camp with no legs cannot close a gap, so holding the lock is a
-      // promise it can never keep — it lets go instead, and its next idle scan
-      // is free to pick whatever did walk into reach.
+      // A camp with no legs cannot close the gap — but it does not forget you
+      // for stepping over a line either. It used to: `goBackToCamp()` here
+      // dropped the lock the instant a target left reach, which put the camp
+      // straight into the walking-home regen rate and made "back off for a
+      // second" a free full heal on every rooted boss in the game. The leash
+      // above is what ends this fight, the same as for a camp with legs; all
+      // being rooted changes is that it waits where it stands.
       if (this.isImmovable) {
-        this.goBackToCamp();
+        this.stopMovement();
         return;
       }
       // routed: a camp whose champion stepped behind the wall of its own pit
@@ -855,6 +889,9 @@ export default class Monster extends AttackableUnit {
   }
 
   takeDamage(damage: number, attacker?: AttackableUnit) {
+    // Refreshed on the swing, not on losing a target: "recently hurt" is the
+    // honest reading of in-combat, and it is the one a player can see.
+    this._regenHold = this.regenDelayMs;
     if (this.isDead) return;
     // Latched before the hit lands, because the hit may kill us: what decides
     // whether the pack gets shouted at is whether *this* body was already in
@@ -963,6 +1000,7 @@ export default class Monster extends AttackableUnit {
     this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this._attackCooldown = 0;
+    this._regenHold = 0;
     this._announcedSpawn = false;
     this._abilityCooldowns = this._abilityCooldowns.map(() => 0);
     // `super.respawn()` drops every unit on a spawn point; a camp belongs on

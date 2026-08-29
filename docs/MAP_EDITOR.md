@@ -263,6 +263,12 @@ cắn người, và **Kiểu đánh** (`melee` / `ranged` / `breath`) để đ�
 xa thì phun đạn. Chỉ khai khi câu trả lời tự suy đó sai — trong pack `lol`
 đúng một bãi cần khai, là con rồng.
 
+Trong nhóm *Quái rừng* còn có **Trễ hồi máu**: quái vừa ăn đòn thì bao lâu
+mới bắt đầu hồi. Mặc định 4000ms. Để 0 là trở lại đúng hành vi cũ — quái đầy
+máu lại sau khoảng một giây, vì hồi máu tính theo *frame* chứ không theo
+giây. Đây là nút quyết định rừng của map bro có gặm dần qua nhiều lượt được
+hay bắt buộc phải dọn một hơi.
+
 Quái rừng ở tầng map là **hệ số nhân** chứ không phải số tuyệt đối: map không
 biết pack nào sẽ lấp vào slot của nó, nên "×1.5 sát thương" là câu duy nhất
 nói được mà vẫn đúng với mọi pack. Ghi đè trên từng slot thì cho số tuyệt đối,

@@ -1096,7 +1096,7 @@ const UI = (() => {
     {
       key: "monsters",
       label: "Quái rừng",
-      hint: "Hệ số nhân lên chỉ số pack khai, và quái đuổi xa tới đâu.",
+      hint: "Hệ số nhân lên chỉ số pack khai, quái đuổi xa tới đâu, và bao lâu mới hồi máu lại.",
       fields: [
       { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
       { key: "damageMult", label: "Sát thương", unit: "×", ph: "1" },
@@ -1106,6 +1106,7 @@ const UI = (() => {
       { key: "reviveTimeMult", label: "Hồi sinh", unit: "×", ph: "1" },
       { key: "chaseMargin", label: "Tầm đuổi thêm", unit: "px", ph: "350" },
       { key: "giveUpDelayMs", label: "Chờ bỏ cuộc", unit: "ms", ph: "2000" },
+      { key: "regenDelayMs", label: "Trễ hồi máu", unit: "ms", ph: "4000" },
     ]},
     {
       key: "terrain",

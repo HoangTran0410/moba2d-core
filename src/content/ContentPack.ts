@@ -651,6 +651,16 @@ export interface MonsterTuning extends MonsterScale {
   chaseMargin?: number;
   /** Replaces `MONSTER_GIVE_UP_DELAY_MS` for every camp on this map. */
   giveUpDelayMs?: number;
+  /**
+   * Replaces `MONSTER_REGEN_DELAY_MS` for every camp on this map — how long
+   * after being hurt a camp refuses to heal at all.
+   *
+   * The knob that decides whether this map's jungle can be chipped down over
+   * several visits or has to be cleared in one. Zero restores the behaviour
+   * every map had before it existed: a camp back to full a second after you
+   * stop hitting it.
+   */
+  regenDelayMs?: number;
 }
 
 /**

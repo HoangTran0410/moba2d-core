@@ -746,7 +746,12 @@ const MONSTER_SCALE_KEYS = [
   'reviveTimeMult',
 ] as const;
 
-const MONSTER_MAP_KEYS = [...MONSTER_SCALE_KEYS, 'chaseMargin', 'giveUpDelayMs'] as const;
+const MONSTER_MAP_KEYS = [
+  ...MONSTER_SCALE_KEYS,
+  'chaseMargin',
+  'giveUpDelayMs',
+  'regenDelayMs',
+] as const;
 
 const MONSTER_SLOT_NUMBER_KEYS = [
   ...MONSTER_SCALE_KEYS,

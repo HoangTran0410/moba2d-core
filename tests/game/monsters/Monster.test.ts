@@ -341,27 +341,41 @@ describe('Monster', () => {
       indexObjects(game, [baron, champion]);
       baron.aggroOn(champion);
 
-      // half the map away
+      // half the map away, held for longer than the give-up grace
       champion.position.set(CAMP.x + 3_000, CAMP.y);
-      baron.updateAttack();
+      for (let i = 0; i < Math.ceil(baron.giveUpDelayMs / 16) + 2; i++) baron.updateAttack();
 
       expect(baron.targetLock).toBeNull();
       expect(baron.phase).not.toBe(Monster.PHASES.ATTACK);
     });
 
-    it('gives up a target it can see but could never walk to', () => {
+    /**
+     * A deliberate reversal, and the rule it replaces is worth stating.
+     *
+     * A rooted camp used to drop its target the *frame* it stepped outside
+     * reach, on the grounds that a camp with no legs cannot close a gap and
+     * holding a lock is a promise it can never keep. True, and it produced
+     * the bug that got it changed: dropping the lock puts the camp straight
+     * into BACK_TO_CAMP, whose regen rate is `health / 60` applied per frame —
+     * a full bar in one second. So a step over an invisible line, on any
+     * rooted boss in the game, was a free complete heal.
+     *
+     * The leash ends this fight now, the same as it does for a camp with legs.
+     * All being rooted changes is that it waits where it stands.
+     */
+    it('holds a target it can see but could never walk to', () => {
       const baron = makeBaron();
       const champion = new Champion({ game, teamId: 'other' });
       champion.position.set(CAMP.x + 60, CAMP.y);
       indexObjects(game, [baron, champion]);
       baron.aggroOn(champion);
 
-      // inside the leash circle, past everything it can reach — and it has no
-      // legs, so navigating at it is a promise it can never keep
+      // inside the leash circle, a hair past everything it can reach
       champion.position.set(CAMP.x + 470, CAMP.y);
-      baron.updateAttack();
+      for (let i = 0; i < 200; i++) baron.updateAttack();
 
-      expect(baron.targetLock).toBeNull();
+      expect(baron.targetLock).toBe(champion);
+      expect(baron.phase).toBe(Monster.PHASES.ATTACK);
     });
 
     it('no longer takes the next thing that walks up — it waits to be hit', () => {
