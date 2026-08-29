@@ -490,19 +490,25 @@ onUnmounted(() => {
 <template>
   <div class="lan-panel">
     <header class="lan-header">
-      <h1>Chơi với bạn</h1>
+      <div class="lan-title">
+        <h1>Chơi online</h1>
+        <!-- The one condition on the whole screen, so it is stated under the
+             title rather than as a hint beside one control: the room list is
+             one global directory (docs/TRAPS.md), so a room being *visible*
+             says nothing about it being *reachable* — two machines on
+             different networks will see each other here and fail to connect,
+             which is exactly the bug report this line exists to prevent. -->
+        <p class="lan-subtitle">
+          <i class="fas fa-wifi" aria-hidden="true"></i>
+          Hai máy cần chung một wifi
+        </p>
+      </div>
       <!-- Both `@click` and `@touchend.prevent` on every control on this
            screen, the same rule the menu and the HUD follow: once a
            `GameScene` has existed it calls `preventDefault()` on every touch
            on the page, so a click-only handler is dead under a thumb. -->
-      <button
-        type="button"
-        class="lan-close"
-        id="lan-close"
-        title="Quay lại"
-        @click="goBack"
-        @touchend.prevent="goBack"
-      >
+      <button type="button" class="lan-close" id="lan-close" title="Quay lại" @click="goBack"
+        @touchend.prevent="goBack">
         <i class="fas fa-arrow-left" aria-hidden="true"></i>
       </button>
     </header>
@@ -527,8 +533,8 @@ onUnmounted(() => {
       <p class="lan-waiting-hint">
         {{
           joining.phase === 'connecting'
-            ? 'Đang bắt tay với chủ phòng…'
-            : 'Đang chờ chủ phòng bắt đầu trận…'
+            ? 'Đang nối với máy của chủ phòng…'
+            : 'Chờ chủ phòng bắt đầu trận…'
         }}
       </p>
 
@@ -544,13 +550,7 @@ onUnmounted(() => {
         </li>
       </ul>
 
-      <button
-        type="button"
-        class="lan-ghost"
-        id="lan-cancel-join"
-        @click="cancelJoin"
-        @touchend.prevent="cancelJoin"
-      >
+      <button type="button" class="lan-ghost" id="lan-cancel-join" @click="cancelJoin" @touchend.prevent="cancelJoin">
         Huỷ
       </button>
     </div>
@@ -561,14 +561,8 @@ onUnmounted(() => {
         <!-- A failed join is very often a transient one — an ICE round that
              lost a race, a host that pressed Tạo phòng a second too late — and
              re-typing the code to find out is a chore this screen can spare. -->
-        <button
-          v-if="failedCode"
-          type="button"
-          class="lan-retry"
-          id="lan-retry"
-          @click="retryJoin"
-          @touchend.prevent="retryJoin"
-        >
+        <button v-if="failedCode" type="button" class="lan-retry" id="lan-retry" @click="retryJoin"
+          @touchend.prevent="retryJoin">
           <i class="fas fa-rotate-right" aria-hidden="true"></i>
           Thử lại {{ failedCode }}
         </button>
@@ -582,19 +576,12 @@ onUnmounted(() => {
                in it — big enough to read across a table, which is the actual
                situation. Tapping copies; the label under it says so, and says
                what happened after. -->
-          <button
-            type="button"
-            class="lan-code-card"
-            id="lan-code"
-            :data-code="hostCode"
-            :title="`Sao chép mã ${hostCode}`"
-            @click="copyCode"
-            @touchend.prevent="copyCode"
-          >
+          <button type="button" class="lan-code-card" id="lan-code" :data-code="hostCode"
+            :title="`Sao chép mã ${hostCode}`" @click="copyCode" @touchend.prevent="copyCode">
             <span class="lan-code-value">{{ spacedCode }}</span>
             <span class="lan-code-hint">
               <i :class="copied ? 'fas fa-check' : 'fas fa-copy'" aria-hidden="true"></i>
-              {{ copied ? 'Đã sao chép' : 'Bấm để sao chép mã' }}
+              {{ copied ? 'Đã sao chép' : 'Bấm để sao chép' }}
             </span>
           </button>
 
@@ -603,7 +590,7 @@ onUnmounted(() => {
                reopening, so this states it rather than offering it. -->
           <p class="lan-listing-state">
             <i :class="privateRoom ? 'fas fa-lock' : 'fas fa-globe'" aria-hidden="true"></i>
-            {{ privateRoom ? 'Phòng riêng — chỉ vào bằng mã' : 'Đang hiện trong danh sách phòng' }}
+            {{ privateRoom ? 'Phòng riêng — chỉ vào bằng mã' : 'Phòng công khai' }}
           </p>
 
           <!-- Who is actually in the room. The host holds the wire open from
@@ -614,12 +601,8 @@ onUnmounted(() => {
           <div class="lan-players-block">
             <span class="lan-players-title">Người chơi ({{ playerRows.length }})</span>
             <ul class="lan-players" id="lan-players">
-              <li
-                v-for="player of playerRows"
-                :key="player.id"
-                class="lan-player"
-                :class="{ 'lan-player-failed': player.failed }"
-              >
+              <li v-for="player of playerRows" :key="player.id" class="lan-player"
+                :class="{ 'lan-player-failed': player.failed }">
                 <i :class="player.icon" aria-hidden="true"></i>
                 <span class="lan-player-role">{{ player.role }}</span>
                 <span class="lan-player-name">{{ player.name }}</span>
@@ -627,31 +610,19 @@ onUnmounted(() => {
                      the block above renders the same rows for a *joiner*, whose
                      copy is other people's business. `@touchend.prevent` beside
                      `@click` like every control here. -->
-                <button
-                  v-if="player.canKick"
-                  type="button"
-                  class="lan-player-kick"
-                  :aria-label="`Mời ${player.name} ra khỏi phòng`"
-                  @click="void kickPlayer(player.id)"
-                  @touchend.prevent="void kickPlayer(player.id)"
-                >
+                <button v-if="player.canKick" type="button" class="lan-player-kick"
+                  :aria-label="`Mời ${player.name} ra khỏi phòng`" @click="void kickPlayer(player.id)"
+                  @touchend.prevent="void kickPlayer(player.id)">
                   <i class="fas fa-xmark" aria-hidden="true"></i>
                 </button>
               </li>
             </ul>
-            <p v-if="players.length <= 1" class="lan-hint">
-              {{
-                privateRoom
-                  ? 'Chưa ai vào. Phòng này không hiện trong danh sách — đọc mã trên cho bạn bè.'
-                  : 'Chưa ai vào. Đọc mã trên cho bạn bè, hoặc để họ chọn phòng trong danh sách.'
-              }}
-            </p>
             <!-- The whole point of tracking the handshake: a room that cannot
                  say this shows an empty list and lets the host conclude that
                  nobody tried. -->
             <p v-if="anyLinkFailed" class="lan-hint lan-hint-warn">
-              Có người vào phòng nhưng hai máy không nối trực tiếp được — mạng này (wifi công ty,
-              wifi khách) thường chặn máy nói chuyện với máy.
+              Có người vào nhưng hai máy không nối được. Wifi công ty hay wifi khách thường chặn —
+              thử chung một wifi khác.
             </p>
           </div>
 
@@ -660,16 +631,11 @@ onUnmounted(() => {
                the line above already says what to do, and two paragraphs of
                advice is what pushed this panel past a portrait phone. -->
           <p v-if="playerRows.length > 1" class="lan-hint">
-            Người vào sau khi trận đã bắt đầu sẽ được thả thẳng vào trận, không phải chờ.
+            Ai vào trễ sẽ được thả thẳng vào trận, không phải chờ.
           </p>
 
-          <button
-            type="button"
-            class="lan-primary"
-            id="lan-start-host"
-            @click="startHostedMatch"
-            @touchend.prevent="startHostedMatch"
-          >
+          <button type="button" class="lan-primary" id="lan-start-host" @click="startHostedMatch"
+            @touchend.prevent="startHostedMatch">
             Vào trận
           </button>
           <!-- The host sets the rules while people are still arriving, rather
@@ -678,35 +644,19 @@ onUnmounted(() => {
                make them all wait through it. A LAN match is
                host-authoritative, so this is the only device whose settings
                count — a client's own panel locks them (`canEditMatchSettings`). -->
-          <button
-            type="button"
-            class="lan-ghost"
-            id="lan-config-host"
-            @click="emit('openConfig')"
-            @touchend.prevent="emit('openConfig')"
-          >
+          <button type="button" class="lan-ghost" id="lan-config-host" @click="emit('openConfig')"
+            @touchend.prevent="emit('openConfig')">
             <i class="fas fa-sliders" aria-hidden="true"></i>
             Cấu hình trận
           </button>
-          <button
-            type="button"
-            class="lan-ghost"
-            id="lan-cancel-host"
-            @click="cancelRoom"
-            @touchend.prevent="cancelRoom"
-          >
+          <button type="button" class="lan-ghost" id="lan-cancel-host" @click="cancelRoom"
+            @touchend.prevent="cancelRoom">
             Huỷ phòng
           </button>
         </template>
 
         <template v-else>
-          <button
-            type="button"
-            class="lan-primary"
-            id="lan-host"
-            @click="createRoom"
-            @touchend.prevent="createRoom"
-          >
+          <button type="button" class="lan-primary" id="lan-host" @click="createRoom" @touchend.prevent="createRoom">
             <i class="fas fa-plus" aria-hidden="true"></i>
             Tạo phòng mới
           </button>
@@ -716,27 +666,17 @@ onUnmounted(() => {
                un-advertising it afterwards is a promise this screen could not
                keep. `@touchend` beside `@click` for the reason every control
                on this screen has both. -->
-          <button
-            type="button"
-            class="lan-toggle"
-            id="lan-private"
-            role="switch"
-            :aria-checked="privateRoom"
-            @click="privateRoom = !privateRoom"
-            @touchend.prevent="privateRoom = !privateRoom"
-          >
-            <i
-              :class="privateRoom ? 'fas fa-toggle-on' : 'fas fa-toggle-off'"
-              aria-hidden="true"
-            ></i>
+          <button type="button" class="lan-toggle" id="lan-private" role="switch" :aria-checked="privateRoom"
+            @click="privateRoom = !privateRoom" @touchend.prevent="privateRoom = !privateRoom">
+            <i :class="privateRoom ? 'fas fa-toggle-on' : 'fas fa-toggle-off'" aria-hidden="true"></i>
             Phòng riêng
           </button>
 
           <p class="lan-hint">
             {{
               privateRoom
-                ? 'Phòng sẽ không hiện trong danh sách. Chỉ ai được bạn đọc mã cho mới vào được.'
-                : 'Phòng sẽ hiện trong danh sách bên dưới, người khác vào được không cần gõ mã.'
+                ? 'Không hiện trong danh sách. Chỉ vào bằng mã.'
+                : 'Hiện trong danh sách bên dưới, không cần mã.'
             }}
           </p>
         </template>
@@ -746,20 +686,13 @@ onUnmounted(() => {
         <h2 class="lan-section-title">Vào phòng</h2>
 
         <div class="lan-rooms" id="lan-rooms">
-          <p v-if="unreachable" class="lan-empty">Không kết nối được máy chủ ghép trận.</p>
+          <p v-if="unreachable" class="lan-empty">Không kết nối được máy chủ.</p>
           <p v-else-if="rooms.length === 0" class="lan-empty">
             <i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i>
-            Chưa có phòng nào đang mở…
+            Chưa có phòng nào…
           </p>
-          <button
-            v-for="room in rooms"
-            :key="room.code"
-            type="button"
-            class="lan-room"
-            :data-room="room.code"
-            @click="joinRoom(room.code)"
-            @touchend.prevent="joinRoom(room.code)"
-          >
+          <button v-for="room in rooms" :key="room.code" type="button" class="lan-room" :data-room="room.code"
+            @click="joinRoom(room.code)" @touchend.prevent="joinRoom(room.code)">
             <i class="fas fa-wifi" aria-hidden="true"></i>
             <span class="lan-room-name">{{ room.name }}</span>
             <span class="lan-room-code">{{ room.code }}</span>
@@ -767,24 +700,14 @@ onUnmounted(() => {
         </div>
 
         <!-- The fallback, and labelled as one: the list above is how this is
-             meant to work, and typing a code is what you do when the two
-             machines are not on the same network. -->
+             meant to work, and typing a code is what you do for a private
+             room, or when the listing — one global directory — carries too
+             many rooms to find the right one by name. -->
         <div class="lan-join-code">
-          <input
-            v-model="joinCode"
-            maxlength="8"
-            placeholder="Hoặc nhập mã phòng"
-            aria-label="Mã phòng LAN"
-            spellcheck="false"
-            autocapitalize="characters"
-          />
-          <button
-            type="button"
-            id="lan-join"
-            :disabled="!canJoinTyped"
-            @click="joinRoom(joinCode.trim())"
-            @touchend.prevent="joinRoom(joinCode.trim())"
-          >
+          <input v-model="joinCode" maxlength="8" placeholder="Hoặc nhập mã phòng" aria-label="Mã phòng LAN"
+            spellcheck="false" autocapitalize="characters" />
+          <button type="button" id="lan-join" :disabled="!canJoinTyped" @click="joinRoom(joinCode.trim())"
+            @touchend.prevent="joinRoom(joinCode.trim())">
             Vào
           </button>
         </div>
@@ -792,3 +715,9 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style>
+#lan-start-host {
+  margin-top: 10px;
+}
+</style>

@@ -49,13 +49,31 @@
   border-bottom: 1px solid var(--hextech-line);
 }
 
-.lan-header h1 {
+/* Title and the one prerequisite under it, as one block, so the back arrow
+   stays vertically centred on the pair rather than on the title alone. */
+.lan-title {
   flex: 1;
+  min-width: 0;
+}
+
+.lan-header h1 {
   margin: 0;
   font-size: 1.2em;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--hextech-gold);
+}
+
+/* Muted and small: a condition, not an error. It has to be legible before
+   the first press, because everything it warns about (a room in the list
+   that will never connect) only shows itself a spinner later. */
+.lan-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.2rem 0 0;
+  font-size: 0.72em;
+  color: var(--hextech-muted);
 }
 
 /* Title left, back arrow right — the same header shape About and Pack nội

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
  * The main menu: background, logo, and the buttons. Scene transitions
- * ("Chơi", "Chơi với bạn", "Giới thiệu", "Tướng & Map") are
  * lifecycle, not presentation, so this only emits — `MenuScene.ts` maps
  * `play`/`openLan`/`openAbout`/`openPacks` onto
  * `sceneManager.showScene`, the same split `LoadingScene.vue` uses for its own
@@ -371,7 +370,7 @@ const updateState = computed(() => {
   </button>
   <button id="lan-btn" class="hextech-btn" @click="emit('openLan')" @touchend.prevent="emit('openLan')">
     <i class="fas fa-user-group" aria-hidden="true"></i>
-    Chơi với bạn
+    Online
   </button>
   <p v-if="preload.codeFailed" class="menu-loading-warning">
     Tải dữ liệu chưa xong — bấm Chơi để thử lại.

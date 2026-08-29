@@ -142,7 +142,7 @@
    which is the thing they have in common and the reason they share a row.
 
    Quieter than `.hextech-btn.secondary` all the same — they must not compete
-   with Chơi and Chơi với bạn for the first look.
+   with Chơi and Online for the first look.
    `tests/scenes/viewportFit.test.ts` holds all three unpinned; see its own
    comment for why reaching for a corner again reinstates a whole class of
    bug. */
