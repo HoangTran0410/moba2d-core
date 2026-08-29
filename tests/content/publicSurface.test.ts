@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the fifteen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the sixteen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -137,6 +137,24 @@ describe('package.json public surface', () => {
         './testing',
         './testing/spell',
         './testing/spells',
+        // The sixteenth, and the first subpath here that publishes *rules*
+        // rather than tools: `./testing/items` is `describeItemShop`, the
+        // assertions every pack's shop has to satisfy because they are facts
+        // about what core does with an item — the icon it looks up, the
+        // spell ids it resolves, the recipe it combines, the
+        // `MAX_COOLDOWN_REDUCTION` it clamps at. Both shipped packs had
+        // written their own half of that list, differently, with core's own
+        // cooldown ceiling copied into each as a literal.
+        //
+        // Deliberately not in `scripts/templates/pack/`, where a scaffold's
+        // files come from: a template is a copy, and once two packs exist a
+        // fix to the template is a fix to neither of them —
+        // `scripts/pack-core-link.mjs` makes that argument about itself in
+        // its own header. It is also not in the `./testing` barrel, for the
+        // reason `./testing/spells` is not: `export *` evaluates the whole
+        // module, and this one value-imports `game/items/Item` and
+        // `gameObject/Stats` for the two constants it refuses to copy.
+        './testing/items',
         './testing/vitest',
         './testing/setup',
         // The two build helpers a pack's own tooling runs, added when the

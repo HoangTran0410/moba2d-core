@@ -17,6 +17,7 @@
     "./testing": "./src/testing/index.ts",
     "./testing/spell": "./src/testing/spellWorld.ts",
     "./testing/spells": "./src/testing/spellRegistry.ts",
+    "./testing/items": "./src/testing/itemRules.ts",
     "./testing/vitest": "./src/testing/vitest.mjs",
     "./testing/setup": "./src/testing/setup.ts",
     "./package.json": "./package.json",
