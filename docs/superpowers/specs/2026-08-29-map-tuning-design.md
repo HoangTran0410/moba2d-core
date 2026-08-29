@@ -536,6 +536,35 @@ now runs the full stack for them: slot, map, **pack**, core. A body
 declares one when its leash is part of what it *is* rather than part of the
 jungle's feel, which is what §11.2's dragon does now that it has legs.
 
+### 7.8 `anchored` — walking and holding your ground are two questions
+
+`Monster.isImmovable = preset.speed === 0` answered both with one flag, and
+for scenery that is correct: a body with no legs *must* refuse to be pushed,
+or one hook strands it somewhere it can never walk back from.
+
+The pair a boss usually wants is the one that flag cannot express — walks,
+so it answers a champion who backs off a step; holds its ground, so it
+cannot be dragged out of the pit it is guarding. `MonsterBody.anchored`
+says the second without the first. Absent, it derives `speed === 0` exactly
+as before, so no body written before it moves.
+
+Three places had to come apart with it:
+
+- **`Monster.hasLegs`** (`speed > 0`) is what `updateAttack` reads to decide
+  chase-or-stand. It used to read `isImmovable`.
+- **The re-anchor in `update()`** — `position.set(home)` every frame — now
+  runs only for a body with no legs. Run on a walker it would pin it to its
+  home point and cancel the chase it is in the middle of.
+- **`Dash` refuses the displacement outright** (`blockedByAnchor`), the
+  mirror of `blockedByGround` on the other side of `sourceUnit ===
+  targetUnit`: grounding stops you moving yourself, this stops anyone moving
+  you. Refusing is what replaces the re-anchor, and unlike it, it holds for
+  a body with legs.
+- **`TerrainMap.updateTerrainSpeed`** skipped `isImmovable` units on the
+  grounds they have no speed to modify. An anchored walker does, so the skip
+  reads speed now. Left alone, an anchored boss would have been the one
+  thing in the game the river does not slow.
+
 ## 8. Validation
 
 New `checkMapTuning()` in `src/content/validate.ts`, called from

@@ -389,6 +389,19 @@ export interface MonsterBody {
    */
   roam?: MonsterRoam;
   /**
+   * External forces do not move this body — collision separation, and any
+   * displacement someone else applies (a hook, a pull, a knock-back).
+   * Absent means `speed === 0`, which is what every body written before this
+   * field relied on.
+   *
+   * It exists because those were one flag and the pair a boss usually wants
+   * is not expressible with one: a pit boss that **walks** — so it answers a
+   * champion who backs off a step — but **holds its ground**, so it cannot be
+   * dragged out of the pit it is guarding. It may still be slowed, stunned,
+   * rooted or knocked up; what it refuses is being *relocated*.
+   */
+  anchored?: boolean;
+  /**
    * How far past its own ground this body will follow. Absent means
    * `MONSTER_CHASE_MARGIN`; a map may replace it for every camp at once
    * (`MonsterTuning.chaseMargin`) and a slot for one camp.

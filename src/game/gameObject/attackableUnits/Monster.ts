@@ -146,6 +146,16 @@ export interface MonsterPresetData {
   attackStyle?: MonsterAttackStyle;
   /** `[r, g, b]` for this camp's attack art. Defaults to the old flash amber. */
   attackColor?: number[];
+  /**
+   * External forces do not move this body. Defaults to `speed === 0`.
+   *
+   * The two used to be the same question, and for scenery they are: a body
+   * that cannot walk must also refuse to be pushed, or a hook strands it
+   * somewhere it can never leave. They come apart for a body that walks *and*
+   * should hold its ground — a pit boss you can kite but not drag out of its
+   * pit — which is a shape `speed === 0` cannot express.
+   */
+  anchored?: boolean;
   /** Defaults to `'aggressive'` — see the type. */
   temperament?: MonsterTemperament;
   /** Defaults to `{ kind: 'camp' }` — see the type. */
@@ -317,6 +327,8 @@ export default class Monster extends AttackableUnit {
   /** ms left on each entry of `abilities`, by index. */
   _abilityCooldowns: number[];
 
+  /** Whether this body can close a gap under its own power. */
+  hasLegs = true;
   /** ms left before the next swing. */
   _attackCooldown = 0;
   /** Latched once `onSpawn` has been announced for this life. */
@@ -352,9 +364,19 @@ export default class Monster extends AttackableUnit {
     this.stats.healthRegen.baseValue = 0;
     this.stats.visionRadius.baseValue = 0;
 
-    // A camp with no speed of its own (a stationary boss) is scenery: it pushes units off
-    // itself and never budges. One with legs takes its half like everyone else.
-    this.isImmovable = preset.speed === 0;
+    // Two different questions, and conflating them is what made "walks" and
+    // "cannot be dragged out of its pit" mutually exclusive.
+    //
+    // `hasLegs` is whether this body can close a gap at all — it decides
+    // whether a chase is navigation or standing still.
+    //
+    // `isImmovable` is whether anything *else* may move it: collision
+    // separation (`UnitCollisionSystem`) and displacement (`Dash`'s own
+    // backstop) both read it. A body with no legs must have it, or a hook
+    // strands it somewhere it can never walk back from; a body with legs may
+    // still ask for it.
+    this.hasLegs = preset.speed > 0;
+    this.isImmovable = preset.anchored ?? !this.hasLegs;
 
     this.attackRange = preset.attackRange;
     this.reviveTime = preset.reviveTime;
@@ -414,7 +436,11 @@ export default class Monster extends AttackableUnit {
     // never walk out of, and a camp in BACK_TO_CAMP never runs `updateIdle`
     // again — so it stopped aggroing, stopped swinging, and stopped drawing the
     // swing flash that made it look alive at all.
-    if (this.isImmovable) {
+    // Only for a body that could never walk back: re-anchoring one that *can*
+    // would pin it to its home point and undo the chase it is in the middle
+    // of. An anchored body with legs refuses the displacement instead, at
+    // `Dash`'s own backstop, and never has to be dragged home from anywhere.
+    if (this.isImmovable && !this.hasLegs) {
       this.position.set(this.home.x, this.home.y);
       this.destination.set(this.home.x, this.home.y);
     }
@@ -571,7 +597,7 @@ export default class Monster extends AttackableUnit {
       // second" a free full heal on every rooted boss in the game. The leash
       // above is what ends this fight, the same as for a camp with legs; all
       // being rooted changes is that it waits where it stands.
-      if (this.isImmovable) {
+      if (!this.hasLegs) {
         this.stopMovement();
         return;
       }

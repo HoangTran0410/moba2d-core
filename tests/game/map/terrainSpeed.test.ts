@@ -12,8 +12,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TerrainMap from '../../../src/game/gameObject/map/TerrainMap';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import Turret from '../../../src/game/gameObject/structures/Turret';
+import Monster from '../../../src/game/gameObject/attackableUnits/Monster';
 import type { ActiveMap, MapTuning } from '../../../src/content/ContentPack';
-import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
+import {
+  createGame,
+  indexObjects,
+  stubGameGlobals,
+  TEST_AVATAR_KEY,
+  type TestGame,
+} from '../fixtures';
 
 /** A 2000² map whose left half, x < 1000, is water. */
 const mapWithRiver = (tuning?: MapTuning): ActiveMap => ({
@@ -127,8 +134,11 @@ describe('terrain speed', () => {
     expect(inWater.terrainSpeedFactor).toBe(0.5);
   });
 
-  it('leaves an immovable unit alone', () => {
-    // A turret has no speed to modify and re-anchors itself every frame.
+  it('leaves a unit with no speed alone', () => {
+    // A turret has no speed to modify. The skip reads *speed*, not
+    // `isImmovable`, which it used to: that flag means "nothing else may move
+    // this", and the case below is a body that holds its ground and still
+    // walks.
     const terrainMap = new TerrainMap(
       game,
       mapWithRiver({ terrain: { water: { speedMultiplier: 0.5 } } })
@@ -139,6 +149,38 @@ describe('terrain speed', () => {
     terrainMap.update();
 
     expect(turret.terrainSpeedFactor).toBe(1);
+  });
+
+  it('still slows a body that holds its ground but walks under its own power', () => {
+    // `anchored` splits "cannot be moved" from "cannot walk". A body that is
+    // the first without being the second has a real speed, so the river has
+    // to slow it — reading `isImmovable` here would have skipped it and made
+    // an anchored boss the one thing in the game the water does not touch.
+    const terrainMap = new TerrainMap(
+      game,
+      mapWithRiver({ terrain: { water: { speedMultiplier: 0.5 } } })
+    );
+    const boss = new Monster({
+      game,
+      preset: {
+        name: 'Boss',
+        avatar: TEST_AVATAR_KEY,
+        camp: { x: 500, y: 500, r: 100 },
+        speed: 2,
+        size: 80,
+        attackRange: 300,
+        reviveTime: 1_000,
+        health: 600,
+        anchored: true,
+      },
+    } as ConstructorParameters<typeof Monster>[0]);
+    boss.position.set(500, 500);
+    indexObjects(game, [boss]);
+
+    terrainMap.update();
+
+    expect(boss.isImmovable, 'the fixture is not anchored, so this proves nothing').toBe(true);
+    expect(boss.terrainSpeedFactor).toBe(0.5);
   });
 
   it('does not touch isInsideBush for anything the old pass did not', () => {

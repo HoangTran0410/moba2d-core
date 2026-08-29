@@ -65,6 +65,20 @@ export default class Dash extends Buff {
     return this.sourceUnit === this.targetUnit && this.targetUnit.grounded;
   }
 
+  /**
+   * An immovable body refuses a displacement, the way grounding refuses a
+   * self-dash. Same shape, opposite side of `sourceUnit === targetUnit`:
+   * grounding stops you moving yourself, this stops anyone moving you.
+   *
+   * `Monster` used to answer this by snapping back to its camp point every
+   * frame, which works only for a body that cannot walk — one with legs
+   * would be pinned to its home instead of chasing. Refusing the buff is the
+   * answer that holds for both.
+   */
+  private get blockedByAnchor(): boolean {
+    return this.sourceUnit !== this.targetUnit && this.targetUnit.isImmovable;
+  }
+
   onCreate(): void {
     if (this.showTrail && this.game) {
       this.game.objectManager.addObject(this.trailSystem);
@@ -73,7 +87,7 @@ export default class Dash extends Buff {
   }
 
   onActivate(): void {
-    if (this.blockedByGround) {
+    if (this.blockedByGround || this.blockedByAnchor) {
       this.dashDestination = null;
       this.deactivateBuff();
       return;
@@ -87,7 +101,7 @@ export default class Dash extends Buff {
   onUpdate(): void {
     if (this.toRemove) return;
     // Ground can land mid-dash, not just before it starts.
-    if (this.blockedByGround) {
+    if (this.blockedByGround || this.blockedByAnchor) {
       this.dashDestination = null;
       this.deactivateBuff();
       return;

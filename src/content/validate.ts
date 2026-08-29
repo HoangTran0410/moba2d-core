@@ -607,8 +607,10 @@ function checkMonsterBehaviour(
     );
   }
 
-  if (value.ephemeral !== undefined && typeof value.ephemeral !== 'boolean') {
-    errors.push(`${path}.ephemeral: must be a boolean`);
+  for (const key of ['ephemeral', 'anchored'] as const) {
+    if (value[key] !== undefined && typeof value[key] !== 'boolean') {
+      errors.push(`${path}.${key}: must be a boolean`);
+    }
   }
 
   checkAttackStyle(path, value.attackStyle, errors);

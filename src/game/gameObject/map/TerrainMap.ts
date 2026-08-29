@@ -178,8 +178,11 @@ export default class TerrainMap {
    * would put 160 lane minions into brush stealth as a side effect of a
    * movement feature.
    *
-   * `isImmovable` units are skipped because a turret or a stationary boss has
-   * no speed to modify, and both re-anchor themselves every frame anyway.
+   * Units with no speed are skipped because there is nothing to modify — a
+   * turret, or a boss that is scenery. Deliberately **not** `isImmovable`,
+   * which it used to read: that flag means "nothing else may move this", and
+   * a body can hold its ground against a hook while still walking under its
+   * own power. Such a body does have a speed, and the river has to slow it.
    */
   updateTerrainSpeed(): void {
     if (!this.terrainSpeed.affectsSpeed) return;
@@ -189,7 +192,7 @@ export default class TerrainMap {
       filters: [PredefinedFilters.type(AttackableUnit), PredefinedFilters.excludeDead],
     });
     for (const unit of units) {
-      if (unit.isImmovable) continue;
+      if (unit.stats.speed.value <= 0) continue;
       unit.terrainSpeedFactor = this.speedFactorAt(unit.position.x, unit.position.y);
     }
   }
