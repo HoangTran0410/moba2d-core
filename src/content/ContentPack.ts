@@ -388,6 +388,22 @@ export interface MonsterBody {
    * actually put the water is not a playstyle, it is a broken camp.
    */
   roam?: MonsterRoam;
+  /**
+   * How far past its own ground this body will follow. Absent means
+   * `MONSTER_CHASE_MARGIN`; a map may replace it for every camp at once
+   * (`MonsterTuning.chaseMargin`) and a slot for one camp.
+   *
+   * A body declares it when its leash is part of what it *is* rather than
+   * part of the jungle's feel — a pit boss that should never end up in a
+   * lane says so here, and stays right whatever jungle a map drops it into.
+   */
+  chaseMargin?: number;
+  /** Grace before this body turns for home. Absent means
+   *  `MONSTER_GIVE_UP_DELAY_MS`. */
+  giveUpDelayMs?: number;
+  /** Quiet time after being hurt before it heals. Absent means
+   *  `MONSTER_REGEN_DELAY_MS`. */
+  regenDelayMs?: number;
   /** Removed on death instead of respawning — see `MonsterPresetData`. */
   ephemeral?: boolean;
   /** This body's position relative to the slot's `{x, y}`. */

@@ -613,6 +613,12 @@ function checkMonsterBehaviour(
 
   checkAttackStyle(path, value.attackStyle, errors);
 
+  for (const key of ['chaseMargin', 'giveUpDelayMs', 'regenDelayMs'] as const) {
+    if (value[key] !== undefined && !isFiniteNumber(value[key])) {
+      errors.push(`${path}.${key}: must be a finite number`);
+    }
+  }
+
   if (value.attackColor !== undefined) {
     const color = value.attackColor;
     if (!Array.isArray(color) || color.length !== 3 || !color.every(isFiniteNumber)) {

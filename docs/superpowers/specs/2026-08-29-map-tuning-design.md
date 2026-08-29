@@ -526,6 +526,16 @@ Fixes, both in `Monster`:
   decision — `tests/game/monsters/Monster.test.ts`'s "holds a target it can
   see but could never walk to" carries the old rule and why it lost.
 
+A third thing fell out of the same session: **`MonsterBody` gained
+`chaseMargin`, `giveUpDelayMs` and `regenDelayMs`**, and
+`resolveMonsterPreset` was reading none of them. All three fell straight
+from the map layer to the module constant, so a body that declared a
+tighter leash than the jungle around it had that statement dropped on the
+floor — invisible to every test, because the map layer worked. The merge
+now runs the full stack for them: slot, map, **pack**, core. A body
+declares one when its leash is part of what it *is* rather than part of the
+jungle's feel, which is what §11.2's dragon does now that it has legs.
+
 ## 8. Validation
 
 New `checkMapTuning()` in `src/content/validate.ts`, called from

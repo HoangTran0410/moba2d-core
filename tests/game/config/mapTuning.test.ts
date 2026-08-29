@@ -235,6 +235,38 @@ describe('monsters', () => {
     expect(resolveMonsterPreset(packBody(), undefined).attackStyle).toBeUndefined();
   });
 
+  it('keeps a leash the pack declared, instead of replacing it with the default', () => {
+    // The merge used to read these three off the map and core only, so a body
+    // that stated a tighter leash than the jungle around it had that
+    // statement dropped on the floor — invisible to every test that sets a
+    // map, because the map layer worked.
+    const base = {
+      ...packBody(),
+      chaseMargin: 150,
+      giveUpDelayMs: 700,
+      regenDelayMs: 9_000,
+    };
+
+    const resolved = resolveMonsterPreset(base, undefined);
+
+    expect(resolved.chaseMargin).toBe(150);
+    expect(resolved.giveUpDelayMs).toBe(700);
+    expect(resolved.regenDelayMs).toBe(9_000);
+  });
+
+  it('but still lets the map speak over the pack, and a slot over the map', () => {
+    const base = { ...packBody(), chaseMargin: 150, regenDelayMs: 9_000 };
+
+    const resolved = resolveMonsterPreset(
+      base,
+      { monsters: { chaseMargin: 400, regenDelayMs: 1_000 } },
+      { stats: { chaseMargin: 2_000 } }
+    );
+
+    expect(resolved.chaseMargin).toBe(2_000);
+    expect(resolved.regenDelayMs).toBe(1_000);
+  });
+
   it('keeps the pack temperament when no slot overrides it', () => {
     const base = { ...packBody(), temperament: 'skittish' as const };
     expect(resolveMonsterPreset(base, { monsters: { healthMult: 2 } }).temperament).toBe(

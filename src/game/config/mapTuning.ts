@@ -12,6 +12,7 @@ import type {
   FountainStats,
   MapTuning,
   MonsterScale,
+  MonsterTuning,
   MonsterSlotStats,
   NeutralSlot,
   SpawnSlot,
@@ -276,7 +277,9 @@ export function resolveMonsterPreset(
   tuning: MapTuning | undefined,
   slot?: Pick<NeutralSlot, 'stats'>
 ): MonsterPresetData {
-  const map: MonsterScale = tuning?.monsters ?? {};
+  // Typed as the whole group, not just its multipliers: the leash timers
+  // below are read off the same object.
+  const map: MonsterTuning = tuning?.monsters ?? {};
   const own: MonsterSlotStats = slot?.stats ?? {};
   const both = (key: keyof MonsterScale, value: number): number =>
     scale(scale(value, map[key]), own[key]);
@@ -292,9 +295,19 @@ export function resolveMonsterPreset(
     aggroRange: optional(own.aggroRange, base.aggroRange, map.aggroRangeMult),
     temperament: own.temperament ?? base.temperament,
     attackStyle: own.attackStyle ?? base.attackStyle,
-    chaseMargin: num(own.chaseMargin, num(tuning?.monsters?.chaseMargin, MONSTER_CHASE_MARGIN)),
-    giveUpDelayMs: num(tuning?.monsters?.giveUpDelayMs, MONSTER_GIVE_UP_DELAY_MS),
-    regenDelayMs: num(tuning?.monsters?.regenDelayMs, MONSTER_REGEN_DELAY_MS),
+    // The three leash/reset timers, each falling through the full stack:
+    // slot, then map, then whatever the *pack* declared for this body, then
+    // core's own default. The pack layer used to be missing here — a boss
+    // that stated a tighter leash than the jungle around it had that
+    // statement silently replaced by the module constant, which is the one
+    // way a merge can be wrong and still look right in every test that only
+    // sets a map.
+    chaseMargin: num(
+      own.chaseMargin,
+      num(map.chaseMargin, num(base.chaseMargin, MONSTER_CHASE_MARGIN))
+    ),
+    giveUpDelayMs: num(map.giveUpDelayMs, num(base.giveUpDelayMs, MONSTER_GIVE_UP_DELAY_MS)),
+    regenDelayMs: num(map.regenDelayMs, num(base.regenDelayMs, MONSTER_REGEN_DELAY_MS)),
   };
 }
 
