@@ -16,6 +16,7 @@ import {
   MONSTER_GIVE_UP_DELAY_MS,
   type MonsterPresetData,
 } from '@/game/gameObject/attackableUnits/Monster';
+import { MinionPresets, type MinionPresetData } from '@/game/gameObject/attackableUnits/Minion';
 
 /**
  * Where a map's numbers meet core's, and the only place they do.
@@ -161,6 +162,45 @@ export function resolveFountainStats(
     healPercent: num(own.healPercent, num(map.healPercent, DEFAULT_FOUNTAIN_STATS.healPercent)),
     manaPercent: num(own.manaPercent, num(map.manaPercent, DEFAULT_FOUNTAIN_STATS.manaPercent)),
   };
+}
+
+// ----------------------------------------------------------------- minions
+
+/**
+ * The minion roster this map plays with.
+ *
+ * A map that declares `types` **replaces** core's three outright rather than
+ * merging into them — see `MinionTuning.types` for why a partial merge has no
+ * honest meaning once the map can also add ids core has never heard of.
+ *
+ * `style` defaults to `'melee'`, which is the safe default rather than the
+ * common one: a type that does not say how it fights gets the body that has
+ * no projectile and no special art, so a missing field is visible in play
+ * rather than being a caster that swings.
+ */
+export function resolveMinionTypes(
+  tuning: MapTuning | undefined
+): Record<string, MinionPresetData> {
+  const declared = tuning?.minions?.types;
+  if (!declared || Object.keys(declared).length === 0) return MinionPresets;
+
+  const types: Record<string, MinionPresetData> = {};
+  for (const [id, def] of Object.entries(declared)) {
+    types[id] = {
+      name: def.name,
+      kind: id,
+      style: def.style ?? 'melee',
+      goldBounty: def.goldBounty,
+      speed: def.speed,
+      size: def.size,
+      health: def.health,
+      damage: def.damage,
+      attackInterval: def.attackInterval,
+      attackRange: def.attackRange,
+      aggroRange: def.aggroRange,
+    };
+  }
+  return types;
 }
 
 // ---------------------------------------------------------------- monsters

@@ -4,6 +4,7 @@ import type {
   MonsterRoam,
   MonsterTemperament,
 } from '@/game/gameObject/attackableUnits/Monster';
+import type { MinionStyle } from '@/game/gameObject/attackableUnits/Minion';
 
 /**
  * Re-exported so a pack may `import type { MonsterAbility } from '@/content/types'`.
@@ -15,6 +16,9 @@ import type {
  * is the pack's to say.
  */
 export type { MonsterAbility, MonsterRoam, MonsterTemperament };
+
+/** Re-exported beside the monster vocabularies, and core's for the same reason. */
+export type { MinionStyle };
 
 /**
  * What a content pack is, and why the code half is a function.
@@ -448,6 +452,7 @@ export interface MapTuning {
   champions?: ChampionTuning;
   turrets?: TurretTuning;
   fountain?: FountainTuning;
+  minions?: MinionTuning;
   monsters?: MonsterTuning;
   terrain?: TerrainTuning;
 }
@@ -508,6 +513,63 @@ export interface FountainStats {
   manaPercent?: number;
 }
 export type FountainTuning = FountainStats;
+
+/**
+ * One minion type a map declares — the only place `MapTuning` lets a map
+ * define a new *thing* rather than a new number.
+ *
+ * `style` is separate from the type's id on purpose, and it is the field that
+ * makes this safe. Core's `Minion` decides bolt-or-swing and how to draw
+ * itself from the style, not the id, so a map declaring `siege` says which of
+ * the three bodies it fights like. Without it, a new id would silently get
+ * melee behaviour and melee art.
+ */
+export interface MinionTypeDef {
+  name: string;
+  speed: number;
+  size: number;
+  health: number;
+  damage: number;
+  attackInterval: number;
+  attackRange: number;
+  aggroRange: number;
+  /** Defaults to `'melee'`. */
+  style?: MinionStyle;
+  /** Defaults to core's own minion bounty. */
+  goldBounty?: number;
+}
+
+/** A change of formation or pace that takes effect `atMs` into the match. */
+export interface WaveStage {
+  atMs: number;
+  /** Type ids, in release order. */
+  composition?: string[];
+  intervalMs?: number;
+}
+
+export interface MinionTuning {
+  /**
+   * Present, this **replaces** core's three entirely, keyed by a free id.
+   *
+   * All-or-nothing on purpose. A partial merge raises "what does
+   * `{ melee: { damage: 9 } }` mean when the map also declares `siege`?", and
+   * the honest answer is that a map declaring its own roster is declaring its
+   * own roster. A map that only wants tougher melee minions copies the three
+   * defaults and edits one number — one button in the editor, not a
+   * transcription job.
+   */
+  types?: Record<string, MinionTypeDef>;
+  waves?: {
+    /** Type ids, in release order. Absent keeps core's own formation. */
+    composition?: string[];
+    intervalMs?: number;
+    firstDelayMs?: number;
+    releaseIntervalMs?: number;
+    liveCap?: number;
+    /** Applied in `atMs` order; each stage overrides only the fields it names. */
+    stages?: WaveStage[];
+  };
+}
 
 /**
  * Monster numbers as **multipliers**, at the map level.
@@ -824,6 +886,12 @@ export const MONSTER_TEMPERAMENTS: readonly MonsterTemperament[] = Object.freeze
   'passive',
   'skittish',
 ]);
+
+/**
+ * The three bodies core knows how to fight and draw as. A map may name any
+ * number of minion *types*; each one still has to pick one of these.
+ */
+export const MINION_STYLES: readonly MinionStyle[] = Object.freeze(['melee', 'ranged', 'cannon']);
 
 /** Layers a `roam: { kind: 'terrain' }` may name — the two region layers. */
 export const MONSTER_ROAM_LAYERS: readonly ('water' | 'bush')[] = Object.freeze(['water', 'bush']);

@@ -1,10 +1,12 @@
 import {
+  MINION_STYLES,
   MONSTER_ROAM_LAYERS,
   MONSTER_TEMPERAMENTS,
   STRUCTURE_KINDS,
   type ContentPack,
   type ContentPackCode,
   type ContentPackData,
+  type MinionStyle,
   type MonsterTemperament,
   type StructureKind,
 } from './ContentPack';
@@ -763,6 +765,134 @@ function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): 
   checkNumberBag(path, numbers, MONSTER_SLOT_NUMBER_KEYS, errors);
 }
 
+const MINION_TYPE_NUMBER_KEYS = [
+  'speed',
+  'size',
+  'health',
+  'damage',
+  'attackInterval',
+  'attackRange',
+  'aggroRange',
+  'goldBounty',
+] as const;
+
+const WAVE_NUMBER_KEYS = ['intervalMs', 'firstDelayMs', 'releaseIntervalMs', 'liveCap'] as const;
+
+/**
+ * The one tuning group where a map defines new *things*, so it is the one
+ * that has to be checked as a whole rather than field by field.
+ *
+ * A declared type is **all-or-nothing**, unlike every override elsewhere in
+ * `MapTuning`: there is no core default for a body nobody has heard of, so a
+ * type missing `health` is a minion with no health, not a minion with core's.
+ *
+ * And a composition is checked against the roster it will actually be
+ * resolved against — the map's own if it declared one, core's three
+ * otherwise. A wave listing an id nothing can supply spawns nothing, silently
+ * and forever.
+ */
+function checkMinionTuning(path: string, value: unknown, errors: string[]): void {
+  if (!isObject(value)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== 'types' && key !== 'waves') {
+      errors.push(`${path}.${key}: unknown; core provides types, waves`);
+    }
+  }
+
+  const known = new Set<string>(['melee', 'ranged', 'cannon']);
+  if (value.types !== undefined) {
+    if (!isObject(value.types)) {
+      errors.push(`${path}.types: must be an object`);
+    } else {
+      known.clear();
+      for (const [id, def] of Object.entries(value.types)) {
+        known.add(id);
+        const typePath = `${path}.types.${id}`;
+        if (!isObject(def)) {
+          errors.push(`${typePath}: must be an object`);
+          continue;
+        }
+        if (typeof def.name !== 'string') errors.push(`${typePath}.name: must be a string`);
+        if (def.style !== undefined && !MINION_STYLES.includes(def.style as MinionStyle)) {
+          errors.push(
+            `${typePath}.style: unknown ${JSON.stringify(def.style)}; ` +
+              `core provides ${MINION_STYLES.join(', ')}`
+          );
+        }
+        const { name, style, ...numbers } = def;
+        void name;
+        void style;
+        checkNumberBag(typePath, numbers, MINION_TYPE_NUMBER_KEYS, errors);
+        // Every field but `style` and `goldBounty` is required: a declared
+        // type has no core default to fall back to.
+        for (const key of MINION_TYPE_NUMBER_KEYS) {
+          if (key !== 'goldBounty' && def[key] === undefined) {
+            errors.push(`${typePath}.${key}: missing`);
+          }
+        }
+      }
+    }
+  }
+
+  if (value.waves === undefined) return;
+  if (!isObject(value.waves)) {
+    errors.push(`${path}.waves: must be an object`);
+    return;
+  }
+  const { composition, stages, ...numbers } = value.waves;
+  checkNumberBag(`${path}.waves`, numbers, WAVE_NUMBER_KEYS, errors);
+  checkComposition(`${path}.waves.composition`, composition, known, errors);
+
+  if (stages === undefined) return;
+  if (!Array.isArray(stages)) {
+    errors.push(`${path}.waves.stages: must be an array`);
+    return;
+  }
+  stages.forEach((stage: unknown, index: number) => {
+    const stagePath = `${path}.waves.stages[${index}]`;
+    if (!isObject(stage)) {
+      errors.push(`${stagePath}: must be an object`);
+      return;
+    }
+    if (!isFiniteNumber(stage.atMs)) errors.push(`${stagePath}.atMs: must be a finite number`);
+    const { composition: staged, atMs, ...rest } = stage;
+    void atMs;
+    checkNumberBag(stagePath, rest, ['intervalMs'], errors);
+    checkComposition(`${stagePath}.composition`, staged, known, errors);
+  });
+}
+
+function checkComposition(
+  path: string,
+  composition: unknown,
+  known: Set<string>,
+  errors: string[]
+): void {
+  if (composition === undefined) return;
+  if (!isStringArray(composition)) {
+    errors.push(`${path}: must be an array of type ids`);
+    return;
+  }
+  for (const id of composition) {
+    if (!known.has(id)) {
+      errors.push(`${path}: no minion type ${JSON.stringify(id)} is declared`);
+    }
+  }
+}
+
+/**
+ * The groups `MapTuning` holds, as a runtime list.
+ *
+ * Kept beside the checks that walk them rather than derived from the type,
+ * which is erased: adding a group to `MapTuning` and forgetting this line
+ * makes a real group read as a typo, and the two failing tests that caught
+ * exactly that are why it is one constant now instead of an inline literal.
+ */
+const TUNING_GROUPS = ['champions', 'turrets', 'fountain', 'minions', 'monsters', 'terrain'];
+
 /**
  * A map's own numbers.
  *
@@ -777,11 +907,8 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
   }
 
   for (const group of Object.keys(tuning)) {
-    if (!['champions', 'turrets', 'fountain', 'monsters', 'terrain'].includes(group)) {
-      errors.push(
-        `${name}.tuning.${group}: unknown; ` +
-          `core provides champions, turrets, fountain, monsters, terrain`
-      );
+    if (!TUNING_GROUPS.includes(group)) {
+      errors.push(`${name}.tuning.${group}: unknown; core provides ${TUNING_GROUPS.join(', ')}`);
     }
   }
 
@@ -812,6 +939,9 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
   }
   if (tuning.fountain !== undefined) {
     checkFountainStats(`${name}.tuning.fountain`, tuning.fountain, errors);
+  }
+  if (tuning.minions !== undefined) {
+    checkMinionTuning(`${name}.tuning.minions`, tuning.minions, errors);
   }
   if (tuning.monsters !== undefined) {
     checkNumberBag(`${name}.tuning.monsters`, tuning.monsters, MONSTER_MAP_KEYS, errors);

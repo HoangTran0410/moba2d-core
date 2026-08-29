@@ -14,11 +14,34 @@ import type {
 } from './AttackableUnit';
 import Monster from './Monster';
 
-export type MinionKind = 'melee' | 'ranged' | 'cannon';
+/**
+ * How a minion fights and draws — core's three built-in bodies, and the only
+ * three there will be until someone writes a fourth *behaviour*.
+ *
+ * Split out of `MinionKind` because that one field was carrying two jobs. It
+ * was the minion's **identity** (which preset is this) and also its
+ * **behaviour and art**: `launchAttack` branches on `!== 'melee'` to decide
+ * bolt or swing, and `draw` branches on `'cannon'`/`'ranged'` for the rings.
+ * The moment a map may declare a type called `siege`, those branches would
+ * silently give it melee behaviour and melee art — a new minion that fights
+ * like the wrong one, with nothing anywhere saying so.
+ */
+export type MinionStyle = 'melee' | 'ranged' | 'cannon';
+
+/**
+ * Which preset a minion is. A free string, because a map may declare its own
+ * roster (`MinionTuning.types`); core's own three are `melee`, `ranged` and
+ * `cannon`, and `style` is what decides how any of them actually behaves.
+ */
+export type MinionKind = string;
 
 export interface MinionPresetData {
   name: string;
   kind: MinionKind;
+  /** How it fights and draws. See `MinionStyle`. */
+  style: MinionStyle;
+  /** Overrides `MINION_BOUNTY` for this type. */
+  goldBounty?: number;
   speed: number;
   size: number;
   health: number;
@@ -43,6 +66,7 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
   melee: {
     name: 'Lính Cận Chiến',
     kind: 'melee',
+    style: 'melee',
     speed: 2.6,
     size: 34,
     health: 140,
@@ -54,6 +78,7 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
   ranged: {
     name: 'Lính Phép Sư',
     kind: 'ranged',
+    style: 'ranged',
     speed: 2.6,
     size: 30,
     health: 90,
@@ -65,6 +90,7 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
   cannon: {
     name: 'Lính Xe Pháo',
     kind: 'cannon',
+    style: 'cannon',
     speed: 2.6,
     size: 38,
     health: 260,
@@ -175,6 +201,8 @@ export default class Minion extends AttackableUnit {
 
   name: string;
   kind: MinionKind;
+  /** How this body fights and draws — never `kind`. See `MinionStyle`. */
+  style: MinionStyle;
   lane: string;
   phase: MinionPhase = Minion.PHASES.WALK;
   waypoints: LaneWaypoint[];
@@ -224,6 +252,8 @@ export default class Minion extends AttackableUnit {
 
     this.name = preset.name;
     this.kind = preset.kind;
+    this.style = preset.style;
+    if (preset.goldBounty !== undefined) this.goldBounty = preset.goldBounty;
     this.lane = lane;
     this.waypoints = waypoints;
     this.waypointIndex = Math.min(startWaypointIndex, Math.max(0, waypoints.length - 1));
@@ -408,7 +438,7 @@ export default class Minion extends AttackableUnit {
    * actually applies, so a target that dies or leaves takes nothing phantom.
    */
   launchAttack(target: AttackableUnit, reach: number): void {
-    if (this.kind !== 'melee') {
+    if (this.style !== 'melee') {
       const bolt = new MinionBolt(this);
       bolt.target = target;
       bolt.damage = this.damage;
@@ -545,7 +575,7 @@ export default class Minion extends AttackableUnit {
     fill(body[0], body[1], body[2]);
     circle(pos.x, pos.y, size);
 
-    if (this.kind === 'cannon') {
+    if (this.style === 'cannon') {
       // A double ring reads as a wheeled siege body without adding an image or
       // particle system to a unit that can appear in every lane at once.
       noFill();
@@ -553,7 +583,7 @@ export default class Minion extends AttackableUnit {
       strokeWeight(3);
       circle(pos.x, pos.y, size * 0.68);
       circle(pos.x, pos.y, size * 0.36);
-    } else if (this.kind === 'ranged') {
+    } else if (this.style === 'ranged') {
       // a caster reads as a ring rather than a disc, so the back line of a wave
       // is separable from the front one at a glance
       noFill();

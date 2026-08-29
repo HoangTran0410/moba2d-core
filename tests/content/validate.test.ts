@@ -543,9 +543,20 @@ describe('validatePack', () => {
   });
 
   it('rejects an unknown tuning group', () => {
-    const result = validatePack(mapWith({ tuning: { minions: {} } }));
+    const result = validatePack(mapWith({ tuning: { weather: {} } }));
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.join(' ')).toMatch(/minions/);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/weather/);
+  });
+
+  it('names every real group in that message', () => {
+    // The list is a runtime constant because the type is erased, so a group
+    // added to `MapTuning` and forgotten here reads to an author as a typo.
+    const result = validatePack(mapWith({ tuning: { weather: {} } }));
+    if (!result.ok) {
+      for (const group of ['champions', 'turrets', 'fountain', 'minions', 'monsters', 'terrain']) {
+        expect(result.errors.join(' ')).toContain(group);
+      }
+    }
   });
 
   it('rejects a negative duration', () => {
@@ -588,6 +599,98 @@ describe('validatePack', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/attackRnage/);
+  });
+
+  it('accepts a declared minion roster and its formation', () => {
+    const result = validatePack(
+      mapWith({
+        tuning: {
+          minions: {
+            types: {
+              siege: {
+                name: 'Siege',
+                style: 'cannon',
+                speed: 2,
+                size: 44,
+                health: 500,
+                damage: 20,
+                attackInterval: 2_000,
+                attackRange: 400,
+                aggroRange: 420,
+              },
+            },
+            waves: { composition: ['siege'], intervalMs: 10_000 },
+          },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a minion type missing a field it has no default for', () => {
+    // Unlike every override elsewhere in `MapTuning`, a declared type is
+    // all-or-nothing: there is no core body called `siege` to fall back to,
+    // so a missing `health` is a minion with none.
+    const result = validatePack(
+      mapWith({
+        tuning: {
+          minions: { types: { siege: { name: 'Siege', speed: 2, size: 44, damage: 20 } } },
+        },
+      })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/health/);
+  });
+
+  it('rejects a style core cannot fight or draw as', () => {
+    const result = validatePack(
+      mapWith({ tuning: { minions: { types: { siege: { name: 'S', style: 'flying' } } } } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/style/);
+  });
+
+  it('rejects a formation naming a type nothing supplies', () => {
+    // The map replaced core's roster, so `melee` no longer exists on it and
+    // this wave would spawn nothing at all, silently, for the whole match.
+    const result = validatePack(
+      mapWith({
+        tuning: {
+          minions: {
+            types: {
+              grunt: {
+                name: 'Grunt',
+                speed: 3,
+                size: 30,
+                health: 200,
+                damage: 7,
+                attackInterval: 1_000,
+                attackRange: 40,
+                aggroRange: 300,
+              },
+            },
+            waves: { composition: ['grunt', 'melee'] },
+          },
+        },
+      })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/melee/);
+  });
+
+  it('accepts core ids in a formation when the map declares no roster', () => {
+    const result = validatePack(
+      mapWith({ tuning: { minions: { waves: { composition: ['melee', 'cannon'] } } } })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a stage with no time on it', () => {
+    const result = validatePack(
+      mapWith({ tuning: { minions: { waves: { stages: [{ composition: ['melee'] }] } } } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/atMs/);
   });
 
   it('checks a per-slot stats block too', () => {

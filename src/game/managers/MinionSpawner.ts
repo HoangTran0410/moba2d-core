@@ -1,5 +1,10 @@
 import TeamId from '@/game/enums/TeamId';
-import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
+import Minion, {
+  type MinionKind,
+  type MinionPresetData,
+} from '@/game/gameObject/attackableUnits/Minion';
+import type { MapTuning, WaveStage } from '@/content/ContentPack';
+import { resolveMinionTypes } from '@/game/config/mapTuning';
 import type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 import type Fountain from '@/game/gameObject/structures/Fountain';
 import type { MinionMusterPoint } from '@/game/preset';
@@ -77,6 +82,72 @@ export const waveComposition = (waveNumber: number, elapsedMs = 0): readonly Min
   return composition;
 };
 
+/**
+ * Everything about waves that used to be a module constant here.
+ *
+ * Resolved once per match from the active map, and read by `MinionSpawner`
+ * instead of the constants directly, so the numbers below become *the
+ * default plan* rather than the only one. A map that declares nothing gets a
+ * plan whose `composition` and `intervalMs` are the very functions this file
+ * already exported — not a copy of their behaviour, the functions — so the
+ * Summoner's Rift cadence cannot drift away from itself.
+ */
+export interface WavePlan {
+  types: Record<string, MinionPresetData>;
+  firstDelayMs: number;
+  releaseIntervalMs: number;
+  liveCap: number;
+  composition(waveNumber: number, elapsedMs: number): readonly string[];
+  intervalMs(elapsedMs: number): number;
+}
+
+/**
+ * The map's wave plan, or core's.
+ *
+ * A declared `stages` list is walked newest-applicable-first and each stage
+ * overrides only the fields it names, so a map can change formation at 15:00
+ * without restating the interval it set at 00:00.
+ *
+ * A composition naming a type the roster does not hold is dropped rather than
+ * spawned as something else — `validate.ts` refuses such a map at install, so
+ * reaching this is a locally-built map or a hand-edited one, and a silently
+ * substituted body would be worse than a smaller wave.
+ */
+export function resolveWavePlan(tuning?: MapTuning): WavePlan {
+  const types = resolveMinionTypes(tuning);
+  const waves = tuning?.minions?.waves;
+  const stages = [...(waves?.stages ?? [])].sort((a, b) => a.atMs - b.atMs);
+
+  const stageValue = <K extends 'composition' | 'intervalMs'>(
+    key: K,
+    elapsedMs: number
+  ): WaveStage[K] | undefined => {
+    let found: WaveStage[K] | undefined;
+    for (const stage of stages) {
+      if (stage.atMs > elapsedMs) break;
+      if (stage[key] !== undefined) found = stage[key];
+    }
+    return found;
+  };
+
+  const declaresFormation = waves?.composition !== undefined || stages.length > 0;
+
+  return {
+    types,
+    firstDelayMs: waves?.firstDelayMs ?? FIRST_WAVE_DELAY_MS,
+    releaseIntervalMs: waves?.releaseIntervalMs ?? MINION_RELEASE_INTERVAL_MS,
+    liveCap: waves?.liveCap ?? MINION_LIVE_CAP,
+    composition(waveNumber, elapsedMs) {
+      if (!declaresFormation) return waveComposition(waveNumber, elapsedMs);
+      const declared = stageValue('composition', elapsedMs) ?? waves?.composition ?? [];
+      return declared.filter(id => id in types);
+    },
+    intervalMs(elapsedMs) {
+      return stageValue('intervalMs', elapsedMs) ?? waves?.intervalMs ?? waveIntervalAt(elapsedMs);
+    },
+  };
+}
+
 export interface MinionSpawnerContext extends GameObjectRuntimeContext {
   fountains: Fountain[];
   /**
@@ -111,6 +182,12 @@ export default class MinionSpawner {
   minions: Minion[] = [];
   /** Waves released so far, across both bases. */
   waveCount = 0;
+  /**
+   * What this match's waves are made of and how fast they come — the active
+   * map's own, or core's. Resolved once: a map cannot change mid-match, and
+   * re-resolving per wave would rebuild the type table sixty times a minute.
+   */
+  readonly plan: WavePlan;
 
   /**
    * The wave clock. Off stops queueing and releasing; it does not stop pruning,
@@ -124,12 +201,14 @@ export default class MinionSpawner {
    */
   enabled = true;
 
-  _nextWaveIn = FIRST_WAVE_DELAY_MS;
+  _nextWaveIn: number;
   _elapsedMs = 0;
   _queue: QueuedMinion[] = [];
 
   constructor(game: MinionSpawnerContext) {
     this.game = game;
+    this.plan = resolveWavePlan(game.mapTuning);
+    this._nextWaveIn = this.plan.firstDelayMs;
   }
 
   /**
@@ -154,7 +233,7 @@ export default class MinionSpawner {
       this._queue.length = 0;
       return;
     }
-    this._nextWaveIn = FIRST_WAVE_DELAY_MS;
+    this._nextWaveIn = this.plan.firstDelayMs;
   }
 
   get liveCount(): number {
@@ -181,7 +260,7 @@ export default class MinionSpawner {
       // reset rather than subtract: after a long tab-hidden gap deltaTime can be
       // several intervals wide, and queueing a burst of backdated waves is not
       // what anyone means by "a wave every 30 seconds"
-      this._nextWaveIn = waveIntervalAt(this._elapsedMs);
+      this._nextWaveIn = this.plan.intervalMs(this._elapsedMs);
       this.queueWave();
     }
 
@@ -200,7 +279,7 @@ export default class MinionSpawner {
    */
   queueWave() {
     this.waveCount += 1;
-    const composition = waveComposition(this.waveCount, this._elapsedMs);
+    const composition = this.plan.composition(this.waveCount, this._elapsedMs);
 
     for (const fountain of this.game.fountains) {
       const teamId = fountain.teamId;
@@ -212,7 +291,7 @@ export default class MinionSpawner {
             teamId,
             lane,
             kind: composition[i],
-            releaseIn: i * MINION_RELEASE_INTERVAL_MS,
+            releaseIn: i * this.plan.releaseIntervalMs,
           });
         }
       }
@@ -239,7 +318,13 @@ export default class MinionSpawner {
   }
 
   spawn({ teamId, lane, kind }: Pick<QueuedMinion, 'teamId' | 'lane' | 'kind'>): Minion | null {
-    if (this.minions.length >= MINION_LIVE_CAP) return null;
+    if (this.minions.length >= this.plan.liveCap) return null;
+
+    // A queued id whose type left the roster cannot be spawned as something
+    // else: a wave one body short is a smaller wave, a substituted body is a
+    // lie about what the map declared.
+    const preset = this.plan.types[kind];
+    if (!preset) return null;
 
     const muster = this.musterSlotFor(teamId, lane);
     const position = this.scatterAround(muster);
@@ -254,7 +339,7 @@ export default class MinionSpawner {
       teamId,
       lane,
       waypoints: getLaneWaypoints(lane, teamId),
-      preset: MinionPresets[kind],
+      preset,
       startWaypointIndex,
     });
 

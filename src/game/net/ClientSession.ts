@@ -1,12 +1,11 @@
 import type Game from '@/game/Game';
-import AttackableUnit, {
-  type DeathRecap,
-} from '@/game/gameObject/attackableUnits/AttackableUnit';
+import AttackableUnit, { type DeathRecap } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
 import Pet from '@/game/gameObject/attackableUnits/Pet';
 import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
-import Minion, { MinionPresets, type MinionKind } from '@/game/gameObject/attackableUnits/Minion';
+import Minion, { MinionPresets } from '@/game/gameObject/attackableUnits/Minion';
+import { resolveMinionTypes } from '@/game/config/mapTuning';
 import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
 import { buildHeldItem } from '@/game/economy/ItemShop';
@@ -441,14 +440,25 @@ export class ClientSession implements NetGameHooks {
       }
       case 'minion': {
         if (this.units.has(event.id)) return;
-        const kind = (event.kind in MinionPresets ? event.kind : 'melee') as MinionKind;
+        // Resolved against the *active map's* roster, not core's three: a
+        // map may declare its own types, and a client that fell back to
+        // `melee` for every one of them would render the host's wave as the
+        // wrong bodies with the wrong stats. Host and client agree on the map
+        // through the handshake's own map-id check, so an unknown id here is
+        // a real disagreement worth a line in the console rather than a
+        // silent substitution.
+        const types = resolveMinionTypes(this.game.mapTuning);
+        const preset = types[event.kind] ?? MinionPresets.melee;
+        if (!types[event.kind]) {
+          console.warn(`[net] host spawned unknown minion type ${event.kind}`);
+        }
         const minion = new Minion({
           game: this.game,
           position: createVector(event.x, event.y),
           teamId: event.team,
           lane: event.lane,
           waypoints: getLaneWaypoints(event.lane, event.team),
-          preset: MinionPresets[kind],
+          preset,
           startWaypointIndex: nextWaypointIndexFrom(event.lane, event.team, event.x, event.y),
         });
         this.game.objectManager.addObject(minion);
@@ -478,7 +488,8 @@ export class ClientSession implements NetGameHooks {
         // so nothing local ever floats a damage number.
         const unit = this.units.get(event.id);
         if (!unit || typeof event.a !== 'number') return;
-        const color = DAMAGE_TEXT_COLOR[event.ty as DamageType] ?? DAMAGE_TEXT_COLOR[DEFAULT_DAMAGE_TYPE];
+        const color =
+          DAMAGE_TEXT_COLOR[event.ty as DamageType] ?? DAMAGE_TEXT_COLOR[DEFAULT_DAMAGE_TYPE];
         this.debugStats.damageTextsShown++;
         CombatText.show(unit, 'damage', event.a, [...color]);
         return;
@@ -621,7 +632,8 @@ export class ClientSession implements NetGameHooks {
       | { kind: 'swap'; a: number; b: number }
   ): boolean {
     if (order.kind === 'buy') this.channel.send(JSON.stringify({ t: 'buy', itemId: order.itemId }));
-    else if (order.kind === 'sell') this.channel.send(JSON.stringify({ t: 'sell', slot: order.slot }));
+    else if (order.kind === 'sell')
+      this.channel.send(JSON.stringify({ t: 'sell', slot: order.slot }));
     else this.channel.send(JSON.stringify({ t: 'swap', a: order.a, b: order.b }));
     // Wire-only. There is nothing here worth predicting and a great deal worth
     // getting wrong: the gold, the fountain rule and the component maths are
