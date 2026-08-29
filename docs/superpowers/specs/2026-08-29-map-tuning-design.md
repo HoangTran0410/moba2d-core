@@ -1,6 +1,7 @@
 # Map tuning — a map states its own numbers
 
-Status: design approved in chat on 2026-08-29, not yet implemented.
+Status: implemented across four milestones on 2026-08-29 — see §14 for
+what landed and the two things deliberately left open.
 
 A map today is geometry and slots. Every number that makes a match *feel*
 like something — how hard a turret hits, how far a camp will chase, what a
@@ -722,11 +723,30 @@ Four, in dependency order. Each is its own implementation plan.
    3057 pass, both typechecks and `check-seams` clean.
 2. **`MapTuning` for champions, turrets, fountain, monsters, terrain** —
    schema, `mapTuning.ts`, validator, `preset.ts` and `Game.spawnTurrets`
-   wiring, champion respawn resolution, terrain speed pass.
+   wiring, champion respawn resolution, terrain speed pass. **Done
+   2026-08-29.**
 3. **Free-form minion types** — `MinionKind` widening, `style` split, wave
-   plan, `ClientSession` resolution.
+   plan, `ClientSession` resolution. **Done 2026-08-29.**
 4. **Editor + content** — the "Cấu hình map" panel and per-slot fields;
-   the four `lol` camps and the Summoner's Rift slots.
+   the four `lol` camps and the Summoner's Rift slots. **Done 2026-08-29.**
+
+**What is deliberately left for the user:**
+
+- **`lol`'s `coreRange` is still `>=1.6.0`.** It needs `>=1.10.0` before
+  `temperament` and `roam` mean anything, but `bump-api-contract` is
+  explicit that a pack published with a floor its live core cannot meet is
+  refused on every player's machine — and the pack is the half already out
+  there. Raise it (in `data.ts`, `write-manifest.mjs` and the pin in
+  `tests/items.test.ts`, all three together) **after** a core carrying
+  contract 10 is deployed to pages.dev. Until then the fields are simply
+  ignored by an older core, so a crab plays as an ordinary camp rather
+  than breaking.
+- **Dragon and Vilemaw art is placeholder** — flat silhouettes generated
+  to fill the two asset keys, not traced from anything. Replacing the two
+  PNGs in `assets/images/monsters/` and re-running `assets:generate` is
+  the whole job.
+- **Twisted Treeline gets no new slots.** Vilemaw ships with no home on
+  purpose; the user places `role: "vilemaw"` on their own edit.
 
 Milestone 4 is the only one that touches two repos, and it is last on
 purpose: `lol` cannot declare `temperament` until core ships milestone 1
