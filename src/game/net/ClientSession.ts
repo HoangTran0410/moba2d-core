@@ -630,11 +630,17 @@ export class ClientSession implements NetGameHooks {
       | { kind: 'buy'; itemId: string }
       | { kind: 'sell'; slot: number }
       | { kind: 'swap'; a: number; b: number }
+      | { kind: 'undo' }
+      | { kind: 'redo' }
   ): boolean {
     if (order.kind === 'buy') this.channel.send(JSON.stringify({ t: 'buy', itemId: order.itemId }));
     else if (order.kind === 'sell')
       this.channel.send(JSON.stringify({ t: 'sell', slot: order.slot }));
-    else this.channel.send(JSON.stringify({ t: 'swap', a: order.a, b: order.b }));
+    else if (order.kind === 'swap')
+      this.channel.send(JSON.stringify({ t: 'swap', a: order.a, b: order.b }));
+    // The history is the host's, because the transactions are: a client that
+    // reversed its own copy would be corrected by the next `bag` event.
+    else this.channel.send(JSON.stringify({ t: order.kind }));
     // Wire-only. There is nothing here worth predicting and a great deal worth
     // getting wrong: the gold, the fountain rule and the component maths are
     // the host's, and the answer comes back as a `bag` event and a wallet in

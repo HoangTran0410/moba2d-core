@@ -242,6 +242,14 @@ export type NetMessage =
   | { t: 'buy'; itemId: string }
   | { t: 'sell'; slot: number }
   | { t: 'swap'; a: number; b: number }
+  /**
+   * Take back / redo the last transaction. Carries nothing: the history is
+   * the host's, one stack per champion, recorded inside `buyItem`/`sellItem`
+   * — so "the last one" is a fact the host already holds and a client naming
+   * a step could only get wrong. See `economy/ShopHistory.ts`.
+   */
+  | { t: 'undo' }
+  | { t: 'redo' }
   /** The client changed its own kit (đổi tướng); `plan` is a `KitPlan` (`kitWire.ts` validates). */
   | { t: 'loadout'; plan: unknown }
   /** The minimap's tap-teleport — wire-only on a client, or reconciliation just snaps it back. */
@@ -512,6 +520,9 @@ export const decodeMessage = (raw: unknown): NetMessage | null => {
       return typeof message.plan === 'object' && message.plan !== null
         ? (parsed as NetMessage)
         : null;
+    case 'undo':
+    case 'redo':
+      return { t: message.t };
     case 'recall':
       return { t: 'recall' };
     default:

@@ -91,6 +91,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Undo / redo, left of the close button. Same 30px square as `.shop-close`
+   so the header reads as one row of controls rather than three sizes. */
+.shop-history {
+  display: flex;
+  gap: 4px;
+}
+
+.shop-step {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #fff2;
+  background: #1b2029;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.shop-step:hover:not(:disabled) {
+  background: #2a3140;
+}
+
+/* Greyed rather than hidden: a control that appears and disappears makes the
+   header jump, and "there is nothing to undo" is worth saying. */
+.shop-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .shop-close {
   width: 30px;
   height: 30px;

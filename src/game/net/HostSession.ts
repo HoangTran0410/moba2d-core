@@ -30,6 +30,7 @@ import { setNetRole, type NetUrlRequest } from './netRole';
 import { disarmNetUrl } from '@/scenes/lanSignal';
 import { readInstalledPacks } from '@/content/installedPackStore';
 import { buyItem, sellItem } from '@/game/economy/ItemShop';
+import { redoShop, undoShop } from '@/game/economy/ShopHistory';
 import { contentCatalog } from '@/content/catalog';
 import type { CastPhase } from '@/game/spell/input/SpellInputController';
 import type { ChampionPresetData } from '@/game/gameObject/attackableUnits/Champion';
@@ -654,6 +655,14 @@ export class HostSession implements NetGameHooks {
     }
     if (message.t === 'swap') {
       champion.moveItem(message.a, message.b);
+      return;
+    }
+    if (message.t === 'undo' || message.t === 'redo') {
+      // Same door as `buy`/`sell`, and for the same reason: the history is
+      // recorded inside those two, so the host holds one per champion and a
+      // client's undo reverses that client's own last transaction.
+      const reverse = message.t === 'undo' ? undoShop : redoShop;
+      reverse(champion, this.game, 'PLAYER');
       return;
     }
     if (message.t === 'team') {

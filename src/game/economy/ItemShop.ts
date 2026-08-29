@@ -5,6 +5,7 @@ import { packAsset } from '@/game/config/packAsset';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type Spell from '@/game/gameObject/Spell';
 import type { QualifiedItem } from '@/content/PackRegistry';
+import { recordShopStep } from '@/game/economy/ShopHistory';
 
 /**
  * Buying and selling, and the rules about where.
@@ -346,9 +347,21 @@ export function buyItem(
   // what takes their stat modifiers and their passives back off, which is the
   // half a slot count cannot see — a combine that kept a component's armour
   // would leave a champion permanently tougher than the bar says.
+  // The parts, named before they are taken off — `unequipItem` is about to
+  // make them unreadable, and undo has to be able to put back exactly these.
+  const parts = consumed
+    .map(componentSlot => ({
+      slot: componentSlot,
+      def: champion.items?.[componentSlot]?.def as QualifiedItem | undefined,
+    }))
+    .filter((part): part is { slot: number; def: QualifiedItem } => part.def !== undefined);
+
   for (const componentSlot of consumed) champion.unequipItem(componentSlot);
 
   champion.equipItem(held, slot);
+  // Recorded here rather than at the panel, because there are two callers and
+  // they must not drift — see `ShopHistory.ts`'s own header.
+  recordShopStep(champion, { kind: 'buy', def, slot, price, consumed: parts });
   return true;
 }
 
@@ -394,8 +407,10 @@ export function sellItem(
   const held = champion.items?.[slot];
   if (!held) return 0;
 
-  const refund = sellValueOf(held.def as QualifiedItem);
+  const sold = held.def as QualifiedItem;
+  const refund = sellValueOf(sold);
   champion.unequipItem(slot);
   champion.wallet?.earn(refund);
+  recordShopStep(champion, { kind: 'sell', def: sold, slot, refund });
   return refund;
 }

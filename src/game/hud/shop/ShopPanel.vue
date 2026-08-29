@@ -157,6 +157,19 @@ const canTrade = computed(() => {
   return hud.shopCanTrade();
 });
 
+// Both read `props.state` so they re-evaluate on the panel's own 20Hz tick —
+// a purchase made from the keyboard or by the host has to light the buttons
+// up here too, and neither is a Vue-reactive source.
+const canUndo = computed(() => {
+  void props.state;
+  return hud.canUndoShop();
+});
+
+const canRedo = computed(() => {
+  void props.state;
+  return hud.canRedoShop();
+});
+
 const sections = computed(() => shopSections(stock.value));
 const owned = computed(() => heldItemIds(bag.value));
 
@@ -272,6 +285,34 @@ const lifted = (slot: number): boolean => {
       <div class="shop-gold">
         <i class="fa-solid fa-coins"></i>
         <span>{{ gold }}</span>
+      </div>
+
+      <!--
+        Undo, and not "sell it back": a sale refunds 70%, which is the price of
+        changing your mind, and clicking the wrong tile is not a change of mind
+        — see `economy/ShopHistory.ts`. Both handlers doubled with `v-tap`,
+        because `GameScene` calls `preventDefault()` on every touch on the page
+        and a `@click`-only control is dead under a thumb.
+      -->
+      <div class="shop-history">
+        <button
+          class="shop-step"
+          title="Hoàn tác (trả lại đúng số vàng đã trả)"
+          :disabled="!canUndo"
+          @click="hud.undoShop()"
+          v-tap="() => hud.undoShop()"
+        >
+          <i class="fa-solid fa-rotate-left"></i>
+        </button>
+        <button
+          class="shop-step"
+          title="Làm lại"
+          :disabled="!canRedo"
+          @click="hud.redoShop()"
+          v-tap="() => hud.redoShop()"
+        >
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
       </div>
       <button
         class="shop-close"

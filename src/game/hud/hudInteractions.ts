@@ -31,6 +31,12 @@ import type { AssetKey } from '@/managers/AssetManager';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import type { NetGameHooks } from '@/game/net/hooks';
 import { atOwnFountain, buyItem, sellItem, type ShopMode } from '@/game/economy/ItemShop';
+import {
+  canRedoShop,
+  canUndoShop,
+  redoShop,
+  undoShop,
+} from '@/game/economy/ShopHistory';
 import { sellRows, shopRows, type SellRow, type ShopRow } from '@/game/hud/shop/shopState';
 import { contentCatalog } from '@/content/catalog';
 import { activePanelTab } from './config/panelTab';
@@ -270,6 +276,19 @@ export interface HudInteractions {
   buy(itemId: string): void;
   /** Sell whatever is in `slot`. Same seam, same re-check. */
   sell(slot: number): void;
+  /**
+   * Take back the last purchase or sale, at the price it was made.
+   *
+   * Deliberately not "sell it again": a sale refunds 70%, which is the price
+   * of changing your mind, and a misclick is not a change of mind. See
+   * `economy/ShopHistory.ts`.
+   */
+  undoShop(): void;
+  /** Do the undone transaction again, through the ordinary buy/sell rules. */
+  redoShop(): void;
+  /** Whether there is anything to take back — for a button that greys itself. */
+  canUndoShop(): boolean;
+  canRedoShop(): boolean;
   /**
    * Rearrange the bag — a swap, and a hotkey change with it.
    *
@@ -555,6 +574,32 @@ export function createHudInteractions(game: Game): HudInteractions {
       if (game.net?.interceptShop({ kind: 'sell', slot })) return;
       const subject = shopSubject();
       if (subject) sellItem(subject.champion, slot, game, subject.mode);
+    },
+
+    undoShop(): void {
+      // Across the wire like every other bag change: the gold and the
+      // inventory are the host's, and a client reversing its own copy of a
+      // purchase the host still holds would be undone again by the next `bag`
+      // event.
+      if (game.net?.interceptShop({ kind: 'undo' })) return;
+      const subject = shopSubject();
+      if (subject) undoShop(subject.champion, game, subject.mode);
+    },
+
+    redoShop(): void {
+      if (game.net?.interceptShop({ kind: 'redo' })) return;
+      const subject = shopSubject();
+      if (subject) redoShop(subject.champion, game, subject.mode);
+    },
+
+    canUndoShop(): boolean {
+      const subject = shopSubject();
+      return !!subject && canUndoShop(subject.champion);
+    },
+
+    canRedoShop(): boolean {
+      const subject = shopSubject();
+      return !!subject && canRedoShop(subject.champion);
     },
 
     moveItem(from: number, to: number): void {

@@ -64,6 +64,8 @@ export interface NetGameHooks {
       | { kind: 'buy'; itemId: string }
       | { kind: 'sell'; slot: number }
       | { kind: 'swap'; a: number; b: number }
+      | { kind: 'undo' }
+      | { kind: 'redo' }
   ): boolean;
   /** The B key / recall button. */
   interceptRecall(): boolean;
