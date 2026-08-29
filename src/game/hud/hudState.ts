@@ -257,6 +257,11 @@ function buildSpells(player: any): SpellDisplay[] {
       // rules and stay on raw numbers.
       const coolDown = spell?.effectiveCoolDownMs ?? spell?.coolDown ?? 0;
       const manaCost = spell?.effectiveManaCost ?? spell?.manaCost ?? 0;
+      // And the description, for exactly the same reason: its damage is
+      // authored text with the first-frame number baked in, while `takeDamage`
+      // multiplies by this owner's ability power. The bar promised 15 for the
+      // whole match however much power the player bought.
+      const effectiveDescription = spell?.effectiveDescription ?? description;
 
       // `=== true` rather than a truthy read: an ownerless catalogue instance
       // and a spell from a pack built against an older core both answer
@@ -272,7 +277,7 @@ function buildSpells(player: any): SpellDisplay[] {
         currentCooldown,
         state,
         name,
-        description,
+        description: effectiveDescription,
         coolDownText: Math.ceil(currentCooldown / 1000),
         coolDownPercent: coolDown > 0 ? Math.min((currentCooldown / coolDown) * 100, 100) : 0,
         showCoolDown: currentCooldown > 0,

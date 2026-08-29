@@ -1,5 +1,6 @@
 import { uuidv4 } from '@/utils/index';
 import { effectiveRange } from '@/game/combat/Reach';
+import { amplifiedDamageText } from '@/game/combat/Amplification';
 import EventType from '@/game/enums/EventType';
 import SpellState from '@/game/enums/SpellState';
 import { SpellRuntime, type SpellRuntimeDelegate } from '@/game/spell/runtime/SpellRuntime';
@@ -601,6 +602,27 @@ export default class Spell {
    */
   get effectiveCoolDownMs(): number {
     return this.reducedCooldown(this.castSpec.cooldown.durationMs);
+  }
+
+  /**
+   * What this spell's description says once this owner's build is counted —
+   * the same "effective, not tuning" rule `effectiveCoolDownMs` above and
+   * `effectiveManaCost` below already follow, for the same reason.
+   *
+   * `description` is authored text with its damage baked in, so the HUD used
+   * to show first-frame numbers for the whole match while `takeDamage`
+   * quietly multiplied them by `Stats.abilityPower`. A player buying ability
+   * power had no way to see it working.
+   *
+   * Falls through untouched for a spell that declines the scaling rule
+   * (`damageScalesWithAbilityPower`), for a description that is not a string
+   * — `pregameCatalog` builds ownerless instances — and, inside
+   * `amplifiedDamageText`, for an owner with no ability power at all.
+   */
+  get effectiveDescription(): string {
+    if (typeof this.description !== 'string') return this.description;
+    if (!this.damageScalesWithAbilityPower) return this.description;
+    return amplifiedDamageText(this.description, this.owner);
   }
 
   /**

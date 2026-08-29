@@ -327,6 +327,37 @@ describe('computeHudState honours match rules', () => {
     expect(state?.spells[0].manaCost).toBe(0);
   });
 
+  it('shows the description this build actually earns, not the tuning one', () => {
+    // The third "effective, not raw" field, and the one a player can see
+    // being wrong: a description is authored text with its damage baked in,
+    // so the bar promised first-frame numbers all match while `takeDamage`
+    // multiplied by `Stats.abilityPower`.
+    const state = computeHudState({
+      player: fakePlayer({
+        spells: [
+          ruled({
+            description: 'Gây <span class="damage">15 sát thương</span>',
+            effectiveDescription: 'Gây <span class="damage">45 sát thương</span>',
+          }),
+        ],
+      }),
+    } as never);
+
+    expect(state?.spells[0].description).toBe('Gây <span class="damage">45 sát thương</span>');
+  });
+
+  it('and falls back to the raw one for a spell too old to offer it', () => {
+    // A pack built against an older core answers `undefined` here, the same
+    // shape `isSustaining` and the cooldown fields already guard for.
+    const state = computeHudState({
+      player: fakePlayer({
+        spells: [ruled({ description: 'Gây <span class="damage">15 sát thương</span>' })],
+      }),
+    } as never);
+
+    expect(state?.spells[0].description).toBe('Gây <span class="damage">15 sát thương</span>');
+  });
+
   it('fills the sweep against the reduced duration', () => {
     // half of the *reduced* 3000ms cooldown remains, so the sweep is half full.
     // Measured against the raw 6000 it would read 25% and drain at half speed.
