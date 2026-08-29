@@ -118,6 +118,17 @@ export interface MonsterPresetData {
   /** Defaults to `{ kind: 'camp' }` — see the type. */
   roam?: MonsterRoam;
   /**
+   * Extra chase distance past this camp's pit/reach. Defaults to
+   * `MONSTER_CHASE_MARGIN`.
+   *
+   * Per body rather than a module constant because it is the knob that makes
+   * a jungle feel different — a map where camps give up instantly and one
+   * where they follow you to the lane are the same map with two numbers.
+   */
+  chaseMargin?: number;
+  /** Grace before a camp that lost its target turns for home. */
+  giveUpDelayMs?: number;
+  /**
    * A body that is removed when it dies instead of coming back.
    *
    * There is no number that means this. `AttackableUnit.die` schedules
@@ -239,6 +250,8 @@ export default class Monster extends AttackableUnit {
   temperament: MonsterTemperament;
   roam: MonsterRoam;
   ephemeral: boolean;
+  chaseMargin: number;
+  giveUpDelayMs: number;
   reviveTime = 0;
   targetLock: AttackableUnit | null = null;
 
@@ -294,6 +307,9 @@ export default class Monster extends AttackableUnit {
     this.temperament = preset.temperament ?? 'aggressive';
     this.roam = preset.roam ?? { kind: 'camp' };
     this.ephemeral = preset.ephemeral ?? false;
+    this.chaseMargin = preset.chaseMargin ?? MONSTER_CHASE_MARGIN;
+    this.giveUpDelayMs = preset.giveUpDelayMs ?? MONSTER_GIVE_UP_DELAY_MS;
+    this._giveUpTimer = this.giveUpDelayMs;
     this.abilities = preset.abilities ?? [];
     this._abilityCooldowns = this.abilities.map(() => 0);
 
@@ -422,7 +438,7 @@ export default class Monster extends AttackableUnit {
    * `MONSTER_GIVE_UP_DELAY_MS` is let go.
    */
   chaseLeashRange(): number {
-    return Math.max(this.camp.r, this.aggroRange) + MONSTER_CHASE_MARGIN;
+    return Math.max(this.camp.r, this.aggroRange) + this.chaseMargin;
   }
 
   updateAttack() {
@@ -457,7 +473,7 @@ export default class Monster extends AttackableUnit {
         return;
       }
     } else {
-      this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+      this._giveUpTimer = this.giveUpDelayMs;
     }
 
     // Before the reach check, so a camp can open with an ability while it is
@@ -569,7 +585,7 @@ export default class Monster extends AttackableUnit {
     }
     this.targetLock = unit;
     this.phase = Monster.PHASES.ATTACK;
-    this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+    this._giveUpTimer = this.giveUpDelayMs;
   }
 
   goBackToCamp() {
@@ -584,7 +600,7 @@ export default class Monster extends AttackableUnit {
     this.targetLock = null;
     this._fleeThreat = threat;
     this.phase = Monster.PHASES.FLEE;
-    this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+    this._giveUpTimer = this.giveUpDelayMs;
     const point = this.fleePoint(threat);
     this.navigateTo(point.x, point.y);
   }
@@ -610,7 +626,7 @@ export default class Monster extends AttackableUnit {
     }
 
     if (this._fleeThreat) {
-      this._giveUpTimer = MONSTER_GIVE_UP_DELAY_MS;
+      this._giveUpTimer = this.giveUpDelayMs;
       return;
     }
 

@@ -154,6 +154,23 @@ export default class AttackableUnit extends GameObject {
   deathData: UnitDeathData | null = null;
   reviveTime = 5000;
 
+  /**
+   * What the ground underfoot does to this unit's speed — 1 unless the active
+   * map's `TerrainTuning` says a region it is standing in is faster or slower.
+   * Written each frame by `TerrainMap`, and only on a map that declares a
+   * multiplier at all.
+   *
+   * A plain factor applied at the point of movement rather than a
+   * `StatModifier` on `stats.speed`, deliberately. Modifiers are added and
+   * removed by buffs with lifetimes, and terrain is a per-frame answer to
+   * "where am I standing" — the add/remove churn would be a stat that changes
+   * sixty times a second on a value `ClientSession.setComposedValue` has to
+   * invert back to a base over the wire. This way `stats.speed.value` stays
+   * the unit's real movement speed, which is what the HUD shows and what a
+   * buff means, and what the terrain does is visible in the movement itself.
+   */
+  terrainSpeedFactor = 1;
+
   avatar: AssetHandle | undefined;
   destination: p5.Vector;
   movementRevision = 0;
@@ -914,7 +931,7 @@ export default class AttackableUnit extends GameObject {
     const dx = this.destination.x - this.position.x;
     const dy = this.destination.y - this.position.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    const speed = this.stats.speed.value;
+    const speed = this.stats.speed.value * this.terrainSpeedFactor;
 
     if (distance <= speed) {
       this.position.set(this.destination.x, this.destination.y);
@@ -985,9 +1002,16 @@ export default class AttackableUnit extends GameObject {
     this.destination.set(this.position.x, this.position.y);
   }
 
-  /** Speed in world units per frame. Read by the route follower. */
+  /**
+   * Speed in world units per frame. Read by the route follower.
+   *
+   * Carries `terrainSpeedFactor` for the same reason `move()` does: the
+   * follower uses this to decide how far along a route one frame gets, so a
+   * getter that disagreed with the step actually taken would make a unit in
+   * slowed terrain overshoot or undershoot its own waypoints.
+   */
   get moveSpeed(): number {
-    return this.stats.speed.value;
+    return this.stats.speed.value * this.terrainSpeedFactor;
   }
 
   hasBuff(BuffClass: BuffConstructor): boolean {

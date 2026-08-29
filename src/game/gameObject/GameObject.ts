@@ -1,4 +1,5 @@
 import { Circle, Line, Rectangle } from '@/libs/quadtree';
+import type { MapTuning } from '@/content/ContentPack';
 import { uuidv4 } from '@/utils/index';
 import type { CastContext, Vec2 } from '@/game/spell/runtime/types';
 import type EventManager from '@/managers/EventManager';
@@ -36,6 +37,17 @@ export interface GameObjectRuntimeContext extends GameObjectGameContext {
    * own, so read it as `?? 0` rather than asserting it away.
    */
   matchTimeMs?: number;
+  /**
+   * The active map's own numbers, if it stated any — `MapSummary.tuning`,
+   * held by `Game` and read live by whatever needs it at the moment it needs
+   * it (`Champion.die` for a respawn timer that may grow with match time,
+   * `TerrainMap` for the region speed pass).
+   *
+   * A data field rather than a callback per consumer: it is one small frozen
+   * object, and every reader wants a different slice of it. Optional, like
+   * `matchTimeMs` beside it, because a headless context has no map.
+   */
+  mapTuning?: MapTuning;
   randomSpawnPoint(teamId?: string): p5.Vector;
   createSpellContext(
     spell: Spell,

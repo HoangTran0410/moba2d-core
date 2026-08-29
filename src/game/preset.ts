@@ -2,6 +2,7 @@ import { contentRegistry } from '@/content/registry';
 import type { PackRegistry, QualifiedMonster } from '@/content/PackRegistry';
 import type {
   Faction,
+  MapTuning,
   MinionSlot,
   MonsterBody,
   NeutralSlot,
@@ -11,6 +12,12 @@ import type {
 import TeamId from './enums/TeamId';
 import type { MonsterPresetData } from './gameObject/attackableUnits/Monster';
 import type { FountainPresetData } from './gameObject/structures/Fountain';
+import type { TurretPresetData } from './gameObject/structures/Turret';
+import {
+  resolveFountainStats,
+  resolveMonsterPreset,
+  resolveTurretPreset,
+} from './config/mapTuning';
 import type Champion from './gameObject/attackableUnits/Champion';
 import {
   DEFAULT_CHAMPION_ATTACK,
@@ -742,6 +749,18 @@ const rotatedHome = (
 export const monsterBodyPreset = (
   monster: QualifiedMonster,
   member: MonsterBody,
+  slot: NeutralSlot,
+  tuning?: MapTuning
+): MonsterPresetData =>
+  // The pack's declaration is the base; `resolveMonsterPreset` lays the map's
+  // multipliers and then this slot's own absolutes over it. Routed through
+  // `config/mapTuning.ts` rather than merged here so the arithmetic has one
+  // home and one test file — see that module's header.
+  resolveMonsterPreset(bareMonsterBodyPreset(monster, member, slot), tuning, slot);
+
+const bareMonsterBodyPreset = (
+  monster: QualifiedMonster,
+  member: MonsterBody,
   slot: NeutralSlot
 ): MonsterPresetData => ({
   name: member.name,
@@ -822,16 +841,26 @@ const teamIdOfFaction = (factions: readonly Faction[], factionId: string): strin
  */
 export const fountainsFromSlots = (
   slots: SpawnSlot[],
-  factions: readonly Faction[]
+  factions: readonly Faction[],
+  tuning?: MapTuning
 ): FountainPresetData[] => {
   const presets: FountainPresetData[] = [];
   for (const slot of slots) {
+    // Name, tick interval and the two percentages used to be hardcoded here
+    // while `Fountain` had accepted all four since it was written — the
+    // fields existed and nothing ever passed them. They come from the map now,
+    // and `resolveFountainStats(undefined, …)` returns exactly the literals
+    // this used to hold, which is why no existing map changes.
+    const stats = resolveFountainStats(tuning, slot);
     presets.push({
-      name: 'Bệ Đá Cổ',
+      name: stats.name,
       x: slot.x,
       y: slot.y,
       r: slot.r,
       teamId: teamIdOfFaction(factions, slot.faction),
+      tickInterval: stats.tickInterval,
+      healPercent: stats.healPercent,
+      manaPercent: stats.manaPercent,
     });
   }
   return presets;
@@ -842,6 +871,13 @@ export interface TurretPosition {
   y: number;
   /** Absent for a structure slot whose faction `teamIdOfFaction` cannot seat on either team. */
   teamId?: string;
+  /**
+   * This turret's fully resolved numbers — core's, under the map's, under
+   * the slot's own. Always present: `Game.spawnTurrets` used to build every
+   * turret with no preset at all, so *every* turret in the engine was
+   * `DEFAULT_TURRET_PRESET` and a map had no way to say otherwise.
+   */
+  preset: TurretPresetData;
 }
 
 /**
@@ -862,11 +898,17 @@ export interface TurretPosition {
  */
 export const turretsFromSlots = (
   slots: StructureSlot[],
-  factions: readonly Faction[]
+  factions: readonly Faction[],
+  tuning?: MapTuning
 ): TurretPosition[] => {
   const positions: TurretPosition[] = [];
   for (const slot of slots) {
-    positions.push({ x: slot.x, y: slot.y, teamId: teamIdOfFaction(factions, slot.faction) });
+    positions.push({
+      x: slot.x,
+      y: slot.y,
+      teamId: teamIdOfFaction(factions, slot.faction),
+      preset: resolveTurretPreset(tuning, slot),
+    });
   }
   return positions;
 };

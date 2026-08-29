@@ -5,11 +5,12 @@ import { hasFlag } from '@/utils/index';
 import ActionState from '@/game/enums/ActionState';
 import TerrainType from '@/game/enums/TerrainType';
 import { PredefinedFilters } from '@/game/managers/ObjectManager';
-import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import { PredefinedParticleSystems } from '@/game/gameObject/helpers/ParticleSystem';
 import type { ActiveMap } from '@/content/ContentPack';
+import { resolveTerrainTuning, type ResolvedTerrainTuning } from '@/game/config/mapTuning';
 import Obstacle from './Obstacle';
 import TerrainField from './TerrainField';
 
@@ -26,6 +27,12 @@ export default class TerrainMap {
   obstacles: Obstacle[];
   rippleEffect: any;
   quadtree: Quadtree;
+  /**
+   * What each region layer does to movement, resolved once from the map.
+   * `affectsSpeed` is false for every map that declares nothing, which is
+   * what keeps `updateTerrainSpeed` from running at all.
+   */
+  readonly terrainSpeed: ResolvedTerrainTuning;
 
   /**
    * @param map The active match's map, geometry already resolved. Required,
@@ -38,6 +45,7 @@ export default class TerrainMap {
     this.game = game;
     this.size = map.size;
     this.obstacles = [];
+    this.terrainSpeed = resolveTerrainTuning(map.tuning);
 
     this.rippleEffect = PredefinedParticleSystems.ripple();
 
@@ -150,6 +158,60 @@ export default class TerrainMap {
       filters: [PredefinedFilters.type(Minion), PredefinedFilters.excludeDead],
     });
     for (const m of minions) this.pushOutOfWalls(m);
+
+    this.updateTerrainSpeed();
+  }
+
+  /**
+   * Writes `terrainSpeedFactor` on every unit that can be slowed or hurried
+   * by the ground it is standing on.
+   *
+   * **Returns immediately unless the map asked for it.** Terrain that changes
+   * movement speed is a new mechanic, not an exposed constant: before it,
+   * nothing on the map affected how fast anything moved. So a map that
+   * declares no multiplier — every map written before this — pays one boolean
+   * per frame and runs no query at all.
+   *
+   * Deliberately a *second* pass rather than folded into the champion loop
+   * above. That loop owns `isInsideBush`, which is a vision flag read from
+   * the player's eyes; widening it to minions and monsters to save a query
+   * would put 160 lane minions into brush stealth as a side effect of a
+   * movement feature.
+   *
+   * `isImmovable` units are skipped because a turret or a stationary boss has
+   * no speed to modify, and both re-anchor themselves every frame anyway.
+   */
+  updateTerrainSpeed(): void {
+    if (!this.terrainSpeed.affectsSpeed) return;
+
+    const units = this.game.objectManager.queryObjects({
+      queryByDisplayBoundingBox: true,
+      filters: [PredefinedFilters.type(AttackableUnit), PredefinedFilters.excludeDead],
+    });
+    for (const unit of units) {
+      if (unit.isImmovable) continue;
+      unit.terrainSpeedFactor = this.speedFactorAt(unit.position.x, unit.position.y);
+    }
+  }
+
+  /**
+   * The combined multiplier for a point.
+   *
+   * Overlapping layers **multiply**: a map that drew a bush in the river and
+   * slowed both has said two things about that ground, and taking only one of
+   * them would make which layer wins depend on the order they happen to be
+   * read in. Each layer is only queried when its own multiplier is not 1, so
+   * a map that tunes just the water never tests a bush polygon.
+   */
+  speedFactorAt(x: number, y: number): number {
+    let factor = 1;
+    if (this.terrainSpeed.bush !== 1 && this.containsPoint(x, y, TerrainType.BUSH)) {
+      factor *= this.terrainSpeed.bush;
+    }
+    if (this.terrainSpeed.water !== 1 && this.containsPoint(x, y, TerrainType.WATER)) {
+      factor *= this.terrainSpeed.water;
+    }
+    return factor;
   }
 
   private _field: TerrainField | null = null;

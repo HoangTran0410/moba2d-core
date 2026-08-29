@@ -1,4 +1,10 @@
-import type { ActiveMap, NeutralSlot, SpawnSlot, StructureSlot } from '@/content/ContentPack';
+import type {
+  ActiveMap,
+  MapTuning,
+  NeutralSlot,
+  SpawnSlot,
+  StructureSlot,
+} from '@/content/ContentPack';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
@@ -133,6 +139,14 @@ export default class Game {
    * is not one of its mutable settings.
    */
   readonly activeMapId: string;
+
+  /**
+   * The active map's own numbers — `MapSummary.tuning`, or `undefined` for a
+   * map that stated none, which is every map written before it existed.
+   * Published on the runtime context (`GameObjectRuntimeContext.mapTuning`)
+   * so a unit can resolve its own slice at the moment it needs it.
+   */
+  readonly mapTuning?: MapTuning;
   /**
    * The active map's own `slots.minion`, teamId-bridged — where each team's
    * wave forms up, per lane. Set in the constructor, read by `MinionSpawner`
@@ -289,6 +303,7 @@ export default class Game {
   constructor(map: ActiveMap, plan?: MatchPlan) {
     this.mapSize = map.size;
     this.activeMapId = map.id;
+    this.mapTuning = map.tuning;
     this.minionMuster = minionMusterSlotsFrom(map.slots.minion, map.factions);
     this.neutralSlots = map.slots.neutral;
     // Before anything queues a wave or builds a blackboard: `MinionSpawner`,
@@ -339,7 +354,7 @@ export default class Game {
 
     // Fountains first: each champion asks the matching team fountain for its
     // initial point, and randomSpawnPoint falls back safely for UUID/FFA teams.
-    this.spawnFountains(map.slots.spawn, map.factions);
+    this.spawnFountains(map.slots.spawn, map.factions, map.tuning);
 
     // Blue by default and for every match before the team tab existed, but the
     // player is now a movable roster slot like any bot — so its side comes from
@@ -466,7 +481,7 @@ export default class Game {
     // `ObjectManager.update()` and only swept by the second, i.e. one frame of
     // camps a player who switched the jungle off never asked to see.
     if (pregameConfig.world.jungle) this.spawnJungle();
-    this.spawnTurrets(map.slots.structure, map.factions);
+    this.spawnTurrets(map.slots.structure, map.factions, map.tuning);
     // the spawner reads teams off the fountains, so it comes after them
     this.minionSpawner = new MinionSpawner(this);
 
@@ -516,8 +531,8 @@ export default class Game {
    * @param factions The active map's own `factions`, in declared order —
    *   `fountainsFromSlots`/`teamIdOfFaction` read position 0/1 as BLUE/RED.
    */
-  spawnFountains(spawnSlots: SpawnSlot[], factions: ActiveMap['factions']) {
-    for (const preset of fountainsFromSlots(spawnSlots, factions)) {
+  spawnFountains(spawnSlots: SpawnSlot[], factions: ActiveMap['factions'], tuning?: MapTuning) {
+    for (const preset of fountainsFromSlots(spawnSlots, factions, tuning)) {
       const fountain = new Fountain({ game: this, preset });
       this.fountains.push(fountain);
       this.objectManager.addObject(fountain);
@@ -547,7 +562,7 @@ export default class Game {
       if (!monster) continue;
 
       for (const member of monster.members) {
-        const preset = monsterBodyPreset(monster, member, slot);
+        const preset = monsterBodyPreset(monster, member, slot, this.mapTuning);
         const body = new Monster({ game: this, preset });
         this.monsters.push(body);
         this.objectManager.addObject(body);
@@ -564,9 +579,13 @@ export default class Game {
    * @param factions The active map's own `factions`, in declared order — see
    *   `spawnFountains`'s matching parameter.
    */
-  spawnTurrets(structureSlots: StructureSlot[], factions: ActiveMap['factions']) {
-    for (const { x, y, teamId } of turretsFromSlots(structureSlots, factions)) {
-      const turret = new Turret({ game: this, position: createVector(x, y), teamId });
+  spawnTurrets(
+    structureSlots: StructureSlot[],
+    factions: ActiveMap['factions'],
+    tuning?: MapTuning
+  ) {
+    for (const { x, y, teamId, preset } of turretsFromSlots(structureSlots, factions, tuning)) {
+      const turret = new Turret({ game: this, position: createVector(x, y), teamId, preset });
       this.turrets.push(turret);
       this.objectManager.addObject(turret);
     }

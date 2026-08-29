@@ -21,6 +21,22 @@ import trailSystemSource from '../../../src/game/gameObject/helpers/TrailSystem.
 
 const scopedSources = [gameObjectSource, spellObjectSource, objectManagerSource];
 
+/**
+ * Comments out, before anything is matched against the source.
+ *
+ * `CLAUDE.md`'s rule for source-scan tests — "strip comments before matching,
+ * or the scan flags its own documentation" — and this scan was the exception
+ * that proved it. `/\bany\b/` over raw source cannot tell a type annotation
+ * from the English word, so a doc comment reading "if it stated any" failed a
+ * test about explicit `any` types. That is a scan that punishes writing things
+ * down, in a codebase whose whole convention is writing things down.
+ *
+ * The `[^:'"`]` guard on the line-comment half keeps a `//` inside a string or
+ * a URL from eating the rest of a real line of code.
+ */
+const stripComments = (source: string): string =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+
 class TestObject extends GameObject {
   added = 0;
   removed = 0;
@@ -82,8 +98,15 @@ describe('base object type boundary', () => {
 
   it('does not use explicit any in base object production files', () => {
     for (const source of scopedSources) {
-      expect(source).not.toMatch(/\bany\b/);
+      expect(stripComments(source)).not.toMatch(/\bany\b/);
     }
+  });
+
+  it('and the strip does not blind the scan to a real one', () => {
+    // The falsification the case above cannot perform on itself: prove the
+    // matcher still fires on code, now that it no longer fires on prose.
+    expect(stripComments('const x: any = 1; // any\n/* any */')).toMatch(/\bany\b/);
+    expect(stripComments('// any\n/* any */\nconst x = 1;')).not.toMatch(/\bany\b/);
   });
 
   /**

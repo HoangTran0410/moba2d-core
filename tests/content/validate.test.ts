@@ -492,6 +492,142 @@ describe('validatePack', () => {
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/ephemeral/);
   });
 
+  // ------------------------------------------------------------ map tuning
+  //
+  // Every group is optional and absent means core's own numbers, so the only
+  // thing worth checking is that what a map *did* say is sayable. Unknown
+  // keys are the point: the engine's failure for a misspelled one is to keep
+  // its own value in silence, which leaves an author with a turret that
+  // ignored them and no way to find out why.
+
+  const mapWith = (extra: Record<string, unknown>) => ({
+    manifest: goodManifest,
+    maps: [
+      {
+        id: 'm',
+        name: 'M',
+        size: 1_000,
+        factions: [{ id: 'blue' }, { id: 'red' }],
+        geometry: {
+          terrain: { wall: [], bush: [], water: [] },
+          slots: { spawn: [], minion: [], structure: [], neutral: [] },
+        },
+        ...extra,
+      },
+    ],
+  });
+
+  it('accepts a map that states no tuning at all', () => {
+    expect(validatePack(mapWith({})).ok).toBe(true);
+  });
+
+  it('accepts a fully populated tuning block', () => {
+    const result = validatePack(
+      mapWith({
+        tuning: {
+          champions: { reviveCurve: { base: 8_000, perMinute: 2_500, max: 60_000 } },
+          turrets: { damage: 40, attackRange: 900 },
+          fountain: { name: 'Suối', healPercent: 0.3 },
+          monsters: { healthMult: 2, chaseMargin: 800 },
+          terrain: { water: { speedMultiplier: 0.5 }, bush: { speedMultiplier: 1.2 } },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a misspelled stat instead of silently keeping core's", () => {
+    const result = validatePack(mapWith({ tuning: { turrets: { attackRnage: 900 } } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/attackRnage/);
+  });
+
+  it('rejects an unknown tuning group', () => {
+    const result = validatePack(mapWith({ tuning: { minions: {} } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/minions/);
+  });
+
+  it('rejects a negative duration', () => {
+    const result = validatePack(mapWith({ tuning: { turrets: { rebuildTime: -1 } } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/negative/);
+  });
+
+  it('rejects a half-written revive curve', () => {
+    const result = validatePack(
+      mapWith({ tuning: { champions: { reviveCurve: { base: 8_000 } } } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/perMinute/);
+  });
+
+  it('rejects a terrain layer nothing can stand in', () => {
+    const result = validatePack(
+      mapWith({ tuning: { terrain: { wall: { speedMultiplier: 0.5 } } } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/wall/);
+  });
+
+  it('checks the tuning of a map whose geometry is a lazy loader', () => {
+    // The ordering trap: `checkMap` returns early for a loader, and every big
+    // map is a loader. Tuning is checked before that point, so this must fail.
+    const result = validatePack({
+      manifest: goodManifest,
+      maps: [
+        {
+          id: 'm',
+          name: 'M',
+          size: 1_000,
+          factions: [{ id: 'blue' }, { id: 'red' }],
+          tuning: { turrets: { attackRnage: 900 } },
+          geometry: () => Promise.resolve({}),
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/attackRnage/);
+  });
+
+  it('checks a per-slot stats block too', () => {
+    const result = validatePack(
+      mapWith({
+        geometry: {
+          terrain: { wall: [], bush: [], water: [] },
+          slots: {
+            spawn: [],
+            minion: [],
+            structure: [
+              { faction: 'blue', kind: 'turret', x: 1, y: 1, stats: { attackRnage: 900 } },
+            ],
+            neutral: [],
+          },
+        },
+      })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/attackRnage/);
+  });
+
+  it('accepts a neutral slot naming a temperament and rejects a misspelled one', () => {
+    const geometryWith = (stats: Record<string, unknown>) => ({
+      terrain: { wall: [], bush: [], water: [] },
+      slots: {
+        spawn: [],
+        minion: [],
+        structure: [],
+        neutral: [{ role: 'crab', x: 1, y: 1, r: 10, stats }],
+      },
+    });
+    expect(validatePack(mapWith({ geometry: geometryWith({ temperament: 'skittish' }) })).ok).toBe(
+      true
+    );
+    const bad = validatePack(mapWith({ geometry: geometryWith({ temperament: 'skitish' }) }));
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/temperament/);
+  });
+
   it('rejects a spells entry that is not a class', () => {
     // The success cast claims spells: Record<string, SpellClass>. A string
     // sitting where a constructor belongs must be named at load, not `new`-ed

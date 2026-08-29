@@ -412,11 +412,178 @@ export interface Faction {
   id: string;
 }
 
+/**
+ * A map's own numbers, overriding core's.
+ *
+ * ## Why a map may say this at all
+ *
+ * A map used to be geometry and slots, so every number that makes a match
+ * *feel* like anything — how hard a turret hits, how far a camp chases, how
+ * fast the fountain heals — was a constant in a core TypeScript file. A new
+ * map could only ever be a new *shape* of the same game. This is the whole
+ * feature: a map states its own numbers, drawn in the editor, carried in its
+ * own export, with nobody having to open the engine.
+ *
+ * ## Absent means today's number, everywhere
+ *
+ * Every field here and below is optional, and a missing one resolves to
+ * exactly what core used before this type existed. That is not politeness,
+ * it is what makes the whole subsystem testable: `tuning: undefined` has a
+ * provable no-op state, so every existing map plays bit-identically and the
+ * test for that is one assertion per system rather than a re-balanced suite.
+ *
+ * ## Why it lives on `MapSummary` and not in `MapGeometry`
+ *
+ * `ActiveMap = MapSummary & MapGeometry`, so `Game` and `preset.ts` receive
+ * it with no change to that type; `PackRegistry.maps()` returns the summary,
+ * so a picker can tell the player what is unusual about a map *before*
+ * downloading its polygons; and a few hundred bytes has no business behind
+ * the lazy geometry loader, where editing one number would invalidate a
+ * cached chunk measured in hundreds of kilobytes.
+ *
+ * Per-slot overrides are the exception and live on the slots themselves —
+ * see `StructureSlot.stats` — because that is where the slot is.
+ */
+export interface MapTuning {
+  champions?: ChampionTuning;
+  turrets?: TurretTuning;
+  fountain?: FountainTuning;
+  monsters?: MonsterTuning;
+  terrain?: TerrainTuning;
+}
+
+/**
+ * Champion respawn, and only respawn.
+ *
+ * Champion *stats* are deliberately not here: a map that rewrites champions
+ * is a different feature with a much larger blast radius. Respawn is a match
+ * rule, not a stat, which is why it is the one that made it in.
+ */
+export interface ChampionTuning {
+  /** Flat respawn in ms. Absent means 5000 — `AttackableUnit.reviveTime`. */
+  reviveTime?: number;
+  /**
+   * Growth instead of a flat number: `min(base + perMinute * minutes, max)`.
+   * Present, it wins over `reviveTime`.
+   *
+   * There is no curve in the engine to expose — champion respawn is a flat
+   * 5000ms and always has been — so this *is* the curve. A map wanting deaths
+   * to get costlier as a match runs long writes something like
+   * `{ base: 8000, perMinute: 2500, max: 60000 }`.
+   */
+  reviveCurve?: { base: number; perMinute: number; max: number };
+}
+
+/**
+ * Turret numbers, absolute rather than multiplied.
+ *
+ * Absolute because the base — `DEFAULT_TURRET_PRESET` — is core's own and a
+ * map author can read it. There is nothing to be relative *to* that they do
+ * not already know, unlike a monster, whose numbers come from whichever pack
+ * fills the slot.
+ */
+export interface TurretStats {
+  health?: number;
+  size?: number;
+  attackRange?: number;
+  attackInterval?: number;
+  damage?: number;
+  /** ms before a destroyed turret comes back. */
+  rebuildTime?: number;
+  /** ms without taking damage before it starts repairing itself. */
+  repairDelay?: number;
+  /** Health per frame once repairing. */
+  repairRate?: number;
+}
+export type TurretTuning = TurretStats;
+
+/** Fountain numbers. `Fountain` already accepts all four; nothing passed them. */
+export interface FountainStats {
+  name?: string;
+  /** ms between restore ticks. */
+  tickInterval?: number;
+  /** Fraction of max health restored per tick. */
+  healPercent?: number;
+  /** Fraction of max mana restored per tick. */
+  manaPercent?: number;
+}
+export type FountainTuning = FountainStats;
+
+/**
+ * Monster numbers as **multipliers**, at the map level.
+ *
+ * A map does not know what monsters will fill its slots — the same map runs
+ * with one pack's jungle or another's — so "×1.5 damage" is the only sentence
+ * it can say that stays true across packs. That is the same argument
+ * `NeutralSlot.role` already rests on.
+ *
+ * A *slot* may additionally state absolutes (`MonsterSlotStats`), because
+ * there the author is aiming at one named camp on one map and can see what
+ * fills it.
+ */
+export interface MonsterScale {
+  healthMult?: number;
+  damageMult?: number;
+  speedMult?: number;
+  attackIntervalMult?: number;
+  aggroRangeMult?: number;
+  reviveTimeMult?: number;
+}
+
+export interface MonsterTuning extends MonsterScale {
+  /** Replaces `MONSTER_CHASE_MARGIN` for every camp on this map. */
+  chaseMargin?: number;
+  /** Replaces `MONSTER_GIVE_UP_DELAY_MS` for every camp on this map. */
+  giveUpDelayMs?: number;
+}
+
+/**
+ * One camp's own numbers — the innermost of the three merge layers, applied
+ * over the map's multipliers, which are applied over the pack's declaration.
+ *
+ * The absolutes here land **after** the multipliers, so a slot that states
+ * `health` gets exactly that number and not that number scaled again.
+ */
+export interface MonsterSlotStats extends MonsterScale {
+  health?: number;
+  damage?: number;
+  attackRange?: number;
+  aggroRange?: number;
+  reviveTime?: number;
+  chaseMargin?: number;
+  /**
+   * Lets one map make its otherwise-timid camps fight. `roam` is deliberately
+   * *not* overridable here — a roam region that disagrees with where the map
+   * put the water is not a playstyle, it is a broken camp.
+   */
+  temperament?: MonsterTemperament;
+}
+
+/**
+ * What a terrain layer does to a unit standing in it.
+ *
+ * This is a **new mechanic**, not an exposed constant: before this, bush set
+ * a vision flag and water drew ripples, and nothing on the map affected how
+ * fast anything moved. Absent, or 1, and the second pass that implements it
+ * does not run at all.
+ */
+export interface TerrainLayerTuning {
+  /** Movement speed multiplier for a unit inside this layer. Default 1. */
+  speedMultiplier?: number;
+}
+
+export interface TerrainTuning {
+  bush?: TerrainLayerTuning;
+  water?: TerrainLayerTuning;
+}
+
 export interface SpawnSlot {
   faction: string;
   x: number;
   y: number;
   r: number;
+  /** This fountain's own numbers, over the map's, over core's. */
+  stats?: FountainStats;
 }
 
 export interface MinionSlot {
@@ -446,6 +613,13 @@ export interface StructureSlot {
   kind: StructureKind;
   x: number;
   y: number;
+  /**
+   * This turret's own numbers, over the map's, over core's — the innermost
+   * of the three merge layers. This is what lets an outer turret be weaker
+   * than a base one on the same map, which is most of what makes two maps
+   * built from the same parts actually play differently.
+   */
+  stats?: TurretStats;
 }
 
 export interface NeutralSlot {
@@ -454,6 +628,8 @@ export interface NeutralSlot {
   x: number;
   y: number;
   r: number;
+  /** This camp's own numbers, over the map's, over the pack's. */
+  stats?: MonsterSlotStats;
   /**
    * Degrees to turn this camp's internal layout by — every `MonsterBody.offset`
    * is rotated about the slot before it becomes a body's home. Absent means 0,
@@ -494,6 +670,8 @@ export interface MapSummary {
   /** Square edge length in world units. */
   size: number;
   factions: Faction[];
+  /** This map's own numbers. Absent — or any field absent — means core's. */
+  tuning?: MapTuning;
 }
 
 /**

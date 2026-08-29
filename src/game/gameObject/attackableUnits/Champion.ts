@@ -1,4 +1,5 @@
 import AssetManager, { type AssetHandle, type AssetKey } from '@/managers/AssetManager';
+import { resolveChampionRevive } from '@/game/config/mapTuning';
 import { packAssetOrPlaceholder } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
@@ -359,9 +360,7 @@ export default class Champion extends AttackableUnit {
       id,
       avatar:
         avatar ??
-        (preset?.avatar
-          ? packAssetOrPlaceholder(preset.avatar, preset.name ?? '')
-          : undefined),
+        (preset?.avatar ? packAssetOrPlaceholder(preset.avatar, preset.name ?? '') : undefined),
       stats,
     });
 
@@ -981,6 +980,17 @@ export default class Champion extends AttackableUnit {
   }
 
   die(deathData: UnitDeathData) {
+    // How long this champion stays down is the map's to say, and it can grow
+    // with match time (`ChampionTuning.reviveCurve`), so it is resolved *at
+    // the moment of death* rather than assigned once at construction. Before
+    // this, champion respawn was a flat `AttackableUnit.reviveTime = 5000`
+    // with no curve anywhere in the engine, which `resolveChampionRevive`
+    // reproduces exactly for a map that states nothing.
+    deathData.reviveAfter = resolveChampionRevive(
+      this.game?.mapTuning,
+      this.game?.matchTimeMs ?? 0
+    );
+
     // The ledger is `AttackableUnit.die`'s: it is the one place that knows
     // whether a death was already counted, and a turret's kill is a kill.
     super.die(deathData);

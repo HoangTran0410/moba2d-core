@@ -661,6 +661,178 @@ function checkMonsters(pack: Record<string, unknown>, errors: string[]): void {
  * call this function's whole terrain/slot/lane half never ran on either of
  * them in production.
  */
+/**
+ * A bag of optional non-negative numbers, checked against a closed key list.
+ *
+ * **Unknown keys are errors, not noise.** That is the whole reason this is
+ * strict: a map author who writes `attackRnage` and gets silence has a turret
+ * that quietly kept core's range and no way at all to find out. It is the same
+ * stance `checkMapGeometry` already takes on an unknown terrain layer, for the
+ * same reason — the engine's own failure for both is to ignore it.
+ *
+ * Non-negative because every field these bags hold is a duration, a distance,
+ * a size, a rate or a multiplier, and none of those has a meaning below zero.
+ * A negative interval is a turret that fires every frame.
+ */
+function checkNumberBag(
+  path: string,
+  value: unknown,
+  allowed: readonly string[],
+  errors: string[]
+): void {
+  if (!isObject(value)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (!allowed.includes(key)) {
+      errors.push(`${path}.${key}: unknown; core provides ${allowed.join(', ')}`);
+      continue;
+    }
+    if (!isFiniteNumber(entry)) {
+      errors.push(`${path}.${key}: must be a finite number`);
+    } else if (entry < 0) {
+      errors.push(`${path}.${key}: must not be negative`);
+    }
+  }
+}
+
+const TURRET_STAT_KEYS = [
+  'health',
+  'size',
+  'attackRange',
+  'attackInterval',
+  'damage',
+  'rebuildTime',
+  'repairDelay',
+  'repairRate',
+] as const;
+
+const FOUNTAIN_NUMBER_KEYS = ['tickInterval', 'healPercent', 'manaPercent'] as const;
+
+const MONSTER_SCALE_KEYS = [
+  'healthMult',
+  'damageMult',
+  'speedMult',
+  'attackIntervalMult',
+  'aggroRangeMult',
+  'reviveTimeMult',
+] as const;
+
+const MONSTER_MAP_KEYS = [...MONSTER_SCALE_KEYS, 'chaseMargin', 'giveUpDelayMs'] as const;
+
+const MONSTER_SLOT_NUMBER_KEYS = [
+  ...MONSTER_SCALE_KEYS,
+  'health',
+  'damage',
+  'attackRange',
+  'aggroRange',
+  'reviveTime',
+  'chaseMargin',
+] as const;
+
+/** `fountain` and a spawn slot's `stats`: numbers, plus an optional name. */
+function checkFountainStats(path: string, value: unknown, errors: string[]): void {
+  if (!isObject(value)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+  const { name, ...numbers } = value;
+  if (name !== undefined && typeof name !== 'string') {
+    errors.push(`${path}.name: must be a string`);
+  }
+  checkNumberBag(path, numbers, FOUNTAIN_NUMBER_KEYS, errors);
+}
+
+/** A neutral slot's `stats`: numbers, plus the one behaviour field a map may set. */
+function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): void {
+  if (!isObject(value)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+  const { temperament, ...numbers } = value;
+  if (
+    temperament !== undefined &&
+    !MONSTER_TEMPERAMENTS.includes(temperament as MonsterTemperament)
+  ) {
+    errors.push(
+      `${path}.temperament: unknown ${JSON.stringify(temperament)}; ` +
+        `core provides ${MONSTER_TEMPERAMENTS.join(', ')}`
+    );
+  }
+  checkNumberBag(path, numbers, MONSTER_SLOT_NUMBER_KEYS, errors);
+}
+
+/**
+ * A map's own numbers.
+ *
+ * Every group is optional and an absent one means core's defaults, so the
+ * only thing to check is that what a map *did* say is sayable — see
+ * `checkNumberBag` for why an unknown key is an error rather than a shrug.
+ */
+export function checkMapTuning(tuning: unknown, name: string, errors: string[]): void {
+  if (!isObject(tuning)) {
+    errors.push(`${name}.tuning: must be an object`);
+    return;
+  }
+
+  for (const group of Object.keys(tuning)) {
+    if (!['champions', 'turrets', 'fountain', 'monsters', 'terrain'].includes(group)) {
+      errors.push(
+        `${name}.tuning.${group}: unknown; ` +
+          `core provides champions, turrets, fountain, monsters, terrain`
+      );
+    }
+  }
+
+  if (tuning.champions !== undefined) {
+    const path = `${name}.tuning.champions`;
+    if (!isObject(tuning.champions)) {
+      errors.push(`${path}: must be an object`);
+    } else {
+      const { reviveCurve, ...rest } = tuning.champions;
+      checkNumberBag(path, rest, ['reviveTime'], errors);
+      if (reviveCurve !== undefined) {
+        checkNumberBag(`${path}.reviveCurve`, reviveCurve, ['base', 'perMinute', 'max'], errors);
+        // Every field of a curve is required — unlike everything else here,
+        // there is no sensible half-curve to fall back to.
+        if (isObject(reviveCurve)) {
+          for (const key of ['base', 'perMinute', 'max']) {
+            if (reviveCurve[key] === undefined) {
+              errors.push(`${path}.reviveCurve.${key}: missing`);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (tuning.turrets !== undefined) {
+    checkNumberBag(`${name}.tuning.turrets`, tuning.turrets, TURRET_STAT_KEYS, errors);
+  }
+  if (tuning.fountain !== undefined) {
+    checkFountainStats(`${name}.tuning.fountain`, tuning.fountain, errors);
+  }
+  if (tuning.monsters !== undefined) {
+    checkNumberBag(`${name}.tuning.monsters`, tuning.monsters, MONSTER_MAP_KEYS, errors);
+  }
+  if (tuning.terrain !== undefined) {
+    const path = `${name}.tuning.terrain`;
+    if (!isObject(tuning.terrain)) {
+      errors.push(`${path}: must be an object`);
+    } else {
+      for (const layer of Object.keys(tuning.terrain)) {
+        if (layer !== 'bush' && layer !== 'water') {
+          // `wall` is a layer, but not one anything stands in.
+          errors.push(`${path}.${layer}: unknown; core provides bush, water`);
+          continue;
+        }
+        checkNumberBag(`${path}.${layer}`, tuning.terrain[layer], ['speedMultiplier'], errors);
+      }
+    }
+  }
+}
+
 export function checkMapGeometry(
   geometry: Record<string, unknown>,
   name: string,
@@ -703,6 +875,21 @@ export function checkMapGeometry(
       }
       if (typeof slot.faction === 'string' && !factions.has(slot.faction)) {
         errors.push(`${name}.slots.structure: faction ${slot.faction} was never declared`);
+      }
+      if (slot.stats !== undefined) {
+        checkNumberBag(`${name}.slots.structure.stats`, slot.stats, TURRET_STAT_KEYS, errors);
+      }
+    }
+
+    for (const slot of Array.isArray(slots.spawn) ? slots.spawn : []) {
+      if (isObject(slot) && slot.stats !== undefined) {
+        checkFountainStats(`${name}.slots.spawn.stats`, slot.stats, errors);
+      }
+    }
+
+    for (const slot of Array.isArray(slots.neutral) ? slots.neutral : []) {
+      if (isObject(slot) && slot.stats !== undefined) {
+        checkMonsterSlotStats(`${name}.slots.neutral.stats`, slot.stats, errors);
       }
     }
 
@@ -784,6 +971,13 @@ function checkMap(map: unknown, index: number, errors: string[]): void {
       else errors.push(`${name}.factions[]: each faction needs a string id`);
     }
   }
+
+  // Before the `geometry` block below, and that ordering is load-bearing: a
+  // map whose geometry is a *loader* returns early from this function, and
+  // every big map is a loader. Checking tuning after that point would mean
+  // Summoner's Rift's own numbers were never validated at all — the same
+  // shape of hole this function's own header records for the terrain half.
+  if (map.tuning !== undefined) checkMapTuning(map.tuning, name, errors);
 
   // `geometry` is a `MapGeometrySource`: a plain object, checked in full
   // below, or a loader — see `checkMapGeometry`'s own header for why a loader
