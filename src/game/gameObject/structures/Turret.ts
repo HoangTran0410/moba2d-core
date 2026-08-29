@@ -9,6 +9,7 @@ import Minion, {
   AGGRO_SCAN_INTERVAL_MS,
   teamColors,
 } from '@/game/gameObject/attackableUnits/Minion';
+import Monster from '@/game/gameObject/attackableUnits/Monster';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
@@ -189,7 +190,11 @@ export default class Turret extends AttackableUnit {
     if (target.isDead || !target.targetable) return false;
     if (target.isStealthed) return false;
     if (target.teamId === this.teamId) return false;
-    if (!(target instanceof Champion || target instanceof Minion)) return false;
+    if (
+      !(target instanceof Champion || target instanceof Minion || target instanceof Monster)
+    ) {
+      return false;
+    }
 
     const dx = target.position.x - this.position.x;
     const dy = target.position.y - this.position.y;
@@ -210,13 +215,31 @@ export default class Turret extends AttackableUnit {
    * an allied champion used to be answered only if it happened to be the
    * nearest thing in range.
    *
-   * Champions and minions only, as before. A tower next to a jungle camp would
-   * otherwise farm it for ever, and one next to another tower would shoot that.
+   * ## The jungle rung, and why it is only on the defend half
+   *
+   * A tower used to be blind to a monster outright — the query admitted
+   * champions and minions and nothing else, on the argument that a tower
+   * standing near a camp would otherwise farm it for ever. That argument is
+   * about a camp *at home*, and it is right about one; it was answering a
+   * different question than the one a player asks after dragging a boss out of
+   * its pit and watching their own tower ignore it while it eats them.
+   *
+   * So a monster is a target when it is **fighting one of ours**, and never
+   * otherwise. It appears on the defend half, below both champion rungs — a
+   * diver still outranks a crab — and deliberately not on `nearest`, which is
+   * what a turret falls back to when nobody is being attacked. A camp minding
+   * its own business beside a tower is exactly as invisible as it was, on
+   * every frame of every match where nobody dragged it anywhere, because
+   * nothing it did put it in the candidate set's defend rungs.
+   *
+   * Structures stay out by construction: `Minion`, `Champion` and `Monster`
+   * are the whole include list, so a tower still cannot shoot a tower.
    */
   private static readonly LADDER: AggroLadder<AttackableUnit> = {
     defend: [
       { attacker: unit => unit instanceof Champion, victim: ally => ally instanceof Champion },
       { attacker: unit => unit instanceof Minion, victim: ally => ally instanceof Champion },
+      { attacker: unit => unit instanceof Monster, victim: ally => ally instanceof Champion },
     ],
     nearest: [unit => unit instanceof Minion, unit => unit instanceof Champion],
   };
@@ -233,7 +256,7 @@ export default class Turret extends AttackableUnit {
         r: this.attackRange,
       }),
       filters: [
-        PredefinedFilters.includeTypes([Champion, Minion]),
+        PredefinedFilters.includeTypes([Champion, Minion, Monster]),
         PredefinedFilters.canTakeDamageFromTeam(this.teamId),
         PredefinedFilters.visibleTo(this),
         PredefinedFilters.excludeStealthed,
