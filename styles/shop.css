@@ -629,6 +629,18 @@
   color: var(--spell-damage);
 }
 
+.shop-detail-text .damage.physical {
+  color: var(--spell-damage-physical);
+}
+
+.shop-detail-text .damage.magic {
+  color: var(--spell-damage-magic);
+}
+
+.shop-detail-text .damage.true {
+  color: var(--spell-damage-true);
+}
+
 .shop-detail-text .heal {
   color: var(--spell-heal);
 }

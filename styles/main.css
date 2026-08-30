@@ -13,6 +13,18 @@
        for one, so a restored number never reads as a hit taken. */
     --spell-heal: #6ee787;
 
+    /* One number, one colour, wherever it is shown. These are
+       `DAMAGE_TEXT_COLOR` in game/gameObject/helpers/CombatText.ts written as
+       hex — the amber, violet and white the floating numbers already use — so
+       a tooltip promising 40 magic damage is the colour of the 40 that comes
+       off the health bar. `damageTextColor.test.ts` holds the two in step;
+       retuning one of them alone is the failure worth catching.
+       Plain `.damage` keeps --spell-damage: a span with no type is emphasis
+       ("tướng địch", "Chảy Máu"), not a figure anything mitigates. */
+    --spell-damage-physical: #ff923e;
+    --spell-damage-magic: #b07aff;
+    --spell-damage-true: #f8f8f8;
+
     /* Hextech palette. Same story as the three above, for the same reason:
        the loadout picker exists twice — before the match (pregame-scene.css)
        and during it (hud.css) — and the two are meant to be the same screen,

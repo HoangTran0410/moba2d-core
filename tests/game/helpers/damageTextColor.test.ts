@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createGame, createUnit, installSpellObjectGlobals } from '../spell/fixtures';
 import CombatText, { DAMAGE_TEXT_COLOR } from '../../../src/game/gameObject/helpers/CombatText';
 import type { DamageType } from '../../../src/game/combat/Mitigation';
@@ -76,6 +78,33 @@ describe('a damage number carries its type', () => {
     const texts = combatTexts(game);
     expect(texts).toHaveLength(1);
     expect(texts[0].text).toBe('-25');
+  });
+
+  /**
+   * A spell tooltip promising "40 sát thương phép" is painted from CSS custom
+   * properties and the number it predicts is painted from this table, and the
+   * two are in different languages in different files. Writing the same colour
+   * twice is the cheap part; keeping it written twice is not, and the failure
+   * is invisible in every test that renders either one alone — the tooltip
+   * would still be violet, just a *different* violet from the figure that
+   * comes off the health bar.
+   */
+  it('paints a tooltip the same colour as the number it predicts', () => {
+    const css = readFileSync(resolve(__dirname, '../../../styles/main.css'), 'utf8');
+    const hex = ([r, g, b]: readonly number[]) =>
+      '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+
+    for (const [type, token] of [
+      ['PHYSICAL', '--spell-damage-physical'],
+      ['MAGIC', '--spell-damage-magic'],
+      ['TRUE', '--spell-damage-true'],
+    ] as const) {
+      const declared = css.match(new RegExp(`\\${token}:\\s*(#[0-9a-f]{6})`, 'i'))?.[1];
+      expect(declared, `${token} is not declared in styles/main.css`).toBeDefined();
+      expect(declared!.toLowerCase(), `${token} has drifted from DAMAGE_TEXT_COLOR.${type}`).toBe(
+        hex(DAMAGE_TEXT_COLOR[type])
+      );
+    }
   });
 
   it('paints a hit in its own type’s colour, not a single red for all of them', () => {

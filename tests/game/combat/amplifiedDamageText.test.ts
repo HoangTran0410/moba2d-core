@@ -100,6 +100,29 @@ describe('scaling the printed damage', () => {
     );
   });
 
+  /**
+   * The day a pack labels its damage types, every span it owns gains a second
+   * class — and the pattern that decides what gets amplified was written to
+   * match `class="damage"` exactly. A silent stop here is the worst kind: the
+   * sentence still renders, still reads correctly, and quietly promises the
+   * spell's first-frame number for the rest of the match.
+   */
+  it('scales a span that also names its damage type', () => {
+    for (const type of ['physical', 'magic', 'true']) {
+      expect(
+        amplifiedDamageText(`gây <span class="damage ${type}">40 sát thương</span>`, power(0.5))
+      ).toBe(`gây <span class="damage ${type}">40 (+20) sát thương</span>`);
+    }
+  });
+
+  it('and still refuses a class it was never told about', () => {
+    // The three names are spelled out in the pattern rather than matched with
+    // a wildcard, so a class this engine has no rule for cannot enrol itself
+    // into being amplified by inventing a name.
+    const written = 'gây <span class="damage chaos">40 sát thương</span>';
+    expect(amplifiedDamageText(written, power(0.5))).toBe(written);
+  });
+
   it('leaves a span that does not open with a number exactly as written', () => {
     // Guessing at "sát thương bằng 60% máu tối đa" would print a number the
     // spell never deals.

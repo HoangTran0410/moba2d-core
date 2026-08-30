@@ -84,13 +84,28 @@ export function amplifiedAbilityDamage(
  * and `time` make no such claim and are never touched: a 30% slow is 30%
  * however much power you buy, and so is a four-second duration.
  *
+ * **The optional second class names the damage type**, and it is a
+ * presentation modifier rather than a second claim: `damage physical` is the
+ * same promise as `damage`, painted in the colour `DAMAGE_TEXT_COLOR` already
+ * gives that type on the floating numbers, so a tooltip and the figure it
+ * predicts are the same colour. The three names are spelled out rather than
+ * matched with `[a-z]+` on purpose — this regex decides what gets amplified,
+ * and a wildcard there would silently enrol whatever class a pack invents next.
+ *
+ * Widening it was not optional once packs began labelling types: the pattern
+ * required the attribute to be exactly `class="damage"`, so the first span
+ * written as `class="damage physical"` would have stopped matching and quietly
+ * printed its first-frame number for the rest of the match — the precise
+ * failure the rest of this comment exists about, reintroduced by a stylesheet.
+ *
  * `heal` arrived with the engine half of the same fact. Heals and shields
  * were not amplified at all until `takeHeal` and `buffs/Shield` were wired to
  * the same gate damage goes through, so until then a pack wanting to promise
  * the bonus on a heal had only `damage` to tag it with — which printed the
  * number in red and, worse, promised a scaling that did not happen.
  */
-const SCALING_SPAN = /(<span class="(?:damage|heal)">)([\s\S]*?)(<\/span>)/g;
+const SCALING_SPAN =
+  /(<span class="(?:damage|heal)(?: (?:physical|magic|true))?">)([\s\S]*?)(<\/span>)/g;
 
 /**
  * The figure at the front of such a span, which is the part a build changes.

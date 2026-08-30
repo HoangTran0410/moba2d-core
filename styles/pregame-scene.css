@@ -1663,6 +1663,18 @@
   color: var(--spell-damage);
 }
 
+.spell-detail-body .damage.physical {
+  color: var(--spell-damage-physical);
+}
+
+.spell-detail-body .damage.magic {
+  color: var(--spell-damage-magic);
+}
+
+.spell-detail-body .damage.true {
+  color: var(--spell-damage-true);
+}
+
 .spell-detail-body .buff {
   color: var(--spell-buff);
 }

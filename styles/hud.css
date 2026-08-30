@@ -457,6 +457,18 @@
   color: var(--spell-damage);
 }
 
+.spell-info .body .damage.physical {
+  color: var(--spell-damage-physical);
+}
+
+.spell-info .body .damage.magic {
+  color: var(--spell-damage-magic);
+}
+
+.spell-info .body .damage.true {
+  color: var(--spell-damage-true);
+}
+
 .spell-info .body .buff {
   color: var(--spell-buff);
 }
@@ -2404,9 +2416,15 @@ body.touch-ui .corner-btn {
 }
 
 /* the combat text's own palette: physical amber, magic violet, true white */
-.dmg-physical { color: rgb(255, 146, 62); }
-.dmg-magic { color: rgb(176, 122, 255); }
-.dmg-true { color: rgb(248, 248, 248); }
+.dmg-physical {
+  color: rgb(255, 146, 62);
+}
+.dmg-magic {
+  color: rgb(176, 122, 255);
+}
+.dmg-true {
+  color: rgb(248, 248, 248);
+}
 
 .death-recap-total {
   margin-top: 6px;
@@ -2452,7 +2470,7 @@ body.touch-ui .corner-btn {
 /* Pushed to the far end: the price is the one number here, and a number that
    lines up on the right is one a reader can compare down a column of cards. */
 .practice-item-cost {
-  margin-left: auto;
+  margin-left: 10px;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -2464,9 +2482,10 @@ body.touch-ui .corner-btn {
   margin: 0.45rem 0 0;
   padding: 0;
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.1rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  /* grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); */
+  /* gap: 0.1rem 0.7rem; */
   font-size: 0.76rem;
   color: rgba(255, 255, 255, 0.72);
 }
