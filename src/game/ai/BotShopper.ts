@@ -115,6 +115,19 @@ export const BOT_MOBILITY_EXPONENT = 0.7;
 const OMNIVAMP_HEALTH_EQUIVALENT = 2;
 
 /**
+ * What a *typed* vamp point is worth against an omnivamp one.
+ *
+ * `lifesteal` and `spellVamp` each cover one side of the damage-type split
+ * (`combat/Vamp.ts`), so a point of either returns health on some of a
+ * champion's output rather than on all of it. Half, because the shopper does
+ * not know which side this champion's kit sits on — it prices a build, and
+ * asking the roster what type each ability deals is a question with 240
+ * answers. A champion who really is one-typed is under-served by this, which
+ * is the safe direction: it buys the general stat when in doubt.
+ */
+const TYPED_VAMP_SHARE = 0.5;
+
+/**
  * The stats `combatValue` reads. A plain record rather than `Stats`, so the
  * "what if I also had this item" case is an object spread and needs no live
  * champion — which is what lets the whole valuation be tested as arithmetic.
@@ -128,6 +141,8 @@ export interface BotBody {
   abilityPower: number;
   cooldownReduction: number;
   omnivamp: number;
+  lifesteal: number;
+  spellVamp: number;
   maxHealth: number;
   armor: number;
   magicResist: number;
@@ -146,6 +161,8 @@ export function bodyOf(champion: Champion): BotBody {
     abilityPower: stats.abilityPower.value,
     cooldownReduction: stats.cooldownReduction.value,
     omnivamp: stats.omnivamp.value,
+    lifesteal: stats.lifesteal.value,
+    spellVamp: stats.spellVamp.value,
     maxHealth: stats.maxHealth.value,
     armor: stats.armor.value,
     magicResist: stats.magicResist.value,
@@ -176,6 +193,8 @@ const BODY_FIELD: Partial<Record<ItemStatKey, keyof BotBody>> = {
   abilityPower: 'abilityPower',
   cooldownReduction: 'cooldownReduction',
   omnivamp: 'omnivamp',
+  lifesteal: 'lifesteal',
+  spellVamp: 'spellVamp',
   maxHealth: 'maxHealth',
   armor: 'armor',
   magicResist: 'magicResist',
@@ -229,8 +248,8 @@ export function combatValue(raw: BotBody): number {
   // `Mitigation`'s own curve, averaged over the two damage types because a
   // build is bought against a team that has both.
   const mitigated = 0.5 * (1 + body.armor / 100) + 0.5 * (1 + body.magicResist / 100);
-  const survival =
-    Math.max(1, body.maxHealth) * mitigated * (1 + body.omnivamp * OMNIVAMP_HEALTH_EQUIVALENT);
+  const vamp = body.omnivamp + (body.lifesteal + body.spellVamp) * TYPED_VAMP_SHARE;
+  const survival = Math.max(1, body.maxHealth) * mitigated * (1 + vamp * OMNIVAMP_HEALTH_EQUIVALENT);
 
   const mobility = Math.max(0.1, body.speed) / DEFAULT_BODY_SPEED;
   return offence * survival * Math.pow(mobility, BOT_MOBILITY_EXPONENT);

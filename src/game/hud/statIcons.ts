@@ -86,7 +86,12 @@ export const STAT_ICON: Record<StatIconKey, string> = {
   // starburst; on-hit is the flat extra every basic attack carries.
   critDamage: 'fa-explosion',
   onHitDamage: 'fa-fire',
+  // Three sustain stats, three pictures. The hand holding a drop keeps the
+  // general one; the typed pair reads off what feeds it — a heart taking a
+  // hit back for the physical half, a flask for the magic one.
   omnivamp: 'fa-hand-holding-droplet',
+  lifesteal: 'fa-heart-circle-plus',
+  spellVamp: 'fa-flask',
   visionRadius: 'fa-eye',
 
   // ------------------------------------------- what only a stat sheet draws

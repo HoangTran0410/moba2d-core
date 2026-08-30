@@ -1,3 +1,4 @@
+import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import BuffAddType from '@/game/enums/BuffAddType';
 import { describeStatusFlags } from '@/game/gameObject/buffs/describeBuff';
 import type { AssetHandle } from '@/managers/AssetManager';
@@ -217,8 +218,18 @@ export default class Buff {
    * Runs before damage reaches the target's health. Return what should get
    * through: less for shields and damage reduction, more for amplification.
    * Every buff on the unit sees the damage in turn.
+   *
+   * `type` is the hit's `DamageType`, so a buff can answer differently for
+   * one kind of damage than for another — a shield that eats only magic, a
+   * reduction that armour already covers. It arrives third and optional
+   * because every override that existed before it ignores the question, and
+   * a buff that reduces damage full stop is still the common case.
    */
-  modifyIncomingDamage(damage: number, _attacker?: AttackableUnit): number {
+  modifyIncomingDamage(
+    damage: number,
+    _attacker?: AttackableUnit,
+    _type: DamageType = DEFAULT_DAMAGE_TYPE
+  ): number {
     return damage;
   }
 

@@ -67,6 +67,8 @@ const body = (over: Partial<BotBody> = {}): BotBody => ({
   abilityPower: 0,
   cooldownReduction: 0,
   omnivamp: 0,
+  lifesteal: 0,
+  spellVamp: 0,
   maxHealth: 100,
   armor: 0,
   magicResist: 0,

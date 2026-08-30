@@ -39,7 +39,12 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
   magicResist: 'Kháng phép',
   critChance: 'Chí mạng',
   critDamage: 'Sát thương chí mạng',
-  omnivamp: 'Hút máu',
+  // Three sustain stats need three names a player can tell apart at a glance.
+  // `omnivamp` was plain "Hút máu" while it was the only one; it keeps the
+  // general word and gains the qualifier that says it covers everything.
+  omnivamp: 'Hút máu toàn phần',
+  lifesteal: 'Hút máu vật lý',
+  spellVamp: 'Hút máu phép',
   onHitDamage: 'Sát thương cộng thêm',
   visionRadius: 'Tầm nhìn',
 };
@@ -56,6 +61,8 @@ export const AS_PERCENT = new Set<ItemStatKey>([
   'critChance',
   'critDamage',
   'omnivamp',
+  'lifesteal',
+  'spellVamp',
   'abilityPower',
   'cooldownReduction',
 ]);

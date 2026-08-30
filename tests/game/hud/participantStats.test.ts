@@ -36,6 +36,8 @@ const unit = (): Champion => {
   champion.stats.speed.baseValue = 3;
   champion.stats.critChance.baseValue = 0.25;
   champion.stats.omnivamp.baseValue = 0.1;
+  champion.stats.lifesteal.baseValue = 0.15;
+  champion.stats.spellVamp.baseValue = 0.2;
   champion.stats.healthRegen.baseValue = 0.06;
   return champion;
 };
@@ -103,7 +105,12 @@ describe('statGroups', () => {
   it('shows chance-like stats as percentages', () => {
     const rows = rowsOf(unit());
     expect(rows['Chí mạng']).toBe('25%');
-    expect(rows['Hút máu']).toBe('10%');
+    // Three sustain rows, three labels. The panel drew one "Hút máu" while
+    // omnivamp was the only vamp stat; two more arrived beside it and a row a
+    // player cannot name is a row they cannot shop against.
+    expect(rows['Hút máu toàn phần']).toBe('10%');
+    expect(rows['Hút máu vật lý']).toBe('15%');
+    expect(rows['Hút máu phép']).toBe('20%');
   });
 
   it('carries the tally through as its own group', () => {

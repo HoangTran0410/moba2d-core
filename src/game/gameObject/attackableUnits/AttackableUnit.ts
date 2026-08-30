@@ -8,6 +8,7 @@ import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObj
 import Stats from '@/game/gameObject/Stats';
 import EventType from '@/game/enums/EventType';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
+import { vampFraction } from '@/game/combat/Vamp';
 import CombatText, {
   DAMAGE_TEXT_COLOR,
   GOLD_TEXT_COLOR,
@@ -758,7 +759,7 @@ export default class AttackableUnit extends GameObject {
 
     // shields and damage modifiers get first look; they may eat all of it
     for (const buff of this.buffs) {
-      damage = buff.modifyIncomingDamage(damage, attacker);
+      damage = buff.modifyIncomingDamage(damage, attacker, type);
       if (damage <= 0) break;
     }
 
@@ -800,15 +801,22 @@ export default class AttackableUnit extends GameObject {
 
     this.stats.health.baseValue -= damage;
 
-    // Omnivamp, and the only place it is paid. `takeDamage` is the one funnel
-    // every source of damage already goes through — a swing, a spell, a poison
-    // tick — so the stat covers all of them without a single one of them
-    // knowing it exists. Paid on the damage that actually landed, i.e. after
-    // shields ate their share, and before the death check so the kill still
-    // heals. Self-damage (a self-inflicted cost spell) is excluded: a cost that refunds itself is
-    // not a cost.
+    // The vamp stats, and the only place any of them is paid. `takeDamage` is
+    // the one funnel every source of damage already goes through — a swing, a
+    // spell, a poison tick — so the stats cover all of them without a single
+    // one of them knowing they exist. That is also why the three split by
+    // damage *type* rather than by League's basic-attack/ability line: the
+    // type is what arrives at this funnel, and what dealt the hit is not.
+    //
+    // Paid on the damage that actually landed, i.e. after shields ate their
+    // share, and before the death check so the kill still heals. Self-damage
+    // (a self-inflicted cost spell) is excluded: a cost that refunds itself
+    // is not a cost.
     if (attacker && attacker !== this && !attacker.isDead) {
-      const vamp = attacker.stats?.omnivamp?.value ?? 0;
+      // Which stat pays is the hit's own type's business — `combat/Vamp.ts`
+      // owns that table and the clamp on the sum. This funnel stays the one
+      // place any of the three is ever cashed in.
+      const vamp = vampFraction(attacker, type);
       if (vamp > 0) {
         // Outside the attribution, deliberately. `damage` has *already* been
         // through `amplifiedAbilityDamage` a few lines up, so healing a share

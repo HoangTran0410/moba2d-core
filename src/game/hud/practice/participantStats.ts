@@ -130,7 +130,17 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
         },
         { icon: STAT_ICON.attackRange, label: 'Tầm đánh', value: whole(stats.attackRange.value) },
         { icon: STAT_ICON.critChance, label: 'Chí mạng', value: percent(stats.critChance.value) },
-        { icon: STAT_ICON.omnivamp, label: 'Hút máu', value: percent(stats.omnivamp.value) },
+        {
+          icon: STAT_ICON.omnivamp,
+          label: 'Hút máu toàn phần',
+          value: percent(stats.omnivamp.value),
+        },
+        {
+          icon: STAT_ICON.lifesteal,
+          label: 'Hút máu vật lý',
+          value: percent(stats.lifesteal.value),
+        },
+        { icon: STAT_ICON.spellVamp, label: 'Hút máu phép', value: percent(stats.spellVamp.value) },
       ],
     },
     {

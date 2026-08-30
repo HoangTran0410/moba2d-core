@@ -147,6 +147,8 @@ export class StatsModifier {
   attackSpeed = new StatModifier(0);
   attackRange = new StatModifier(0);
   omnivamp = new StatModifier(0);
+  lifesteal = new StatModifier(0);
+  spellVamp = new StatModifier(0);
   onHitDamage = new StatModifier(0);
   critChance = new StatModifier(0);
   critDamage = new StatModifier(0);
@@ -171,6 +173,8 @@ export class StatsModifier {
     this.attackSpeed.add(modifier.attackSpeed);
     this.attackRange.add(modifier.attackRange);
     this.omnivamp.add(modifier.omnivamp);
+    this.lifesteal.add(modifier.lifesteal);
+    this.spellVamp.add(modifier.spellVamp);
     this.onHitDamage.add(modifier.onHitDamage);
     this.critChance.add(modifier.critChance);
     this.critDamage.add(modifier.critDamage);
@@ -196,6 +200,8 @@ export class StatsModifier {
     this.attackSpeed.remove(modifier.attackSpeed);
     this.attackRange.remove(modifier.attackRange);
     this.omnivamp.remove(modifier.omnivamp);
+    this.lifesteal.remove(modifier.lifesteal);
+    this.spellVamp.remove(modifier.spellVamp);
     this.onHitDamage.remove(modifier.onHitDamage);
     this.critChance.remove(modifier.critChance);
     this.critDamage.remove(modifier.critDamage);
@@ -348,6 +354,17 @@ export default class Stats {
    * from hitting something.
    */
   omnivamp = new Stat(0, 1, 0);
+  /**
+   * The same fraction, but only out of `PHYSICAL` and `TRUE` damage.
+   *
+   * The three vamp stats split by the *type* of the hit rather than by what
+   * dealt it, because the type is what this engine's one damage funnel
+   * actually knows — `combat/Vamp.ts` has the whole argument, and owns the
+   * arithmetic that adds this to `omnivamp`.
+   */
+  lifesteal = new Stat(0, 1, 0);
+  /** The same, out of `MAGIC` damage. See `lifesteal` and `combat/Vamp.ts`. */
+  spellVamp = new Stat(0, 1, 0);
   /** Flat damage added to every basic attack that lands, before the crit roll. */
   onHitDamage = new Stat(0);
   /** 0..1. Left at 0 by default, so nothing in the game rolls dice unless something granted this. */
@@ -394,6 +411,8 @@ export default class Stats {
     this.attackSpeed.addModifier(modifier.attackSpeed);
     this.attackRange.addModifier(modifier.attackRange);
     this.omnivamp.addModifier(modifier.omnivamp);
+    this.lifesteal.addModifier(modifier.lifesteal);
+    this.spellVamp.addModifier(modifier.spellVamp);
     this.onHitDamage.addModifier(modifier.onHitDamage);
     this.critChance.addModifier(modifier.critChance);
     this.critDamage.addModifier(modifier.critDamage);
@@ -419,6 +438,8 @@ export default class Stats {
     this.attackSpeed.removeModifier(modifier.attackSpeed);
     this.attackRange.removeModifier(modifier.attackRange);
     this.omnivamp.removeModifier(modifier.omnivamp);
+    this.lifesteal.removeModifier(modifier.lifesteal);
+    this.spellVamp.removeModifier(modifier.spellVamp);
     this.onHitDamage.removeModifier(modifier.onHitDamage);
     this.critChance.removeModifier(modifier.critChance);
     this.critDamage.removeModifier(modifier.critDamage);

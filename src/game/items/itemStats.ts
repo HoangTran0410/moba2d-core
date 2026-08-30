@@ -19,8 +19,8 @@
  *
  * **Two of these are fractions and the rest are points.** `abilityPower: 0.35`
  * is +35% ability damage and `cooldownReduction: 0.15` is a cooldown 15%
- * shorter, the same convention `critChance`, `critDamage` and `omnivamp`
- * already use; `attackDamage: 35` is thirty-five points of damage. An item
+ * shorter, the same convention `critChance`, `critDamage` and the three vamp
+ * stats already use; `attackDamage: 35` is thirty-five points of damage. An item
  * written with the wrong one of those is not a type error and never will be —
  * both are numbers — so it is worth reading twice. `abilityPower: 35` is a
  * champion whose abilities hit for thirty-six times normal.
@@ -45,6 +45,8 @@ export const ITEM_STAT_KEYS = [
   'critChance',
   'critDamage',
   'omnivamp',
+  'lifesteal',
+  'spellVamp',
   'onHitDamage',
   'visionRadius',
 ] as const;
