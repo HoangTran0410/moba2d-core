@@ -100,6 +100,15 @@ import { computed, inject, ref } from 'vue';
 import ShopDetail from './ShopDetail.vue';
 import ShopItemTile from './ShopItemTile.vue';
 import { heldItemIds, shopSections, type SellRow } from './shopState';
+import {
+  filterRows,
+  isFiltering,
+  loadShopFilter,
+  saveShopFilter,
+  statChips,
+  type ShopFilter,
+} from './shopFilter';
+import type { ItemStatKey } from '@/game/items/itemStats';
 import { vTap } from '../tapGuard';
 import { InventoryDrag } from '../inventoryDrag';
 import type { HudInteractions } from '../hudInteractions';
@@ -170,7 +179,52 @@ const canRedo = computed(() => {
   return hud.canRedoShop();
 });
 
-const sections = computed(() => shopSections(stock.value));
+/**
+ * The search box and the chips, restored from the last time the shop was open.
+ *
+ * Not `<script setup>` state alone: this component is `v-if`'d, so everything
+ * declared here dies the moment the panel closes — and the shop is opened and
+ * closed several times on one trip to the fountain. Re-typing "giáp" or
+ * re-tapping three chips each time is the whole of the friction the filter
+ * exists to remove. `shopFilter.ts` keeps it the same guarded `moba2d:*` way
+ * the death recap keeps its collapse.
+ */
+const filter = ref<ShopFilter>(loadShopFilter());
+
+const setFilter = (next: ShopFilter): void => {
+  filter.value = next;
+  saveShopFilter(next);
+};
+
+const searchText = computed({
+  get: () => filter.value.text,
+  set: (text: string) => setFilter({ ...filter.value, text }),
+});
+
+const toggleStat = (key: ItemStatKey): void => {
+  const stats = filter.value.stats.includes(key)
+    ? filter.value.stats.filter(other => other !== key)
+    : [...filter.value.stats, key];
+  setFilter({ ...filter.value, stats });
+};
+
+const clearFilter = (): void => setFilter({ text: '', stats: [] });
+
+const filtering = computed(() => isFiltering(filter.value));
+
+/**
+ * The chips come off the **whole** shelf, never off the filtered one.
+ *
+ * Built from `filtered` they would rearrange themselves under the pointer as
+ * soon as anything was picked — the chip just tapped might vanish, since
+ * nothing left on the shelf grants a second stat — which is a control that
+ * fights the person using it.
+ */
+const chips = computed(() => statChips(stock.value));
+
+const filtered = computed(() => filterRows(stock.value, filter.value));
+
+const sections = computed(() => shopSections(filtered.value));
 const owned = computed(() => heldItemIds(bag.value));
 
 /**
@@ -332,6 +386,64 @@ const lifted = (slot: number): boolean => {
       Chỉ mua bán được khi đứng trong bệ đá của đội mình
     </p>
 
+    <!--
+      Finding one item without reading the shelf.
+
+      The box first because it is the faster of the two when a player already
+      has a name; the chips under it for when they do not — "something with
+      armour". Both stay put when the panel closes (`shopFilter.ts`), which is
+      what makes them worth having: this panel is opened and shut several times
+      on one trip to the fountain.
+
+      `.lazy` is deliberately absent — the grid narrows as the letters land,
+      which is the whole feel of the control. `@keydown.escape` clears rather
+      than closing the shop: an empty box under a filtered grid is the one
+      state a player gets stuck in without a way out that is not the mouse.
+    -->
+    <div class="shop-filter">
+      <label class="shop-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input
+          v-model="searchText"
+          type="search"
+          placeholder="Tìm trang bị…"
+          aria-label="Tìm trang bị"
+          @keydown.escape.stop="clearFilter()"
+        />
+      </label>
+
+      <div v-if="chips.length" class="shop-chips">
+        <button
+          v-for="chip of chips"
+          :key="chip.key"
+          type="button"
+          class="shop-chip"
+          :class="{ 'is-on': filter.stats.includes(chip.key) }"
+          :aria-pressed="filter.stats.includes(chip.key)"
+          @click="toggleStat(chip.key)"
+          v-tap="() => toggleStat(chip.key)"
+        >
+          {{ chip.label }}
+          <span class="shop-chip-count">{{ chip.count }}</span>
+        </button>
+
+        <!-- Only while something is on. A permanently visible clear button is
+             a control that does nothing most of the time, and it would push
+             the chips it clears off the end of the row. -->
+        <button
+          v-if="filtering"
+          type="button"
+          class="shop-chip is-clear"
+          title="Bỏ hết bộ lọc"
+          @click="clearFilter()"
+          v-tap="() => clearFilter()"
+        >
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          Xoá lọc
+        </button>
+      </div>
+    </div>
+
     <div class="shop-main">
       <div class="shop-shelf">
         <section v-for="section of sections" :key="section.key" class="shop-section">
@@ -348,7 +460,24 @@ const lifted = (slot: number): boolean => {
           </div>
         </section>
 
-        <p v-if="!sections.length" class="shop-empty">Chưa có pack nào cung cấp trang bị.</p>
+        <!-- Two different empty shelves, and telling them apart matters: one
+             is a build with no items in it, the other is a filter the player
+             can undo — and the second one comes with the button that undoes
+             it, because the chips may have scrolled out of sight. -->
+        <p v-if="!sections.length && filtering" class="shop-empty">
+          Không có trang bị nào khớp bộ lọc.
+          <button
+            type="button"
+            class="shop-empty-clear"
+            @click="clearFilter()"
+            v-tap="() => clearFilter()"
+          >
+            Xoá lọc
+          </button>
+        </p>
+        <p v-else-if="!sections.length" class="shop-empty">
+          Chưa có pack nào cung cấp trang bị.
+        </p>
       </div>
 
       <ShopDetail

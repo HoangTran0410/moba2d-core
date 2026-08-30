@@ -145,6 +145,115 @@
   flex: none;
 }
 
+/* ----------------------------------------------------------------- filter */
+
+/* The search box and the stat chips, between the header and the shelf.
+
+   `flex: none` for the reason `.shop-warning` above it carries it: `.shop-main`
+   is the only thing in this column allowed to take the leftover height, and a
+   chip row that wrapped to three lines would otherwise eat the grid. */
+.shop-filter {
+  flex: none;
+  padding: 7px 8px 0;
+  border-bottom: 1px solid #fff1;
+}
+
+.shop-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid #ffffff1f;
+  border-radius: 5px;
+  background: #10141c;
+  color: #7c8798;
+}
+
+.shop-search:focus-within {
+  border-color: #c8aa6e88;
+}
+
+.shop-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #dfe4ec;
+  font: inherit;
+  font-size: 0.82em;
+}
+
+/* Safari draws its own round grey pill and a cancel glyph on `type="search"`;
+   both fight the frame above. The field keeps the semantic type — a phone
+   keyboard shows a search key for it — and loses the chrome. */
+.shop-search input::-webkit-search-decoration,
+.shop-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.shop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 7px 0;
+}
+
+.shop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid #ffffff1f;
+  border-radius: 999px;
+  background: #161b25;
+  color: #9aa5b6;
+  font: inherit;
+  font-size: 0.72em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shop-chip:hover {
+  border-color: #ffffff33;
+  color: #dfe4ec;
+}
+
+.shop-chip.is-on {
+  border-color: #c8aa6e;
+  background: #2a2314;
+  color: #e6cc8f;
+}
+
+/* How many items on the shelf grant it. Dim, because it is the chip's
+   subtitle and not its label — the point is to say "eleven" without competing
+   with the word beside it. */
+.shop-chip-count {
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-chip.is-clear {
+  border-color: #ff8a6a44;
+  color: #ffab90;
+}
+
+/* The way out of a filter that hides everything, beside the sentence saying
+   so — the chips themselves may have scrolled out of sight above. */
+.shop-empty-clear {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid #ff8a6a44;
+  border-radius: 999px;
+  background: transparent;
+  color: #ffab90;
+  font: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+}
+
 .shop-main {
   flex: 1;
   min-height: 0;
@@ -795,6 +904,34 @@
 
   .shop-grid {
     grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+  }
+
+  /* One line of chips that scrolls sideways, not four lines that wrap.
+
+     The panel is 460px tall at most here and the grid has to stay the largest
+     thing in it; fifteen wrapped chips would take a third of that before a
+     single item is drawn. `pan-x` for the reason `.shop-shelf` needs `pan-y`:
+     `GameScene` cancels every touch on the page, so this strip scrolls only
+     because the property says it may. */
+  .shop-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+  }
+
+  .shop-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The clear button is the one chip that must not be scrolled past — it is
+     the way out of a filter that emptied the grid. */
+  .shop-chip.is-clear {
+    position: sticky;
+    right: 0;
+    background: #161b25;
   }
 
   /* Full width when it is in force, and absent when it is not. */
