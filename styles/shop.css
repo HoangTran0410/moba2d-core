@@ -227,6 +227,25 @@
   color: #e6cc8f;
 }
 
+/* The stat's icon. Fixed-width so a row of chips lines up on its words rather
+   than wandering with the glyphs, and dimmer than the label for the same
+   reason `.practice-stat-icon` in hud.css is: the word is the source of truth
+   and the icon is what you scan by. It brightens with the chip when the chip
+   is on, since at that point it is the thing carrying "this one is selected"
+   down a row that has scrolled. */
+.shop-chip-icon {
+  flex-shrink: 0;
+  width: 1em;
+  text-align: center;
+  opacity: 0.7;
+  font-size: 0.95em;
+}
+
+.shop-chip:hover .shop-chip-icon,
+.shop-chip.is-on .shop-chip-icon {
+  opacity: 1;
+}
+
 /* How many items on the shelf grant it. Dim, because it is the chip's
    subtitle and not its label — the point is to say "eleven" without competing
    with the word beside it. */

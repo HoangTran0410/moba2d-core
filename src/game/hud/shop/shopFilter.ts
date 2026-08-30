@@ -1,5 +1,6 @@
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
 import { STAT_LABEL } from '@/game/hud/itemStatLines';
+import { STAT_ICON } from '@/game/hud/statIcons';
 import type { ShopRow } from './shopState';
 
 /**
@@ -26,6 +27,11 @@ import type { ShopRow } from './shopState';
  * grants that stat. A shelf with no lifesteal on it grows no lifesteal chip,
  * rather than a chip that filters to nothing.
  *
+ * Each chip wears the stat's own icon from `statIcons.ts` — the same one the
+ * roster's stat sheet draws — with the word kept beside it. The icon is what
+ * makes a row of a dozen pills scannable; the word is what makes an unfamiliar
+ * one readable, so neither replaces the other.
+ *
  * Several chips are **or**, not **and**. "Armour or magic resist" is a real
  * shopping question and "armour and magic resist in one item" is a rarer one;
  * with `and` a second tap usually empties the grid, which reads as the filter
@@ -42,6 +48,17 @@ import type { ShopRow } from './shopState';
 export interface StatChip {
   key: ItemStatKey;
   label: string;
+  /**
+   * The stat's icon, from the shared table every surface that draws stats
+   * reads — `statIcons.ts`. Not chosen here: the roster's stat sheet draws the
+   * same seventeen stats, and two hand-written lists would drift into two
+   * pictures for one thing with nothing to catch it.
+   *
+   * It sits *beside* the label, never instead of it. A row of seventeen
+   * wordless pills is a puzzle, and the icon's job is to let a player who
+   * already knows the word find it without reading all seventeen.
+   */
+  icon: string;
   /** How many items on this shelf grant it — the chip's own subtitle. */
   count: number;
 }
@@ -91,7 +108,7 @@ export function statChips(rows: readonly ShopRow[]): StatChip[] {
   const chips: StatChip[] = [];
   for (const key of ITEM_STAT_KEYS) {
     const count = counts.get(key);
-    if (count) chips.push({ key, label: STAT_LABEL[key], count });
+    if (count) chips.push({ key, label: STAT_LABEL[key], icon: STAT_ICON[key], count });
   }
   return chips;
 }

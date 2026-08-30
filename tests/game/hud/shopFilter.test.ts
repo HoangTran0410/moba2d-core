@@ -10,6 +10,7 @@ import {
   statChips,
 } from '@/game/hud/shop/shopFilter';
 import { STAT_LABEL } from '@/game/hud/itemStatLines';
+import { STAT_ICON } from '@/game/hud/statIcons';
 import type { ShopRow } from '@/game/hud/shop/shopState';
 
 /**
@@ -129,6 +130,18 @@ describe('the stat chips', () => {
     const armourChip = statChips(SHELF).find(chip => chip.key === 'armor')!;
     expect(armourChip.count).toBe(2);
     expect(armourChip.label).toBe(STAT_LABEL.armor);
+  });
+
+  /**
+   * And carries the icon the roster's stat sheet draws for the same stat,
+   * rather than one chosen here. Two hand-written lists would be two pictures
+   * for one stat, and nothing renders, compiles or lints differently when they
+   * disagree — see `statIcons.test.ts`.
+   */
+  it('wears the shared icon for the stat, not one of its own', () => {
+    for (const chip of statChips(SHELF)) {
+      expect(chip.icon, chip.key).toBe(STAT_ICON[chip.key]);
+    }
   });
 
   it('lists them in the card’s own order, not in whatever order items were read', () => {

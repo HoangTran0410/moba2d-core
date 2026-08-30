@@ -379,11 +379,19 @@ const lifted = (slot: number): boolean => {
     </header>
 
     <!-- The one sentence the grid cannot say for itself. Every tile is greyed
-         when the player is away from the platform, which reads as "everything
-         is too expensive" without this line naming the actual reason. -->
+         when the player is out of reach, which reads as "everything is too
+         expensive" without this line naming the actual reason.
+
+         It used to say "đứng trong bệ đá", which was true only by accident: a
+         fountain's shop reach and its platform were one number until a map
+         could widen the first (`FountainStats.shopRange`). On a map that does,
+         the sentence sent people walking all the way onto a platform they were
+         already able to buy from. "Tầm mua đồ" is the same phrase the map
+         picker's rules list and the editor's ring both use, so the three
+         surfaces name one rule once. -->
     <p v-if="!canTrade" class="shop-warning">
       <i class="fa-solid fa-triangle-exclamation"></i>
-      Chỉ mua bán được khi đứng trong bệ đá của đội mình
+      Chỉ mua bán được khi ở trong tầm mua đồ của bệ đá đội mình
     </p>
 
     <!--
@@ -423,6 +431,11 @@ const lifted = (slot: number): boolean => {
           @click="toggleStat(chip.key)"
           v-tap="() => toggleStat(chip.key)"
         >
+          <!-- The stat's own icon, from the table the roster's stat sheet
+               reads too (`statIcons.ts`) — an anchor to find a chip by
+               without reading the whole row. The word stays: seventeen
+               wordless pills is a puzzle, not a filter. -->
+          <i class="fa-solid shop-chip-icon" :class="chip.icon" aria-hidden="true"></i>
           {{ chip.label }}
           <span class="shop-chip-count">{{ chip.count }}</span>
         </button>

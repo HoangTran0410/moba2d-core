@@ -271,6 +271,20 @@ export default defineConfig({
            */
           if (id.includes('src/game/items/itemStats')) return 'shared';
           /**
+           * And the icons those keys wear. `statIcons.ts` is one string table
+           * whose only import is a `type`, which is erased before Rollup sees
+           * the module — so it has the same "safe anywhere" shape as the three
+           * helpers above.
+           *
+           * Pinned rather than left to land where its importers do, because
+           * the whole point of the file is that *any* surface may draw a stat:
+           * today that is the shop's filter chips and the roster's stat sheet,
+           * both `game`, and Rollup would put it there. The first menu-side
+           * reader would then be a `pregame -> game` edge — the one `RULES` in
+           * `scripts/check-chunks.mjs` forbids — for a 25-line lookup table.
+           */
+          if (id.includes('src/game/hud/statIcons')) return 'shared';
+          /**
            * Vite's own `__vitePreload` runtime, which every dynamic import in
            * the app calls.
            *

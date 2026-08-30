@@ -1,5 +1,6 @@
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
+import { STAT_ICON } from '@/game/hud/statIcons';
 
 /**
  * What a roster card says about a participant.
@@ -32,8 +33,12 @@ export interface StatRow {
   /**
    * A Font Awesome class (`fa-heart`, …) rendered beside the label — a visual
    * anchor to scan by, with the word kept so an unfamiliar icon is never the
-   * only thing carrying the meaning. Icons where a convention exists, and a
-   * plausible one where it does not; the text is the source of truth.
+   * only thing carrying the meaning. The text is the source of truth.
+   *
+   * The strings used to be written here, one literal per row. They live in
+   * `src/game/hud/statIcons.ts` now, because the shop's filter chips draw the
+   * same stats and a second hand-written list would have been a second list to
+   * keep in step — with nothing able to notice when it stopped being kept.
    */
   icon: string;
   /**
@@ -92,22 +97,22 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
     {
       title: 'Sinh tồn',
       rows: [
-        { icon: 'fa-heart', label: 'Máu', value: pool(stats.health.value, stats.maxHealth.value) },
+        { icon: STAT_ICON.health, label: 'Máu', value: pool(stats.health.value, stats.maxHealth.value) },
         {
-          icon: 'fa-droplet',
+          icon: STAT_ICON.mana,
           label: 'Năng lượng',
           value: pool(stats.mana.value, stats.maxMana.value),
         },
-        { icon: 'fa-heart-pulse', label: 'Hồi máu', value: perSecond(stats.healthRegen.value) },
-        { icon: 'fa-bolt', label: 'Hồi năng lượng', value: perSecond(stats.manaRegen.value) },
+        { icon: STAT_ICON.healthRegen, label: 'Hồi máu', value: perSecond(stats.healthRegen.value) },
+        { icon: STAT_ICON.manaRegen, label: 'Hồi năng lượng', value: perSecond(stats.manaRegen.value) },
         {
-          icon: 'fa-shield-halved',
+          icon: STAT_ICON.armor,
           label: 'Giáp',
           value: whole(stats.armor.value),
           tint: cssColor(DAMAGE_TEXT_COLOR.PHYSICAL),
         },
         {
-          icon: 'fa-hat-wizard',
+          icon: STAT_ICON.magicResist,
           label: 'Kháng phép',
           value: whole(stats.magicResist.value),
           tint: cssColor(DAMAGE_TEXT_COLOR.MAGIC),
@@ -117,15 +122,15 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
     {
       title: 'Tấn công',
       rows: [
-        { icon: 'fa-khanda', label: 'Sát thương', value: whole(stats.attackDamage.value) },
+        { icon: STAT_ICON.attackDamage, label: 'Sát thương', value: whole(stats.attackDamage.value) },
         {
-          icon: 'fa-stopwatch',
+          icon: STAT_ICON.attackSpeed,
           label: 'Tốc đánh',
           value: `${Math.max(MIN_ATTACKS_PER_SECOND, stats.attackSpeed.value).toFixed(2)} đòn/giây`,
         },
-        { icon: 'fa-bullseye', label: 'Tầm đánh', value: whole(stats.attackRange.value) },
-        { icon: 'fa-burst', label: 'Chí mạng', value: percent(stats.critChance.value) },
-        { icon: 'fa-hand-holding-droplet', label: 'Hút máu', value: percent(stats.omnivamp.value) },
+        { icon: STAT_ICON.attackRange, label: 'Tầm đánh', value: whole(stats.attackRange.value) },
+        { icon: STAT_ICON.critChance, label: 'Chí mạng', value: percent(stats.critChance.value) },
+        { icon: STAT_ICON.omnivamp, label: 'Hút máu', value: percent(stats.omnivamp.value) },
       ],
     },
     {
@@ -136,12 +141,12 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
         // `Giáp`/`Kháng phép` alone so a player can find them at a glance —
         // `participantStats.test.ts` holds it to exactly those two.
         {
-          icon: 'fa-wand-sparkles',
+          icon: STAT_ICON.abilityPower,
           label: 'Sức mạnh phép',
           value: percent(stats.abilityPower.value),
         },
         {
-          icon: 'fa-clock-rotate-left',
+          icon: STAT_ICON.cooldownReduction,
           label: 'Giảm hồi chiêu',
           value: percent(stats.cooldownReduction.value),
         },
@@ -150,19 +155,19 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
     {
       title: 'Cơ động',
       rows: [
-        { icon: 'fa-person-running', label: 'Tốc chạy', value: whole(stats.speed.value) },
-        { icon: 'fa-expand', label: 'Kích thước', value: whole(stats.size.value) },
-        { icon: 'fa-eye', label: 'Tầm nhìn', value: whole(stats.visionRadius.value) },
+        { icon: STAT_ICON.speed, label: 'Tốc chạy', value: whole(stats.speed.value) },
+        { icon: STAT_ICON.size, label: 'Kích thước', value: whole(stats.size.value) },
+        { icon: STAT_ICON.visionRadius, label: 'Tầm nhìn', value: whole(stats.visionRadius.value) },
       ],
     },
     {
       title: 'Thành tích',
       rows: [
-        { icon: 'fa-crosshairs', label: 'Hạ gục', value: whole(tally.kills) },
-        { icon: 'fa-skull', label: 'Bị hạ', value: whole(tally.deaths) },
-        { icon: 'fa-coins', label: 'Lính & quái', value: whole(tally.minionsKilled) },
-        { icon: 'fa-hand-fist', label: 'Sát thương gây ra', value: whole(tally.damageDealt) },
-        { icon: 'fa-heart-crack', label: 'Sát thương nhận', value: whole(tally.damageTaken) },
+        { icon: STAT_ICON.kills, label: 'Hạ gục', value: whole(tally.kills) },
+        { icon: STAT_ICON.deaths, label: 'Bị hạ', value: whole(tally.deaths) },
+        { icon: STAT_ICON.minionsKilled, label: 'Lính & quái', value: whole(tally.minionsKilled) },
+        { icon: STAT_ICON.damageDealt, label: 'Sát thương gây ra', value: whole(tally.damageDealt) },
+        { icon: STAT_ICON.damageTaken, label: 'Sát thương nhận', value: whole(tally.damageTaken) },
       ],
     },
   ];
