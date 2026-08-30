@@ -134,8 +134,11 @@ describe('a shield that stands in front of only some damage', () => {
     expect(shield.description).toContain('sát thương phép');
     expect(shield.description).toContain('damage magic');
 
+    // And an unfiltered one answers the same question rather than staying
+    // silent about it: "hấp thụ 35 sát thương" reads as a tooltip that forgot,
+    // not as a promise to eat everything.
     const { shield: general } = shielded(null);
-    expect(general.description).toContain('sát thương');
+    expect(general.description).toContain('mọi loại sát thương');
     expect(general.description, 'an unfiltered shield claimed a type').not.toContain('phép');
   });
 });

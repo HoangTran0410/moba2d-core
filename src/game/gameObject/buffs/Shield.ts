@@ -80,12 +80,19 @@ export default class Shield extends Buff {
 
   /**
    * The damage this pool answers for, in the words and the colours a spell
-   * description uses. Unfiltered reads "sát thương" with no type word, because
-   * a shield that eats everything makes no claim about one type over another.
+   * description uses.
+   *
+   * An unfiltered shield says "mọi loại sát thương" rather than a bare "sát
+   * thương", and the extra two words are the whole reason this method exists.
+   * "Hấp thụ 35 sát thương" is silent about the question a player is actually
+   * asking — *which* damage — and silence reads as "the tooltip forgot" rather
+   * than as "all of it". Saying it outright is what makes the filtered case
+   * mean something too: a shield that names one type is visibly making a
+   * narrower promise than one that names all of them.
    */
   private absorbedKinds(): string {
     if (!this.absorbs || this.absorbs.length === 0 || this.absorbs.length >= 3) {
-      return 'sát thương';
+      return 'mọi loại sát thương';
     }
     const named = this.absorbs.map(
       type => `<span class="damage ${DAMAGE_CLASS[type]}">sát thương ${DAMAGE_WORD[type]}</span>`
