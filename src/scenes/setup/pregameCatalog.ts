@@ -11,6 +11,7 @@ import {
   type SpellCatalogEntry,
 } from '@/game/config/spellCatalog';
 import { contentCatalog } from '@/content/catalog';
+import { localIdOf } from '@/content/PackRegistry';
 import { readInstalledPacks } from '@/content/installedPackStore';
 import { removeAccents } from '@/utils/index';
 
@@ -270,7 +271,39 @@ export const resolveCatalogEntry = (id: string): SpellCatalogEntry | null => {
     (bare === null ? undefined : catalogById.get(bare)) ??
     catalogById.get(id) ??
     packSpellCatalogEntry(id);
-  return entry ?? null;
+  // Last resort: **a bare id belonging to whichever pack is installed.**
+  //
+  // Two things arrive here in that form and neither can be re-spelled at the
+  // call site. Core's own `BASIC_ATTACK_ID` is bare by definition — it names a
+  // spell every pack has and no pack owns — and a *persisted* `summonerD` /
+  // `summonerF` is bare because that is the form every config written before
+  // packs were installable already holds.
+  //
+  // Every branch above is bundled-pack-shaped: `catalogById` is keyed by
+  // `spellCatalogIds()`, which drops anything `bareCatalogId` refuses, so with
+  // only a linked pack installed that map is *empty* and the first two both
+  // miss; `packSpellCatalogEntry` then asks the registry for
+  // `reference:BasicAttack`, which no linked pack ships. A miss reads as
+  // `'random'` in the loadout editor, so the A slot and both summoner slots
+  // drew dice over choices the player had made, and the match spawned
+  // something else.
+  return entry ?? byLocalId(id);
+};
+
+/**
+ * The entry whose *local* id matches, whatever pack qualified it.
+ *
+ * Deliberately the last branch and not the first: an exact id must always win,
+ * so a pack cannot shadow another pack's spell by naming a spell the same
+ * thing. Only reached when nothing else matched, which is a handful of slots
+ * per resolve.
+ */
+const byLocalId = (id: string): SpellCatalogEntry | null => {
+  const wanted = localIdOf(id);
+  for (const qualifiedId of contentCatalog().spellDisplayIds()) {
+    if (localIdOf(qualifiedId) === wanted) return packSpellCatalogEntry(qualifiedId);
+  }
+  return null;
 };
 
 let cached: PregameCatalog | null = null;
@@ -313,7 +346,11 @@ export const getPregameCatalog = (): PregameCatalog => {
      * `string`, and the shelf then no longer satisfies `KitShelf`.
      */
     const nonChampionKindOf = (entries: KitShelfEntry[]): KitShelf['nonChampionKind'] => {
-      if (entries.some(e => e.entry.id === BASIC_ATTACK_ID)) return 'basicAttack';
+      // `localIdOf`, because this asks *which spell* rather than which pack:
+      // `BASIC_ATTACK_ID` is bare and an installed pack's entry is
+      // `<pack>:BasicAttack`. See that helper's own comment for what the bare
+      // comparison cost.
+      if (entries.some(e => localIdOf(e.entry.id) === BASIC_ATTACK_ID)) return 'basicAttack';
       if (entries.length > 0 && entries.every(e => summonerIds.has(e.entry.id))) return 'summoner';
       return null;
     };

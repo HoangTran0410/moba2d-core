@@ -171,8 +171,20 @@ const rosterRows = computed(() => {
 
 /**
  * Which packs are unfolded. Session state of this mount, deliberately not
- * persisted — the fold is a navigation aid, not a setting. Empty means every
- * pack starts folded; `packShelvesVisible` says when that is overridden.
+ * persisted — the fold is a navigation aid, not a setting.
+ *
+ * **Seeded with the biggest pack, because an empty roster is not a fold.**
+ * Starting with nothing expanded is right the moment there are several large
+ * packs and wrong in the case the game actually ships: one content pack plus
+ * core's own single example champion is two groups, so the champion picker
+ * opened with sixty-six shelves in it and *none* of them on screen — two
+ * headings and a blank grid, every time, since the set is rebuilt on every
+ * mount. The fold was doing its job on a roster that had nothing to bury.
+ *
+ * The biggest one rather than all of them keeps what the fold is for: a second
+ * pack's rows still do not push the first pack's off the screen. A player can
+ * collapse this one like any other — the seed is where the set starts, not a
+ * rule about where it stays.
  */
 const expandedPacks = ref(new Set<string>());
 const togglePack = (packId: string): void => {
@@ -181,6 +193,20 @@ const togglePack = (packId: string): void => {
   else next.add(packId);
   expandedPacks.value = next;
 };
+{
+  // One pack needs no heading and no fold (`packShelvesVisible` short-circuits
+  // on `groupCount <= 1`), so there is nothing to seed and nothing to open.
+  const groups = new Map<string, number>();
+  for (const row of rosterRows.value.rows) {
+    if (row.packId === null) continue;
+    groups.set(row.packId, (groups.get(row.packId) ?? 0) + 1);
+  }
+  if (groups.size > 1) {
+    const biggest = [...groups.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    expandedPacks.value = new Set([biggest]);
+  }
+}
+
 const packOpen = (packId: string): boolean =>
   packShelvesVisible(packId, expandedPacks.value, props.searchActive, rosterRows.value.groupCount);
 

@@ -83,9 +83,38 @@ const report = {};
 const evaluate = (fn, arg) => page.evaluate(fn, arg);
 const CFG = 'moba2d:pregameConfig:v1';
 
+/**
+ * An id-shaped string, minus the pack that qualified it.
+ *
+ * This script names spells the way a person does — `Ahri_Q`, `BasicAttack`,
+ * `Ghost` — and a *bundled* pack's ids look the same. An **installed** pack
+ * qualifies everything it owns (`lol:Ahri_Q`), which is the form the DOM, the
+ * stored config and the spawned kit all carry when the roster comes from a
+ * linked pack. Comparing the two spellings failed every assertion in this file
+ * that names a spell, and the failure said nothing about the feature: the
+ * editor was storing exactly the right ability under exactly the right name for
+ * where it came from.
+ *
+ * So the comparison drops the prefix on both sides. What this script is
+ * actually asserting is *which spell*, never which registry spelled it — and a
+ * drive that had to be rewritten for each is a drive that stops running the day
+ * a pack is linked, which is how it stopped running.
+ *
+ * Narrow on purpose: `<lowercase pack>:<Identifier>` and nothing else, so a
+ * label, a URL or a piece of Vietnamese carrying a colon is left alone.
+ */
+const ID_WITH_PACK = /^[a-z][a-z0-9_-]*:[A-Za-z][A-Za-z0-9_]*$/;
+const unqualify = value => {
+  if (typeof value === 'string') return ID_WITH_PACK.test(value) ? value.split(':')[1] : value;
+  if (Array.isArray(value)) return value.map(unqualify);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unqualify(v)]));
+  return value;
+};
+
 /** Records a mismatch instead of throwing, so one bad expectation doesn't hide the rest of the run. */
 const expect = (label, actual, expected) => {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  if (JSON.stringify(unqualify(actual)) !== JSON.stringify(unqualify(expected))) {
     errors.push(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   }
 };
@@ -236,6 +265,22 @@ const catalogShape = () =>
       shelves: kitShelves.length,
       entries: kitShelves.reduce((total, shelf) => total + shelf.entries.length, 0),
       withKit: kitShelves.filter(shelf => shelf.kit.length > 0).length,
+      /**
+       * The shelves a player actually sees on opening: the roster folds by pack
+       * and starts with the biggest one expanded, so a second pack cannot push
+       * the first off the screen (`KitRoster.vue`). One pack means no fold at
+       * all, and this is then every shelf that has a kit.
+       */
+      biggestPackWithKit: (() => {
+        const counts = new Map();
+        for (const shelf of kitShelves) {
+          if (shelf.kit.length === 0) continue;
+          counts.set(shelf.packId, (counts.get(shelf.packId) ?? 0) + 1);
+        }
+        return counts.size <= 1
+          ? [...counts.values()].reduce((a, b) => a + b, 0)
+          : Math.max(...counts.values());
+      })(),
       /** Named a shelf that has abilities but no `championName` — see the partial-shelf check. */
       partialShelfNames: kitShelves
         .filter(shelf => shelf.kit.length > 0 && !shelf.championName)
@@ -577,11 +622,9 @@ try {
   await openParticipantAt(1);
   await page.waitForSelector('.loadout-modal', { state: 'visible' });
   // Deliberately a spell the kit above does *not* contain, so "hovering picks
-  // nothing" is visible in the roster too: `.catalog-spell-card.selected`
-  // tracks whatever sits in the active slot (Olaf_Q, from the kit just built),
-  // and must still say so with Lux_Q under the cursor.
-  await openShelf('Lux'); // a closed tile hides its cards, and hover needs a visible one
-  await page.hover('.catalog-spell-card[data-spell="Lux_Q"]');
+  // nothing" is checkable in the roster too.
+  await openShelf('Lux'); // a closed tile builds no cards, and hover needs a real one
+  await page.hover(`.catalog-spell-card[data-spell="${await spellId('Lux_Q')}"]`);
   await page.waitForTimeout(250);
   report.hoverDescribesWithoutPicking = await evaluate(() => {
     const peek = document.querySelector('.spell-peek');
@@ -621,8 +664,12 @@ try {
    * wrong it is — see CLAUDE.md's Testing section.
    */
   report.cooldownUnderCdr = await evaluate(async () => {
-    const catalog = await import('/src/game/config/spellCatalog.ts');
-    const entry = catalog.listSpellCatalog().find(e => e.id === 'Lux_Q');
+    // `resolveCatalogEntry`, not a scan of `listSpellCatalog()`: that list is
+    // the *bundled* pack's alone and is empty whenever the roster comes from a
+    // linked one, so the scan found nothing and this threw before it could
+    // check anything. The resolver is the thing that knows how to spell an id.
+    const { resolveCatalogEntry } = await import('/src/scenes/setup/pregameCatalog.ts');
+    const entry = resolveCatalogEntry('Lux_Q');
     const rawMs = entry.display.coolDownMs;
     return {
       rawLabel: `${(rawMs / 1000).toFixed(1)}s`,
@@ -635,7 +682,13 @@ try {
   expect('hoverDescribesWithoutPicking.insideViewport', peeked.insideViewport, true);
   expect('hoverDescribesWithoutPicking.dialogCount', peeked.dialogCount, 1);
   expect('hoverDescribesWithoutPicking.changedPills', peeked.changedPills, 0);
-  expect('hoverDescribesWithoutPicking.selectedCard', peeked.selectedCard, 'Olaf_Q');
+  // Nothing reads as selected, and that is the assertion. The active slot
+  // holds Olaf_Q while Lux's shelf is the open one, so Olaf's card is not built
+  // — and it was never *on screen* even back when it was, since a closed shelf
+  // hid it. What matters is that the card under the cursor did not quietly
+  // become the pick: `changedPills` above says the draft is untouched, and this
+  // says the roster agrees.
+  expect('hoverDescribesWithoutPicking.selectedCard', peeked.selectedCard, null);
   if (!peeked.cooldown?.includes(report.cooldownUnderCdr.halvedLabel)) {
     errors.push(
       `hoverDescribesWithoutPicking.cooldown: "${peeked.cooldown}" does not show the 50% CDR value ${report.cooldownUnderCdr.halvedLabel} (raw ${report.cooldownUnderCdr.rawLabel})`
@@ -655,7 +708,7 @@ try {
       () => document.querySelector('.spell-peek .spell-detail-header h3')?.textContent ?? null
     );
   await openShelf('Yasuo');
-  await page.hover('.catalog-spell-card[data-spell="Yasuo_W"]');
+  await page.hover(`.catalog-spell-card[data-spell="${await spellId('Yasuo_W')}"]`);
   await page.waitForTimeout(250);
   const cardTitle = await peekTitle();
   // W, not the active slot (Q): hovering has to describe without selecting.
@@ -943,9 +996,14 @@ try {
   // ...while every ability the catalogue has is still reachable from the grid,
   // which is what the count above used to be standing in for.
   expect('rosterClosed.advertised', report.rosterClosed.advertised, report.catalog.entries);
-  // Every shelf that has a kit, and only those: the two that are not a champion
-  // are opened by selecting the slot they serve, never by being tapped.
-  expect('rosterClosed.shelvesVisible', report.rosterClosed.shelvesVisible, report.catalog.withKit);
+  // Every shelf of the expanded pack that has a kit, and only those: the two
+  // that are not a champion are opened by selecting the slot they serve, never
+  // by being tapped, and another pack's rows stay behind their own heading.
+  expect(
+    'rosterClosed.shelvesVisible',
+    report.rosterClosed.shelvesVisible,
+    report.catalog.biggestPackWithKit
+  );
   expect(
     'rosterClosed.nonChampionShelvesVisible',
     report.rosterClosed.nonChampionShelvesVisible,

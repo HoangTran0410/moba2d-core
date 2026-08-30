@@ -84,6 +84,25 @@ export interface QualifiedArchetype extends Omit<ArchetypeDef, 'id'> {
 
 export const qualify = (packId: string, localId: string): string => `${packId}:${localId}`;
 
+/**
+ * The inverse: the local half of a qualified id, and the id itself when it
+ * carries no prefix.
+ *
+ * For the rules that are about *which spell this is* rather than which pack
+ * shipped it. Core owns a handful of those — `BASIC_ATTACK_ID` is the one that
+ * found this missing — and they were written against bare ids, back when the
+ * only pack was bundled. An installed pack qualifies everything, so the
+ * comparison stopped matching and took a feature with it silently: the loadout
+ * editor's A slot opens the shelf whose entry *is* the basic attack, and with a
+ * linked pack there was no such shelf, so the slot opened nothing and the
+ * basic-attack shelf — which has no tile of its own — became unreachable.
+ *
+ * Not `spellCatalog.ts`'s `bareCatalogId`, which answers `null` for any pack but
+ * the bundled one on purpose: that one is asking "is this ours", and this is
+ * asking "what is it called".
+ */
+export const localIdOf = (id: string): string => id.slice(id.indexOf(':') + 1);
+
 export class PackRegistry {
   private readonly packs: ContentPack[] = [];
   private readonly sources = new Map<string, SpellSource>();

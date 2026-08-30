@@ -39,7 +39,14 @@ vi.mock('@/game/config/spellCatalog', () => ({
 }));
 
 vi.mock('@/content/catalog', () => ({
-  contentCatalog: () => ({ champions: () => [] }),
+  contentCatalog: () => ({
+    champions: () => [],
+    // What the resolver's last branch walks: every id any installed pack has
+    // display data for. The double carries the qualified spelling of the two
+    // spells above so a *bare* lookup can still find them, which is the case
+    // `BASIC_ATTACK_ID` and a persisted `summonerD` both arrive as.
+    spellDisplayIds: () => ['lol:Alistar_Q'],
+  }),
 }));
 
 vi.mock('@/content/installedPackStore', () => ({ readInstalledPacks: () => [] }));
@@ -70,5 +77,28 @@ describe('loadout slot id resolution', () => {
   it('answers null for an id no pack provides', async () => {
     const { resolveCatalogEntry } = await load();
     expect(resolveCatalogEntry('lol:Nobody_Q')).toBeNull();
+  });
+
+  /**
+   * The other half of the same crossing, and the one that had no branch at all.
+   *
+   * Core names the basic attack bare (`BASIC_ATTACK_ID`) because it names a
+   * spell every pack has and none owns, and a config persisted before packs
+   * were installable holds its summoner spells bare for the same reason. Every
+   * branch above is bundled-pack-shaped, so with only a *linked* pack installed
+   * all three miss — and a miss reads as `'random'` in the loadout editor. The
+   * A slot drew dice over a basic attack the player could not pick anywhere
+   * else, because that shelf has no tile of its own.
+   */
+  it('resolves a bare id against whichever pack actually provides it', async () => {
+    const { resolveCatalogEntry } = await load();
+    expect(resolveCatalogEntry('Alistar_Q')?.display.name).toBe('Alistar Q');
+  });
+
+  it('but an exact id still wins, so no pack can shadow another', async () => {
+    const { resolveCatalogEntry } = await load();
+    // `Ahri_Q` is in the bundled map; the local-id sweep must never get a look
+    // in ahead of it.
+    expect(resolveCatalogEntry('Ahri_Q')?.display.name).toBe('Ahri Q');
   });
 });
