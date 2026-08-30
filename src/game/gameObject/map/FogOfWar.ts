@@ -6,6 +6,8 @@ import { PredefinedFilters } from '@/game/managers/ObjectManager';
 import { Circle } from '@/libs/quadtree';
 import { removeGraphics } from '@/utils/graphics.utils';
 import { hasLineOfSight } from '@/game/combat/Vision';
+import { revealedTo } from '@/game/combat/AttackReveal';
+import { resolveVisionTuning } from '@/game/config/mapTuning';
 
 // The fog polygon is recomputed at the unit's live position every frame — no
 // throttle, no interpolation — so the gradient (drawn every frame at the
@@ -282,10 +284,57 @@ export default class FogOfWar {
     // is what keeps the painting side of the fog separable from the game: what
     // a unit may target is `combat/Vision.ts`'s answer, per observer, never
     // this one.
+    //
+    // The reset is not to `false` but to "unless it just gave itself away".
+    // An enemy who unit-targeted somebody out of a brush is lit for two
+    // seconds wherever they are standing — that is the whole of the reported
+    // bug ("đứng trong bụi, đánh vào kẻ địch, expect là phải bị lộ"), and
+    // folding it into the reset that already walks every object is what keeps
+    // it from being a third full pass. `combat/AttackReveal.ts` has the rule.
+    const viewer = { teamId: this.game.player?.teamId };
+    /** Attackers lit this frame — each one lights a circle around itself too. */
+    const revealedEnemies: any[] = [];
     this.game.objectManager.objects.forEach((o: any) => {
-      if (o instanceof AttackableUnit && !o.alwaysVisible) o.visibleToPlayerTeam = false;
+      if (!(o instanceof AttackableUnit) || o.alwaysVisible) return;
+      const gaveItselfAway = revealedTo(viewer, o);
+      o.visibleToPlayerTeam = gaveItselfAway;
+      if (gaveItselfAway) revealedEnemies.push(o);
     });
     visiblePlayers.forEach((p: any) => (p.visibleToPlayerTeam = true));
+
+    // A revealed attacker is a *revealer*, on the enemy's behalf.
+    //
+    // Two things follow from that and both are needed. League reveals a
+    // **radius**, not a body, and that is the half that matters in a brush
+    // fight: two enemies waiting in one bush, one swings, and both are seen —
+    // revealing only the swinger leaves their partner invisible beside a body
+    // you can see. And the fog is *painted after the world*, so a unit flagged
+    // visible with no hole burned around it is a unit drawn and then covered
+    // over: targetable, on the minimap, and not on screen. Pushing a sight
+    // polygon here is what makes the reveal something a player can see.
+    //
+    // Wall-aware, like every other granted circle in this pass and for the
+    // reason recorded there: a plain disc reaches through walls, and then what
+    // is drawn and what may be targeted stop agreeing.
+    if (revealedEnemies.length) {
+      const reach = resolveVisionTuning(this.game.mapTuning).attackRevealRadius;
+      for (const attacker of revealedEnemies) {
+        revealCircles.push({
+          source: attacker,
+          x: attacker.position.x,
+          y: attacker.position.y,
+          r: reach,
+        });
+        if (nearCamera(attacker.position.x, attacker.position.y, reach)) {
+          allSightPoly.push({
+            object: attacker,
+            sightPoly: this.getSightPoly(attacker, reach, GRANTED_SIGHT_TOLERANCE_PX),
+            radius: reach,
+            ring: GRANTED_SIGHT_RING_PX,
+          });
+        }
+      }
+    }
 
     // Granted circles light any body standing in them — distance first, because
     // it rejects almost everything for two multiplies, then the wall test.
@@ -333,6 +382,11 @@ export default class FogOfWar {
    * three-line predicate no pack has any use for. The geometry itself is *not*
    * copied: both call the same public `hasLineOfSight`.
    *
+   * The `revealedTo` line is the newer of the two non-geometry rules and
+   * outranks everything under it: a unit that unit-targeted somebody is lit for
+   * its enemies through a wall as readily as out of a brush
+   * (`combat/AttackReveal.ts`).
+   *
    * The `isInsideBush` line is the half that is not geometry. `TerrainMap`
    * maintains that boolean for champions only, so for a minion eye it reads
    * false always, and the rule it states is "a champion in a bush is not lit by
@@ -342,6 +396,7 @@ export default class FogOfWar {
    */
   grantedEyeSees(eye: any, target: any): boolean {
     if (!eye?.position || !target?.position) return false;
+    if (revealedTo(eye, target)) return true;
     if (target.isInsideBush && !eye.isInsideBush) return false;
     return hasLineOfSight(this.game, eye.position, target.position);
   }

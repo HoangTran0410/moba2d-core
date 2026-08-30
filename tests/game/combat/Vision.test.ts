@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import { canSee, hasLineOfSight } from '../../../src/game/combat/Vision';
+import { DEFAULT_ATTACK_REVEAL_MS, revealedTo } from '../../../src/game/combat/AttackReveal';
 import { Quadtree, Rectangle } from '../../../src/libs/quadtree';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
 import { buildContentApi } from '../../../src/content/ContentApi';
@@ -238,6 +239,84 @@ describe('canSee', () => {
     indexObjects(game, [looker, enemy]);
 
     expect(canSee(looker, enemy)).toBe(true);
+  });
+
+  /**
+   * Attacking out of the dark gives you away — League's rule, quoted in
+   * `combat/AttackReveal.ts`, and the reported bug: standing in a brush,
+   * hitting somebody, and staying invisible.
+   *
+   * It is checked here as well as in the fog because these two answers have to
+   * agree. A body the fog draws and this refuses is a body the player can see
+   * and cannot click, which is the exact drift this whole module exists to
+   * close — see its header.
+   */
+  describe('a unit that gave itself away', () => {
+    it('is seen out of the bush it attacked from', () => {
+      const looker = champion('blue', 0);
+      const enemy = champion('red', 300);
+      enemy.isInsideBush = true;
+      indexObjects(game, [looker, enemy]);
+      expect(canSee(looker, enemy), 'the bush still hides it before it swings').toBe(false);
+
+      enemy.revealForAttack();
+
+      expect(canSee(looker, enemy)).toBe(true);
+    });
+
+    /**
+     * And through a wall, which is the half the report only guessed at. League
+     * reveals a circle of *fog*, so the rule is not about brush at all: a
+     * champion behind a wall who unit-targets somebody is lit by exactly the
+     * same sentence.
+     */
+    it('is seen through a wall it attacked from behind', () => {
+      const looker = champion('blue', 0);
+      const enemy = champion('red', 300);
+      indexObjects(game, [looker, enemy]);
+      terrain([{ type: 'wall', vertices: slab(100, -100, 40, 200) }]);
+      expect(canSee(looker, enemy)).toBe(false);
+
+      enemy.revealForAttack();
+
+      expect(canSee(looker, enemy)).toBe(true);
+    });
+
+    /**
+     * The reveal is granted to the attacker's *enemies*, and the predicate is
+     * asserted directly because `canSee` cannot show it: a champion is a
+     * borrowed eye for its own team and therefore always sees itself, so an
+     * ally in a bush is visible to you with or without this rule. What the team
+     * test actually protects is `FogOfWar`'s pass, which walks every unit and
+     * would otherwise light your own side's bush-campers on your screen and,
+     * worse, count them as "revealed enemies" lighting a circle around
+     * themselves.
+     */
+    it('is granted to the other side only', () => {
+      const attacker = champion('red', 300);
+      attacker.revealForAttack();
+
+      expect(revealedTo({ teamId: 'blue' }, attacker)).toBe(true);
+      expect(revealedTo({ teamId: 'red' }, attacker)).toBe(false);
+      expect(revealedTo({ teamId: 'blue' }, champion('red', 400))).toBe(false);
+    });
+
+    it('goes dark again when the reveal runs out', () => {
+      const looker = champion('blue', 0);
+      const enemy = champion('red', 300);
+      enemy.isInsideBush = true;
+      indexObjects(game, [looker, enemy]);
+
+      enemy.revealForAttack();
+      expect(canSee(looker, enemy)).toBe(true);
+
+      // Match time, not wall clock: a reveal that burned down behind the paused
+      // config panel would expire before the player who opened it ever saw the
+      // body.
+      (game as unknown as { matchTimeMs: number }).matchTimeMs = DEFAULT_ATTACK_REVEAL_MS + 1;
+
+      expect(canSee(looker, enemy)).toBe(false);
+    });
   });
 
   it.skipIf(!StealthWard_Object)('sees through a friendly ward on the far side of the wall', () => {

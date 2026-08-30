@@ -30,6 +30,7 @@ import {
   type AmplificationSource,
 } from '@/game/combat/Amplification';
 import { isNetClient } from '@/game/net/netRole';
+import { resolveVisionTuning } from '@/game/config/mapTuning';
 
 export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
   game: GameObjectRuntimeContext;
@@ -180,6 +181,44 @@ export default class AttackableUnit extends GameObject {
   displacementRevision = 0;
   stats: Stats;
   isInsideBush = false;
+
+  /**
+   * Match time this unit stops being given away by its own attack. 0 = never
+   * attacked out of the dark, which is every unit that has not.
+   *
+   * Match time, not wall clock: the config panel holds the match paused, and a
+   * reveal that burned down behind a paused screen would expire before the
+   * player who opened it ever saw the body.
+   */
+  private _revealedUntilMs = 0;
+
+  /**
+   * Gave itself away by unit-targeting somebody — see `combat/AttackReveal.ts`
+   * for the rule and where League states it.
+   *
+   * Read by `combat/Vision.ts` (what may be targeted) and `FogOfWar` (what is
+   * drawn), which is the same pair `isInsideBush` above is read by, and for the
+   * same reason: the fog is only a promise while the two agree.
+   */
+  get isRevealed(): boolean {
+    return this._revealedUntilMs > (this.game?.matchTimeMs ?? 0);
+  }
+
+  /**
+   * Light this unit up for its enemies. Called by whoever performed the action.
+   *
+   * The duration is the *map's*, read at the moment of the swing rather than
+   * captured at construction — the same live read `Champion.die` makes for a
+   * respawn timer, and for the same reason: a map's numbers belong to the match,
+   * not to the objects that happened to exist when it started. A map that sets
+   * `attackRevealMs: 0` turns its brushes into real stealth, and this is the
+   * line that makes that true rather than a number in a table nothing reads.
+   */
+  revealForAttack(): void {
+    const ms = resolveVisionTuning(this.game?.mapTuning).attackRevealMs;
+    if (ms <= 0) return;
+    this._revealedUntilMs = (this.game?.matchTimeMs ?? 0) + ms;
+  }
 
   /**
    * Bodies that push but never get pushed: turrets (anchored, and they rewrite

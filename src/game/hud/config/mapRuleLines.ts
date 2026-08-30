@@ -6,6 +6,7 @@ import {
   resolveFountainStats,
   resolveMinionTypes,
   resolveTerrainTuning,
+  resolveVisionTuning,
   resolveTurretPreset,
 } from '@/game/config/mapTuning';
 import type { MapTuning } from '@/content/ContentPack';
@@ -149,6 +150,38 @@ const fountainLines = (tuning: MapTuning | undefined): MapRuleGroup[] => {
   return group('Bệ đá', lines);
 };
 
+/**
+ * How much a brush is worth on this map.
+ *
+ * Said in words rather than through `differing` for `attackRevealMs: 0`,
+ * because "0s" is a number that reads as a rounding error when it is in fact
+ * the single most map-defining thing on this list: brush stops being cover you
+ * can be found in and becomes stealth you can fight out of.
+ */
+const visionLines = (tuning: MapTuning | undefined): MapRuleGroup[] => {
+  const map = resolveVisionTuning(tuning);
+  const core = resolveVisionTuning(undefined);
+  const lines: MapRuleLine[] = [];
+
+  if (map.attackRevealMs !== core.attackRevealMs) {
+    lines.push({
+      label: 'Đánh trong bụi bị lộ',
+      value: map.attackRevealMs > 0 ? secs(map.attackRevealMs) : 'không bao giờ lộ',
+      standard: secs(core.attackRevealMs),
+    });
+  }
+  // Only when it can matter: a reveal that never happens has no radius worth
+  // printing, and a line about one would be a rule the map does not have.
+  if (map.attackRevealMs > 0 && map.attackRevealRadius !== core.attackRevealRadius) {
+    lines.push({
+      label: 'Vùng bị lộ',
+      value: px(map.attackRevealRadius),
+      standard: px(core.attackRevealRadius),
+    });
+  }
+  return group('Tầm nhìn', lines);
+};
+
 const terrainLines = (tuning: MapTuning | undefined): MapRuleGroup[] =>
   group(
     'Địa hình',
@@ -288,6 +321,7 @@ export function mapRuleGroups(tuning: MapTuning | undefined): MapRuleGroup[] {
     ...minionLines(tuning),
     ...monsterLines(tuning),
     ...terrainLines(tuning),
+    ...visionLines(tuning),
   ];
 }
 

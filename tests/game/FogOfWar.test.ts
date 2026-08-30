@@ -3,6 +3,7 @@ import FogOfWar from '../../src/game/gameObject/map/FogOfWar';
 import Champion from '../../src/game/gameObject/attackableUnits/Champion';
 import { Rectangle } from '../../src/libs/quadtree';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from './fixtures';
+import { DEFAULT_ATTACK_REVEAL_MS } from '../../src/game/combat/AttackReveal';
 
 // Static wall polygons, far enough apart that "which wall is in range" is
 // unambiguous per test position.
@@ -171,6 +172,19 @@ describe('FogOfWar and the spell-made eye', () => {
     return { game, player, enemy };
   }
 
+  /**
+   * One frame's worth of "the world moved".
+   *
+   * `calculateSight` caches its whole result against `ObjectManager.revision`,
+   * which the real quadtree rebuild bumps once a tick — so in a match the pass
+   * re-runs every frame. `indexObjects` inserts straight into the tree and
+   * bumps nothing, so without this a second call in the same test reads the
+   * first one's answer and every assertion after it is about stale state.
+   */
+  const tick = (game: TestGame): void => {
+    (game.objectManager as unknown as { revision: number }).revision++;
+  };
+
   /** A ward the way a pack builds one: position, teamId, a plain visionRadius. */
   function ward(x: number, y: number, teamId: string) {
     const eye = {
@@ -205,5 +219,65 @@ describe('FogOfWar and the spell-made eye', () => {
     fog.calculateSight();
 
     expect(enemy.visibleToPlayerTeam).toBe(false);
+  });
+
+  /**
+   * An enemy who attacked out of the dark.
+   *
+   * `Vision.test.ts` proves such a unit may be *targeted*; this is the other
+   * half, and the two have to agree or the fog stops being a promise. The trap
+   * worth naming: the overlay is painted **after** the world, so flagging a
+   * unit visible without also burning a hole in the fog leaves it drawn and
+   * then covered over — clickable, on the minimap, and invisible on screen.
+   */
+  describe('a unit that gave itself away', () => {
+    it('is lit, with a hole in the fog to be seen through', () => {
+      const { game, player, enemy } = fogWorld();
+      indexObjects(game, [player, enemy]);
+      const fog = new FogOfWar(game);
+
+      fog.calculateSight();
+      expect(enemy.visibleToPlayerTeam, 'nothing is lighting it yet').toBe(false);
+
+      enemy.revealForAttack();
+      tick(game);
+      const lit = fog.calculateSight();
+
+      expect(enemy.visibleToPlayerTeam).toBe(true);
+      expect(
+        lit.some(entry => entry.object === enemy),
+        'flagged visible but no fog erased — it would be drawn and painted over'
+      ).toBe(true);
+    });
+
+    it('lights whoever is standing with it, which is the point in a brush', () => {
+      const { game, player, enemy } = fogWorld();
+      // Close enough to ride the attacker's reveal, far enough that nothing
+      // else in this world can be lighting it.
+      const partner = new Champion({ game, position: createVector(2_100, 0), teamId: 'red' });
+      indexObjects(game, [player, enemy, partner]);
+      const fog = new FogOfWar(game);
+
+      enemy.revealForAttack();
+      fog.calculateSight();
+
+      expect(partner.visibleToPlayerTeam).toBe(true);
+    });
+
+    it('goes dark again once the two seconds are up', () => {
+      const { game, player, enemy } = fogWorld();
+      indexObjects(game, [player, enemy]);
+      const fog = new FogOfWar(game);
+
+      enemy.revealForAttack();
+      fog.calculateSight();
+      expect(enemy.visibleToPlayerTeam).toBe(true);
+
+      (game as unknown as { matchTimeMs: number }).matchTimeMs = DEFAULT_ATTACK_REVEAL_MS + 1;
+      tick(game);
+      fog.calculateSight();
+
+      expect(enemy.visibleToPlayerTeam).toBe(false);
+    });
   });
 });

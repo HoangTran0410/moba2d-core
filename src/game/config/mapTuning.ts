@@ -2,6 +2,8 @@ import {
   CHAMPION_BOUNTY,
   DEFAULT_TURRET_PRESET,
   MINION_BOUNTY,
+  DEFAULT_ATTACK_REVEAL_MS,
+  DEFAULT_ATTACK_REVEAL_RADIUS,
   MONSTER_BOUNTY,
   MONSTER_CHASE_MARGIN,
   MONSTER_GIVE_UP_DELAY_MS,
@@ -25,6 +27,7 @@ import type {
   SpawnSlot,
   StructureSlot,
   TerrainTuning,
+  VisionTuning,
   TurretStats,
 } from '@/content/ContentPack';
 // Types only, and that is load-bearing rather than tidy: a type import is
@@ -374,6 +377,33 @@ export interface ResolvedTerrainTuning {
    * map that declares nothing pays one boolean and no queries.
    */
   affectsSpeed: boolean;
+}
+
+// ------------------------------------------------------------------ vision
+
+/**
+ * What core does when a map says nothing: League's own numbers, stated once.
+ * `combat/AttackReveal.ts` is where they come from and why.
+ */
+export const DEFAULT_VISION_TUNING = Object.freeze({
+  attackRevealMs: DEFAULT_ATTACK_REVEAL_MS,
+  attackRevealRadius: DEFAULT_ATTACK_REVEAL_RADIUS,
+});
+
+export type ResolvedVisionTuning = Required<VisionTuning>;
+
+export function resolveVisionTuning(tuning: MapTuning | undefined): ResolvedVisionTuning {
+  const vision: VisionTuning = tuning?.vision ?? {};
+  return {
+    // Clamped at 0 rather than left free: a negative duration is a reveal that
+    // has already expired, which is the same thing as "off" written in a way
+    // nothing else in the codebase would recognise.
+    attackRevealMs: Math.max(0, num(vision.attackRevealMs, DEFAULT_VISION_TUNING.attackRevealMs)),
+    attackRevealRadius: Math.max(
+      0,
+      num(vision.attackRevealRadius, DEFAULT_VISION_TUNING.attackRevealRadius)
+    ),
+  };
 }
 
 export function resolveTerrainTuning(tuning: MapTuning | undefined): ResolvedTerrainTuning {

@@ -1,6 +1,7 @@
 import CollideUtils from '@/utils/collide.utils';
 import { withinRadius } from '@/utils/math.utils';
 import TerrainType from '@/game/enums/TerrainType';
+import { revealedTo } from '@/game/combat/AttackReveal';
 import { Rectangle } from '@/libs/quadtree';
 
 /**
@@ -22,6 +23,10 @@ import { Rectangle } from '@/libs/quadtree';
  *     list `computeSightPoly` sweeps against),
  *   - the bush you are standing in is not one of your own blockers, which is
  *     what lets a champion in a bush see out of it,
+ *   - a unit that has just unit-targeted somebody is lit for its enemies
+ *     regardless of either (`combat/AttackReveal.ts`) — attacking out of the
+ *     dark is what gives a position away, and it does so through a wall as
+ *     readily as out of a brush,
  *   - sight is a *team* property, so a friendly ward is an eye like any other —
  *     `StealthWard_Object` carries its owner's `teamId` and a `visionRadius`,
  *     and that is already all it takes.
@@ -75,6 +80,8 @@ export interface Seeable {
   toRemove?: boolean;
   isDead?: boolean;
   isInsideBush?: boolean;
+  /** Gave itself away by attacking — `combat/AttackReveal.ts`. */
+  isRevealed?: boolean;
   alwaysVisible?: boolean;
   visionRadius?: number;
   /** What this lights for its team — `AttackableUnit`'s getter; see
@@ -260,6 +267,12 @@ function viewIsClear(game: VisionHost | undefined, from: Seeable, target: Seeabl
   const origin = from.position;
   const to = target.position;
   if (!origin || !to) return false;
+
+  // Before both the bush rule and the geometry, because it outranks both: a
+  // unit that unit-targeted somebody is lit for its enemies through a wall as
+  // readily as out of a brush — League reveals a circle of *fog*, not a body.
+  // `combat/AttackReveal.ts` has the rule and the wording it comes from.
+  if (revealedTo(from, target)) return true;
 
   // Kept alongside the polygon sweep rather than replaced by it. `isInsideBush`
   // is set by `TerrainMap` from the same polygons, so in the running game the

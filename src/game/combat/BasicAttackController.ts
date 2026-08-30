@@ -334,6 +334,13 @@ export default class BasicAttackController {
     const damage = this.attackDamage;
     const ranged = this.isRanged;
 
+    // Committing to a swing is what gives a unit away, not landing it: League
+    // grants the reveal for the *action*, and hanging it on the bolt's impact
+    // would leave a ranged attacker invisible for the whole of its flight —
+    // the exact stretch in which the victim is trying to work out where the
+    // arrow came from. See `combat/AttackReveal.ts`.
+    this.owner.revealForAttack();
+
     this.owner.game?.eventManager?.emit(EventType.ON_ATTACK, this.owner);
     // The richer twin, for the LAN host to forward (see the enum's comment):
     // a client's puppet champions hold no orders, so this controller never

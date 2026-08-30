@@ -79,6 +79,24 @@ export const TURRET_BOUNTY = 150;
  */
 export const SELL_REFUND_FRACTION = 0.7;
 
+/**
+ * How long a unit stays lit after giving itself away, and how much of the map
+ * around it is lit too — League's own 2 seconds and 300 units.
+ * `combat/AttackReveal.ts` quotes the sentence they come from and re-exports
+ * these names, so the rule and its numbers read together.
+ *
+ * Here, beside the sell refund, for exactly the reason recorded above it: a map
+ * may override both (`MapTuning.vision`), so `config/mapTuning.ts` has to read
+ * them — and that module is pinned to the `pregame` chunk while the fog and the
+ * combat seams that apply them are `game`. A table with no imports is the one
+ * shape both sides can read.
+ *
+ * The radius is in world pixels, not League units. It is about a champion body
+ * and a half, which is the shape of "whoever is standing with them".
+ */
+export const DEFAULT_ATTACK_REVEAL_MS = 2_000;
+export const DEFAULT_ATTACK_REVEAL_RADIUS = 300;
+
 // ------------------------------------------------------------------ minions
 
 /**

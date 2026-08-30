@@ -353,6 +353,13 @@ export default class Spell {
       // almost every time, so cancelling on the attempt would leave the bots
       // unable to hold an attack order at all. `accepted` is the cast.
       if (this.activeCastSpec.attackOrder !== 'keep') this.owner?.basicAttack?.clear();
+
+      // Unit-targeted casts give the caster away; skillshots do not. The test
+      // is a *resolved target*, not "a spell was cast", because a spell that
+      // names no unit is exactly the one that must stay quiet — firing one out
+      // of a brush is a real thing to do, in League and here. See
+      // `combat/AttackReveal.ts`.
+      if (this._castContext?.target) this.owner?.revealForAttack();
     }
     this.syncVfxPhase();
     return accepted;
