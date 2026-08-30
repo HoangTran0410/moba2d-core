@@ -886,9 +886,25 @@ export default class Monster extends AttackableUnit {
    * are enforced once, at the seam, rather than at each caller. That is the
    * same reasoning `BotBrain.mayFight` rests on, and for the same reason:
    * a rule spread over three call sites is a rule with a hole in it.
+   *
+   * ## And a camp fights champions, nothing else
+   *
+   * That rule was already written twice — `nearestThreat` queries
+   * `PredefinedFilters.type(Champion)`, `forceAttackTarget` refuses anything
+   * else — and missing from the seam both of those exist alongside, which is
+   * exactly the hole the paragraph above describes. What came through it was a
+   * **turret**: a camp that wandered into a lane took a shell, retaliated
+   * through `takeDamage`, and then stood under the tower trading with a
+   * building it cannot kill and that cannot be pulled off its foundation. Its
+   * packmates came too, through `alertCamp`.
+   *
+   * Turrets shoot monsters and always did (`Turret.findTarget` lists
+   * `Monster` among its types) — that half is right and stays. It is only the
+   * answering swing that was never meant to exist.
    */
   aggroOn(unit?: AttackableUnit) {
     if (!unit || unit === this) return;
+    if (!(unit instanceof Champion)) return;
     if (this.temperament === 'passive') return;
     if (this.temperament === 'skittish') {
       this.fleeFrom(unit);

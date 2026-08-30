@@ -8,6 +8,7 @@ import { PredefinedFilters } from '@/game/managers/ObjectManager';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
+import Monster from '@/game/gameObject/attackableUnits/Monster';
 import { PredefinedParticleSystems } from '@/game/gameObject/helpers/ParticleSystem';
 import type { ActiveMap } from '@/content/ContentPack';
 import { resolveTerrainTuning, type ResolvedTerrainTuning } from '@/game/config/mapTuning';
@@ -148,16 +149,37 @@ export default class TerrainMap {
       this.pushOutOfWalls(p);
     }
 
-    // Lane minions get the wall pass too, but nothing else in the champion loop:
-    // no bush stealth, no water ripples, no vision. Their waypoints already keep
-    // them ~70px clear of every wall, so this only matters when one steps off the
-    // lane to reach something it aggroed — without it, that minion embeds itself
-    // in a wall and never comes out.
-    const minions = this.game.objectManager.queryObjects({
+    // Lane minions and jungle camps get the wall pass too, but nothing else in
+    // the champion loop: no bush stealth, no water ripples, no vision.
+    //
+    // A minion's waypoints already keep it ~70px clear of every wall, so for
+    // one of those this only matters when it steps off the lane to reach
+    // something it aggroed — without it, that minion embeds itself in a wall
+    // and never comes out.
+    //
+    // **A monster has no waypoints at all, and that is how it was missed.** A
+    // camp walks a roam region the nav grid already keeps out of the rock, so
+    // under its own power it never needs this — but it does not move only
+    // under its own power. A hook, a knock-back or a kick puts it wherever the
+    // displacement ends, and until this query included it, that could be
+    // *inside* the wall: the body stopped there, the pass that would have
+    // ejected it was for champions and minions, and it stood in the rock for
+    // the rest of the match. Reported exactly that way.
+    const walkers = this.game.objectManager.queryObjects({
       queryByDisplayBoundingBox: true,
-      filters: [PredefinedFilters.type(Minion), PredefinedFilters.excludeDead],
+      filters: [
+        PredefinedFilters.includeTypes([Minion, Monster]),
+        PredefinedFilters.excludeDead,
+        // Scenery is left alone. A legless anchored boss re-pins itself to
+        // `home` every tick (`Monster.update`), so pushing it is at best a
+        // frame of disagreement with that and at worst two rules shoving one
+        // body in opposite directions for the whole match. It also cannot be
+        // displaced into a wall in the first place, which is the only way a
+        // camp gets into one.
+        unit => !(unit instanceof Monster) || unit.hasLegs || !unit.isImmovable,
+      ],
     });
-    for (const m of minions) this.pushOutOfWalls(m);
+    for (const m of walkers) this.pushOutOfWalls(m);
 
     this.updateTerrainSpeed();
   }

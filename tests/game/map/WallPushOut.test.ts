@@ -27,7 +27,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Rectangle } from '../../../src/libs/quadtree';
-import { TestVector, stubGameGlobals } from '../fixtures';
+import {
+  TestVector,
+  createGame,
+  indexObjects,
+  stubGameGlobals,
+  TEST_AVATAR_KEY,
+  type TestGame,
+} from '../fixtures';
+import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
+import Minion from '../../../src/game/gameObject/attackableUnits/Minion';
+import Monster from '../../../src/game/gameObject/attackableUnits/Monster';
 import TerrainMap from '../../../src/game/gameObject/map/TerrainMap';
 import type { ActiveMap } from '../../../src/content/ContentPack';
 import type AttackableUnit from '../../../src/game/gameObject/attackableUnits/AttackableUnit';
@@ -137,6 +147,110 @@ const settle = (unit: ReturnType<typeof body>, frames = FRAMES) => {
   }
   return overlapWithWall(unit.position.x, unit.position.y, unit.terrainRadius);
 };
+
+/**
+ * Who the per-frame sweep actually covers.
+ *
+ * `pushOutOfWalls` is correct and always was; what decided whether a body ever
+ * reached it is the query in `TerrainMap.update`, and for a long time that
+ * query was champions and lane minions. A **monster** was in neither list.
+ *
+ * Under its own power that costs nothing — a camp roams a region the nav grid
+ * already keeps out of the rock — but a camp does not move only under its own
+ * power. A hook, a knock-back or a kick writes `position` directly, and the
+ * body simply stopped wherever the displacement ended. Reported as a monster
+ * standing inside a wall for the rest of the match.
+ */
+describe('the sweep TerrainMap.update runs', () => {
+  let game: TestGame;
+  let map: TerrainMap;
+
+  const camp = { x: 3_000, y: 3_000, r: 300 };
+
+  /** A camp body dropped at `(x, y)` — where a displacement left it. */
+  const monsterAt = (x: number, y: number, preset: Record<string, unknown> = {}) => {
+    const unit = new Monster({
+      game,
+      preset: {
+        name: 'Wolf',
+        avatar: TEST_AVATAR_KEY,
+        camp,
+        speed: 2,
+        size: 40,
+        attackRange: 50,
+        reviveTime: 100,
+        health: 100,
+        ...preset,
+      },
+    } as ConstructorParameters<typeof Monster>[0]);
+    unit.position.set(x, y);
+    unit.destination.set(x, y);
+    return unit;
+  };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    game.setPlayer(new Champion({ game, teamId: 'blue' }));
+    map = new TerrainMap(game as never, SEAM_MAP);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The middle of the slab — the deepest a body can be and still be in it. */
+  const MIDDLE = { x: 1_100, y: 1_060 };
+
+  it('takes a camp body back out of a wall it was thrown into', () => {
+    const wolf = monsterAt(MIDDLE.x, MIDDLE.y);
+    indexObjects(game, [wolf]);
+    expect(
+      overlapWithWall(wolf.position.x, wolf.position.y, wolf.terrainRadius),
+      'the fixture did not put it in the wall'
+    ).toBeGreaterThan(0);
+
+    for (let frame = 0; frame < FRAMES; frame++) map.update();
+
+    expect(overlapWithWall(wolf.position.x, wolf.position.y, wolf.terrainRadius)).toBeLessThanOrEqual(0);
+  });
+
+  /**
+   * Scenery is left where it is. A legless anchored boss re-pins itself to
+   * `home` every tick, so pushing it is at best a frame of disagreement with
+   * that and at worst two rules shoving one body in opposite directions — and
+   * it cannot be displaced into a wall in the first place, which is the only
+   * way a camp gets into one.
+   */
+  it('leaves an anchored, legless boss exactly where the map put it', () => {
+    const boss = monsterAt(MIDDLE.x, MIDDLE.y, { speed: 0, size: 100 });
+    indexObjects(game, [boss]);
+
+    for (let frame = 0; frame < FRAMES; frame++) map.update();
+
+    expect(boss.position.x).toBe(MIDDLE.x);
+    expect(boss.position.y).toBe(MIDDLE.y);
+  });
+
+  it('still sweeps the minions it always swept', () => {
+    // The falsification: swapping the query for one that matched nothing would
+    // pass the boss case above and quietly stop enforcing walls on the wave.
+    const minion = new Minion({
+      game,
+      position: createVector(MIDDLE.x, MIDDLE.y),
+      teamId: 'blue',
+      lane: 'MID',
+      waypoints: [{ x: MIDDLE.x, y: MIDDLE.y }],
+      preset: { name: 'Melee', health: 100, damage: 5, speed: 2, size: 34, attackRange: 40 },
+    } as never);
+    indexObjects(game, [minion]);
+
+    for (let frame = 0; frame < FRAMES; frame++) map.update();
+
+    expect(
+      overlapWithWall(minion.position.x, minion.position.y, minion.terrainRadius)
+    ).toBeLessThanOrEqual(0);
+  });
+});
 
 describe('pushOutOfWalls', () => {
   it('loads the two-box wall this file is about', () => {
