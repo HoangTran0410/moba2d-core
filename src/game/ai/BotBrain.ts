@@ -204,6 +204,17 @@ export interface SpellChoice {
 }
 
 /**
+ * The `slotIndex` of a spell that came from an item rather than from the kit.
+ *
+ * Negative because it is not an index into anything — `Champion.spells` holds
+ * the kit and an item's active hangs off `items[slot].active` instead. The one
+ * thing the number decides is whether `rolesOf` adds `Ultimate`, and this must
+ * never be `ULTIMATE_SLOT`: an item active that inherited an ultimate's
+ * scoring would be hoarded like one. See `BotBrain.castables`.
+ */
+export const ITEM_SLOT = -1;
+
+/**
  * The whole tuning surface for spell choice, exported so no test hard-codes one
  * of them. Retuning a bot's priorities is editing this block and nothing else.
  */
@@ -1138,16 +1149,69 @@ export class BotBrain {
    * three axes of `isRetreatCandidate`, not the role mask alone. Left false,
    * every castable spell is a candidate, which is every other posture.
    */
+  /**
+   * Everything this champion could press: the kit, and the keys its items brought.
+   *
+   * ## Why the items were missing
+   *
+   * An item's active *is* a `Spell` — `game/items/Item.ts` makes that argument
+   * at length, and it is why an item active gets press, hold-and-release and
+   * charging for free rather than a second mechanism. It is simply not in
+   * `Champion.spells`; it hangs off `items[slot].active`, and
+   * `Game.itemInputController` resolves it live so the key follows the slot.
+   *
+   * So every scan in this class read `owner.spells` and a bot never pressed one.
+   * That was invisible while bots could not shop; they buy their own build now
+   * (`ai/BotShopper.ts`), which means a bot could stand there holding an item
+   * it had spent 2400 gold on and never use it — visibly worse than the same
+   * item on a player, and a difference in *kind* rather than in skill.
+   *
+   * Nothing else in the cast path needed changing: `cast` presses whatever it
+   * is given, and `contextFor` resolves targeting off the spell.
+   *
+   * ## The slot index
+   *
+   * `ITEM_SLOT`, not a real one. The only thing `slotIndex` decides is whether
+   * `rolesOf` adds `Ultimate` (`ULTIMATE_SLOT`), and an item active is not one
+   * — it should not inherit an ultimate's scoring, its hoarding, or the ghost
+   * cast's refusal to spend one on a guess.
+   *
+   * ## Why `includeItems` is a parameter and not always true
+   *
+   * Two callers say no. Wave clear, because an item active is bought with gold
+   * and comes back on a minute-long cooldown where an ability comes back on
+   * ten seconds — spending one on a caster minion is a trade no player makes.
+   * And the ghost cast, which throws an area spell at a position half a second
+   * stale: that is a fair gamble with a cooldown and not with a purchase.
+   *
+   * Neither is a rule the roles could express, because a pack declares
+   * `aiRoles` on abilities and not on items: an item active with no declared
+   * roles is inferred from its targeting alone, which cannot tell a wave-clear
+   * from a panic button.
+   */
+  private *castables(includeItems: boolean): Generator<{ spell: Spell; slotIndex: number }> {
+    // From 1: slot 0 is the basic attack, which is the attack controller's job.
+    for (let slotIndex = 1; slotIndex < this.owner.spells.length; slotIndex++) {
+      const spell = this.owner.spells[slotIndex];
+      if (spell) yield { spell, slotIndex };
+    }
+    if (!includeItems) return;
+    // `?? []` for the reason `Champion.update` uses it on the same field: a
+    // test double is a plain object and its `items` is `undefined`.
+    for (const item of this.owner.items ?? []) {
+      const active = item?.active;
+      if (active) yield { spell: active, slotIndex: ITEM_SLOT };
+    }
+  }
+
   chooseSpell(
     target: AttackableUnit | null,
     view: TeamView,
     mode: CastMode = 'FREE'
   ): SpellChoice | null {
     let best: SpellChoice | null = null;
-    // From 1: slot 0 is the basic attack, which is the attack controller's job.
-    for (let slotIndex = 1; slotIndex < this.owner.spells.length; slotIndex++) {
-      const spell = this.owner.spells[slotIndex];
-      if (!spell?.isCastableNow) continue;
+    for (const { spell, slotIndex } of this.castables(mode !== 'WAVE')) {
+      if (!spell.isCastableNow) continue;
       const mask = rolesOf(spell, slotIndex);
       if (mode === 'RETREAT' && !isRetreatCandidate(spell, mask)) continue;
       if (mode === 'WAVE' && !isWaveClearCandidate(mask)) continue;
@@ -1173,9 +1237,10 @@ export class BotBrain {
 
     const away = Math.hypot(aimPoint.x - this.owner.position.x, aimPoint.y - this.owner.position.y);
 
-    for (let slotIndex = 1; slotIndex < this.owner.spells.length; slotIndex++) {
-      const spell = this.owner.spells[slotIndex];
-      if (!spell?.isCastableNow) continue;
+    // Kit only — see `castables`. An area spell at a half-second-old position
+    // is a fair gamble with a cooldown and not with something bought.
+    for (const { spell, slotIndex } of this.castables(false)) {
+      if (!spell.isCastableNow) continue;
       const mask = rolesOf(spell, slotIndex);
       if (!hasRole(mask, SpellRole.Zone) && !hasRole(mask, SpellRole.Poke)) continue;
       // Never the ultimate. An area spell at a half-second-old position is a
