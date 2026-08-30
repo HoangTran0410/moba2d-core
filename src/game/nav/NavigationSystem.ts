@@ -34,6 +34,61 @@ import type PathAgent from './PathAgent';
  * latency nobody can see; input latency is not.
  */
 
+/**
+ * Grids already built, by map.
+ *
+ * A grid is a pure function of a map's wall layer, its size and the cell size,
+ * and a map does not change while the game is running — so the second match on
+ * a map has no reason to compute one again, and neither has a rematch, a
+ * restart, or the same map picked twice in an evening. Measured at a 4x CPU
+ * throttle on Summoner's Rift: 81ms and 160,000 cells, inside `new Game`,
+ * where nothing else can happen until it finishes.
+ *
+ * Keyed by the map, so two maps keep two grids; unkeyed callers (tests, and
+ * `TerrainMap`'s own fallback field) build their own and cache nothing.
+ * Unbounded on purpose — the bound is how many maps a session plays, and a
+ * grid is a few hundred kilobytes.
+ */
+const grids = new Map<string, NavGrid>();
+
+const buildGrid = (
+  wallPolygons: readonly (readonly NavPoint[])[],
+  mapSize: number,
+  cellSize: number,
+  cacheKey?: string
+): NavGrid => {
+  if (cacheKey === undefined) return NavGrid.fromPolygons(wallPolygons, { size: mapSize, cellSize });
+  const key = `${cacheKey}|${mapSize}|${cellSize}`;
+  const cached = grids.get(key);
+  if (cached) return cached;
+  const built = NavGrid.fromPolygons(wallPolygons, { size: mapSize, cellSize });
+  grids.set(key, built);
+  return built;
+};
+
+/**
+ * Builds a map's grid ahead of the match that needs it.
+ *
+ * Called from the pregame screen, where the map is already chosen and the main
+ * thread is doing nothing but waiting for somebody to press Bắt Đầu. By the
+ * time `new Game` asks for a grid the answer is already in `grids`, so the 81ms
+ * lands where a player is choosing champions instead of in the first frame of
+ * a match.
+ *
+ * Safe to call repeatedly and safe to call for a map that is never played.
+ */
+export const prewarmNavigation = (
+  cacheKey: string,
+  wallPolygons: readonly (readonly NavPoint[])[],
+  mapSize: number,
+  cellSize: number = NAV_CELL_SIZE
+): void => {
+  buildGrid(wallPolygons, mapSize, cellSize, cacheKey);
+};
+
+/** Test-only: drops every cached grid so a case can measure a cold build. */
+export const clearNavigationCacheForTests = (): void => grids.clear();
+
 /** Searches drained per frame. */
 export const NAV_MAX_SEARCHES_PER_FRAME = 4;
 
@@ -108,9 +163,10 @@ export default class NavigationSystem {
   constructor(
     wallPolygons: readonly (readonly NavPoint[])[],
     mapSize: number,
-    cellSize: number = NAV_CELL_SIZE
+    cellSize: number = NAV_CELL_SIZE,
+    cacheKey?: string
   ) {
-    this.grid = NavGrid.fromPolygons(wallPolygons, { size: mapSize, cellSize });
+    this.grid = buildGrid(wallPolygons, mapSize, cellSize, cacheKey);
     this.finder = new PathFinder(this.grid);
     this.stats = {
       buildMs: this.grid.buildMs,

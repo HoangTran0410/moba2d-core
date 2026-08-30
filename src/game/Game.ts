@@ -366,7 +366,16 @@ export default class Game {
     // once here — about 7ms and 1.6MB for the whole game — rather than per unit
     // per frame. Built off the same Obstacle list the collision push-out uses,
     // so there is one source of truth for where the walls are.
-    this.navigation = new NavigationSystem(this.terrainMap.wallPolygons(), this.mapSize);
+    // `map.id` caches the grid: it is a pure function of the wall layer and
+    // the map does not change, so a second match here — a rematch, a restart,
+    // the same map twice in an evening — reuses it, and the pregame screen can
+    // build it before anyone presses Bắt Đầu (`prewarmNavigation`).
+    this.navigation = new NavigationSystem(
+      this.terrainMap.wallPolygons(),
+      this.mapSize,
+      undefined,
+      map.id
+    );
     // And now literally one structure, not merely one source: the grid routes
     // are planned against is handed straight back to be the field they are
     // enforced against. Those used to be a clearance grid and a pile of SAT

@@ -94,6 +94,23 @@ export default class TerrainMap {
     return polygons;
   }
 
+  /**
+   * The same wall layer, straight off the map, with no `TerrainMap` to hold it.
+   *
+   * Every obstacle here is built at `(0, 0)` from `map.terrain` (see the
+   * constructor), so the wall polygons are the map's own vertices and nothing
+   * more — which is what lets the pregame screen build a navigation grid for a
+   * map it has not started a match on. Written beside the instance method
+   * rather than somewhere else, so the two cannot drift apart unnoticed.
+   */
+  static wallPolygonsOf(map: ActiveMap): { x: number; y: number }[][] {
+    const wallKey = TERRAIN_LAYERS.find(layer => layer.type === TerrainType.WALL)?.key;
+    if (!wallKey) return [];
+    return (map.terrain[wallKey] ?? []).map(vertices =>
+      vertices.map(vertex => ({ x: vertex.x, y: vertex.y }))
+    );
+  }
+
   update(): void {
     this.rippleEffect.update();
 

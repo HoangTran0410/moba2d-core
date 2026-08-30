@@ -1,6 +1,7 @@
 import { createApp, h, type App } from 'vue';
 import { Scene } from '@/managers/SceneManager';
 import MatchConfigPanel from '@/game/hud/config/MatchConfigPanel.vue';
+import { prewarmMatch } from './setup/prewarmMatch';
 import PregameConfigSource from '@/game/hud/config/PregameConfigSource';
 import { loadGameScene } from './gamePreload';
 
@@ -48,6 +49,11 @@ export default class SetupScene extends Scene {
   enter() {
     this.host.style.display = 'flex';
     const source = new PregameConfigSource();
+
+    // Everything a match start can do before the match exists, done while the
+    // player reads this screen. See `prewarmMatch` for what it removes from the
+    // first seconds of play and why none of it can fail loudly.
+    prewarmMatch(source.getMap());
 
     // A render function rather than a wrapper `.vue` file: the panel takes one
     // prop and two events, and a component whose entire body is `<PanelX
