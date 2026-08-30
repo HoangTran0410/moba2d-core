@@ -1195,6 +1195,54 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * trước đây trả lời bằng bảng toạ độ gõ tay, thứ hỏng ngay lần đầu ai đó
    * kéo một cái trụ trong editor này.
    */
+  /**
+   * Loại lính khai ra rồi không bao giờ ra sân.
+   *
+   * `MinionTuning.types` **thay hẳn** ba loại của core chứ không trộn vào, và
+   * đội hình wave là một danh sách id. Nên có hai cách hỏng, cả hai đều im
+   * lặng tuyệt đối — `MinionSpawner.spawn` gặp id lạ thì `return null`, không
+   * log, không lỗi, wave chỉ đơn giản là ít con hơn hoặc rỗng:
+   *
+   *   - khai bảng loại lính riêng mà không khai đội hình: đội hình mặc định
+   *     của core gọi tên melee/ranged/cannon, bảng mới không có, **mọi wave
+   *     rỗng**;
+   *   - khai thêm một loại nhưng quên điền "mỗi wave mấy con": loại đó nằm
+   *     trong file và không bao giờ xuất hiện trong trận.
+   *
+   * `validate.ts` bên core từ chối cài map như vậy. Ở đây là để thấy nó
+   * *trước khi export*, chứ không phải sau khi copy file sang pack.
+   */
+  function waveRosterIssues(err) {
+    const minions = (E.meta && E.meta.tuning && E.meta.tuning.minions) || {};
+    const ids = Object.keys(minions.types || {});
+    if (!ids.length) return;
+
+    const fielded = new Set();
+    const collect = (list) => {
+      if (Array.isArray(list)) for (const id of list) fielded.add(id);
+    };
+    collect(minions.waves && minions.waves.composition);
+    for (const stage of (minions.waves && minions.waves.stages) || []) {
+      collect(stage && stage.composition);
+    }
+
+    if (!fielded.size) {
+      err(
+        `Map khai bảng loại lính riêng (${ids.join(", ")}) nhưng chưa khai đội hình wave. ` +
+        `Đội hình mặc định của core gọi tên melee/ranged/cannon — bảng này không có — ` +
+        `nên MỌI WAVE SẼ RỖNG. Điền ô “Mỗi wave” cho ít nhất một loại.`
+      );
+      return;
+    }
+    for (const id of ids) {
+      if (fielded.has(id)) continue;
+      err(
+        `Loại lính “${id}” khai rồi nhưng không có trong đội hình wave — ` +
+        `nó sẽ không bao giờ ra sân. Điền ô “Mỗi wave” cho nó, hoặc xoá loại này đi.`
+      );
+    }
+  }
+
   function laneGeometryIssues(err) {
     const world = (t) => t.polygon.map((p) => [p[0] + t.position[0], p[1] + t.position[1]]);
     const slots = (type) => E.terrains.filter((t) => t.type === type);
@@ -1337,6 +1385,7 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
     }
     if (!lanes.length) warn("Map chưa có lane nào — sẽ không có wave lính, và lệnh PUSH không dùng được.");
 
+    waveRosterIssues(err);
     laneGeometryIssues(err);
 
     return out;

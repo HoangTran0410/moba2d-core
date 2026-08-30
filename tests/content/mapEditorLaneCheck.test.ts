@@ -35,7 +35,11 @@ interface Issue {
 }
 
 /** Boot the editor's globals, install `terrains`, and run its validator. */
-function check(terrains: string, factions = `['amber', 'jade']`): Issue[] {
+function check(
+  terrains: string,
+  factions = `['amber', 'jade']`,
+  tuning = 'undefined'
+): Issue[] {
   const store = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
     console,
@@ -66,7 +70,7 @@ function check(terrains: string, factions = `['amber', 'jade']`): Issue[] {
     `
     E.mapName = 'Thử';
     E.mapSize = [4000, 4000];
-    E.meta = { id: 'thu', factions: ${factions} };
+    E.meta = { id: 'thu', factions: ${factions}, tuning: ${tuning} };
     E.terrains = [${terrains}].map(normalizeTerrain);
     Store.validate();
     `,
@@ -362,6 +366,75 @@ describe('the structural rules, on slots rather than on coordinates', () => {
     );
 
     expect(about(issues, 'không phải ảnh đối xứng')).toEqual([]);
+  });
+});
+
+/**
+ * A minion type declared and never fielded.
+ *
+ * `MinionTuning.types` **replaces** core's three rather than merging into
+ * them, and a wave's formation is a list of ids. So there are two ways to end
+ * up with minions that exist in the file and not in the match, and both are
+ * completely silent — `MinionSpawner.spawn` meets an id its roster does not
+ * hold, returns `null`, and logs nothing:
+ *
+ *   - a map that declares a roster and no formation, where core's default
+ *     names melee/ranged/cannon and the new roster supplies none of them, so
+ *     **every wave is empty**;
+ *   - a map that adds a fourth type and forgets to field it.
+ *
+ * The second is the likely one, because the editor has a button that seeds
+ * core's three and another that adds a type — so the natural way to use the
+ * feature lands exactly on it.
+ */
+describe('a minion roster that can never take the field', () => {
+  const roster = (types: string, waves = '') =>
+    `{ minions: { types: { ${types} }${waves} } }`;
+  const grunt = `grunt: { name: 'Lính Nặng', style: 'melee', speed: 2.6, size: 34,
+      health: 200, damage: 8, attackInterval: 1100, attackRange: 40, aggroRange: 300 }`;
+
+  it('refuses a declared roster with no formation at all', () => {
+    const issues = errors(
+      check(laneThrough([[200, 200], [3800, 3800]]), `['amber', 'jade']`, roster(grunt))
+    );
+
+    expect(about(issues, 'MỌI WAVE SẼ RỖNG')).toHaveLength(1);
+  });
+
+  it('names the one type a formation forgot', () => {
+    const issues = errors(
+      check(
+        laneThrough([[200, 200], [3800, 3800]]),
+        `['amber', 'jade']`,
+        roster(`${grunt}, siege: { name: 'Xe', style: 'cannon', speed: 2.6, size: 38,
+          health: 300, damage: 10, attackInterval: 1650, attackRange: 300, aggroRange: 360 }`,
+          `, waves: { composition: ['grunt', 'grunt'] }`)
+      )
+    );
+    const orphan = about(issues, 'không bao giờ ra sân');
+
+    expect(orphan).toHaveLength(1);
+    expect(orphan[0].text).toContain('siege');
+  });
+
+  it('says nothing when every declared type is fielded', () => {
+    const issues = errors(
+      check(
+        laneThrough([[200, 200], [3800, 3800]]),
+        `['amber', 'jade']`,
+        roster(grunt, `, waves: { composition: ['grunt', 'grunt', 'grunt'] }`)
+      )
+    );
+
+    expect(about(issues, 'ra sân')).toEqual([]);
+    expect(about(issues, 'WAVE')).toEqual([]);
+  });
+
+  it('says nothing at all about a map that declares no roster', () => {
+    // The overwhelmingly common case: core's three, core's formation. A check
+    // that spoke here would be noise on every map ever drawn.
+    const issues = errors(check(laneThrough([[200, 200], [3800, 3800]])));
+    expect(about(issues, 'ra sân')).toEqual([]);
   });
 });
 

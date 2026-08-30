@@ -759,6 +759,22 @@ const Cmd = (() => {
   def("shape.type", { label: "Đổi loại", icon: "check", run: setType });
   def("shape.prop", { label: "Đổi thuộc tính", icon: "settings", run: (a) => setProp(a[0], a[1]) });
   def("map.tuning", { label: "Đổi cấu hình map", icon: "settings", run: (a) => setTuning(a[0], a[1]) });
+
+  /**
+   * Đội hình wave hiện tại, dưới dạng bảng đếm theo id loại lính.
+   *
+   * Đọc từ `composition` chứ không lưu riêng một bảng đếm: mảng đó là thứ
+   * thật sự được export và được engine đọc, nên một bảng đếm lưu song song
+   * là hai nguồn sự thật cho cùng một điều.
+   */
+  function waveCounts() {
+    const composition =
+      (E.meta.tuning && E.meta.tuning.minions && E.meta.tuning.minions.waves &&
+        E.meta.tuning.minions.waves.composition) || [];
+    const counts = {};
+    for (const id of composition) counts[id] = (counts[id] || 0) + 1;
+    return counts;
+  }
   def("map.tuningSeedMinions", {
     label: "Chép 3 loại lính mặc định", icon: "plus",
     run: () => {
@@ -772,6 +788,50 @@ const Cmd = (() => {
         ranged: { name: "Lính Phép Sư", style: "ranged", speed: 2.6, size: 30, health: 90, damage: 3, attackInterval: 1500, attackRange: 280, aggroRange: 340 },
         cannon: { name: "Lính Xe Pháo", style: "cannon", speed: 2.6, size: 38, health: 260, damage: 8, attackInterval: 1650, attackRange: 300, aggroRange: 360 },
       };
+      commit();
+    },
+  });
+  def("map.waveCount", {
+    label: "Đổi số lính mỗi wave", icon: "settings",
+    /**
+     * Bao nhiêu con loại này trong một wave.
+     *
+     * `MinionTuning.waves.composition` là **một mảng id có thứ tự** —
+     * `["melee","melee","melee","ranged","ranged","cannon"]` — chứ không phải
+     * bảng đếm. Ô nhập ở đây là bảng đếm, vì đó mới là thứ người vẽ map nghĩ
+     * trong đầu ("wave có mấy con cận chiến"), rồi hàm này dựng lại mảng theo
+     * đúng thứ tự map khai loại lính.
+     *
+     * Đánh đổi có thật và có chủ ý: thứ tự trong mảng quyết định thứ tự **ra
+     * quân**, nên viết tay mảng thì xen kẽ được (cận, xa, cận, xa…) còn ô đếm
+     * thì luôn ra "hết cận rồi tới xa". Đổi lại là một cái bảng ai cũng điền
+     * được, thay vì một ô chữ mà gõ sai một id là wave rỗng — xem
+     * `MinionSpawner.spawn`, nó bỏ qua id lạ chứ không báo gì.
+     */
+    run: (a) => {
+      const id = String((a && a[0]) || "").trim();
+      if (!id) return;
+      const count = Math.max(0, Math.floor(Number(a[1]) || 0));
+      if (!E.meta.tuning) E.meta.tuning = {};
+      if (!E.meta.tuning.minions) E.meta.tuning.minions = {};
+      const minions = E.meta.tuning.minions;
+      if (!minions.waves) minions.waves = {};
+
+      const counts = waveCounts();
+      counts[id] = count;
+      // Theo thứ tự map khai loại lính, không theo thứ tự người ta bấm ô nào
+      // trước: thứ tự đó mới là thứ nhìn thấy được trên màn hình.
+      const composition = [];
+      for (const typeId of Object.keys(minions.types || {})) {
+        for (let i = 0; i < (counts[typeId] || 0); i++) composition.push(typeId);
+      }
+
+      // Không loại nào có con nào thì bỏ hẳn khai báo, để map quay về đội hình
+      // của core — chứ không phải để lại một mảng rỗng, tức là wave không có
+      // con lính nào và cũng chẳng có gì nói ra điều đó.
+      if (composition.length) minions.waves.composition = composition;
+      else delete minions.waves.composition;
+      if (!Object.keys(minions.waves).length) delete minions.waves;
       commit();
     },
   });
@@ -1254,5 +1314,6 @@ const Cmd = (() => {
     copyToText, pasteFromText, readMemClip, deleteSelection,
     scaleMapContent, resizeMap, reverseLanes,
     nudge, fitView, allBounds, offerMerge,
+    waveCounts,
   };
 })();
