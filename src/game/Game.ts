@@ -149,6 +149,16 @@ export default class Game {
    */
   readonly mapTuning?: MapTuning;
   /**
+   * What a sale pays back in this match — `EconomyTuning.sellRefund`.
+   *
+   * A field on `Game` because `Game` *is* the `ShopHost` every shop call is
+   * handed (`hudInteractions`, `HostSession` and `ShopHistory` all pass it
+   * straight through), so putting the number here is what makes it reach both
+   * the sale and the panel that prints it without touching a single call site.
+   * Resolved once: a map's tuning cannot change mid-match.
+   */
+  readonly sellRefund: number;
+  /**
    * The active map's own `slots.minion`, teamId-bridged — where each team's
    * wave forms up, per lane. Set in the constructor, read by `MinionSpawner`
    * (`MinionSpawnerContext.minionMuster`) once per spawn rather than derived
@@ -305,6 +315,7 @@ export default class Game {
     this.mapSize = map.size;
     this.activeMapId = map.id;
     this.mapTuning = map.tuning;
+    this.sellRefund = resolveEconomy(map.tuning).sellRefund;
     this.minionMuster = minionMusterSlotsFrom(map.slots.minion, map.factions);
     this.neutralSlots = map.slots.neutral;
     // Before anything queues a wave or builds a blackboard: `MinionSpawner`,

@@ -8,6 +8,7 @@ import {
   MONSTER_REGEN_DELAY_MS,
   MinionPresets,
   PASSIVE_GOLD_PER_SECOND,
+  SELL_REFUND_FRACTION,
   STARTING_GOLD,
   TURRET_BOUNTY,
 } from './tuningDefaults';
@@ -169,6 +170,7 @@ export const DEFAULT_ECONOMY: Readonly<Required<EconomyTuning>> = Object.freeze(
   monsterBounty: MONSTER_BOUNTY,
   championBounty: CHAMPION_BOUNTY,
   turretBounty: TURRET_BOUNTY,
+  sellRefund: SELL_REFUND_FRACTION,
 });
 
 export type ResolvedEconomy = Required<EconomyTuning>;
@@ -194,6 +196,11 @@ export function resolveEconomy(tuning: MapTuning | undefined): ResolvedEconomy {
     monsterBounty: Math.max(0, num(own.monsterBounty, DEFAULT_ECONOMY.monsterBounty)),
     championBounty: Math.max(0, num(own.championBounty, DEFAULT_ECONOMY.championBounty)),
     turretBounty: Math.max(0, num(own.turretBounty, DEFAULT_ECONOMY.turretBounty)),
+    // The one economy number with a ceiling as well as a floor. Above 1 an
+    // item sells for more than it cost, which is a money printer rather than
+    // a generous map: buy, sell, repeat, and the match is decided by whoever
+    // clicks fastest.
+    sellRefund: Math.min(1, Math.max(0, num(own.sellRefund, DEFAULT_ECONOMY.sellRefund))),
   };
 }
 

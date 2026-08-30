@@ -49,7 +49,14 @@ import { recordShopStep } from '@/game/economy/ShopHistory';
  * either: a player who buys the wrong thing early should be able to correct
  * it at a cost rather than carry the mistake for the whole match.
  */
-export const SELL_REFUND_FRACTION = 0.7;
+/**
+ * Re-exported from `game/config/tuningDefaults.ts`, where every caller that
+ * cannot afford this module has to be able to reach it — `config/mapTuning.ts`
+ * resolves a map's own `sellRefund` against it and is pinned to the `pregame`
+ * chunk. Same arrangement as the bounties above it.
+ */
+import { SELL_REFUND_FRACTION } from '@/game/config/tuningDefaults';
+export { SELL_REFUND_FRACTION };
 
 /**
  * **Who the shop is answering to**, and therefore which rules apply.
@@ -108,6 +115,17 @@ export interface ShopHost {
      */
     readonly shopRadius?: number;
   }[];
+  /**
+   * What a sale pays back here, as a fraction of the item's cost —
+   * `EconomyTuning.sellRefund`, resolved once by `Game`.
+   *
+   * On the host rather than threaded separately because the host is already
+   * the channel that crosses from the match into both readers: `sellItem`,
+   * which pays the refund, and `sellRows`, which prints it. Nothing else was
+   * needed, which is worth saying because this field was left out for a while
+   * on the belief that the panel could not be reached.
+   */
+  readonly sellRefund?: number;
 }
 
 /**
@@ -143,9 +161,20 @@ export function atOwnFountain(champion: Champion, host: ShopHost): boolean {
  * out by hand in `shopState.test.ts` instead of calling this function to
  * check itself.
  */
-export function sellValueOf(def: QualifiedItem): number {
-  return Math.floor(Math.round(def.cost * SELL_REFUND_FRACTION * 1e4) / 1e4);
+export function sellValueOf(def: QualifiedItem, refund = SELL_REFUND_FRACTION): number {
+  return Math.floor(Math.round(def.cost * refund * 1e4) / 1e4);
 }
+
+/**
+ * The refund this match pays, from whichever host the caller already had.
+ *
+ * A default rather than a required field, because `ShopHost` is built by hand
+ * in several places — a test double, the LAN client, `AIChampion`'s shopping
+ * context — and the answer without it is the rule every map had before
+ * `EconomyTuning.sellRefund` existed.
+ */
+export const refundFractionOf = (host: ShopHost): number =>
+  typeof host.sellRefund === 'number' ? host.sellRefund : SELL_REFUND_FRACTION;
 
 /**
  * Every spell class this item needs, or `null` if any of them is not in
@@ -433,7 +462,7 @@ export function sellItem(
   if (!held) return 0;
 
   const sold = held.def as QualifiedItem;
-  const refund = sellValueOf(sold);
+  const refund = sellValueOf(sold, refundFractionOf(host));
   champion.unequipItem(slot);
   champion.wallet?.earn(refund);
   recordShopStep(champion, { kind: 'sell', def: sold, slot, refund });

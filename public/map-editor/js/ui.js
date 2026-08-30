@@ -1114,6 +1114,11 @@ const UI = (() => {
         { key: "monsterBounty", label: "Giết quái", unit: "g", ph: "32" },
         { key: "championBounty", label: "Giết tướng", unit: "g", ph: "200" },
         { key: "turretBounty", label: "Phá trụ", unit: "g", ph: "150" },
+        // Nửa còn lại của việc kinh tế siết chặt tới đâu: 0.7 nghĩa là mua
+        // nhầm một món tốn 30% để sửa, và đúng cái giá đó khiến việc chốt
+        // build trở thành một quyết định. Map muốn thử đồ thoải mái thì để 1;
+        // muốn mua là dứt khoát thì để 0.
+        { key: "sellRefund", label: "Bán lại được", unit: "×", ph: "0.7", hint: "phần trăm giá gốc, 0…1" },
       ],
     },
     {

@@ -530,11 +530,14 @@ export interface MapTuning {
  * single shape: a short skirmish map wants a full purse at the fountain and
  * fast passive income, a long macro map wants neither.
  *
- * `SELL_REFUND_FRACTION` is deliberately **absent**. It is read by the shop
- * panel as well as by the shop itself, and the panel is HUD code with no map
- * in scope — threading one fraction through `MatchConfigSource` to reach it
- * would be a larger change than the lever is worth, and a half-done version
- * would leave the panel quoting a refund the shop does not pay.
+ * `sellRefund` was once absent from this list, on the argument that the shop
+ * *panel* prints the refund as well as the shop paying it, and the panel is
+ * HUD code with no map in scope. That argument was simply wrong, and worth
+ * recording as wrong: both readers — `sellItem`, which pays it, and
+ * `sellRows`, which prints it — already take a `ShopHost`, and a host is the
+ * channel that crosses from the match into both. Nothing needed threading
+ * through `MatchConfigSource` at all; the fraction rides the object that was
+ * already being passed.
  */
 export interface EconomyTuning {
   /** What a champion leaves the fountain with. Default 500. */
@@ -549,6 +552,18 @@ export interface EconomyTuning {
   championBounty?: number;
   /** Default 150. */
   turretBounty?: number;
+  /**
+   * What selling an item pays back, as a fraction of its cost. Default 0.7.
+   *
+   * The other half of the economy's grip on how freely a build can change:
+   * at 0.7 a wrong purchase costs 30% to undo, which is what makes committing
+   * to a build a decision. A map that wants experimenting to be free says 1,
+   * and one that wants a purchase to be final says 0.
+   *
+   * Clamped to 0…1 where it is resolved. Above 1 is a money printer — buy,
+   * sell, repeat — and below 0 is a sale that charges you.
+   */
+  sellRefund?: number;
 }
 
 /**

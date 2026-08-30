@@ -64,6 +64,21 @@ export const CHAMPION_BOUNTY = 200;
 /** A building. Killer-only, like everything else here — no team split yet. */
 export const TURRET_BOUNTY = 150;
 
+/**
+ * What selling an item pays back, as a fraction of its cost.
+ *
+ * Here rather than in `economy/ItemShop.ts` — which re-exports it, and is
+ * where every reader still looks — for this file's whole reason: `mapTuning.ts`
+ * has to read it to resolve a map's own `sellRefund`, and that module is
+ * pinned to the `pregame` chunk. Importing it from `ItemShop` put the entire
+ * match chunk on the menu's first paint, which `pregameChunkPurity.test.ts`
+ * caught in the same edit that introduced it.
+ *
+ * 0.7 and not 1: a full refund turns an inventory into a scratchpad, and the
+ * cost of changing your mind is what makes committing to a build a decision.
+ */
+export const SELL_REFUND_FRACTION = 0.7;
+
 // ------------------------------------------------------------------ minions
 
 /**

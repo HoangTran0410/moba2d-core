@@ -3,6 +3,7 @@ import {
   priceFor,
   refusalFor,
   sellRefusalFor,
+  refundFractionOf,
   sellValueOf,
   type SellRefusal,
   type ShopHost,
@@ -224,7 +225,9 @@ export function sellRows(champion: Champion, host: ShopHost, mode: ShopMode = 'P
       name: item.def.name,
       image: item.icon?.path ?? '',
       cost: item.def.cost,
-      refund: sellValueOf(item.def as QualifiedItem),
+      // The map's own fraction, off the host — so the number the panel prints
+      // and the number the sale pays can never disagree.
+      refund: sellValueOf(item.def as QualifiedItem, refundFractionOf(host)),
       refusal,
       reason: refusal ? REFUSAL_TEXT[refusal] : '',
     });
