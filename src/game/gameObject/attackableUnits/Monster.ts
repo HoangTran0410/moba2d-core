@@ -1,4 +1,5 @@
 import { withinRadius } from '@/utils/math.utils';
+import type { DamageType } from '@/game/combat/Mitigation';
 import { Circle } from '@/libs/quadtree';
 import { MONSTER_BOUNTY } from '@/game/economy/Wallet';
 import { packAsset } from '@/game/config/packAsset';
@@ -1092,7 +1093,17 @@ export default class Monster extends AttackableUnit {
     this.phase = Monster.PHASES.ATTACK;
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit) {
+  /**
+   * The full signature, and it has to be the full signature: TypeScript lets
+   * an override take *fewer* parameters than the method it replaces, so a
+   * two-argument version of this compiles perfectly and silently drops `type`
+   * and `source` on the floor — every typed hit on one of these bodies fell
+   * back to `DEFAULT_DAMAGE_TYPE`. All four subclasses that override this had
+   * that shape, which is how a basic attack against a bot came to be mitigated
+   * by magic resist while the same swing against a human was mitigated by
+   * armour. `takeDamageSignature.test.ts` is the guard.
+   */
+  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
     // Refreshed on the swing, not on losing a target: "recently hurt" is the
     // honest reading of in-combat, and it is the one a player can see.
     this._regenHold = this.regenDelayMs;
@@ -1102,7 +1113,7 @@ export default class Monster extends AttackableUnit {
     // the fight, and a corpse has had its lock cleared by `die`.
     const engagedWith = this.phase === Monster.PHASES.ATTACK ? this.targetLock : null;
 
-    super.takeDamage(damage, attacker);
+    super.takeDamage(damage, attacker, type, source);
 
     if (!attacker) return;
     // super.takeDamage may have killed us; a corpse must not hold aggro. A camp

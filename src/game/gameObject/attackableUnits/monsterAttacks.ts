@@ -1,4 +1,5 @@
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
+import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import SpellObject from '@/game/gameObject/SpellObject';
 import type AttackableUnit from './AttackableUnit';
 
@@ -135,7 +136,7 @@ export class MonsterClaw extends SpellObject {
 
   strike(): void {
     if (!stillLands(this.owner, this.target, this.reach)) return;
-    this.target.takeDamage(this.damage, this.owner);
+    this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
   draw() {
@@ -236,7 +237,7 @@ export class MonsterSpit extends MissileSpellObject {
   onArrive() {
     const target = this.target;
     if (target && !target.isDead && !target.toRemove && target.targetable && !this.owner.isDead) {
-      target.takeDamage(this.damage, this.owner);
+      target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
     }
   }
 
@@ -307,7 +308,7 @@ export class MonsterBreath extends SpellObject {
 
   strike(): void {
     if (!stillLands(this.owner, this.target, this.reach)) return;
-    this.target.takeDamage(this.damage, this.owner);
+    this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
   draw() {

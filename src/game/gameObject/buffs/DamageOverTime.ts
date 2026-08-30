@@ -1,4 +1,5 @@
 import AssetManager from '@/managers/AssetManager';
+import type { DamageType } from '@/game/combat/Mitigation';
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
 
@@ -38,6 +39,15 @@ export default class DamageOverTime extends Buff {
   buffAddType = BuffAddType.RENEW_EXISTING;
 
   damagePerTick = 5;
+
+  /**
+   * What kind of damage a tick is. Magic by default, which is what a burn or a
+   * poison usually is and what this has always dealt — stated here rather than
+   * left to `takeDamage`'s own default, because "nobody said" and "magic on
+   * purpose" look identical from the outside and one of them is a bug. A
+   * bleed sets `'PHYSICAL'`; an execute-style burn sets `'TRUE'`.
+   */
+  damageType: DamageType = 'MAGIC';
   tickInterval = 500;
 
   flameColor: [number, number, number] = [255, 230, 120];
@@ -59,7 +69,7 @@ export default class DamageOverTime extends Buff {
     // even if the frame took longer than a whole interval
     if (this._timeSinceLastTick >= this.tickInterval) {
       this._timeSinceLastTick -= this.tickInterval;
-      this.targetUnit.takeDamage(this.damagePerTick, this.sourceUnit);
+      this.targetUnit.takeDamage(this.damagePerTick, this.sourceUnit, this.damageType);
     }
 
     this._updateFlames();

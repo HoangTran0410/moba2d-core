@@ -1,4 +1,5 @@
 import { getChampionPresetRandom } from '@/game/preset';
+import type { DamageType } from '@/game/combat/Mitigation';
 import Champion, { type ChampionOptions, type ChampionPresetData } from './Champion';
 import type AttackableUnit from './AttackableUnit';
 import { type BotDifficulty, DEFAULT_DIFFICULTY } from '@/game/ai/Difficulty';
@@ -271,8 +272,18 @@ export default class AIChampion extends Champion {
     if (this.wandersOnReflex(this._autoMoveOnCollideWall)) this.moveToRandomLocation();
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit) {
-    super.takeDamage(damage, attacker);
+  /**
+   * The full signature, and it has to be the full signature: TypeScript lets
+   * an override take *fewer* parameters than the method it replaces, so a
+   * two-argument version of this compiles perfectly and silently drops `type`
+   * and `source` on the floor — every typed hit on one of these bodies fell
+   * back to `DEFAULT_DAMAGE_TYPE`. All four subclasses that override this had
+   * that shape, which is how a basic attack against a bot came to be mitigated
+   * by magic resist while the same swing against a human was mitigated by
+   * armour. `takeDamageSignature.test.ts` is the guard.
+   */
+  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
+    super.takeDamage(damage, attacker, type, source);
     // The brain's "am I safe enough to stand still" clock. Written here rather
     // than derived from health, because a shield eats the number and not the
     // fact: being shot at is what makes a recall a bad idea, not losing health

@@ -1,4 +1,6 @@
 import { Circle } from '@/libs/quadtree';
+import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
+import type { DamageType } from '@/game/combat/Mitigation';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
@@ -322,9 +324,19 @@ export default class Turret extends AttackableUnit {
     this.game.objectManager.addObject(bolt);
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit) {
+  /**
+   * The full signature, and it has to be the full signature: TypeScript lets
+   * an override take *fewer* parameters than the method it replaces, so a
+   * two-argument version of this compiles perfectly and silently drops `type`
+   * and `source` on the floor — every typed hit on one of these bodies fell
+   * back to `DEFAULT_DAMAGE_TYPE`. All four subclasses that override this had
+   * that shape, which is how a basic attack against a bot came to be mitigated
+   * by magic resist while the same swing against a human was mitigated by
+   * armour. `takeDamageSignature.test.ts` is the guard.
+   */
+  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
     if (this.isDead) return;
-    super.takeDamage(damage, attacker);
+    super.takeDamage(damage, attacker, type, source);
     this._sinceDamaged = 0;
     this._hitFlash = 180;
   }
@@ -517,7 +529,7 @@ export class TurretBolt extends MissileSpellObject {
   onArrive() {
     const t = this.target;
     if (t && !t.isDead && !t.toRemove && t.targetable) {
-      t.takeDamage(this.damage, this.owner);
+      t.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
     }
   }
 

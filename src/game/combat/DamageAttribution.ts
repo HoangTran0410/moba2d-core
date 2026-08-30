@@ -49,6 +49,22 @@
  */
 
 /** Anything that can own a hit. `Spell` and `Buff` both already are one. */
+/**
+ * What a basic attack calls itself in the death recap.
+ *
+ * One string, because there are five swings in this engine and they are all
+ * the same act: a champion's (`landBasicAttack`), a minion's melee and its
+ * bolt, a turret's bolt, and a camp's three. Only the first of them named
+ * itself until the others were found dealing magic damage — see
+ * `BASIC_ATTACK_TYPE` beside it — and a recap that says "Đánh thường" for one
+ * attacker and nothing for the other four is a recap that reads as a bug.
+ *
+ * Here rather than in `BasicAttack.ts` because `Minion`, `Turret` and
+ * `monsterAttacks` all need it and none of them should import the champion
+ * attack to get a label. This module has no imports of its own.
+ */
+export const BASIC_ATTACK_SOURCE = 'Đánh thường';
+
 export interface DamageAttributable {
   readonly name?: string;
   /**

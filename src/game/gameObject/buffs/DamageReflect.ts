@@ -1,4 +1,5 @@
 import Buff from '@/game/gameObject/Buff';
+import type { DamageType } from '@/game/combat/Mitigation';
 import CombatText from '@/game/gameObject/helpers/CombatText';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 
@@ -54,6 +55,16 @@ export default class DamageReflect extends Buff {
    */
   flat = 0;
 
+  /**
+   * What the returned damage is. Magic by default — thorns return magic in
+   * the game this borrows from, and it is what this has always dealt — but
+   * said out loud rather than inherited from `takeDamage`'s default, so the
+   * choice is a choice. Deliberately *not* the type of the incoming hit: a
+   * physical swing into thorns still comes back as magic, which is the whole
+   * point of building thorns against an attacker.
+   */
+  damageType: DamageType = 'MAGIC';
+
   color: [number, number, number] = [255, 190, 110];
 
   onDamageTaken(swung: number, _landed: number, attacker?: AttackableUnit): void {
@@ -68,7 +79,7 @@ export default class DamageReflect extends Buff {
 
     reflecting = true;
     try {
-      attacker.takeDamage(payload, this.targetUnit);
+      attacker.takeDamage(payload, this.targetUnit, this.damageType);
       CombatText.show(attacker, 'reflect', payload, this.color);
     } finally {
       reflecting = false;

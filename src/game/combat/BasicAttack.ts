@@ -1,5 +1,6 @@
 import EventType from '@/game/enums/EventType';
 import { applyOnHitEffects } from '@/game/combat/OnHit';
+import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
@@ -118,7 +119,7 @@ export function landBasicAttack(
   // `combat/Mitigation.ts`'s header on why the default runs that way round.
   // `landBasicAttack` is the sole place a swing becomes damage, so this single
   // line is what makes armour mean anything at all.
-  victim.takeDamage(total, attacker, 'PHYSICAL', 'Đánh thường');
+  victim.takeDamage(total, attacker, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   if (crit) showCritSpark(attacker, victim);
   // After the swing's own damage, before the observation event: an on-hit
   // effect is part of the attack (League's order too), so anything watching

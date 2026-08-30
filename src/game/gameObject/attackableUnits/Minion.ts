@@ -1,4 +1,6 @@
 import { Circle } from '@/libs/quadtree';
+import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
+import type { DamageType } from '@/game/combat/Mitigation';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
 import { MINION_BOUNTY } from '@/game/economy/Wallet';
 import { MinionPresets } from '@/game/config/tuningDefaults';
@@ -565,9 +567,19 @@ export default class Minion extends AttackableUnit {
     this.phase = Minion.PHASES.ATTACK;
   }
 
-  takeDamage(damage: number, attacker?: AttackableUnit) {
+  /**
+   * The full signature, and it has to be the full signature: TypeScript lets
+   * an override take *fewer* parameters than the method it replaces, so a
+   * two-argument version of this compiles perfectly and silently drops `type`
+   * and `source` on the floor — every typed hit on one of these bodies fell
+   * back to `DEFAULT_DAMAGE_TYPE`. All four subclasses that override this had
+   * that shape, which is how a basic attack against a bot came to be mitigated
+   * by magic resist while the same swing against a human was mitigated by
+   * armour. `takeDamageSignature.test.ts` is the guard.
+   */
+  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
     if (this.isDead) return;
-    super.takeDamage(damage, attacker);
+    super.takeDamage(damage, attacker, type, source);
     // super.takeDamage may have killed us; a corpse must not pick a fight. Only
     // swap targets when we have none — otherwise a wave under turret fire would
     // drop the minion it was killing every time a bolt landed.
@@ -864,7 +876,7 @@ export class MinionBolt extends MissileSpellObject {
   onArrive() {
     const target = this.target;
     if (target && !target.isDead && !target.toRemove && target.targetable && !this.owner.isDead) {
-      target.takeDamage(this.damage, this.owner);
+      target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
     }
   }
 
@@ -918,7 +930,7 @@ export class MinionSwing extends SpellObject {
     }
     // the target (or this minion) may have drifted during the wind-up
     if (p5.Vector.dist(this.owner.position, target.position) > this.reach) return;
-    target.takeDamage(this.damage, this.owner);
+    target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
   draw() {
