@@ -304,6 +304,19 @@ describe('what each subpath actually publishes, not just that it exists', () => 
         'checkTerrainField',
         'checkUnitTargetTeam',
         'checkWorldMouseInSpellCode',
+        // The three map-geometry entries are the odd ones out and belong here
+        // anyway: every other name is a static *source* scan, these are a
+        // geometric rule over map data — can a minion body walk this lane.
+        // They are published for the same reason the scans are, that the rule
+        // belongs to the engine and the population belongs to the content;
+        // and their single implementation lives in the map editor's own plain
+        // JavaScript, because that tool has no bundler and cannot import
+        // anything else. Three copies of those thresholds existed before this
+        // (this repo's own test, a pack's, and the editor's), and two of them
+        // already disagreed.
+        'laneIssues',
+        'laneRuleLimits',
+        'mapRules',
         'packAssetKeySeam',
         'packCoreBoundarySeam',
         'scanImports',

@@ -22,6 +22,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { MapGeometry } from '../../src/content/ContentPack';
+import { laneIssues } from '@/seams/index';
 // Batch 4 task 6 moved Summoner's Rift's map out of `src/content/maps/` and
 // into the pack.
 import { summonersRiftGeometry } from '../../packs/riot/maps/summonersRiftGeometry';
@@ -30,58 +31,23 @@ import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeom
 type Point = { x: number; y: number };
 
 /**
- * Turret body (`DEFAULT_TURRET_PRESET.size` 92, radius 46) plus the widest
- * minion's (`MinionPresets.cannon.size` 38, radius 19) — the same physical
- * floor `Lanes.test.ts`'s own `TURRET_BLOCKED_RADIUS` derives, restated here
- * so this file does not depend on a `tests/game/minions/` internal.
+ * The rule itself is **not here**, and that is the change worth reading.
+ *
+ * This file used to derive its own `TURRET_BLOCKED_RADIUS` (46 + 19), the pack's
+ * `Lanes.test.ts` derived its own (46 + 17), and the map editor grew a third
+ * copy of both. Three implementations of one rule, two of which already
+ * disagreed by two pixels — and the drift had a direction: the editor said
+ * `0 lỗi` over a lane running three pixels inside a wall that the pack's push
+ * gate refused.
+ *
+ * `@moba2d/core/seams`' `laneIssues` is the single implementation now, loading
+ * `public/map-editor/js/mapRules.js` — the editor has no bundler and cannot
+ * import anything else, so the original lives on the narrower side. What is
+ * left in this file is its own question: **every shipped map**, checked the
+ * same way, which is the one thing a pack's own suite cannot ask.
  */
-const TURRET_BLOCKED_RADIUS = 46 + 19;
-/** A waypoint any closer than this is a point no minion body can ever stand on. */
-const MIN_WAYPOINT_TURRET_CLEARANCE = TURRET_BLOCKED_RADIUS + 5;
-/**
- * The same question asked of the walk, not just the waypoints — a lane is a
- * straight-line `moveTo` between them, no routing, so a vertex clearing a
- * turret buys nothing if the run to the next one cuts through it. 100 rather
- * than the blocked radius because this is a lane, not a squeeze; matches
- * `Lanes.test.ts`'s own `MIN_SEGMENT_TURRET_CLEARANCE`.
- */
-const MIN_SEGMENT_TURRET_CLEARANCE = 100;
-
-const nearestTurretDistance = (x: number, y: number, turrets: readonly Point[]): number => {
-  let best = Infinity;
-  for (const turret of turrets) {
-    const d = Math.hypot(x - turret.x, y - turret.y);
-    if (d < best) best = d;
-  }
-  return best;
-};
-
-/** Worst turret clearance anywhere on the straight line a minion actually walks. */
-const segmentTurretClearance = (
-  a: Point,
-  b: Point,
-  turrets: readonly Point[]
-): { clearance: number; at: Point } => {
-  const length = Math.hypot(b.x - a.x, b.y - a.y);
-  const steps = Math.max(2, Math.ceil(length / 10));
-  let worst = Infinity;
-  let at = a;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = a.x + (b.x - a.x) * t;
-    const y = a.y + (b.y - a.y) * t;
-    const clearance = nearestTurretDistance(x, y, turrets);
-    if (clearance < worst) {
-      worst = clearance;
-      at = { x: Math.round(x), y: Math.round(y) };
-    }
-  }
-  return { clearance: worst, at };
-};
-
-/** Runs both floors against every lane a map declares, against its own turret slots. */
 function checkMapLanesClearTurrets(mapName: string, geometry: MapGeometry): void {
-  const turrets = geometry.slots.structure.map(slot => ({ x: slot.x, y: slot.y }));
+  const turrets: [number, number][] = geometry.slots.structure.map(slot => [slot.x, slot.y]);
   expect(turrets.length, `${mapName} has no turrets to check against`).toBeGreaterThan(0);
 
   for (const lane of geometry.lanes ?? []) {
@@ -89,31 +55,22 @@ function checkMapLanesClearTurrets(mapName: string, geometry: MapGeometry): void
       lane.waypoints.length,
       `${mapName} lane ${lane.id} has fewer than two waypoints`
     ).toBeGreaterThanOrEqual(2);
-
-    lane.waypoints.forEach((waypoint, i) => {
-      const clearance = nearestTurretDistance(waypoint.x, waypoint.y, turrets);
-      expect(
-        clearance,
-        `${mapName} lane ${lane.id}[${i}] (${waypoint.x},${waypoint.y}) is ` +
-          `${Math.round(clearance)}px from a turret centre — a minion body is blocked at ` +
-          `${TURRET_BLOCKED_RADIUS}px`
-      ).toBeGreaterThanOrEqual(MIN_WAYPOINT_TURRET_CLEARANCE);
-    });
-
-    for (let i = 0; i + 1 < lane.waypoints.length; i++) {
-      const { clearance, at } = segmentTurretClearance(
-        lane.waypoints[i],
-        lane.waypoints[i + 1],
-        turrets
-      );
-      expect(
-        clearance,
-        `${mapName} lane ${lane.id} segment ${i} (${lane.waypoints[i].x},${lane.waypoints[i].y}) ` +
-          `-> (${lane.waypoints[i + 1].x},${lane.waypoints[i + 1].y}) passes ` +
-          `${Math.round(clearance)}px from a turret centre at (${at.x},${at.y})`
-      ).toBeGreaterThanOrEqual(MIN_SEGMENT_TURRET_CLEARANCE);
-    }
   }
+
+  // Walls are deliberately not passed. The wall rule needs the map's own
+  // polygons and this file is about the *turret* floors, which are the pair a
+  // map can break by moving a tower — the thing a pack's slot table changes
+  // and its lane data does not.
+  const issues = laneIssues({
+    lanes: (geometry.lanes ?? []).map(lane => ({
+      id: `${mapName}/${lane.id}`,
+      points: lane.waypoints.map(({ x, y }): [number, number] => [x, y]),
+    })),
+    walls: [],
+    turrets,
+  });
+
+  expect(issues.map(issue => `${issue.text} @ ${issue.at.map(Math.round).join(',')}`)).toEqual([]);
 }
 
 describe('every shipped map keeps its lanes off its own turrets', () => {

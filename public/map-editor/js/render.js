@@ -100,7 +100,13 @@ const Renderer = (() => {
     const settled = Cam.step(dt);
     draw();
     Store.noteCamera();
-    if (!settled) requestRender();
+    // Editor chỉ vẽ khi có việc, nên bất cứ thứ gì tự chạy theo thời gian đều
+    // phải tự giữ vòng lặp sống. Camera đã tự lo phần của nó qua `settled`;
+    // vòng nháy ở chỗ lỗi thì không, và nếu chỉ dựa vào camera thì nó đứng
+    // hình đúng lúc camera tới nơi — tức là đúng lúc người ta bắt đầu nhìn.
+    // `drawCheckFocus` tự xoá `E.checkFocus` khi hết hạn, nên điều kiện này
+    // cũng là thứ dừng vòng lặp lại.
+    if (!settled || E.checkFocus) requestRender();
   }
 
   /* ------------------------------ vẽ chính --------------------------- */
@@ -128,6 +134,7 @@ const Renderer = (() => {
     drawSelectionChrome(s);
     drawPen(s);
     if (E.showDummy) drawDummy();
+    drawCheckFocus(s);
 
     ctx.restore();
 
@@ -137,6 +144,49 @@ const Renderer = (() => {
     if (E.showMinimap) drawMinimap();
 
     UI.syncStatus(fps);
+  }
+
+  /** Bao lâu vòng nháy ở chỗ lỗi còn sống, tính từ lúc bấm. */
+  const CHECK_FOCUS_MS = 2600;
+
+  /**
+   * Vòng nháy tại chỗ hỏng mà bảng "Kiểm tra" vừa bay tới.
+   *
+   * Bay tới thôi là chưa đủ: mấy lỗi hình học không trỏ vào một hình nào bấm
+   * chọn được — "lane đoạn 6 hở tường 3px" là một điểm giữa quãng đi, giữa hai
+   * waypoint, không thuộc về vật gì cả. Không có dấu thì người ta tới đúng chỗ
+   * và vẫn không biết đang phải nhìn cái gì.
+   *
+   * Tự tắt: nó là câu trả lời cho một cú bấm, không phải một lớp hiển thị.
+   */
+  function drawCheckFocus(s) {
+    const focus = E.checkFocus;
+    if (!focus) return;
+    const age = performance.now() - focus.since;
+    if (age > CHECK_FOCUS_MS) {
+      E.checkFocus = null;
+      return;
+    }
+
+    const left = 1 - age / CHECK_FOCUS_MS;
+    const beat = (age % 900) / 900;
+    ctx.save();
+    ctx.lineWidth = 2.5 / s;
+    ctx.strokeStyle = `rgba(242,85,90,${(0.25 + 0.55 * left).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(focus.x, focus.y, 26 + 46 * beat, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.lineWidth = 1.5 / s;
+    ctx.strokeStyle = `rgba(242,85,90,${(0.9 * left).toFixed(3)})`;
+    const arm = 34;
+    ctx.beginPath();
+    ctx.moveTo(focus.x - arm, focus.y);
+    ctx.lineTo(focus.x + arm, focus.y);
+    ctx.moveTo(focus.x, focus.y - arm);
+    ctx.lineTo(focus.x, focus.y + arm);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawMapPaper() {

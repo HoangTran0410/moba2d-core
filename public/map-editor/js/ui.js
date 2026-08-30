@@ -985,21 +985,59 @@ const UI = (() => {
     checkTimer = setTimeout(syncCheck, 320);
   }
 
+  /**
+   * Bay tới chỗ hỏng và nháy một vòng ở đó.
+   *
+   * Một dòng chữ tả chỗ hỏng rồi bắt người ta tự đi tìm trong khung
+   * 6400×6400 là bắt người ta làm việc mà máy đã biết câu trả lời — và với
+   * mấy lỗi hình học mới (lane cọ tường, waypoint nằm trong trụ) thì "chỗ đó"
+   * còn không phải một hình nào bấm chọn được, nó là một điểm giữa quãng đi.
+   *
+   * `fitRect` chứ không phải `moveTo`: nó biết né thanh công cụ và bảng thuộc
+   * tính, nên chỗ hỏng rơi vào giữa phần màn hình còn *trống* thay vì nằm sau
+   * cái bảng người ta vừa đọc lỗi trên đó.
+   */
+  function focusIssue(at) {
+    if (!at) return;
+    const pad = 260;
+    Cam.fitRect([at[0] - pad, at[1] - pad, at[0] + pad, at[1] + pad], 90);
+    E.checkFocus = { x: at[0], y: at[1], since: performance.now() };
+    // Không có dòng này thì không có gì xảy ra cả: editor chỉ vẽ khi có ai đó
+    // yêu cầu, và `fitRect` chỉ đặt đích cho camera chứ không tự khởi động
+    // vòng lặp. Frame đầu tiên là thứ bắt đầu cả cú bay lẫn vòng nháy.
+    requestRender();
+  }
+
   function syncCheck() {
     if (!R.check) return;
     const issues = Store.validate();
+    R.check.innerHTML = "";
     if (!issues.length) {
       R.check.innerHTML = `<span style="color:var(--accent)">${ico("check", "ico ico-sm")} Map hợp lệ với schema moba2d.</span>`;
       return;
     }
     const errs = issues.filter((i) => i.level === "error");
-    R.check.innerHTML =
-      `<div style="margin-bottom:5px"><b style="color:${errs.length ? "var(--danger)" : "var(--gold)"}">` +
-      `${errs.length} lỗi · ${issues.length - errs.length} cảnh báo</b></div>` +
-      issues.slice(0, 8).map((i) =>
-        `<div style="color:${i.level === "error" ? "var(--danger)" : "var(--gold)"};margin-bottom:3px">• ${esc(i.text)}</div>`
-      ).join("") +
-      (issues.length > 8 ? `<div>… và ${issues.length - 8} mục nữa</div>` : "");
+    R.check.appendChild(
+      el("div", { style: "margin-bottom:5px" },
+        `<b style="color:${errs.length ? "var(--danger)" : "var(--gold)"}">` +
+        `${errs.length} lỗi · ${issues.length - errs.length} cảnh báo</b>`)
+    );
+
+    for (const issue of issues.slice(0, 8)) {
+      const colour = issue.level === "error" ? "var(--danger)" : "var(--gold)";
+      const row = el("div", {
+        class: issue.at ? "check-row" : "",
+        style: `color:${colour};margin-bottom:3px` + (issue.at ? ";cursor:pointer" : ""),
+        title: issue.at ? "Bấm để bay tới chỗ này" : "",
+      }, `• ${esc(issue.text)}` + (issue.at
+        ? ` <span style="color:var(--tx-3)">(${Math.round(issue.at[0])}, ${Math.round(issue.at[1])})</span>`
+        : ""));
+      if (issue.at) row.addEventListener("click", () => focusIssue(issue.at));
+      R.check.appendChild(row);
+    }
+    if (issues.length > 8) {
+      R.check.appendChild(el("div", { text: `… và ${issues.length - 8} mục nữa` }));
+    }
   }
 
   function syncView() {

@@ -1172,10 +1172,50 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * Trả về [{ level, text }] — 'error' là chắc chắn game không chạy được,
    * 'warn' là nhiều khả năng sai ý đồ.
    */
+  /**
+   * Ba luật hình học mà cổng đẩy lên của pack kiểm, và editor thì không.
+   *
+   * Đây là lý do "0 lỗi" trong editor mà `npm run verify` vẫn đỏ: bộ kiểm của
+   * editor xưa nay chỉ soi *schema và topology* — id, phe, chiều lane, điểm
+   * gom lính, khung map. Còn "lane có đi xuyên tường không", "lính có đứng
+   * được lên waypoint này không" là hình học, và không ai hỏi.
+   *
+   * Phần tính toán **không nằm ở đây**: nó ở `js/mapRules.js`, một bản duy
+   * nhất mà cả `tests/maps/Lanes.test.ts` của pack cũng nạp (qua
+   * `src/seams/mapRules.ts`). Hai bản cài đặt là cách mà editor báo xanh còn
+   * cổng báo đỏ, tức đúng cái đang được sửa. Việc của hàm này chỉ là dịch dữ
+   * liệu của editor — polygon lưu theo toạ độ tương đối — sang toạ độ world
+   * tuyệt đối mà luật nhận vào.
+   */
+  function laneGeometryIssues(err) {
+    const world = (t) => t.polygon.map((p) => [p[0] + t.position[0], p[1] + t.position[1]]);
+
+    const issues = MapRules.laneIssues({
+      lanes: E.terrains
+        .filter((t) => t.type === "lane" && (t.polygon || []).length >= 2)
+        .map((t) => ({ id: (t.props || {}).id || "?", points: world(t) })),
+      walls: E.terrains
+        .filter((t) => t.type === "wall" && (t.polygon || []).length >= 3)
+        .map(world),
+      turrets: E.terrains
+        .filter((t) => t.type === "structure")
+        .map((t) => [t.position[0], t.position[1]]),
+    });
+
+    for (const issue of issues) err(issue.text, issue.at);
+  }
+
+  /**
+   * `at` là toạ độ world của chỗ hỏng, khi biết được.
+   *
+   * Có nó thì bảng "Kiểm tra" bấm được: một dòng chữ mô tả chỗ hỏng rồi bắt
+   * người ta tự đi tìm trong một map 6400×6400 là bắt người ta làm việc mà máy
+   * đã biết câu trả lời.
+   */
   function validate() {
     const out = [];
-    const err = (text) => out.push({ level: "error", text });
-    const warn = (text) => out.push({ level: "warn", text });
+    const err = (text, at) => out.push({ level: "error", text, at });
+    const warn = (text, at) => out.push({ level: "warn", text, at });
 
     const factions = E.meta.factions;
     const size = Math.max(E.mapSize[0], E.mapSize[1]);
@@ -1195,17 +1235,19 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
       const p = t.props || {};
       const where = `${KIND[t.type].label} tại (${R(t.position[0])}, ${R(t.position[1])})`;
 
+      const here = [t.position[0], t.position[1]];
+
       if (KIND[t.type].group === "terrain" && t.polygon.length < 3) {
-        err(`${where}: polygon chỉ có ${t.polygon.length} đỉnh.`);
+        err(`${where}: polygon chỉ có ${t.polygon.length} đỉnh.`, here);
       }
       if (p.faction !== undefined && !factions.includes(p.faction)) {
-        err(`${where}: phe “${p.faction}” không có trong danh sách phe của map.`);
+        err(`${where}: phe “${p.faction}” không có trong danh sách phe của map.`, here);
       }
       if (t.type === "minion" && !laneIdSet.has(p.lane)) {
-        err(`${where}: lane “${p.lane}” không tồn tại.`);
+        err(`${where}: lane “${p.lane}” không tồn tại.`, here);
       }
       if (t.type === "neutral" && !String(p.role || "").trim()) {
-        err(`${where}: chưa đặt role cho bãi quái.`);
+        err(`${where}: chưa đặt role cho bãi quái.`, here);
       }
       if (t.type === "lane") {
         if (t.polygon.length < 2) err(`Lane “${p.id}” cần ít nhất 2 waypoint.`);
@@ -1249,7 +1291,7 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
 
       const b = t._bbox;
       if (b && (b[0] < 0 || b[1] < 0 || b[2] > size || b[3] > size)) {
-        warn(`${where} nằm ngoài khung map (0…${size}).`);
+        warn(`${where} nằm ngoài khung map (0…${size}).`, here);
       }
     }
 
@@ -1259,6 +1301,8 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
       }
     }
     if (!lanes.length) warn("Map chưa có lane nào — sẽ không có wave lính, và lệnh PUSH không dùng được.");
+
+    laneGeometryIssues(err);
 
     return out;
   }

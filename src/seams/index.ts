@@ -197,6 +197,21 @@ export { checkPackAssetKey } from './packAssetKey';
 // only correct move as a hand-rolled copy, which is precisely the mistake
 // this module exists to prevent one caller at a time.
 export { scanImports, stripComments, type ImportKind, type ImportReference } from './importScan';
+/**
+ * Not a source scan like everything above it, and here for the same reason
+ * they are: a rule the engine owns, run against whatever tree the caller
+ * hands it. This one is geometry rather than syntax — can a minion body walk
+ * this lane — and its single implementation lives in the map editor's own
+ * plain JavaScript, because the editor has no bundler and cannot import
+ * anything else. See `./mapRules.ts`.
+ */
+export {
+  laneIssues,
+  laneRuleLimits,
+  mapRules,
+  type MapRuleInput,
+  type MapRuleIssue,
+} from './mapRules';
 
 /** Every seam this module exports, named for reporting. */
 export const seams: Seam[] = [

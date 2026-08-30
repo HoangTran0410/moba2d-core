@@ -88,7 +88,7 @@ function runEditor(tuning?: unknown): EditorRun {
 
   vm.runInContext(editorFile('lib/decomp.min.js'), context);
   vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/geom.js', 'js/state.js', 'js/storage.js']) {
+  for (const file of ['js/mapRules.js', 'js/geom.js', 'js/state.js', 'js/storage.js']) {
     vm.runInContext(editorFile(file), context);
   }
 
@@ -155,7 +155,7 @@ function parseInEditor(doc: unknown): {
   const context = vm.createContext(sandbox);
   vm.runInContext(editorFile('lib/decomp.min.js'), context);
   vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/geom.js', 'js/state.js', 'js/storage.js']) {
+  for (const file of ['js/mapRules.js', 'js/geom.js', 'js/state.js', 'js/storage.js']) {
     vm.runInContext(editorFile(file), context);
   }
   return vm.runInContext(

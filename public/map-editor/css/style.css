@@ -384,6 +384,21 @@ body {
     border-top: 1px solid var(--line-soft);
 }
 
+/* Một dòng lỗi bấm được: camera bay tới chỗ hỏng và nháy một vòng ở đó.
+   Chỉ những mục có toạ độ mới nhận class này — mấy lỗi về id hay về phe thì
+   không có "chỗ" nào để tới, và một dòng trông bấm được mà bấm không ra gì
+   còn tệ hơn một dòng chữ thường. */
+.check-row {
+    border-radius: 5px;
+    margin-left: -4px;
+    padding: 2px 4px;
+    transition: background .12s;
+}
+
+.check-row:hover {
+    background: rgba(255, 255, 255, .06);
+}
+
 .sec-title {
     font-size: 10.5px;
     font-weight: 700;

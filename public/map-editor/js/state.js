@@ -142,6 +142,14 @@ const E = {
   showMinimap: false,
   showDummy: false,
   showVertexIndex: false,
+  /**
+   * Chỗ hỏng mà bảng "Kiểm tra" vừa bay tới — `{ x, y, since }`, hoặc null.
+   *
+   * Ở đây chứ không phải trong ui.js vì `render.js` là bên vẽ nó, và hai file
+   * đó không import lẫn nhau: `E` là chỗ duy nhất chúng gặp được. Tự hết hạn
+   * sau `CHECK_FOCUS_MS` (`render.js`), nên không có gì phải dọn.
+   */
+  checkFocus: null,
   visible: { wall: true, bush: true, water: true, spawn: true, structure: true, minion: true, neutral: true, lane: true },
   snap: false,
   gridSize: 50,
