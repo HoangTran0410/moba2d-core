@@ -325,7 +325,7 @@ watch(
       'has-kit': shelf.kit.length > 0,
       open: shelf === openShelf,
       'pack-collapsed': packId !== null && !packOpen(packId),
-    }" :data-champion="shelf.name">
+    }" :data-champion="shelf.name" :data-spells="shelf.entries.map(e => e.entry.id).join(' ')">
       <!-- `has-kit` is the same predicate that decides whether the header is a
            button at all (`v-if="shelf.kit.length"` below), reused rather than
            restated: the tile grid shows exactly the shelves that have a whole
@@ -395,7 +395,26 @@ watch(
         </div>
       </div>
 
-      <div class="catalog-group-row">
+      <!--
+        **Mounted only while the shelf is open**, and that is the whole cost of
+        opening this modal. The roster is 66 shelves holding 262 abilities, and
+        rendering every one of them built 262 buttons, 262 `SpellIcon`s and
+        some two thousand event listeners — 1350 nodes — of which at most four
+        were ever visible, the rest `display: none` behind
+        `.kit-shelf:not(.open) .catalog-group-row`.
+
+        It was a deliberate trade once: keep everything mounted so expanding a
+        champion is instant instead of a rebuild. The trade is backwards. The
+        rebuild it was avoiding is *four* cards, and the price was paid on
+        every single open of a modal whose first screen is a grid of closed
+        tiles. Measured in a match at a 4x CPU throttle, this is the difference
+        between the editor and the Đội tab beside it, which mounts a dozen rows
+        and appears instantly.
+
+        A closed shelf still says what it holds — see `data-spells` above — so
+        nothing has to mount an ability to find out which champion owns it.
+      -->
+      <div v-if="shelf === openShelf" class="catalog-group-row">
         <!-- `@contextmenu.prevent`: a card is an icon inside a button, and a
              long press on one is Chrome's own "open image / download image"
              menu unless something says otherwise. That menu both hides the

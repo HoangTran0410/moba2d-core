@@ -1004,18 +1004,21 @@
 }
 
 /* ------------------------------------------------ closed tiles, one open shelf
-   Everything a closed tile does not show hides rather than unmounts: the roster
-   is ~50 shelves and ~200 icons, and `KitRoster.vue` keeps them all mounted so
-   opening one is instant instead of a rebuild (`loading="lazy"` already means
-   an icon nobody scrolled to never fetched). The e2e drives count `.kit-shelf`
-   and `.catalog-spell-card` expecting the whole catalogue in the DOM, and check
-   what is actually *visible* separately. */
+   A tile hides here; its *abilities* are never built at all. `KitRoster.vue`
+   mounts `.catalog-group-row` only for the open shelf, because the roster is 66
+   shelves holding 262 abilities and rendering every one of them cost 1350 nodes
+   on a screen whose first state shows none of them.
+
+   That used to go the other way — everything mounted, hidden with CSS, so
+   expanding a champion was instant instead of a rebuild. The rebuild is four
+   cards and takes about 20ms; the mount was paid on every open of the modal.
+   The e2e drives check what is *visible* as they always did, and count what the
+   grid advertises (`data-spells`) for what it is reachable. */
 
 /* The two shelves that are not a champion — the basic attack and the summoner
    spells. `has-kit` is the same predicate that gives a shelf its tile button,
    so this cannot select a shelf that would have had nothing to open. */
-.kit-roster .kit-shelf:not(.has-kit),
-.kit-roster .catalog-group-row {
+.kit-roster .kit-shelf:not(.has-kit) {
   display: none;
 }
 
@@ -1023,9 +1026,9 @@
    after it down — an accordion, so the champion stays where it was tapped
    instead of the list jumping.
 
-   Placed immediately after the hide rules, and that is load-bearing: both
+   Placed immediately after the hide rule, and that is load-bearing: both
    selectors carry three classes, so they have equal specificity and the later
-   one wins. Moving this block above them silently turns the feature off. */
+   one wins. Moving this block above it silently turns the feature off. */
 .kit-roster .kit-shelf.open {
   display: block;
   grid-column: 1 / -1;

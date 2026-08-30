@@ -171,10 +171,31 @@ const openShelf = name =>
  * The owning shelf is found from the card rather than passed in, so a caller
  * still names only the spell it wants.
  */
-const pickSpell = async id => {
+/**
+ * A catalogue id as the DOM spells it.
+ *
+ * This script names abilities bare (`Olaf_Q`) and an *installed* pack qualifies
+ * them with its own registry prefix (`lol:Olaf_Q`), so a literal selector finds
+ * nothing whenever the roster is served by a linked pack rather than a bundled
+ * one. Resolved from what the shelves advertise, so either spelling works and
+ * neither is written down twice.
+ */
+const spellId = bare =>
+  evaluate(
+    b =>
+      [...document.querySelectorAll('.kit-shelf')]
+        .flatMap(shelf => (shelf.dataset.spells || '').split(' '))
+        .find(id => id === b || id.endsWith(`:${b}`)) ?? b,
+    bare
+  );
+
+const pickSpell = async bare => {
+  const id = await spellId(bare);
   await evaluate(s => {
-    const card = document.querySelector(`.catalog-spell-card[data-spell="${s}"]`);
-    const shelf = card?.closest('.kit-shelf');
+    // `data-spells` rather than the card itself: a closed shelf renders no
+    // cards any more (`KitRoster.vue` mounts them only for the open shelf),
+    // so the attribute is what says which champion owns an ability.
+    const shelf = document.querySelector(`.kit-shelf[data-spells~="${s}"]`);
     if (shelf && !shelf.classList.contains('open'))
       shelf.querySelector('.kit-shelf-apply')?.click();
   }, id);
@@ -256,15 +277,26 @@ try {
   await openParticipantAt(1); // the player
   await page.waitForSelector('.loadout-modal', { state: 'visible' });
   report.rosterShape = await evaluate(() => ({
-    catalogCardCount: document.querySelectorAll('.catalog-spell-card').length,
+    // The abilities the roster *offers*, counted off what each shelf
+    // advertises. It used to count mounted `.catalog-spell-card`s, which meant
+    // asserting that all 262 of them were in the DOM at once — an
+    // implementation detail, and an expensive one: they are mounted for the
+    // open shelf only now, and the thing worth checking was never "are they
+    // all built" but "is every ability reachable".
+    catalogCardCount: [...document.querySelectorAll('.kit-shelf')].reduce(
+      (total, shelf) => total + (shelf.dataset.spells || '').split(' ').filter(Boolean).length,
+      0
+    ),
     shelfCount: document.querySelectorAll('.kit-shelf').length,
     wholeKitActions: document.querySelectorAll('.kit-shelf-apply').length,
     // Only the two shelves that are not a champion — no Q/W/E/R to land in.
     shelvesWithoutWholeKitAction: [...document.querySelectorAll('.kit-shelf')]
       .filter(s => !s.querySelector('.kit-shelf-apply'))
       .map(s => s.dataset.champion),
-    standaloneAbilitiesReachable: ['Olaf_Q', 'Graves_W', 'Fizz_E', 'Nasus_Q'].every(
-      id => !!document.querySelector(`.catalog-spell-card[data-spell="${id}"]`)
+    standaloneAbilitiesReachable: ['Olaf_Q', 'Graves_W', 'Fizz_E', 'Nasus_Q'].every(bare =>
+      [...document.querySelectorAll('.kit-shelf')]
+        .flatMap(shelf => (shelf.dataset.spells || '').split(' '))
+        .some(id => id === bare || id.endsWith(`:${bare}`))
     ),
     slotKeys: [...document.querySelectorAll('.kit-slot-pill-key')].map(e => e.textContent),
     activeSlot: document.querySelector('.kit-slot-pill.active .kit-slot-pill-key')?.textContent,
@@ -677,7 +709,10 @@ try {
     title: document.querySelector('.pregame-modal-header h3')?.textContent,
     slotPills: document.querySelectorAll('.kit-slot-pill:not(.kit-slot-random)').length,
     hasRandomSlotButton: !!document.querySelector('.kit-slot-random'),
-    catalogCardCount: document.querySelectorAll('.catalog-spell-card').length,
+    catalogCardCount: [...document.querySelectorAll('.kit-shelf')].reduce(
+      (total, shelf) => total + (shelf.dataset.spells || '').split(' ').filter(Boolean).length,
+      0
+    ),
     wholeKitActions: document.querySelectorAll('.kit-shelf-apply').length,
     backdropCount: document.querySelectorAll('.pregame-modal-backdrop').length,
   }));
@@ -875,9 +910,18 @@ try {
         [...document.querySelectorAll(selector)].filter(element => element.offsetParent !== null);
       return {
         open: document.querySelector('.kit-shelf.open')?.dataset.champion ?? null,
-        // The DOM is deliberately unchanged — closing hides, it does not unmount.
+        // Every shelf stays mounted — a tile is what the grid *is*. Its cards
+        // do not: they are built for the open shelf only, which is what makes
+        // this modal open in a frame instead of building 262 buttons nobody
+        // has asked to see yet.
         shelvesInDom: document.querySelectorAll('.kit-shelf').length,
         cardsInDom: document.querySelectorAll('.catalog-spell-card').length,
+        // What the roster *offers*, which is the thing "the whole catalogue is
+        // reachable" actually means. A closed shelf says so without mounting it.
+        advertised: [...document.querySelectorAll('.kit-shelf')].reduce(
+          (total, shelf) => total + (shelf.dataset.spells || '').split(' ').filter(Boolean).length,
+          0
+        ),
         // ...and these are what a player can actually see and press.
         shelvesVisible: shown('.kit-shelf').length,
         cardIds: shown('.catalog-spell-card').map(element => element.dataset.spell),
@@ -891,10 +935,14 @@ try {
   report.rosterClosed = await rosterShown();
 
   expect('rosterClosed.open', report.rosterClosed.open, null);
-  // Same numbers section 1 asserted, and derived from the catalogue for the same
-  // reason they are there: closing hides, it does not unmount.
+  // Derived from the catalogue for the reason section 1 gives.
   expect('rosterClosed.shelvesInDom', report.rosterClosed.shelvesInDom, report.catalog.shelves);
-  expect('rosterClosed.cardsInDom', report.rosterClosed.cardsInDom, report.catalog.entries);
+  // Zero, and that is the assertion rather than an accident: with no shelf open
+  // there is no ability on screen, so there is no reason to have built one.
+  expect('rosterClosed.cardsInDom', report.rosterClosed.cardsInDom, 0);
+  // ...while every ability the catalogue has is still reachable from the grid,
+  // which is what the count above used to be standing in for.
+  expect('rosterClosed.advertised', report.rosterClosed.advertised, report.catalog.entries);
   // Every shelf that has a kit, and only those: the two that are not a champion
   // are opened by selecting the slot they serve, never by being tapped.
   expect('rosterClosed.shelvesVisible', report.rosterClosed.shelvesVisible, report.catalog.withKit);
