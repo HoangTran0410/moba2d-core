@@ -12,6 +12,7 @@ import {
   TURRET_BOUNTY,
 } from './tuningDefaults';
 import type {
+  ChampionScale,
   ChampionTuning,
   EconomyTuning,
   FountainStats,
@@ -106,6 +107,33 @@ const optional = (
 
 /** What champion respawn was before any of this: a flat 5000ms, no curve. */
 export const DEFAULT_CHAMPION_REVIVE_MS = 5_000;
+
+/** Every champion multiplier at rest — one, which is "leave it alone". */
+export const DEFAULT_CHAMPION_SCALE: Readonly<Required<ChampionScale>> = Object.freeze({
+  healthMult: 1,
+  damageMult: 1,
+  speedMult: 1,
+});
+
+/**
+ * How this map scales a champion, over whatever the pack declared.
+ *
+ * Clamped at zero rather than trusted: a negative multiplier is a champion
+ * with negative health, which is a corpse that cannot be killed because it is
+ * already dead — and `validate.ts` refusing it at install does not help a
+ * locally-built map, which is exactly the kind a person is holding when they
+ * type a minus sign by accident.
+ */
+export function resolveChampionScale(tuning?: MapTuning): Required<ChampionScale> {
+  const scale: ChampionScale = tuning?.champions ?? {};
+  const at = (value: number | undefined, fallback: number): number =>
+    Math.max(0, num(value, fallback));
+  return {
+    healthMult: at(scale.healthMult, DEFAULT_CHAMPION_SCALE.healthMult),
+    damageMult: at(scale.damageMult, DEFAULT_CHAMPION_SCALE.damageMult),
+    speedMult: at(scale.speedMult, DEFAULT_CHAMPION_SCALE.speedMult),
+  };
+}
 
 /**
  * How long a champion stays down, at `matchTimeMs` into the match.

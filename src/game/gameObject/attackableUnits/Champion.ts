@@ -1,5 +1,9 @@
 import AssetManager, { type AssetHandle, type AssetKey } from '@/managers/AssetManager';
-import { resolveChampionRevive, resolveEconomy } from '@/game/config/mapTuning';
+import {
+  resolveChampionRevive,
+  resolveChampionScale,
+  resolveEconomy,
+} from '@/game/config/mapTuning';
 import { packAssetOrPlaceholder } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
@@ -375,6 +379,11 @@ export default class Champion extends AttackableUnit {
     this.wallet = new Wallet(economy.startingGold, economy.passiveGoldPerSecond);
     this.goldBounty = economy.championBounty;
 
+    // Movement, once. Unlike health and damage this is not in any preset — no
+    // pack declares a champion's speed, it is `Stats`' own default — so there
+    // is no per-preset applier to put it in and nothing later overwrites it.
+    this.stats.speed.baseValue *= this.mapScale.speedMult;
+
     // A champion with no preset at all is still a champion: it gets the default
     // attack profile rather than a unit that cannot swing.
     if (preset) this.applyPreset(preset);
@@ -472,26 +481,45 @@ export default class Champion extends AttackableUnit {
    * number and kept walking. Which is also the only case that matters in
    * practice: swapping a kit almost never changes the pool.
    */
+  /**
+   * The map's champion multipliers, resolved on every read.
+   *
+   * Not cached on the instance: `applyPreset` runs again when a bot respawns
+   * as a different champion, and a field captured in the constructor would
+   * hold the scale of a map this champion is no longer standing on after a
+   * `MatchDirector` restart reuses the object.
+   */
+  private get mapScale() {
+    return resolveChampionScale(this.game?.mapTuning);
+  }
+
   private applyDefenceTuning(defence: ChampionDefenceTuning): void {
     const pool = this.stats.maxHealth.baseValue;
+    // The map's own multiplier over whatever the pack declared — see
+    // `ChampionScale`. `1` for every map that says nothing, so this line is
+    // the identity on every map that has ever shipped.
+    const health = defence.health * this.mapScale.healthMult;
 
-    this.stats.maxHealth.baseValue = defence.health;
+    this.stats.maxHealth.baseValue = health;
     this.stats.healthRegen.baseValue = defence.healthRegen;
     this.stats.armor.baseValue = defence.armor;
     this.stats.magicResist.baseValue = defence.magicResist;
 
-    if (defence.health === pool) return;
+    if (health === pool) return;
 
     // Whole points, like every other write to a health pool — see `takeDamage`.
     const filled = pool > 0 ? this.stats.health.baseValue / pool : 1;
     this.stats.health.baseValue = Math.min(
       this.stats.maxHealth.value,
-      Math.max(0, Math.round(defence.health * filled))
+      Math.max(0, Math.round(health * filled))
     );
   }
 
   private applyAttackTuning(attack: ChampionAttackTuning): void {
-    this.stats.attackDamage.baseValue = attack.damage;
+    // Attack damage only, never ability power: a map that wanted to scale
+    // abilities would be scaling sixty kits it has never read, and every one
+    // of them balances its own numbers against its own cooldowns.
+    this.stats.attackDamage.baseValue = attack.damage * this.mapScale.damageMult;
     this.stats.attackSpeed.baseValue = attack.attacksPerSecond;
     this.stats.attackRange.baseValue = attack.range;
     // A plain field, not a stat: nothing in the game modifies missile speed,

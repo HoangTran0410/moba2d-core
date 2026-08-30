@@ -846,7 +846,17 @@ function checkMinionTuning(path: string, value: unknown, errors: string[]): void
     }
   }
 
-  const known = new Set<string>(['melee', 'ranged', 'cannon']);
+  /**
+   * The roster a wave will actually be resolved against — core's three, or the
+   * map's own **instead of** them.
+   *
+   * `resolveMinionTypes` replaces rather than merges (`MinionTuning.types` says
+   * why), so a map that declares `grunt` has no `melee` any more. Seeding this
+   * with core's three and then adding to it would let a composition name
+   * `melee` on such a map, pass validation, and spawn nothing.
+   */
+  const declaredTypes = isObject(value.types) && Object.keys(value.types).length > 0;
+  const known = new Set<string>(declaredTypes ? [] : ['melee', 'ranged', 'cannon']);
   if (value.types !== undefined) {
     if (!isObject(value.types)) {
       errors.push(`${path}.types: must be an object`);
@@ -881,12 +891,56 @@ function checkMinionTuning(path: string, value: unknown, errors: string[]): void
     }
   }
 
-  if (value.waves === undefined) return;
-  if (!isObject(value.waves)) {
+  const waves = isObject(value.waves) ? value.waves : undefined;
+  if (value.waves !== undefined && !waves) {
     errors.push(`${path}.waves: must be an object`);
     return;
   }
-  const { composition, stages, ...numbers } = value.waves;
+
+  /**
+   * Every type any formation ever fields — the map's own compositions and its
+   * stages', together.
+   *
+   * Needed because a declared roster and a declared formation are two
+   * independent statements, and the failure when they disagree is silent:
+   * `MinionSpawner.spawn` returns `null` for an id its roster does not hold,
+   * so a wave is simply smaller, or empty, for ever, with nothing on screen or
+   * in a log saying why. Checked here rather than left to the runtime for the
+   * same reason every other rule in this file is.
+   */
+  const fielded = new Set<string>();
+  const collect = (list: unknown): void => {
+    if (isStringArray(list)) for (const id of list) fielded.add(id);
+  };
+  collect(waves?.composition);
+  if (Array.isArray(waves?.stages)) {
+    for (const stage of waves.stages) if (isObject(stage)) collect(stage.composition);
+  }
+
+  if (declaredTypes) {
+    // A map that declares its own roster **replaces** core's three, so core's
+    // default formation — which names `melee`, `ranged` and `cannon` — stops
+    // resolving to anything. Declaring a roster and no formation is therefore
+    // a map whose waves are empty, which is never what anybody meant.
+    if (fielded.size === 0) {
+      errors.push(
+        `${path}.waves.composition: missing, and this map declares its own minion types ` +
+          `(${[...known].join(', ')}). Core's default wave names melee/ranged/cannon, which ` +
+          `this roster no longer supplies, so every wave would be empty.`
+      );
+    }
+    for (const id of known) {
+      if (!fielded.has(id)) {
+        errors.push(
+          `${path}.types.${id}: declared but never fielded — no composition lists it, ` +
+            `so this minion can never spawn.`
+        );
+      }
+    }
+  }
+
+  if (waves === undefined) return;
+  const { composition, stages, ...numbers } = waves;
   checkNumberBag(`${path}.waves`, numbers, WAVE_NUMBER_KEYS, errors);
   checkComposition(`${path}.waves.composition`, composition, known, errors);
 
@@ -979,7 +1033,12 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
       errors.push(`${path}: must be an object`);
     } else {
       const { reviveCurve, ...rest } = tuning.champions;
-      checkNumberBag(path, rest, ['reviveTime'], errors);
+      checkNumberBag(
+        path,
+        rest,
+        ['reviveTime', 'healthMult', 'damageMult', 'speedMult'],
+        errors
+      );
       if (reviveCurve !== undefined) {
         checkNumberBag(`${path}.reviveCurve`, reviveCurve, ['base', 'perMinute', 'max'], errors);
         // Every field of a curve is required — unlike everything else here,

@@ -558,7 +558,32 @@ export interface EconomyTuning {
  * is a different feature with a much larger blast radius. Respawn is a match
  * rule, not a stat, which is why it is the one that made it in.
  */
-export interface ChampionTuning {
+/**
+ * Champion numbers as **multipliers**, at the map level.
+ *
+ * Multipliers rather than absolutes, and for exactly `MonsterScale`'s reason:
+ * the base is whatever pack fills the roster, and a map cannot know it. Sixty
+ * champions each declare their own health and damage, so "every champion has
+ * 400 health" is a statement a map has no business making — while "everybody
+ * is twice as durable here" is one it can make about *itself*, and one that
+ * changes how the map plays more than any other single number.
+ *
+ * The three that were picked, and why the list stops there: durability, output,
+ * and pace are the axes a map is actually trying to move. Armour, attack speed
+ * and ability power are all reachable *through* those three for the purposes a
+ * map has, and each extra multiplier is another interaction to reason about
+ * when a map turns out to play badly.
+ */
+export interface ChampionScale {
+  /** Multiplies whatever the pack declared as this champion's health. */
+  healthMult?: number;
+  /** Multiplies the pack's attack damage. Abilities are untouched. */
+  damageMult?: number;
+  /** Multiplies movement speed — core's own default, which no pack declares. */
+  speedMult?: number;
+}
+
+export interface ChampionTuning extends ChampionScale {
   /** Flat respawn in ms. Absent means 5000 — `AttackableUnit.reviveTime`. */
   reviveTime?: number;
   /**

@@ -1,6 +1,7 @@
 import {
   DEFAULT_CHAMPION_REVIVE_MS,
   resolveChampionRevive,
+  resolveChampionScale,
   resolveEconomy,
   resolveFountainStats,
   resolveMinionTypes,
@@ -157,7 +158,15 @@ const terrainLines = (tuning: MapTuning | undefined): MapRuleGroup[] =>
   );
 
 const championLines = (tuning: MapTuning | undefined): MapRuleGroup[] => {
-  const lines: MapRuleLine[] = [];
+  const lines: MapRuleLine[] = differing(
+    resolveChampionScale(tuning),
+    resolveChampionScale(undefined),
+    [
+      { key: 'healthMult', label: 'Máu tướng', format: times },
+      { key: 'damageMult', label: 'Sát thương đánh thường', format: times },
+      { key: 'speedMult', label: 'Tốc chạy', format: times },
+    ]
+  );
   const curve = tuning?.champions?.reviveCurve;
   if (curve) {
     // A curve has no single number to diff against, so it is stated whole. It

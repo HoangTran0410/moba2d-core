@@ -1089,8 +1089,15 @@ const UI = (() => {
     {
       key: "champions",
       label: "Tướng",
-      hint: "Chết bao lâu thì sống lại.",
+      hint: "Chết bao lâu thì sống lại, và map nhân chỉ số tướng lên bao nhiêu.",
       fields: [
+      // Hệ số nhân chứ không phải số tuyệt đối, y hệt lý do bên quái: gốc là
+      // của pack, và map không biết gốc là bao nhiêu. Sáu mươi tướng mỗi
+      // tướng một bảng máu, nên "ai cũng 400 máu" là câu map không có tư cách
+      // nói — còn "ở map này ai cũng dày gấp đôi" thì có.
+      { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
+      { key: "damageMult", label: "Sát thương đánh thường", unit: "×", ph: "1", hint: "chỉ đánh thường, không đụng tới chiêu" },
+      { key: "speedMult", label: "Tốc chạy", unit: "×", ph: "1" },
       { key: "reviveTime", label: "Hồi sinh", unit: "ms", ph: "5000" },
       { key: "reviveCurve.base", label: "Hồi sinh — mốc đầu", unit: "ms", hint: "khai cả ba ô thì đường cong thắng ô phẳng ở trên" },
       { key: "reviveCurve.perMinute", label: "Cộng mỗi phút", unit: "ms" },
@@ -1299,6 +1306,34 @@ const UI = (() => {
   }
 
   /**
+   * "Mỗi wave mấy con" — a count that writes an ordered list.
+   *
+   * `tuningRow` cannot serve this: it writes one value at one path, and this
+   * writes a whole `composition` array rebuilt from every type's count (see
+   * `map.waveCount`). Same markup, same commit-on-change/Enter, so the two
+   * rows are indistinguishable to whoever is filling the form.
+   */
+  function waveCountRow(typeId, label, count) {
+    const row = el("div", { class: "row", style: "margin-top:6px" });
+    row.appendChild(el("label", {
+      text: label,
+      title: "Bỏ trống hoặc 0 thì loại lính này không bao giờ ra sân.",
+    }));
+    const input = el("input", { class: "inp", type: "number", min: 0, placeholder: "0", value: count || "" });
+    const send = () => {
+      Cmd.run("map.waveCount", [typeId, input.value]);
+      syncTuning();
+    };
+    input.addEventListener("change", send);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { send(); input.blur(); } });
+    const field = el("div", { class: "field" });
+    field.appendChild(input);
+    field.appendChild(el("span", { class: "unit", text: "con" }));
+    row.appendChild(field);
+    return row;
+  }
+
+  /**
    * Vẽ lại toàn bộ panel cấu hình.
    *
    * Dựng lại từ đầu chứ không vá tại chỗ: panel này không nằm trên đường vẽ
@@ -1388,6 +1423,9 @@ const UI = (() => {
         ? "Bảng này thay hẳn 3 loại của core."
         : "Trống = dùng 3 loại của core."));
 
+    // Read once for the whole panel — `Cmd.waveCounts` derives it from the
+    // exported `composition` array, which is the only copy of this fact.
+    const counts = Cmd.waveCounts();
     for (const id of ids) {
       const def = types[id] || {};
       const head = el("div", { class: "row", style: "margin-top:8px" });
@@ -1425,6 +1463,16 @@ const UI = (() => {
       styleField.appendChild(styleSelect);
       styleRow.appendChild(styleField);
       box.appendChild(styleRow);
+
+      // **Mỗi wave mấy con.** Ô đầu tiên chứ không phải ô cuối, vì nó là ô
+      // duy nhất mà bỏ trống thì loại lính này *không bao giờ ra sân*: đội
+      // hình wave là một danh sách id, `MinionSpawner.spawn` bỏ qua id không
+      // có trong danh sách, và không có gì báo. Khai một loại lính rồi quên
+      // ô này là làm ra một con lính tồn tại trong file và không tồn tại
+      // trong trận.
+      box.appendChild(
+        waveCountRow(id, `Mỗi wave (${def.name || id})`, counts[id] || 0)
+      );
 
       for (const f of MINION_TYPE_FIELDS) {
         box.appendChild(tuningRow(f.label, f.hint, `minions.types.${id}.${f.key}`, def[f.key], f.unit));
