@@ -158,9 +158,23 @@ const PER_FRAME = new Set(['healthRegen', 'manaRegen']);
 const signed = (value: number): string =>
   `${value > 0 ? '+' : ''}${Math.round(value * 100) / 100}`;
 
+/**
+ * The `BonusKind` slots that hold **points**, as against a share.
+ *
+ * `Stat.value` is
+ * `((baseValue + baseBonus) * (1 + percentBaseBonus) + flatBonus) * (1 + percentBonus)`,
+ * so three of the five slots are added to the number and two multiply it. This
+ * used to ask `kind !== 'flatBonus'` — one of the three — which made every
+ * `baseBonus` in the game print as a percentage of itself: a growth stack
+ * granting `maxHealth: { baseBonus: 75 }` advertised **+7500% Máu tối đa** on
+ * one stack. `baseBonus` is the slot `StatAmp`'s own doc comment uses in its
+ * example, so this was the common case, not the corner one.
+ */
+const POINT_KINDS = new Set<string>(['baseValue', 'baseBonus', 'flatBonus']);
+
 /** Points, a share, or a rate — decided by the stat and by the kind of bonus. */
 const grantedAmount = (stat: string, kind: string, amount: number): string => {
-  if (kind !== 'flatBonus') return `${amount > 0 ? '+' : ''}${percent(amount)}`;
+  if (!POINT_KINDS.has(kind)) return `${amount > 0 ? '+' : ''}${percent(amount)}`;
   if (PER_FRAME.has(stat)) {
     return `${signed(Number((amount * FRAMES_PER_SECOND).toFixed(1)))}/giây`;
   }

@@ -78,8 +78,21 @@ export const DAMAGE_TEXT_COLOR: Record<DamageType, readonly [number, number, num
   PHYSICAL: [255, 146, 62],
   /** Violet — the one armour does nothing about. */
   MAGIC: [176, 122, 255],
-  /** White: nothing stopped any of it. */
-  TRUE: [248, 248, 248],
+  /**
+   * Cyan, and deliberately not white.
+   *
+   * White is the colour League uses and it is the obvious one — nothing
+   * absorbed it, so it arrives uncoloured. It fails in the one place a damage
+   * type matters most: a spell description is `#eee` body text on a dark
+   * panel, so "40 sát thương chuẩn" in `#f8f8f8` was the same colour as the
+   * words around it. The type that mitigation cannot touch was the one type a
+   * player could not see was called out.
+   *
+   * Cyan is the only saturated hue this palette has not already spent — red,
+   * amber, violet, periwinkle and two greens are taken — and it still reads as
+   * the right thing: cold, clean, nothing in the way.
+   */
+  TRUE: [95, 216, 245],
 };
 
 const colorKey = (textColor: string | number[]): string =>

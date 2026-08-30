@@ -109,6 +109,56 @@ describe('a buff says what it does', () => {
     expect(said).toContain('+15 Giáp');
   });
 
+  /**
+   * The five bonus slots are not two kinds of number split down the middle.
+   *
+   * `Stat.value` is
+   * `((baseValue + baseBonus) * (1 + percentBaseBonus) + flatBonus) * (1 + percentBonus)`
+   * — three slots are *added* to the stat and two *multiply* it — and this
+   * used to ask `kind !== 'flatBonus'`, which put `baseValue` and `baseBonus`
+   * on the multiplying side. A growth stack granting `maxHealth:
+   * { baseBonus: 75 }` then advertised **+7500% Máu tối đa** off a single
+   * stack. `baseBonus` is the slot `StatAmp`'s own doc comment demonstrates,
+   * so the wrong half was the common one.
+   *
+   * Driven across all five rather than as one case for the slot that broke:
+   * the next slot added to `BonusKind` has to be classified by whoever adds
+   * it, and a single `baseBonus` case would not ask them to.
+   */
+  it('tells the slots that add points from the slots that multiply', () => {
+    const points: ('baseValue' | 'baseBonus' | 'flatBonus')[] = [
+      'baseValue',
+      'baseBonus',
+      'flatBonus',
+    ];
+    for (const kind of points) {
+      const amp = new StatAmp(1_000, unit, unit);
+      amp.bonuses = { maxHealth: { [kind]: 75 } };
+      expect(describeOf(amp), `${kind} printed as a share of itself`).toContain(
+        '+75 Máu tối đa'
+      );
+    }
+
+    const shares: ('percentBonus' | 'percentBaseBonus')[] = ['percentBonus', 'percentBaseBonus'];
+    for (const kind of shares) {
+      const amp = new StatAmp(1_000, unit, unit);
+      amp.bonuses = { maxHealth: { [kind]: 0.75 } };
+      expect(describeOf(amp), `${kind} printed as points`).toContain('+75% Máu tối đa');
+    }
+  });
+
+  it('counts a stacking buff’s grant at the stacks it is actually carrying', () => {
+    // The shape the Feast-style growth buff uses: one live instance standing
+    // in for N, its `bonuses` scaled by `stacks` in both the modifier and the
+    // sentence. A tooltip reading one stack's worth on a five-stack buff is
+    // the same class of lie as the percentage one, just quieter.
+    const amp = new StatAmp(1_000, unit, unit);
+    amp.bonuses = { maxHealth: { baseBonus: 75 } };
+    amp.stacks = 4;
+
+    expect(describeOf(amp)).toContain('+300 Máu tối đa');
+  });
+
   it('leaves a buff that describes itself alone', () => {
     const slow = new Slow(1_000, unit, unit);
     slow.percent = 0.3;

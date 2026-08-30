@@ -47,6 +47,49 @@ describe('a damage number carries its type', () => {
     }
   });
 
+  /**
+   * The colour has two backgrounds, and only one of them was ever checked.
+   *
+   * In the world a number floats over grass, stone and bodies, and white is
+   * the right answer there — nothing absorbed it, so it arrives uncoloured.
+   * In a spell description the same claim is a word inside `#eee` body text on
+   * a dark panel, and `#f8f8f8` against `#eee` is not a colour, it is the
+   * absence of one: "40 sát thương chuẩn" read exactly like the sentence
+   * around it, so the one type no resistance touches was the one type a player
+   * could not see was being called out.
+   *
+   * Read out of the stylesheet rather than written as a literal, for the same
+   * reason the binding case below reads `main.css`: the body colour is a
+   * decision made in a different file and this has to fail when *it* moves,
+   * not only when the palette does.
+   */
+  it('keeps every one of them clear of the body text it is printed on', () => {
+    const surfaces = [
+      ['styles/hud.css', /\.spell-info \.body \{[^}]*color:\s*(#[0-9a-f]{3,6})/i],
+      ['styles/pregame-scene.css', /\.spell-detail-body \{[^}]*color:\s*(#[0-9a-f]{3,6})/i],
+    ] as const;
+
+    const widen = (hex: string): number[] => {
+      const full = hex.length === 4 ? hex.replace(/([0-9a-f])/gi, '$1$1').slice(1) : hex.slice(1);
+      return [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16));
+    };
+
+    for (const [file, pattern] of surfaces) {
+      const css = readFileSync(resolve(__dirname, '../../../', file), 'utf8');
+      const body = css.match(pattern)?.[1];
+      expect(body, `${file} no longer states its description body colour`).toBeDefined();
+      const text = widen(body!);
+
+      for (const type of ['PHYSICAL', 'MAGIC', 'TRUE'] as DamageType[]) {
+        const distance = Math.hypot(...DAMAGE_TEXT_COLOR[type].map((c, i) => c - text[i]));
+        expect(
+          distance,
+          `${type} is invisible against ${file}'s own body text`
+        ).toBeGreaterThan(100);
+      }
+    }
+  });
+
   it('keeps every one of them clear of the heal green', () => {
     // Green is already on screen and already means the opposite thing. A
     // damage colour that lands near it is a number a player reads as a heal.
