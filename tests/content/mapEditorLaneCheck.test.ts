@@ -35,7 +35,7 @@ interface Issue {
 }
 
 /** Boot the editor's globals, install `terrains`, and run its validator. */
-function check(terrains: string): Issue[] {
+function check(terrains: string, factions = `['amber', 'jade']`): Issue[] {
   const store = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
     console,
@@ -66,7 +66,7 @@ function check(terrains: string): Issue[] {
     `
     E.mapName = 'Thử';
     E.mapSize = [4000, 4000];
-    E.meta = { id: 'thu', factions: ['amber', 'jade'] };
+    E.meta = { id: 'thu', factions: ${factions} };
     E.terrains = [${terrains}].map(normalizeTerrain);
     Store.validate();
     `,
@@ -289,6 +289,44 @@ describe('the structural rules, on slots rather than on coordinates', () => {
     );
 
     expect(about(issues, 'chồng lên thân trụ').length).toBe(1);
+  });
+
+  it('names a faction the engine will not seat, and says what it costs', () => {
+    /**
+     * The editor's own faction list is unbounded (its palette carries four)
+     * and `validate.ts` only checks that a slot names one the map declared.
+     * Core's bridge, `preset.ts`'s `teamIdOfFaction`, is positional and two
+     * deep: `factions[0]` is blue, `factions[1]` is red, everything after is
+     * `undefined` — and a slot with no team is dropped when the match is
+     * built. No error, no warning, just a turret that is not there.
+     *
+     * That is precisely the shape this whole module exists to end: one side
+     * accepts, the other silently discards.
+     */
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [1000, 1000], props: { faction: 'lam', kind: 'turret' } }`,
+        `['amber', 'jade', 'lam']`
+      )
+    );
+    const unseated = about(issues, 'không được xếp vào đội nào');
+
+    expect(unseated).toHaveLength(1);
+    expect(unseated[0].text).toContain('lam');
+    expect(unseated[0].at).toEqual([1000, 1000]);
+  });
+
+  it('says nothing about the two factions it does seat', () => {
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [1000, 1000], props: { faction: 'jade', kind: 'turret' } }`,
+        `['amber', 'jade', 'lam']`
+      )
+    );
+
+    expect(about(issues, 'không được xếp vào đội nào')).toEqual([]);
   });
 
   it('refuses a camp whose twin has drifted further than the camp is wide', () => {

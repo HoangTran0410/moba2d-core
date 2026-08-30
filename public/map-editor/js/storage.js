@@ -1202,6 +1202,10 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
 
     const issues = MapRules.mapIssues({
       size: Math.max(E.mapSize[0], E.mapSize[1]),
+      // In the order the map declares them, which is the whole of what the
+      // rule needs: core's bridge is positional (`factions[0]` is blue,
+      // `factions[1]` is red) and everything past the second seats nowhere.
+      factions: ((E.meta && E.meta.factions) || []).slice(),
       lanes: E.terrains
         .filter((t) => t.type === "lane" && (t.polygon || []).length >= 2)
         .map((t) => ({ id: props(t).id || "?", points: world(t) })),

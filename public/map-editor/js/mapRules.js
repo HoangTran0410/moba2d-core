@@ -529,6 +529,52 @@
       }
     }
 
+    // ---- phe thứ ba trở đi không ngồi được vào đội nào ---------------------
+    //
+    // Editor cho khai bao nhiêu phe cũng được (bảng màu có sẵn bốn), còn
+    // `validate.ts` chỉ soi rằng phe của một slot nằm trong danh sách map đã
+    // khai. Nhưng cây cầu nối phe của map sang đội của engine
+    // (`preset.ts` :: `teamIdOfFaction`) là **theo vị trí và chỉ có hai bậc**:
+    //
+    //     factions[0] -> TeamId.BLUE
+    //     factions[1] -> TeamId.RED
+    //     còn lại     -> undefined
+    //
+    // Slot rơi vào nhánh cuối bị bỏ khi dựng trận — không lỗi, không cảnh
+    // báo, chỉ là cái trụ đó không tồn tại. Đúng loại hỏng mà bộ luật này ra
+    // đời để chặn: một bên nhận, một bên lặng lẽ vứt.
+    //
+    // Gộp theo *phe* chứ không theo từng slot: một map bốn phe sẽ đẻ ra bốn
+    // chục dòng giống hệt nhau, mà thứ cần sửa chỉ có một.
+    if (map.factions && map.factions.length > 2) {
+        const seated = map.factions.slice(0, 2);
+        const groups = new Map();
+        const consider = (list, kind) => {
+        for (const raw of list || []) {
+            const p = pointOf(raw);
+            const faction = raw && raw.faction;
+            if (!p || !faction || seated.indexOf(faction) >= 0) continue;
+            if (!groups.has(faction)) groups.set(faction, { count: 0, first: p, kind });
+            groups.get(faction).count += 1;
+        }
+        };
+        consider(map.turrets, "trụ");
+        consider(map.spawns, "bệ đá");
+        consider(map.musters, "điểm gom lính");
+
+        for (const [faction, group] of groups) {
+        out.push({
+            text:
+            `Phe “${faction}” không được xếp vào đội nào: engine chỉ nhận hai phe ` +
+            `đầu tiên map khai (“${seated[0]}” và “${seated[1]}”), theo đúng thứ tự đó. ` +
+            `${group.count} slot của phe này (${group.kind}, và các loại khác nếu có) ` +
+            `sẽ biến mất khỏi trận. Đổi thứ tự phe trong phần thông tin map, hoặc ` +
+            `chuyển các slot đó sang một trong hai phe trên.`,
+            at: at(group.first),
+        });
+        }
+    }
+
     // ---- bãi quái phải đứng trên đất -------------------------------------
     //
     // Một bãi nằm trong tường không làm game sập: nó làm ra một con quái mà

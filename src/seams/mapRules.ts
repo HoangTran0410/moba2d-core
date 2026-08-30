@@ -70,6 +70,15 @@ export interface MapRuleInput {
   musters?: { x: number; y: number; faction?: string; lane?: string; scatter?: number }[];
   /** Jungle camps — `slots.neutral`. Only paired roles are graded. */
   neutrals?: { x: number; y: number; r?: number; role?: string }[];
+  /**
+   * The map's factions, **in the order it declares them**.
+   *
+   * The order is the whole content: `preset.ts`'s `teamIdOfFaction` bridges
+   * positionally — `factions[0]` is blue, `factions[1]` is red, whatever they
+   * are spelled — and answers `undefined` for everything after, which drops
+   * the slot. A map may declare four; a match seats two.
+   */
+  factions?: string[];
 }
 
 interface MapRulesModule {
