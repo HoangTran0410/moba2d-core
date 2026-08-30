@@ -531,6 +531,7 @@ const UI = (() => {
       { key: "stats.healPercent", label: "Hồi máu", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.manaPercent", label: "Hồi mana", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.tickInterval", label: "Nhịp hồi", kind: "number", unit: "ms", min: 0, ph: "500" },
+      { key: "stats.shopRange", label: "Tầm mua đồ", kind: "number", unit: "px", min: 0, ph: "= bán kính bệ" },
     ],
     structure: [
       { key: "faction", label: "Phe", kind: "faction" },
@@ -1125,11 +1126,18 @@ const UI = (() => {
     {
       key: "fountain",
       label: "Bệ đá cổ",
-      hint: "Về nhà hồi máu/mana nhanh hay chậm.",
+      hint: "Về nhà hồi máu/mana nhanh hay chậm, và phải về gần tới đâu mới mua được đồ.",
       fields: [
       { key: "tickInterval", label: "Nhịp hồi", unit: "ms", ph: "500" },
       { key: "healPercent", label: "Hồi máu", unit: "×", ph: "0.12" },
       { key: "manaPercent", label: "Hồi mana", unit: "×", ph: "0.12" },
+      // Tách khỏi bán kính bệ đá, và đó mới là điểm của nó: `r` vừa là chỗ
+      // hồi máu vừa là hình được vẽ, nên nới `r` ra để mua đồ từ xa cũng là
+      // phát cho cả map một tấm đệm hồi máu khổng lồ. Để trống = đúng luật
+      // cũ, phải đứng trong bệ đá. Số to = mua ở đâu cũng được. Con số thú vị
+      // nằm ở giữa: bằng nửa chiều rộng map nghĩa là mua được ở nửa sân nhà
+      // mà không mua được ở sân đối thủ.
+      { key: "shopRange", label: "Tầm mua đồ", unit: "px", ph: "= bán kính bệ" },
     ]},
     {
       key: "monsters",
@@ -1239,6 +1247,7 @@ const UI = (() => {
 
     const f = tuning.fountain || {};
     if (f.healPercent != null) bits.push(`bệ đá hồi ${n(f.healPercent * 100)}%`);
+    if (f.shopRange != null) bits.push(`mua đồ trong ${n(f.shopRange)}px`);
 
     const m = tuning.monsters || {};
     for (const [key, label] of [

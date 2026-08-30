@@ -743,7 +743,12 @@ const TURRET_STAT_KEYS = [
   'repairRate',
 ] as const;
 
-const FOUNTAIN_NUMBER_KEYS = ['tickInterval', 'healPercent', 'manaPercent'] as const;
+const FOUNTAIN_NUMBER_KEYS = [
+  'tickInterval',
+  'healPercent',
+  'manaPercent',
+  'shopRange',
+] as const;
 
 const MONSTER_SCALE_KEYS = [
   'healthMult',

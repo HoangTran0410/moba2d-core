@@ -18,6 +18,11 @@ export interface FountainPresetData {
   healPercent?: number;
   /** Fraction of max mana restored per tick. */
   manaPercent?: number;
+  /**
+   * How far out the shop still works. `0` or absent means the platform itself
+   * — see `FountainStats.shopRange`, which is where a map sets it.
+   */
+  shopRange?: number;
 }
 
 interface Mote {
@@ -48,6 +53,16 @@ export default class Fountain extends GameObject {
   tickInterval: number;
   healPercent: number;
   manaPercent: number;
+  /**
+   * How far from here the shop reaches, resolved once.
+   *
+   * `radius` is where a body is *restored* and where the platform is drawn;
+   * this is where it can *buy*. They were one number only because nothing had
+   * needed them apart — and a map that widened `radius` to let people shop
+   * further out would also be handing out a huge healing pad and drawing a
+   * floor over a quarter of itself. `ItemShop.atOwnFountain` reads this one.
+   */
+  shopRadius: number;
 
   _tickCooldown = 0;
   _pulse = 0;
@@ -67,6 +82,10 @@ export default class Fountain extends GameObject {
     this.tickInterval = preset.tickInterval ?? 500;
     this.healPercent = preset.healPercent ?? 0.12;
     this.manaPercent = preset.manaPercent ?? 0.12;
+    // The sentinel resolved: a map that says nothing gets exactly the rule it
+    // had before this field existed, and never a shop radius of zero — which
+    // would be a fountain nobody can buy at, from a map that asked for nothing.
+    this.shopRadius = preset.shopRange && preset.shopRange > 0 ? preset.shopRange : this.radius;
   }
 
   update() {

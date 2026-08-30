@@ -100,16 +100,34 @@ export interface ShopHost {
     readonly teamId?: string;
     readonly position: { readonly x: number; readonly y: number };
     readonly radius: number;
+    /**
+     * How far the shop reaches, when the platform said so. Optional because a
+     * test double and the LAN client both build this shape by hand, and
+     * because the answer without it is the one every map had before the field
+     * existed.
+     */
+    readonly shopRadius?: number;
   }[];
 }
 
-/** Standing inside a fountain that belongs to this champion's own side. */
+/**
+ * Near enough to a friendly fountain to trade.
+ *
+ * `shopRadius`, not `radius`. A map may push the shop out past the platform
+ * (`FountainStats.shopRange`) — a skirmish map where nobody walks home, or one
+ * that reaches half way out so a player can buy in their own half and not in
+ * the enemy's. The healing pad does not move with it: those were one number
+ * only because nothing had needed them apart.
+ *
+ * Still the *location* half and only that half. Dead champions, refusals and
+ * prices are all somewhere else and unchanged.
+ */
 export function atOwnFountain(champion: Champion, host: ShopHost): boolean {
   for (const fountain of host.fountains ?? []) {
     if (fountain.teamId !== champion.teamId) continue;
     const dx = champion.position.x - fountain.position.x;
     const dy = champion.position.y - fountain.position.y;
-    if (Math.hypot(dx, dy) <= fountain.radius) return true;
+    if (Math.hypot(dx, dy) <= (fountain.shopRadius ?? fountain.radius)) return true;
   }
   return false;
 }

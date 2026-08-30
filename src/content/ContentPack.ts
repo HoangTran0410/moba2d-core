@@ -605,6 +605,29 @@ export interface FountainStats {
   healPercent?: number;
   /** Fraction of max mana restored per tick. */
   manaPercent?: number;
+  /**
+   * How far from this platform a champion may still use the shop. `0` — the
+   * default — means the platform itself, which is the rule every map had
+   * before this field existed.
+   *
+   * **Separate from the healing radius on purpose.** They were the same number
+   * only because nothing had ever needed them apart: `r` is where a body is
+   * restored and where the platform is *drawn*, so widening it to let people
+   * shop further out would also hand them a huge healing pad and a floor
+   * covering a quarter of the map. This is the one of the two that a map is
+   * allowed to move.
+   *
+   * A big number is how a map says "buy from anywhere" — and the interesting
+   * settings are the ones in between, because the number is a *distance from
+   * your own base*: a map that sets it to half the map's width lets a player
+   * shop in their own half and not in the enemy's, which is a rule no MOBA
+   * this engine imitates has and which changes how far anyone dares push.
+   *
+   * It does not make a shop free of every other rule — a champion still cannot
+   * buy while dead, and the shop still refuses what it always refused. It is
+   * the *location* half, and only that half.
+   */
+  shopRange?: number;
 }
 export type FountainTuning = FountainStats;
 

@@ -868,6 +868,7 @@ export const fountainsFromSlots = (
       tickInterval: stats.tickInterval,
       healPercent: stats.healPercent,
       manaPercent: stats.manaPercent,
+      shopRange: stats.shopRange,
     });
   }
   return presets;

@@ -201,6 +201,11 @@ export const DEFAULT_FOUNTAIN_STATS = Object.freeze({
   tickInterval: 500,
   healPercent: 0.12,
   manaPercent: 0.12,
+  // 0 is "the platform itself" — see `FountainStats.shopRange`. Stated as a
+  // sentinel rather than as the platform's radius because this table has no
+  // slot in scope, and the one place that does (`Fountain`) is where it is
+  // resolved.
+  shopRange: 0,
 });
 
 /** One fountain's numbers: core's, then the map's, then this slot's. */
@@ -220,6 +225,7 @@ export function resolveFountainStats(
     tickInterval: num(own.tickInterval, num(map.tickInterval, DEFAULT_FOUNTAIN_STATS.tickInterval)),
     healPercent: num(own.healPercent, num(map.healPercent, DEFAULT_FOUNTAIN_STATS.healPercent)),
     manaPercent: num(own.manaPercent, num(map.manaPercent, DEFAULT_FOUNTAIN_STATS.manaPercent)),
+    shopRange: num(own.shopRange, num(map.shopRange, DEFAULT_FOUNTAIN_STATS.shopRange)),
   };
 }
 
