@@ -54,6 +54,7 @@ import type { ConfigRosterEntry, MatchConfigSource, MatchLiveControls } from './
 import { visualOfLoadout, type LoadoutVisual } from './rosterVisuals';
 import { contentCatalog } from '@/content/catalog';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
+import type { MapGeometry } from '@/content/ContentPack';
 
 const PLAYER_ID = 'player';
 const BOT_PREFIX = 'bot-';
@@ -318,6 +319,11 @@ export default class PregameConfigSource implements MatchConfigSource {
 
   availableMaps(): QualifiedMapSummary[] {
     return [...contentCatalog().maps()];
+  }
+
+  /** Straight through to the registry — see `MatchConfigSource.loadMapGeometry`. */
+  loadMapGeometry(id: string): Promise<MapGeometry | null> {
+    return contentCatalog().loadMapGeometry(id);
   }
 
   getMap(): string {

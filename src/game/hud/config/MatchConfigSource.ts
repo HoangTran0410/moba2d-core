@@ -61,6 +61,7 @@ import type { ScoreLine, StatGroup } from '@/game/hud/practice/participantStats'
 import type { SpellDisplay } from '@/game/config/spellCatalog';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
 import type { StatLine } from '@/game/hud/itemStatLines';
+import type { MapGeometry } from '@/content/ContentPack';
 
 /** One Q/W/E/R icon on a roster row. */
 export interface RosterAbility {
@@ -377,6 +378,22 @@ export interface MatchConfigSource {
    * next time this match is left and a new one started.
    */
   setMap(id: string): void;
+  /**
+   * A map's heavy half, for the picker's preview.
+   *
+   * Async and lazy because that is what a map's geometry *is*: `MapSummary`
+   * is the cheap half a menu can hold — name, size, factions, tuning — and the
+   * polygons sit behind `MapGeometrySource` precisely so the menu never pays
+   * for them (`ContentPack.ts`'s own split, and the reason
+   * `contentApiChunk.test.ts` exists). A preview is the one menu-side thing
+   * that genuinely wants them, so it asks for them, once, when a player opens
+   * the picker.
+   *
+   * `null` for an id nothing installed, and for a loader that failed — the
+   * caller draws a map without a preview rather than an error, because a
+   * preview that cannot load is not a reason to stop somebody picking the map.
+   */
+  loadMapGeometry(id: string): Promise<MapGeometry | null>;
 
   // ------------------------------------------------------------------ cheats
   getCheats(): CheatConfig;

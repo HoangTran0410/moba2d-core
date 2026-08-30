@@ -67,6 +67,7 @@ import type {
 import { ABILITY_LETTERS } from './rosterVisuals';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
 import { statLinesFor } from '@/game/hud/itemStatLines';
+import type { MapGeometry } from '@/content/ContentPack';
 
 /**
  * What this source needs from the HUD. `HudInteractions` satisfies it
@@ -485,6 +486,11 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   availableMaps(): QualifiedMapSummary[] {
     return [...contentCatalog().maps()];
+  }
+
+  /** Straight through to the registry — see `MatchConfigSource.loadMapGeometry`. */
+  loadMapGeometry(id: string): Promise<MapGeometry | null> {
+    return contentCatalog().loadMapGeometry(id);
   }
 
   /**

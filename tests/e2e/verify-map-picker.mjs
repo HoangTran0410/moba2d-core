@@ -225,6 +225,13 @@ await harness.guard(async () => {
   await seedAndLoad(baseConfig(undefined));
   await openSetup(page);
   await page.click('#practice-tab-rules');
+  // The picker moved into a modal of its own: the tab now carries a one-line
+  // summary that opens it, because the shape and the rules of a map are what
+  // anyone actually chooses between and neither fits on a card. The selectors
+  // below are unchanged — `#practice-map` and `.map-option[data-map]` live
+  // inside the modal now.
+  await page.waitForSelector('#practice-map-open', { timeout: 30_000 });
+  await page.click('#practice-map-open');
   await page.waitForSelector('#practice-map', { timeout: 30_000 });
 
   // Cards, not `<option>`s, since the picker became a `.map-picker` grid —
@@ -255,7 +262,12 @@ await harness.guard(async () => {
   );
 
   // --------------------------------------------- 4. pick, and the qualified id
+  // Two gestures, deliberately: tapping a card *highlights* it so its picture
+  // and its rules can be read, and the button at the bottom is what writes the
+  // choice. A player comparing four maps must not silently change the one they
+  // are about to play — see `MapPickerModal.vue`'s own header.
   await page.click(`#practice-map .map-option[data-map="${PROVING_GROUNDS_ID}"]`);
+  await page.click('.map-picker-commit');
   const stored = await storedMapId();
   report.storedMapIdAfterPick = stored;
   check(

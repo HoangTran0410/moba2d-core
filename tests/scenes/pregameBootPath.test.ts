@@ -58,6 +58,16 @@ const ALLOWED_GAME_MODULES = [
   '@/game/config/spellCatalog',
   '@/game/config/renderPreferences',
   '@/game/config/zoomBounds',
+  // The map-rule resolvers, read by the picker so it can tell a player what a
+  // map actually changes — a thing that was shipped, enforced and only
+  // readable by opening the map editor.
+  //
+  // Safe for the same reason every `@/game/config/` entry above it is, and
+  // that reason is itself checked: `vite.config.ts` pins the whole directory
+  // into the `pregame` chunk, and `pregameChunkPurity.test.ts` holds its
+  // residents to importing nothing from `src/game/` but each other. This file
+  // is the outside view of that promise; that one is the inside view.
+  '@/game/config/mapTuning',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

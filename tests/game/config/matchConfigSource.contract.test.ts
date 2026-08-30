@@ -418,6 +418,29 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       expect(source.getMap()).toBe(DEFAULT_MAP_ID);
     });
 
+    /**
+     * The picker draws the map now, so the panel needs its polygons — the
+     * heavy half that `MapSummary` deliberately does not carry, sitting behind
+     * a loader so the menu never pays for it until somebody opens the picker.
+     *
+     * On the contract because both sources must answer: the picker is one
+     * component with two backends, and a preview that worked on the menu and
+     * not in a match would be the exact divergence this file exists to stop.
+     */
+    it('loads a map’s geometry, on both sources', async () => {
+      const geometry = await source.loadMapGeometry('reference:proving-grounds');
+
+      expect(geometry, 'the bundled map resolved to nothing').toBeTruthy();
+      expect(geometry!.terrain.wall.length).toBeGreaterThan(0);
+      expect(Array.isArray(geometry!.slots.spawn)).toBe(true);
+    });
+
+    it('answers null for a map nothing installed, rather than throwing', async () => {
+      // A preview that cannot load is not a reason to stop somebody picking
+      // the map, so the panel draws no picture and carries on.
+      await expect(source.loadMapGeometry('khong-co:map')).resolves.toBeNull();
+    });
+
     it('persists a different choice through storage, as the qualified id', () => {
       const other = source.availableMaps().find(map => map.id !== source.getMap())!;
       source.setMap(other.id);

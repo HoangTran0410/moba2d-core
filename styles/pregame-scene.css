@@ -1989,3 +1989,219 @@ body.touch-ui .spell-peek .spell-detail-body {
   color: #10202c;
   font-weight: 600;
 }
+
+/* =====================================================================
+   The map picker, moved into a modal.
+
+   The row of cards on the Trận đấu tab said a name, a size and a faction
+   count — none of which is why anyone picks one map over another. The shape
+   and the rules are, and neither fits in a card. So the tab keeps a one-line
+   summary that opens this, and the modal carries the picture and the rules.
+   ===================================================================== */
+
+/* The row that opens it. Sized and coloured like `.map-option` so the control
+   it replaced still reads as the same thing, with the chevron saying it leads
+   somewhere. */
+.map-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font: inherit;
+  font-size: 0.95em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-summary:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.map-summary:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+.map-summary-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.map-summary-main strong {
+  color: var(--hextech-gold);
+}
+
+.map-summary-meta {
+  font-size: 0.78em;
+  color: var(--hextech-muted);
+}
+
+/* Wider than the default modal: the body is a list beside a picture, and a
+   square preview squeezed into 360px is a thumbnail nobody can read a lane
+   off. */
+.map-picker-modal {
+  width: min(880px, calc(100vw - 24px));
+}
+
+.map-picker-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+/* Inside the modal the list is one column: it is the index, not the content. */
+.map-picker-body .map-picker {
+  grid-template-columns: 1fr;
+}
+
+/* Highlighted-but-not-chosen. The tick and the teal border still mean "this is
+   the map you will play"; this only says where the reader is looking, which is
+   why it is the neutral gold every other focus in this panel uses. */
+.map-option.viewing {
+  border-color: var(--hextech-gold-dim);
+}
+
+.map-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+/* A square hole for a square map — every moba2d map is one (`MapSummary.size`
+   is a single number), so the frame can say so and the SVG never letterboxes
+   inside a box of the wrong shape. */
+.map-preview-frame {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  max-height: 46vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0d12;
+  border: 1px solid var(--hextech-line);
+  overflow: hidden;
+}
+
+.map-preview {
+  width: 100%;
+  height: 100%;
+}
+
+.map-preview-empty {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+  text-align: center;
+}
+
+/* The layers, bottom to top. Deliberately flatter than the in-game minimap:
+   this is a shape to recognise, not a battlefield to read, so walls are one
+   grey and nothing has a gradient. */
+.mp-ground { fill: #121821; }
+.mp-water { fill: #1b3a52; }
+.mp-bush { fill: #1c3a24; }
+.mp-wall { fill: #2b3341; }
+.mp-lane {
+  fill: none;
+  stroke: #c8aa6e33;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mp-camp { fill: #e0a54922; stroke: #e0a54988; stroke-width: 2; }
+.mp-spawn { fill: #ffffff10; stroke-width: 3; }
+.mp-turret { stroke-width: 0; }
+
+/* Blue and red come from the map's own faction order, not from its spelling —
+   `preset.ts` seats `factions[0]` as blue and `factions[1]` as red. A faction
+   past the second is seated nowhere, and is drawn as neither rather than as an
+   invented third team. */
+.mp-spawn.is-blue { stroke: #5b8cff; }
+.mp-spawn.is-red { stroke: #e35d6a; }
+.mp-spawn.is-none { stroke: #8b98ab; }
+.mp-turret.is-blue { fill: #5b8cff; }
+.mp-turret.is-red { fill: #e35d6a; }
+.mp-turret.is-none { fill: #8b98ab; }
+
+.map-rules h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.82em;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--hextech-muted);
+}
+
+.map-rules-none {
+  margin: 0;
+  font-size: 0.82em;
+  color: var(--hextech-muted);
+}
+
+.map-rule-group + .map-rule-group {
+  margin-top: 0.5rem;
+}
+
+.map-rule-group h5 {
+  margin: 0 0 0.2rem;
+  font-size: 0.8em;
+  color: var(--hextech-gold);
+}
+
+/* Three columns: what it is, what this map says, what core would have said.
+   The third is not decoration — "40% hồi máu" means nothing without knowing
+   the standard is 12%. */
+.map-rule-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.8em;
+  padding: 0.12rem 0;
+}
+
+.map-rule-label { color: var(--hextech-muted); }
+.map-rule-value { color: var(--hextech-text); font-variant-numeric: tabular-nums; }
+.map-rule-standard { color: #6b7484; font-size: 0.9em; }
+
+.map-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-top: 1px solid var(--hextech-line);
+}
+
+.map-picker-note {
+  flex: 1;
+  font-size: 0.8em;
+  color: var(--hextech-muted);
+}
+
+.map-picker-commit { margin-left: auto; }
+
+/* One column under a thumb: the list, then the picture, then the rules — the
+   order somebody reads them in. */
+@media (max-width: 720px), (max-height: 560px) {
+  .map-picker-body {
+    grid-template-columns: 1fr;
+  }
+
+  .map-picker-body .map-picker {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .map-preview-frame {
+    max-height: 38vh;
+  }
+}

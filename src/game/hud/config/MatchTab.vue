@@ -38,6 +38,8 @@ import { resolveMapId } from '@/content/defaultMap';
 import { CONFIG_PANEL } from './panelState';
 import { CDR_PERCENT_MAX, CDR_PERCENT_MIN } from '@/game/config/PregameConfig';
 import { vTap } from '../tapGuard';
+import MapPickerModal from './MapPickerModal.vue';
+import { mapRuleCount } from './mapRuleLines';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -156,6 +158,26 @@ const pickMap = (id: string): void => {
   selectedMapId.value = id;
 };
 
+/** Whether the picker is up. A local ref: closing the panel should close it. */
+const showMapPicker = ref(false);
+
+const selectedMap = computed(() => maps.find(map => map.id === selectedMapId.value) ?? null);
+const selectedMapName = computed(() => selectedMap.value?.name ?? selectedMapId.value);
+const selectedMapMeta = computed(() => {
+  const map = selectedMap.value;
+  if (!map) return '';
+  return `${map.size}×${map.size} · ${map.factions.length} phe · ${map.packId}`;
+});
+/**
+ * How many rules this map bends, on the row that opens the picker.
+ *
+ * The number is the hook: a map that changes nothing says nothing here, and
+ * one that changes nine things says so without being opened. Before this, a
+ * map's rules were shipped and enforced and could only be read in the map
+ * editor.
+ */
+const selectedMapRuleCount = computed(() => mapRuleCount(selectedMap.value?.tuning));
+
 /** The running match's own map, by name — for the note below, in a match only. */
 const liveMapName = computed(
   () => maps.find(map => map.id === source.getMap())?.name ?? source.getMap()
@@ -248,20 +270,29 @@ const resetLabel = computed(() =>
          wrong for the three stacked lines inside a card. -->
     <div class="map-field">
       <span class="map-field-label">Bản đồ</span>
-      <div id="practice-map" class="map-picker" role="radiogroup" aria-label="Bản đồ">
-        <button v-for="map of maps" :key="map.id" type="button" class="map-option" :disabled="!canEdit"
-          :class="{ selected: map.id === selectedMapId }" role="radio" :aria-checked="map.id === selectedMapId"
-          :data-map="map.id" @click="pickMap(map.id)" v-tap="() => pickMap(map.id)">
-          <span class="map-option-name">
-            {{ map.name }}
-            <i v-if="map.id === selectedMapId" class="fas fa-check map-option-tick" aria-hidden="true"></i>
+      <!--
+        A summary row that opens the picker, rather than the picker itself.
+
+        The row of cards said a name, a size and a faction count, and none of
+        those is why anyone picks one map over another — the shape and the
+        rules are, and neither fits in a card. Both live in the modal now,
+        which is also the only place with room for a preview.
+
+        Not disabled on a locked tab: a LAN client should still be able to look
+        at the map it is about to play on. The modal refuses the *commit*, which
+        is the half that was ever a permission.
+      -->
+      <button type="button" id="practice-map-open" class="map-summary" @click="showMapPicker = true"
+        v-tap="() => (showMapPicker = true)">
+        <span class="map-summary-main">
+          <strong>{{ selectedMapName }}</strong>
+          <span class="map-summary-meta">
+            {{ selectedMapMeta }}
+            <template v-if="selectedMapRuleCount"> · {{ selectedMapRuleCount }} luật riêng</template>
           </span>
-          <span class="map-option-meta">
-            {{ map.size }}×{{ map.size }} · {{ map.factions.length }} phe
-          </span>
-          <span class="map-option-pack">{{ map.packId }}</span>
-        </button>
-      </div>
+        </span>
+        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+      </button>
 
       <!-- Only in a match, and only for the map: a live match cannot swap its
          own world out from under itself — see `MatchConfigSource.getMap`.
@@ -329,4 +360,16 @@ const resetLabel = computed(() =>
       </button>
     </div>
   </div>
+
+  <!-- Mounted last so its backdrop covers the tab, and `v-if` so a closed
+       picker costs nothing — the preview it holds fetches a map's polygons. -->
+  <MapPickerModal
+    v-if="showMapPicker"
+    :maps="maps"
+    :selected-id="selectedMapId"
+    :can-edit="canEdit"
+    :load="id => source.loadMapGeometry(id)"
+    @pick="pickMap"
+    @close="showMapPicker = false"
+  />
 </template>
