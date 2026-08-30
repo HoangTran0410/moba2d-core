@@ -265,6 +265,30 @@ describe('the way out that replaces Escape', () => {
     expect(onExitRequested).toHaveBeenCalledOnce();
     expect(hud.showSpellsPicker).toBe(false);
   });
+
+  /**
+   * The way *back in*, which is the same shape and not the same thing: it ends
+   * the match too, but the player lands in a new one rather than at the menu.
+   * It exists because the map is the only setting the panel cannot apply to a
+   * running world — see `MapPickerModal.vue`.
+   */
+  it('requestRestart goes through its own callback, and closes the panel first', () => {
+    const onRestartRequested = vi.fn();
+    const hud = createHudInteractions({
+      player: { spells: [] },
+      pause: vi.fn(),
+      unpause: vi.fn(),
+      onRestartRequested,
+    } as never);
+    hud.showSpellsPicker = true;
+
+    hud.requestRestart();
+
+    expect(onRestartRequested).toHaveBeenCalledOnce();
+    // The scene is about to run its own `exit()`; a panel left standing would
+    // be a panel over a match that no longer exists.
+    expect(hud.showSpellsPicker).toBe(false);
+  });
 });
 
 describe('GameScene touch ownership', () => {

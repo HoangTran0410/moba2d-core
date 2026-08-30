@@ -2188,7 +2188,93 @@ body.touch-ui .spell-peek .spell-detail-body {
   color: var(--hextech-muted);
 }
 
+/* This button carried `class="btn primary"` and no stylesheet in this project
+   has ever defined either — it rendered as the browser's default grey box in
+   the corner of a hextech modal. `.hextech-btn` is the real name (`menu-scene
+   .css` defines it, and `index.html` loads every sheet globally, which is what
+   lets the HUD use it at all).
+
+   Sized down from the menu's 18px/0.75rem-2rem the same way
+   `.match-config-actions .hextech-btn` in hud.css is, and for the same reason:
+   that button headlines the main menu, this one shares a 12px-padded modal
+   footer with a sentence. Still 44px tall — the thumb minimum. */
+.map-picker-footer .hextech-btn {
+  min-height: 44px;
+  padding: 0.4rem 1.4rem;
+  font-size: 14px;
+  border-width: 2px;
+}
+
+.map-picker-footer .hextech-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The hover lights the border and swaps in a background image; on a disabled
+   button that reads as pressable. */
+.map-picker-footer .hextech-btn:disabled:hover {
+  background: #1e2328;
+  background-image: none;
+  box-shadow: none;
+  border: 2px solid transparent;
+  border-image: linear-gradient(#08abac, #01698b) 1;
+}
+
 .map-picker-commit { margin-left: auto; }
+
+/* ---------------------------------------- "…and the match is still on the old one"
+
+   The footer's second state, after a map is chosen mid-match. A column, not
+   the single row above it: it is a sentence, a consequence and two answers,
+   and the answers must not sit beside the text as if they were one more
+   control. Gold-lined for the same reason `.practice-note-pending` is gold —
+   this is the panel telling the player something they did not ask about. */
+.map-picker-applying {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  border-top: 2px solid var(--hextech-gold-dim);
+  background: rgba(226, 190, 120, 0.06);
+}
+
+.map-picker-applying-text {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--hextech-text);
+}
+
+.map-picker-applying-text strong { color: var(--hextech-gold); }
+
+.map-picker-applying-warn {
+  margin: 0;
+  font-size: 0.78em;
+  color: var(--hextech-muted);
+}
+
+/* Right-aligned, with "Tạo trận mới ngay" last: the destructive answer sits
+   under the thumb's resting corner on a phone, and the safe one is the one a
+   mis-hit toward the middle finds. */
+.map-picker-applying-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+/* Ending a live match is not the same kind of press as choosing a map, so it
+   does not wear the same teal. Amber, like `.practice-exit` on the tab behind
+   this — the panel's existing colour for "this one you do not get back". */
+.map-picker-restart {
+  border-image: linear-gradient(#e2be78, #9a6b2f) 1;
+}
+
+.map-picker-restart:hover {
+  border: 2px solid rgba(226, 190, 120, 0.75);
+  box-shadow:
+    0 0 10px 4px rgba(226, 190, 120, 0.25),
+    inset 0 0 5px 2px rgba(226, 190, 120, 0.2);
+}
 
 /* One column under a thumb: the list, then the picture, then the rules — the
    order somebody reads them in. */

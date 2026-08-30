@@ -1538,6 +1538,22 @@ body.touch-ui .practice-add-bot {
   margin-right: 0.35rem;
 }
 
+/* The other note that is not an aside: a map has been chosen that the running
+   match is not on, and the player is owed that fact for as long as it is true
+   (they were offered a new match in the picker and said "Để sau"). Same gold
+   as the lock note and upright rather than italic — it states a pending
+   change, and the italics are what made its predecessor read as fine print
+   nobody had to look at. */
+.practice-note-pending {
+  margin: 0.5rem 0 0;
+  color: rgba(226, 190, 120, 0.9);
+  font-style: normal;
+}
+
+.practice-note-pending .fa-clock {
+  margin-right: 0.35rem;
+}
+
 /* ----------------------------------- Per-unit cheats, folded onto the roster
    These classes used to live behind a unit picker on the Gian lận tab; the
    picker is gone (each control is now inside its own champion's drawer on the

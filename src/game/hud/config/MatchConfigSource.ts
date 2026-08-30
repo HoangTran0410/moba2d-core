@@ -258,6 +258,37 @@ export interface MatchLiveControls {
 
   /** Leave the match. A scene transition, which is why it is not a config write. */
   requestExit(): void;
+
+  /**
+   * Whether a new match can be booted from here.
+   *
+   * False in a LAN match, and that is not a permission — a host may change
+   * every other setting on the tab. It is that `restart()` tears the session
+   * down with the match (`GameScene.stopGame` closes the socket) and boots a
+   * fresh room from the URL, so every client would be dropped into a room
+   * whose code they were never given. A LAN match is remade by its room, not
+   * by one player's map pick.
+   *
+   * A getter, not a captured boolean: a host's session attaches *after* the
+   * match is constructed (`HostSession.attach`), so a value read at
+   * construction would answer for the wrong match.
+   */
+  readonly canRestart: boolean;
+
+  /**
+   * Tear this match down and boot a new one on the config as it now stands.
+   *
+   * The map's escape hatch. Every other setting on the panel is either applied
+   * live (CDR, URF) or applied by the next tick (jungle, minions); the map is
+   * neither, because a `Game` reads its geometry once in its constructor and a
+   * running world cannot be swapped out from under itself (`setMap`'s own doc
+   * comment). Without this, "chọn bản đồ" in a match writes a promise about a
+   * match the player has no way to start from where they are standing.
+   *
+   * Ends the current match, with everything in it. The caller confirms — see
+   * `MapPickerModal.vue`, which is the only one.
+   */
+  restart(): void;
 }
 
 export interface MatchConfigSource {

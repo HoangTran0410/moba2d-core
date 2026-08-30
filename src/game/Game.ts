@@ -226,6 +226,20 @@ export default class Game {
    * "leave the match" has no meaning.
    */
   onExitRequested: (() => void) | null = null;
+
+  /**
+   * How the match asks to be *replaced* — torn down and booted again on the
+   * config as it now stands. `GameScene` sets it to `showScene(GameScene)`,
+   * which runs its own `exit()` then `enter()`: the same path a match takes on
+   * the way back in from the menu, minus the menu.
+   *
+   * Separate from `onExitRequested` because the two differ in where the player
+   * ends up, and only one of them is a way *out*. It exists because the map is
+   * the one setting the panel cannot apply to a running world (a live `Game`
+   * holds its geometry from construction), so "use this map" has to mean
+   * "start again" or it means nothing.
+   */
+  onRestartRequested: (() => void) | null = null;
   onPauseChanged: ((paused: boolean) => void) | null = null;
 
   /**

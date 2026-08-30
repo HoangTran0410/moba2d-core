@@ -379,6 +379,11 @@ export default class GameScene extends Scene {
     // reference to the scene manager and must not gain one — see
     // `Game.onExitRequested`.
     this.game.onExitRequested = () => this.sceneManager.showScene(MenuScene);
+    // Itself, which `SceneManager.showScene` handles by running this scene's
+    // `exit()` and then its `enter()` — the same pair a return from the menu
+    // runs, so the new match boots through `beginMatch()` on the freshly
+    // persisted config with no special path of its own.
+    this.game.onRestartRequested = () => this.sceneManager.showScene(GameScene);
     this.game.onPauseChanged = this._handleGamePause;
     previousTime = performance.now();
     this.updateLoop();

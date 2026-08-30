@@ -56,6 +56,7 @@ const OTHER_MAP_ID = 'probe:elsewhere';
 let director: MatchDirector;
 let source: MatchDirectorSource;
 let exits: number;
+let restarts: number;
 let shopsOpened: string[];
 
 const fakeHost = (host: MatchDirector): MatchDirectorHost => {
@@ -82,6 +83,12 @@ const fakeHost = (host: MatchDirector): MatchDirectorHost => {
     requestExit() {
       exits++;
     },
+    requestRestart() {
+      restarts++;
+    },
+    // A client is in a LAN match by definition, so the seam that reads this
+    // must see a session — see the `canRestart` assertion below.
+    net: { netRosterUnits: () => [] },
   };
 };
 
@@ -96,6 +103,7 @@ const build = async (): Promise<void> => {
   savePregameConfig({ ...DEFAULT_PREGAME_CONFIG, ai: { ...DEFAULT_PREGAME_CONFIG.ai, count: 0 } });
 
   exits = 0;
+  restarts = 0;
   shopsOpened = [];
   const { context } = practiceContext();
   director = new MatchDirector(context, {
@@ -247,6 +255,20 @@ describe('a LAN client', () => {
   it('may still leave the match', () => {
     source.live.requestExit();
     expect(exits).toBe(1);
+  });
+
+  /**
+   * But not remake it — and that one is not about the client's authority, since
+   * a *host* is refused too. `GameScene.stopGame` closes the socket with the
+   * match, so the reboot hosts a fresh room and everyone else is dropped into
+   * one whose code they were never given. A LAN match is remade by its room.
+   */
+  it('may not boot a new match over the top of the room', () => {
+    expect(source.live.canRestart).toBe(false);
+
+    source.live.restart();
+
+    expect(restarts).toBe(0);
   });
 
   it('may still change what only this screen shows', () => {

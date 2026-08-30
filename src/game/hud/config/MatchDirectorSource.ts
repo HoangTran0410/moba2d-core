@@ -89,6 +89,8 @@ export interface MatchDirectorHost {
   /** Opens the shop panel aimed at a roster unit — `HudInteractions.openShopFor`. */
   openShopFor(id: string): void;
   requestExit(): void;
+  /** Boot a new match on the persisted config — `HudInteractions.requestRestart`. */
+  requestRestart(): void;
   /** The attached LAN session, if any (`Game.net`) — the Đội tab's read-only LAN rows. */
   readonly net?: {
     netRosterUnits(): Champion[];
@@ -160,6 +162,17 @@ export default class MatchDirectorSource implements MatchConfigSource {
       },
       requestExit(): void {
         host.requestExit();
+      },
+
+      // Read on every access rather than captured: a host's session attaches
+      // asynchronously after the match is built (`HostSession.attach`), so a
+      // boolean frozen here would say "offline" for the first match a host
+      // ever runs. See `MatchConfigSource.canRestart` for why LAN refuses.
+      get canRestart(): boolean {
+        return !host.net;
+      },
+      restart(): void {
+        if (!host.net) host.requestRestart();
       },
     };
   }

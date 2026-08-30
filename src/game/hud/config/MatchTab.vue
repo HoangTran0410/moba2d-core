@@ -178,10 +178,30 @@ const selectedMapMeta = computed(() => {
  */
 const selectedMapRuleCount = computed(() => mapRuleCount(selectedMap.value?.tuning));
 
+/**
+ * The map the running match is on, read once.
+ *
+ * `getMap()` is the *live* map in a match and unmoved by `setMap` (see its own
+ * doc comment), and a live world cannot change maps — so one read at mount is
+ * the whole truth for as long as this panel exists. Outside a match the same
+ * call means the persisted choice instead, which is why it is gated on `live`.
+ */
+const liveMapId = live ? source.getMap() : null;
+
 /** The running match's own map, by name — for the note below, in a match only. */
-const liveMapName = computed(
-  () => maps.find(map => map.id === source.getMap())?.name ?? source.getMap()
-);
+const liveMapName = computed(() => maps.find(map => map.id === liveMapId)?.name ?? liveMapId);
+
+/**
+ * Start again on the map just chosen. Asked for by `MapPickerModal`, which is
+ * where the player finds out that choosing one mid-match changes nothing yet.
+ *
+ * Nothing is confirmed here: the modal asked, and the press that reaches this
+ * *is* the answer. A second "chắc chưa?" over the top of it would be asking
+ * the same question twice.
+ */
+const restartMatch = (): void => {
+  live?.restart();
+};
 
 /**
  * ## The way out of the match
@@ -298,10 +318,17 @@ const resetLabel = computed(() =>
          own world out from under itself — see `MatchConfigSource.getMap`.
          Not on a locked tab: "sẽ áp dụng cho trận tiếp theo" promises a next
          match this device does not choose, and the lock note above already
-         said who does. -->
-      <p v-if="live && canEdit" class="practice-note">
-        Bản đồ mới sẽ áp dụng cho trận tiếp theo — trận đang chạy vẫn trên
-        <strong>{{ liveMapName }}</strong>.
+         said who does.
+
+         And only once the two actually differ. It used to show throughout a
+         match, so it read as boilerplate under a row that agreed with it —
+         and boilerplate is what a player stops seeing. It is the standing
+         reminder after "Để sau" in the picker now, which is the one moment it
+         is describing something real. -->
+      <p v-if="live && canEdit && selectedMapId !== liveMapId" class="practice-note practice-note-pending">
+        <i class="fas fa-clock" aria-hidden="true"></i>
+        Đã chọn <strong>{{ selectedMapName }}</strong> cho trận sau — trận đang chạy
+        vẫn trên <strong>{{ liveMapName }}</strong>.
       </p>
     </div>
 
@@ -369,7 +396,10 @@ const resetLabel = computed(() =>
     :selected-id="selectedMapId"
     :can-edit="canEdit"
     :load="id => source.loadMapGeometry(id)"
+    :live-map-id="liveMapId"
+    :can-restart="!!live?.canRestart"
     @pick="pickMap"
+    @restart="restartMatch"
     @close="showMapPicker = false"
   />
 </template>

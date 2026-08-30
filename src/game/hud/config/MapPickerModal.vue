@@ -30,6 +30,20 @@
  * heavy half and sit behind a loader on purpose (`ContentPack.ts`'s split), so
  * they are fetched per highlighted map and the panel says so while it waits.
  * A failed load draws no picture and blocks nothing.
+ *
+ * ## In a match, choosing is a promise about the next one
+ *
+ * A `Game` reads its geometry once, in its constructor; a running world cannot
+ * be swapped for another (`MatchConfigSource.setMap`). So the button here
+ * writes a choice the match the player is looking at will never honour — and
+ * it used to say so in a one-line note on the tab *behind* this modal, which
+ * is the last place anyone reads after pressing a button in front of it. The
+ * report was exactly that: "đổi map bấm ok rồi ra vẫn thấy map cũ".
+ *
+ * It now asks, in the footer the press just came from, and offers the only
+ * thing that makes the choice true today: a new match. That ends the running
+ * one, so it is a question rather than a side effect — and it is the question
+ * the player already has, not an extra step invented to be safe.
  */
 import { computed, ref, watch } from 'vue';
 import { vTap } from '../tapGuard';
@@ -45,9 +59,19 @@ const props = defineProps<{
   canEdit: boolean;
   /** Load a map's polygons. `MatchConfigSource.loadMapGeometry`. */
   load: (id: string) => Promise<import('@/content/ContentPack').MapGeometry | null>;
+  /**
+   * The map the running match is actually on, or `null` outside a match.
+   *
+   * Not `selectedId`: that is the choice, which moves the moment this commits.
+   * This is the world on screen behind the modal, and the difference between
+   * the two is the whole reason the ask below exists.
+   */
+  liveMapId?: string | null;
+  /** Whether a new match can be started from here — false in a LAN match. */
+  canRestart?: boolean;
 }>();
 
-const emit = defineEmits<{ close: []; pick: [id: string] }>();
+const emit = defineEmits<{ close: []; pick: [id: string]; restart: [] }>();
 
 /** What is being *looked at*, which is not what is chosen. See the header. */
 const viewingId = ref(props.selectedId);
@@ -62,6 +86,21 @@ const preview = ref<MapPreview | null>(null);
 const loading = ref(false);
 
 /**
+ * The choice is made and the modal stays up, asking what to do about it.
+ *
+ * `null` until a commit lands on a map the running match is not on. It holds
+ * the map's *name* rather than a flag because by the time it is read the pick
+ * has already gone through and `viewing` may have moved on.
+ *
+ * Declared up here rather than beside `commit()`, where it reads better, for a
+ * reason that is not style: the watcher below runs `immediate: true`, which
+ * fires its body *during* `setup()` — a `const` declared after it would still
+ * be in its temporal dead zone, and the first line of that body clears this
+ * one. The modal would throw on open rather than misbehave later.
+ */
+const chosen = ref<string | null>(null);
+
+/**
  * One in-flight load at a time, and only the newest one may write.
  *
  * A player flicking down a list of maps starts a load per row, and they finish
@@ -74,6 +113,9 @@ watch(
   () => viewing.value?.id,
   async id => {
     preview.value = null;
+    // Looking at a different map retracts the question: it was asked about the
+    // map that was committed, and the footer is about to offer that one again.
+    chosen.value = null;
     if (!id) return;
     const token = ++loadToken;
     loading.value = true;
@@ -105,9 +147,23 @@ const markerSize = computed(() => (preview.value?.size ?? 0) * TURRET_MARKER_FRA
 
 const commit = (): void => {
   if (!canCommit.value) return;
-  emit('pick', viewingId.value);
+  const map = viewing.value!;
+  emit('pick', map.id);
+  // Outside a match — or onto the map already running — the choice is simply
+  // true, and there is nothing to ask.
+  if (!props.liveMapId || map.id === props.liveMapId) return emit('close');
+  chosen.value = map.name;
+};
+
+const restartNow = (): void => {
+  emit('restart');
   emit('close');
 };
+
+/** The running match's map, by name, for the sentence in the footer. */
+const liveMapName = computed(
+  () => props.maps.find(map => map.id === props.liveMapId)?.name ?? props.liveMapId ?? ''
+);
 
 const canCommit = computed(
   () => props.canEdit && !!viewing.value && viewing.value.id !== props.selectedId
@@ -231,14 +287,51 @@ const canCommit = computed(
         </div>
       </div>
 
-      <footer class="map-picker-footer">
+      <!-- The ask, in the footer the press came from. Replaces the commit row
+           rather than sitting under it: the choice is already written, so a
+           button still saying "Chọn bản đồ này" would be offering it twice. -->
+      <footer v-if="chosen" class="map-picker-footer map-picker-applying">
+        <p class="map-picker-applying-text">
+          Đã chọn <strong>{{ chosen }}</strong>. Trận đang chạy vẫn trên
+          <strong>{{ liveMapName }}</strong> — bản đồ chỉ đổi khi vào trận mới.
+        </p>
+        <!-- Said before the button that does it, not after: ending the match
+             loses the gold, the đồ and every cheat set in it. -->
+        <p v-if="canRestart" class="map-picker-applying-warn">
+          Tạo trận mới sẽ kết thúc trận hiện tại.
+        </p>
+        <p v-else class="map-picker-applying-warn">
+          Trận mạng không tạo lại được từ đây — bản đồ này sẽ dùng cho trận sau.
+        </p>
+        <div class="map-picker-applying-actions">
+          <button
+            type="button"
+            class="hextech-btn secondary"
+            @click="emit('close')"
+            v-tap="() => emit('close')"
+          >
+            Để sau
+          </button>
+          <button
+            v-if="canRestart"
+            type="button"
+            class="hextech-btn map-picker-restart"
+            @click="restartNow()"
+            v-tap="() => restartNow()"
+          >
+            Tạo trận mới ngay
+          </button>
+        </div>
+      </footer>
+
+      <footer v-else class="map-picker-footer">
         <span v-if="!canEdit" class="map-picker-note">Máy khác đang giữ quyền đổi cấu hình.</span>
         <span v-else-if="viewing && viewing.id === selectedId" class="map-picker-note">
           Đang chọn <strong>{{ viewing.name }}</strong>.
         </span>
         <button
           type="button"
-          class="btn primary map-picker-commit"
+          class="hextech-btn map-picker-commit"
           :disabled="!canCommit"
           @click="commit()"
           v-tap="() => commit()"

@@ -116,6 +116,20 @@ const presetFor = (loadout: { championName: string }) => ({
 /** What `openShopFor` was asked to open, so the delegation can be asserted. */
 const openedShopFor: string[] = [];
 
+/** How many times the host was asked to boot a new match — `live.restart()`. */
+const restartRequests: string[] = [];
+
+/**
+ * The LAN session the fake host reports, if any.
+ *
+ * Module-level and mutable for the same reason `openedShopFor` is: the host is
+ * built once inside `makeDirector` and the suite never gets a handle on it, so
+ * a test that needs the host to look like a LAN match writes it here. Reset in
+ * `beforeEach` — a session left attached would silently disable `restart` for
+ * every test after it.
+ */
+let hostNet: MatchDirectorHost['net'] = null;
+
 const fakeHost = (director: MatchDirector): MatchDirectorHost => {
   let zoom = 1;
   let quality: MatchDirectorHost['renderQuality'] = 'auto';
@@ -152,6 +166,16 @@ const fakeHost = (director: MatchDirector): MatchDirectorHost => {
     },
     setTouchUiEnabled() {},
     requestExit() {},
+    requestRestart() {
+      restartRequests.push('restart');
+    },
+    // Offline by default, which is what every suite below except the restart
+    // one is describing. A getter, matching the real host: a LAN host attaches
+    // its session *after* the match is built, so anything that reads this once
+    // and keeps the answer is reading the wrong match.
+    get net() {
+      return hostNet;
+    },
   };
 };
 
@@ -197,6 +221,8 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
   beforeEach(async () => {
     stubBrowser(new MemoryStorage());
+    hostNet = null;
+    restartRequests.length = 0;
     source = (await make()).source;
   });
 
@@ -581,6 +607,45 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
         expect(typeof option.name).toBe('string');
         expect(Number.isFinite(option.cost)).toBe(true);
       }
+    });
+
+    /**
+     * The map's escape hatch, and the only control on the panel that ends the
+     * match it belongs to.
+     *
+     * Every other setting here either applies live (CDR, URF) or on the next
+     * tick (jungle, minions). The map applies to neither: a `Game` reads its
+     * geometry once, in its constructor, so `setMap` is a promise about a
+     * match that does not exist yet — and until this existed there was no way
+     * to start that match from inside the one you were in.
+     *
+     * Delegation, not outcome: booting a match is a scene transition, and this
+     * seam's whole job is to hand the request to something that has a scene.
+     */
+    it('boots a new match on request', () => {
+      if (!source.live) return;
+
+      expect(source.live.canRestart, 'an offline match can always be remade').toBe(true);
+      source.live.restart();
+
+      expect(restartRequests).toEqual(['restart']);
+    });
+
+    /**
+     * And refuses in a LAN match — which is not a permission. A host may
+     * change every other setting on this tab; what it may not do is tear the
+     * session down, because `GameScene.stopGame` closes the socket with the
+     * match and the reboot hosts a *new* room. Every client would be dropped
+     * into a room whose code they were never given.
+     */
+    it('refuses in a LAN match, and says so before it is pressed', () => {
+      if (!source.live) return;
+      hostNet = { netRosterUnits: () => [] };
+
+      expect(source.live.canRestart).toBe(false);
+      source.live.restart();
+
+      expect(restartRequests, 'the refusal is in the seam, not only in the UI').toEqual([]);
     });
 
     /**

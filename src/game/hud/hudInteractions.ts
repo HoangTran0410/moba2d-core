@@ -175,6 +175,16 @@ export interface HudInteractions {
    */
   requestExit(): void;
   /**
+   * Boot a new match on the config as it now stands. Calls
+   * `Game.onRestartRequested`, which `GameScene` set to `showScene(GameScene)`
+   * — a scene transition for the same reason `requestExit` is one.
+   *
+   * The map is why this exists: a live `Game` reads its geometry once, at
+   * construction, so it is the one thing the config panel can change and not
+   * apply. See `MapPickerModal.vue`.
+   */
+  requestRestart(): void;
+  /**
    * Opens the panel with no slot in mind — the corner button's entry point,
    * in both modes.
    */
@@ -465,6 +475,16 @@ export function createHudInteractions(game: Game): HudInteractions {
       state.showShop = false;
       state.editPlayerSlot = null;
       game.onExitRequested?.();
+    },
+
+    requestRestart(): void {
+      // The same teardown as the exit above, and for the same reason: this
+      // scene is about to run its own `exit()`, and a panel left standing
+      // would be a panel over a match that no longer exists.
+      state.showSpellsPicker = false;
+      state.showShop = false;
+      state.editPlayerSlot = null;
+      game.onRestartRequested?.();
     },
 
     /**
