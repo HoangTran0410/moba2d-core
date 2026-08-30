@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { toRaw } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createHudInteractions,
@@ -114,6 +115,59 @@ describe('createHudInteractions — the ways into the practice panel', () => {
 
   beforeEach(() => {
     vi.stubGlobal('window', globalThis);
+  });
+
+  /**
+   * Reported from a real match: hover a buff to read what it does, wait for
+   * it to expire, and the panel stays open describing a buff that is over.
+   *
+   * A buff row is the one thing on this HUD that can vanish under the pointer,
+   * and removing a hovered element does not fire `mouseout` — the browser sends
+   * it on the next mouse move, which may be seconds away or never. So nothing
+   * was ever going to close it.
+   */
+  describe('a description panel does not outlive the buff it describes', () => {
+    const buff = (name: string) => ({ name, note: 0, description: name });
+
+    it('lets go when the buff ends underneath the pointer', () => {
+      const hud = createHudInteractions(fakeGame());
+      const chill = buff('Chậm');
+      hud.spellHover = chill;
+
+      hud.releaseEndedHover([chill], []);
+      expect(hud.spellHover).toBeNull();
+    });
+
+    it('holds on while the buff is still running', () => {
+      const hud = createHudInteractions(fakeGame());
+      const chill = buff('Chậm');
+      hud.spellHover = chill;
+
+      // `hudState.ts` reuses one display object per kind of buff, which is
+      // what makes this identity question answerable at all — and what keeps
+      // the countdown in the panel counting.
+      hud.releaseEndedHover([chill], [chill, buff('Choáng')]);
+      expect(toRaw(hud.spellHover)).toBe(chill);
+    });
+
+    it('never touches a hover that was not a buff row', () => {
+      // The case that makes the *previous* list load-bearing rather than
+      // decorative. `buildItems` mints a fresh object every tick, so an item
+      // hover is never in the new snapshot either — and releasing on that
+      // alone would close an item tooltip twenty times a second.
+      const hud = createHudInteractions(fakeGame());
+      const sword = { name: 'Kiếm Dài', filled: true };
+      hud.spellHover = sword;
+
+      hud.releaseEndedHover([buff('Chậm')], []);
+      expect(toRaw(hud.spellHover)).toBe(sword);
+    });
+
+    it('survives having nothing hovered at all', () => {
+      const hud = createHudInteractions(fakeGame());
+      expect(() => hud.releaseEndedHover([], [buff('Chậm')])).not.toThrow();
+      expect(hud.spellHover).toBeNull();
+    });
   });
 
   afterEach(() => {

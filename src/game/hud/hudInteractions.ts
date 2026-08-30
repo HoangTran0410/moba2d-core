@@ -309,6 +309,8 @@ export interface HudInteractions {
    */
   moveItem(from: number, to: number): void;
   mouseover(spellProxy: any, event: any): void;
+  /** Drops the description panel when the buff it describes has ended. */
+  releaseEndedHover(before: readonly any[], after: readonly any[]): void;
   mouseout(spellProxy: any): void;
   showSpellInfo(spellProxy: any, element: any): void;
   showPreview(spellProxy: any, show: boolean): void;
@@ -733,6 +735,37 @@ export function createHudInteractions(game: Game): HudInteractions {
         left: left + 'px',
         width: panelWidth + 'px',
       };
+    },
+
+    /**
+     * Lets go of a description panel whose buff has ended underneath it.
+     *
+     * A buff row is the one thing on this HUD that can vanish while the
+     * pointer is still on it, and removing a hovered element does not fire
+     * `mouseout` — the browser sends it on the next mouse move, which may be
+     * seconds away or never. So the panel went on describing a buff that was
+     * over, with a countdown frozen at whatever it said when the buff expired.
+     *
+     * **Both lists, and only buffs.** Membership in the *previous* snapshot is
+     * what identifies the pinned object as a buff at all, and it has to be:
+     * `buildItems` mints a fresh object every tick, so "not in the new snapshot"
+     * on its own would release an item hover twenty times a second. Buffs are
+     * the opposite by design — `hudState.ts` reuses one display per kind exactly
+     * so the countdown in this panel keeps counting — and that reuse is what
+     * makes identity a safe question to ask about them.
+     *
+     * Raw on both sides. The pinned object is a reactive proxy and `next` has not
+     * been assigned into the ref yet, so one side is a proxy and the other is
+     * not; `includes` would answer no every tick and release every hover.
+     */
+    releaseEndedHover(before: readonly any[], after: readonly any[]): void {
+      const pinned = state.spellHover ? toRaw(state.spellHover) : null;
+      if (!pinned) return;
+      const wasABuff = before.some(row => toRaw(row) === pinned);
+      if (!wasABuff) return;
+      const stillLive = after.some(row => toRaw(row) === pinned);
+      if (stillLive) return;
+      state.spellHover = null;
     },
 
     mouseout(spellProxy: any): void {

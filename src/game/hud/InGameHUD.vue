@@ -106,6 +106,10 @@ onUnmounted(() => {
 defineExpose({
   hud: props.hud,
   setState: (next: HudState | null) => {
+    // Before the assignment, because this is the only place both snapshots
+    // exist at once — and a hover pinned to a buff that ended has to let go
+    // here or nowhere. See `HudInteractions.releaseEndedHover`.
+    props.hud.releaseEndedHover(state.value?.buffs ?? [], next?.buffs ?? []);
     state.value = next;
   },
 });
