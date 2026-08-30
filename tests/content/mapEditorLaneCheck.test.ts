@@ -93,6 +93,17 @@ const block = (x: number, y: number): string =>
   `{ type: 'wall', position: [${x - 200}, ${y - 200}],
      polygon: [[0,0],[400,0],[400,400],[0,400]] }`;
 
+/** `MapRules` on its own, with none of the editor around it. */
+function loadMapRules(): {
+  structureIssues(map: Record<string, unknown>): Issue[];
+} {
+  const sandbox: Record<string, unknown> = { Math, JSON, console };
+  sandbox.globalThis = sandbox;
+  const context = vm.createContext(sandbox);
+  vm.runInContext(editorFile('js/mapRules.js'), context);
+  return sandbox.MapRules as { structureIssues(map: Record<string, unknown>): Issue[] };
+}
+
 const errors = (issues: Issue[]): Issue[] => issues.filter(issue => issue.level === 'error');
 const about = (issues: Issue[], word: string): Issue[] =>
   issues.filter(issue => issue.text.includes(word));
@@ -473,5 +484,95 @@ describe('the focus animation keeps its own frames coming', () => {
     expect(render).toContain('if (!settled || E.checkFocus) requestRender();');
     // And the marker has to end itself, or the loop never stops.
     expect(render).toContain('E.checkFocus = null;');
+  });
+});
+
+/**
+ * Furniture has to stand on the ground too.
+ *
+ * The camp rule ("một bãi nằm trong tường … người ta phát hiện ra chuyện đó
+ * trong một trận đấu") had been there for a while and turrets and fountains
+ * had nothing, which is backwards: a camp inside a wall is at least a *body*,
+ * and every body is swept out of walls now (`TerrainMap.update`). A turret and
+ * a fountain are `isImmovable` map furniture — nothing sweeps them, nothing
+ * displaces them, and there is no mechanism in a match that could ever fix one.
+ * They do not get stuck in a wall; they live there.
+ *
+ * Centre only, matching the camp rule. Turrets are drawn hard against the edge
+ * of a lane on purpose, and a rule that failed on a touching edge would fire on
+ * almost every real map.
+ */
+describe('a turret or a fountain drawn inside a wall', () => {
+  it('is an error for the turret', () => {
+    const issues = check(`
+      ${laneThrough([[400, 400], [3600, 3600]])},
+      ${block(2_000, 800)},
+      { type: 'structure', position: [2000, 800], props: { faction: 'amber', kind: 'turret' } }
+    `);
+
+    expect(about(errors(issues), 'Trụ của phe').length).toBe(1);
+  });
+
+  it('and for the fountain, where it costs a respawn every time', () => {
+    // `Fountain.randomPointInside` scatters around the centre, so a centre in
+    // the wall is a whole respawn area in the wall.
+    const issues = check(`
+      { type: 'lane', position: [0, 0], polygon: [[400, 400], [3600, 3600]],
+        props: { id: 'mid', from: 'amber', to: 'jade' } },
+      { type: 'spawn', position: [2000, 800], props: { faction: 'amber', r: 150 } },
+      { type: 'spawn', position: [3800, 3800], props: { faction: 'jade', r: 150 } },
+      { type: 'minion', position: [400, 400], props: { faction: 'amber', lane: 'mid' } },
+      { type: 'minion', position: [3600, 3600], props: { faction: 'jade', lane: 'mid' } },
+      ${block(2_000, 800)}
+    `);
+
+    expect(about(errors(issues), 'Bệ đá của phe').length).toBe(1);
+  });
+
+  /**
+   * And the wall is read whichever way it was handed over.
+   *
+   * Every rule below `prepareWalls` reads a vertex as `pts[i][0]`. Handed a
+   * polygon of `{x, y}` — which is the shape `MapGeometry.terrain.wall`
+   * actually uses, so the shape somebody will naturally pass — `bounds()`
+   * returned NaN, the NaN box intersected nothing, and **the whole wall
+   * vanished from every check**. No error, no warning: a map full of walls
+   * graded clean.
+   *
+   * Driven straight at `MapRules` rather than through the editor, because the
+   * editor only ever stores pairs — the shape that broke is the one a *caller*
+   * supplies, and `lol/tests/maps/mapRules.test.ts` converts by hand today
+   * precisely because it had to.
+   */
+  it('reads a wall given as points as well as one given as pairs', () => {
+    const box: [number, number][] = [
+      [1_800, 600],
+      [2_200, 600],
+      [2_200, 1_000],
+      [1_800, 1_000],
+    ];
+    const turret = { x: 2_000, y: 800, faction: 'amber' };
+    const rules = loadMapRules();
+
+    const asPairs = rules.structureIssues({ walls: [box], turrets: [turret] });
+    const asPoints = rules.structureIssues({
+      walls: [box.map(([x, y]) => ({ x, y }))],
+      turrets: [turret],
+    });
+
+    expect(asPairs.length, 'the fixture does not trip the rule at all').toBe(1);
+    expect(asPoints.map(issue => issue.text)).toEqual(asPairs.map(issue => issue.text));
+  });
+
+  it('says nothing when they are merely next to one', () => {
+    // The falsification, and the case that decides whether the rule is usable:
+    // a turret hard against the edge of a wall is how maps are actually drawn.
+    const issues = check(`
+      ${laneThrough([[400, 400], [3600, 3600]])},
+      ${block(2_000, 800)},
+      { type: 'structure', position: [2210, 800], props: { faction: 'amber', kind: 'turret' } }
+    `);
+
+    expect(about(issues, 'nằm TRONG tường')).toEqual([]);
   });
 });

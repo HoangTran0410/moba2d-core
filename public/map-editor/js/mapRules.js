@@ -145,10 +145,31 @@
   }
 
   /** Gói mỗi bức tường lại cùng AABB của nó, một lần cho cả lượt kiểm. */
+  /**
+   * Tường, chuẩn hoá về `[x, y]` — và đó không phải chuyện gọn gàng.
+   *
+   * Mọi hàm dưới đây đọc đỉnh bằng `pts[i][0]`/`[1]`. Đưa vào một polygon
+   * dạng `{x, y}` — **đúng cái dạng `MapGeometry.terrain.wall` dùng**, nên là
+   * dạng người ta sẽ đưa vào một cách tự nhiên nhất — thì `bounds()` ra NaN,
+   * hộp bao NaN không giao với gì cả, và **cả bức tường biến mất khỏi mọi
+   * phép kiểm**. Không lỗi, không cảnh báo: một map đầy tường được chấm là
+   * sạch.
+   *
+   * Đúng cái bẫy `laneIssues` đã dính một lần, chỉ khác chiều: lần đó truyền
+   * sai dạng ra 1176 lỗi với khoảng cách NaN, ồn ào nên phát hiện ngay. Chiều
+   * này im lặng, nên tệ hơn nhiều. Nhận cả hai dạng ở đúng cửa vào là cách
+   * duy nhất khiến "chấm sạch" luôn có nghĩa là "đã chấm".
+   */
   function prepareWalls(walls) {
     const out = [];
-    for (const pts of walls) {
-      if (!pts || pts.length < 3) continue;
+    for (const raw of walls || []) {
+      if (!raw || raw.length < 3) continue;
+      const pts = [];
+      for (const p of raw) {
+        const q = pointOf(p);
+        if (q) pts.push([q.x, q.y]);
+      }
+      if (pts.length < 3) continue;
       out.push({ points: pts, box: bounds(pts, 0) });
     }
     return out;
@@ -573,6 +594,40 @@
             at: at(group.first),
         });
         }
+    }
+
+    // ---- trụ và bệ đá cũng phải đứng trên đất -----------------------------
+    //
+    // Cùng một luật với bãi quái ở dưới, và nó thiếu ở đây vì hai loại slot
+    // này *không bao giờ bị đẩy ra*: `TerrainMap.update` chỉ quét tướng, lính
+    // và quái, còn trụ với bệ đá là đồ đạc của map — `isImmovable`, không cú
+    // hất nào dời được. Nên chúng không "kẹt" trong tường, chúng **ở lì** trong
+    // đó, và không có cơ chế nào trong trận sửa được.
+    //
+    // Hậu quả khác nhau cho từng loại, nhưng đều là map hỏng: một cái trụ
+    // trong đá là cái trụ không ai đi tới đánh được (mà nó vẫn bắn ra), còn
+    // một cái bệ đá trong đá là chỗ hồi sinh mà lần nào sống lại cũng bị tường
+    // đẩy văng ra — `randomPointInside` rải quanh tâm bệ, nên tâm nằm trong
+    // tường là cả vùng hồi sinh nằm trong tường.
+    //
+    // Chỉ hỏi về *tâm*, đúng như luật bãi quái: mép trụ chạm tường là bình
+    // thường, và phần lớn map đều cố ý đặt trụ sát mép đường.
+    for (const [list, kind] of [
+      [turrets, "Trụ"],
+      [spawns, "Bệ đá"],
+    ]) {
+      if (!list || !list.length) continue;
+      const walls = prepareWalls(map.walls || []);
+      for (const p of list) {
+        if (wallClearance(p.x, p.y, walls, 1) >= 0) continue;
+        out.push({
+          text:
+            `${kind} của phe “${p.faction || "?"}” tại (${Math.round(p.x)}, ` +
+            `${Math.round(p.y)}) nằm TRONG tường — không có gì đẩy nó ra được, ` +
+            `và trong trận cũng không sửa được.`,
+          at: at(p),
+        });
+      }
     }
 
     // ---- bãi quái phải đứng trên đất -------------------------------------
