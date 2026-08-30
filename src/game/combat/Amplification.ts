@@ -1,3 +1,5 @@
+import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
+
 /**
  * What a build does to an ability, and the only place that question is
  * answered.
@@ -43,8 +45,31 @@
 export interface AmplificationSource {
   stats?: {
     abilityPower?: { value: number };
+    /** `baseValue` as well as `value`, because only the *bonus* half scales an ability. */
+    attackDamage?: { value: number; baseValue: number };
   };
 }
+
+/**
+ * What one point of bonus attack damage adds to a physical ability, and the
+ * only number in this engine that prices the two offensive stats against each
+ * other.
+ *
+ * It exists because the two are not comparable and cannot be made so by
+ * arithmetic. `abilityPower` is a **fraction** — an item granting `1.4` is
+ * +140% ability damage — while `attackDamage` is **points**, and a champion's
+ * base is 10 to 17 of them. There is no derivation from one to the other;
+ * there is only a decision about what a point of attack damage is worth to an
+ * ability, and this is it, in one place, named, so it can be argued with.
+ *
+ * 0.05 is chosen against the installed pack's own shelf. Its AP items sell
+ * about +100% ability damage for 1400 gold; its AD items sell 8 to 18 points
+ * for the same, so at this rate a 1400-gold AD item buys roughly +70% on a
+ * physical ability. Deliberately less than the AP item buys, because the AD
+ * item has already paid out once on every basic attack the holder throws and
+ * the AP item has not.
+ */
+export const ABILITY_SCALING_PER_ATTACK_DAMAGE = 0.05;
 
 /**
  * What this unit's abilities hit for, as a multiplier. `0.35` of ability power
@@ -64,16 +89,75 @@ export function abilityPowerMultiplier(source: AmplificationSource | undefined):
   return multiplier > 0 ? multiplier : 0;
 }
 
-/** The whole question, in one call: what this ability is worth out of this unit. */
-export function amplifiedAbilityDamage(
-  damage: number,
-  source: AmplificationSource | undefined
-): number {
-  return damage * abilityPowerMultiplier(source);
+/**
+ * The same question for a physical ability, answered by the stat a player
+ * buying physical damage actually buys.
+ *
+ * **Bonus attack damage only.** A champion's base is what it starts the match
+ * with and is a property of the champion rather than of anything bought, so
+ * counting it would mean an assassin's abilities hit for 75% more than a
+ * marksman's on the first frame for no reason either player chose. The bonus
+ * is the build, which is the whole thing this module is about.
+ *
+ * Floored at zero for the reason `abilityPowerMultiplier` documents: an attack
+ * damage shred deep enough would otherwise make casting on the victim heal them.
+ */
+export function physicalPowerMultiplier(source: AmplificationSource | undefined): number {
+  const stat = source?.stats?.attackDamage;
+  if (!stat || !Number.isFinite(stat.value) || !Number.isFinite(stat.baseValue)) return 1;
+  const bonus = stat.value - stat.baseValue;
+  const multiplier = 1 + bonus * ABILITY_SCALING_PER_ATTACK_DAMAGE;
+  return multiplier > 0 ? multiplier : 0;
 }
 
 /**
- * A number inside a spell's own description that this caster's ability power
+ * Which build multiplies which kind of damage — the question this module was
+ * missing, and the bug it shipped with.
+ *
+ * Ability power amplified *every* ability regardless of what it dealt, so an
+ * item selling magic power made a physical ability hit exactly as much harder
+ * as it made a magic one. That was invisible while nothing in either installed
+ * pack declared a type, and became a real defect the day all 241 of one pack's
+ * damage sites did.
+ *
+ * **`TRUE` takes the better of the two, and that is a decision rather than an
+ * oversight.** True damage carries no resistance to read a stat off, and where
+ * this genre's conventions come from it is not a school at all — it is a
+ * property attached to abilities that scale on whatever their champion is
+ * built around, an executing ultimate on attack damage and a flat threshold on
+ * nothing. Picking one stat for all of them would silently zero out a whole
+ * class of ultimates for half a roster; taking whichever the caster actually
+ * bought never does, and is the only rule here correct without a per-ability
+ * table this engine deliberately does not have.
+ */
+export function abilityMultiplier(
+  type: DamageType,
+  source: AmplificationSource | undefined
+): number {
+  if (type === 'PHYSICAL') return physicalPowerMultiplier(source);
+  if (type === 'MAGIC') return abilityPowerMultiplier(source);
+  return Math.max(abilityPowerMultiplier(source), physicalPowerMultiplier(source));
+}
+
+/**
+ * The whole question, in one call: what this ability is worth out of this unit.
+ *
+ * The type defaults to `MAGIC` — `DEFAULT_DAMAGE_TYPE`, the same default
+ * `takeDamage` applies — which is also the honest answer for the two callers
+ * that pass no type at all. A heal and a shield have no damage type to have,
+ * and `abilityPower` is the stat that means "this unit's abilities are more
+ * effective"; there is nothing for a restored number to read off attack damage.
+ */
+export function amplifiedAbilityDamage(
+  damage: number,
+  source: AmplificationSource | undefined,
+  type: DamageType = DEFAULT_DAMAGE_TYPE
+): number {
+  return damage * abilityMultiplier(type, source);
+}
+
+/**
+ * A number inside a spell's own description that this caster's build
  * multiplies, as a pack writes it: `<span class="damage">15 sát thương</span>`
  * or `<span class="heal">40 máu</span>`. Non-greedy, so two of them on one
  * line stay two.
@@ -105,7 +189,14 @@ export function amplifiedAbilityDamage(
  * number in red and, worse, promised a scaling that did not happen.
  */
 const SCALING_SPAN =
-  /(<span class="(?:damage|heal)(?: (?:physical|magic|true))?">)([\s\S]*?)(<\/span>)/g;
+  /(<span class="(?:damage|heal)(?: (physical|magic|true))?">)([\s\S]*?)(<\/span>)/g;
+
+/** The span's own class, back to the type it names. */
+const SPAN_TYPE: Record<string, DamageType> = {
+  physical: 'PHYSICAL',
+  magic: 'MAGIC',
+  true: 'TRUE',
+};
 
 /**
  * The figure at the front of such a span, which is the part a build changes.
@@ -190,10 +281,22 @@ export function amplifiedDamageText(
   description: string,
   source: AmplificationSource | undefined
 ): string {
-  const multiplier = abilityPowerMultiplier(source);
-  if (multiplier === 1) return description;
-  return description.replace(SCALING_SPAN, (whole, open, inner, close) => {
+  // Nothing bought, nothing to say — and both stats have to be asked now,
+  // not just ability power, or an attack-damage build reads its own
+  // physical abilities at their first-frame numbers for the whole match.
+  if (abilityPowerMultiplier(source) === 1 && physicalPowerMultiplier(source) === 1) {
+    return description;
+  }
+
+  // Each span is scaled by the build that answers *its own* type, so one
+  // sentence can print two different bonuses — the correct answer for a
+  // hybrid, and impossible before the packs began labelling their spans. An
+  // unlabelled span is the engine's default, exactly as a `takeDamage` that
+  // names no type is.
+  return description.replace(SCALING_SPAN, (whole, open, span, inner, close) => {
     if (!LEADING_NUMBER.test(inner)) return whole;
+    const multiplier = abilityMultiplier(span ? SPAN_TYPE[span] : DEFAULT_DAMAGE_TYPE, source);
+    if (multiplier === 1) return whole;
     const scaled = inner.replace(
       LEADING_NUMBER,
       (_match: string, space: string, digits: string) =>

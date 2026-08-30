@@ -717,7 +717,7 @@ export default class AttackableUnit extends GameObject {
     // `combat/DamageAttribution.ts` says whether this is ability damage at all,
     // `combat/Amplification.ts` says what it is worth. Both are inert for a
     // unit nobody has bought anything for.
-    if (abilityPowerScales()) damage = amplifiedAbilityDamage(damage, attacker);
+    if (abilityPowerScales()) damage = amplifiedAbilityDamage(damage, attacker, type);
 
     // Whole points, in and out. Damage is built from lerps, percentages and
     // unit-type multipliers, so it arrives as things like 23.799999999999997 —

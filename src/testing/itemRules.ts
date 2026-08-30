@@ -53,8 +53,17 @@ import { MAX_COOLDOWN_REDUCTION } from '@/game/gameObject/Stats';
  * silently, and the whole point of the file is to have one of each.
  */
 
-/** The three spans core's shop and spell panels paint, and no others. */
-const ALLOWED_SPAN = /<span class="(damage|buff|time)">[^<]*<\/span>/g;
+/**
+ * The spans core's shop and spell panels paint, and no others.
+ *
+ * `heal` is on the list because it means what `damage` means in the other
+ * colour, and the optional second class on either is the damage type
+ * (`damage physical`) that `styles/main.css` paints. Still an allow-list and still
+ * closed: `ShopDetail` and the inventory tooltip both render this with `v-html`,
+ * so markup a pack writes here is markup it puts on a player's screen.
+ */
+const ALLOWED_SPAN =
+  /<span class="(?:damage|heal)(?: (?:physical|magic|true))?">[^<]*<\/span>|<span class="(?:buff|time)">[^<]*<\/span>/g;
 
 /**
  * Prose that restates the stat list beside it.

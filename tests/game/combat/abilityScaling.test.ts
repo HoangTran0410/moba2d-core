@@ -143,15 +143,88 @@ describe('abilities scale with the caster’s build', () => {
     it('cannot be opted into by a damage type, because a type says nothing', () => {
       // `takeDamage` sees a number, an attacker and a type, and none of the
       // three separates a swing from a cast — a third of the abilities in the
-      // installed packs are `PHYSICAL` since they started declaring types.
+      // installed packs are `PHYSICAL` since they started declaring types. The
+      // type decides *which* stat amplifies, never *whether* anything does;
+      // that answer only ever comes from the attribution.
+      const { victim, caster } = duo();
+      caster.stats.attackDamage.baseValue = 10;
+      caster.stats.attackDamage.flatBonus = 20;
+
+      const unattributed = dealt(victim, () => victim.takeDamage(40, caster, 'PHYSICAL'));
+      expect(unattributed, 'a typed hit with nothing running is not an ability').toBe(40);
+    });
+  });
+
+  /**
+   * The half that was missing, and the bug the whole damage-type effort was
+   * started for: ability power amplified *every* ability whatever it dealt, so
+   * an item selling magic power made a physical ability hit exactly as much
+   * harder as it made a magic one. Invisible while nothing declared a type,
+   * and a real defect the day everything did.
+   */
+  describe('and each type reads the stat that buys it', () => {
+    const asAbility = (body: () => void) => {
+      const previous = beginAttribution({ name: 'Chiêu', damageScalesWithAbilityPower: true });
+      try {
+        body();
+      } finally {
+        endAttribution(previous);
+      }
+    };
+
+    it('gives a magic ability ability power and nothing else', () => {
       const { victim, caster } = duo();
       caster.stats.abilityPower.baseValue = 1;
+      caster.stats.attackDamage.baseValue = 10;
+      caster.stats.attackDamage.flatBonus = 20;
 
-      const previous = beginAttribution({ name: 'Chém', damageScalesWithAbilityPower: true });
-      const physical = dealt(victim, () => victim.takeDamage(40, caster, 'PHYSICAL'));
-      endAttribution(previous);
+      const magic = dealt(victim, () => asAbility(() => victim.takeDamage(40, caster, 'MAGIC')));
+      expect(magic, 'attack damage leaked into a magic ability').toBe(80);
+    });
 
-      expect(physical, 'an ability is an ability whatever it is typed').toBe(80);
+    it('gives a physical ability the attack damage its holder bought', () => {
+      const { victim, caster } = duo();
+      caster.stats.abilityPower.baseValue = 1;
+      // 20 bought over a base of 10, at 5% a point: +100%.
+      caster.stats.attackDamage.baseValue = 10;
+      caster.stats.attackDamage.flatBonus = 20;
+
+      const physical = dealt(victim, () =>
+        asAbility(() => victim.takeDamage(40, caster, 'PHYSICAL'))
+      );
+      expect(physical, 'ability power is still amplifying physical damage').toBe(80);
+    });
+
+    it('counts only the bonus half, because the base is the champion', () => {
+      const { victim, caster } = duo();
+      caster.stats.attackDamage.baseValue = 60;
+
+      const physical = dealt(victim, () =>
+        asAbility(() => victim.takeDamage(40, caster, 'PHYSICAL'))
+      );
+      expect(physical, 'a champion with a big base got a build it never bought').toBe(40);
+    });
+
+    it('gives true damage whichever of the two the caster actually built', () => {
+      // True damage has no resistance to read a stat off, and upstream it is
+      // not a school — it is a property attached to abilities that scale on
+      // whatever their champion is built around. Picking one stat for all of
+      // them zeroes out a whole class of ultimates for half a roster.
+      const { victim, caster } = duo();
+      caster.stats.attackDamage.baseValue = 10;
+      caster.stats.attackDamage.flatBonus = 20;
+
+      const built = dealt(victim, () =>
+        asAbility(() => victim.takeDamage(40, caster, 'TRUE'))
+      );
+      expect(built).toBe(80);
+
+      const { victim: other, caster: mage } = duo();
+      mage.stats.abilityPower.baseValue = 1;
+      const cast = dealt(other, () =>
+        asAbility(() => other.takeDamage(40, mage, 'TRUE'))
+      );
+      expect(cast).toBe(80);
     });
   });
 

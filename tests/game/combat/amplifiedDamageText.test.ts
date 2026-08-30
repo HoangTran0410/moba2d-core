@@ -107,12 +107,50 @@ describe('scaling the printed damage', () => {
    * sentence still renders, still reads correctly, and quietly promises the
    * spell's first-frame number for the rest of the match.
    */
-  it('scales a span that also names its damage type', () => {
-    for (const type of ['physical', 'magic', 'true']) {
-      expect(
-        amplifiedDamageText(`gây <span class="damage ${type}">40 sát thương</span>`, power(0.5))
-      ).toBe(`gây <span class="damage ${type}">40 (+20) sát thương</span>`);
-    }
+  it('scales a magic span by ability power, and a physical one not at all', () => {
+    // The bug this whole split exists for, in one line: an item selling magic
+    // power used to make a physical ability's printed number go up too.
+    expect(
+      amplifiedDamageText(`gây <span class="damage magic">40 sát thương</span>`, power(0.5))
+    ).toBe(`gây <span class="damage magic">40 (+20) sát thương</span>`);
+    expect(
+      amplifiedDamageText(`gây <span class="damage physical">40 sát thương</span>`, power(0.5))
+    ).toBe(`gây <span class="damage physical">40 sát thương</span>`);
+  });
+
+  it('and a physical span by the attack damage the holder bought', () => {
+    // Bonus only: 30 over a base of 10 is 20 bought, which at 5% a point is
+    // +100%. The base half is the champion, not the build.
+    const built = { stats: { attackDamage: { value: 30, baseValue: 10 } } };
+    expect(
+      amplifiedDamageText(`gây <span class="damage physical">40 sát thương</span>`, built)
+    ).toBe(`gây <span class="damage physical">40 (+40) sát thương</span>`);
+  });
+
+  it('and prints two different bonuses in one sentence for a hybrid', () => {
+    // Impossible before the spans carried their types, and the reason it was
+    // worth labelling all 178 of them rather than only the ones that changed.
+    const hybrid = {
+      stats: { abilityPower: { value: 0.5 }, attackDamage: { value: 30, baseValue: 10 } },
+    };
+    expect(
+      amplifiedDamageText(
+        `<span class="damage physical">40 sát thương</span> rồi <span class="damage magic">40 sát thương</span>`,
+        hybrid
+      )
+    ).toBe(
+      `<span class="damage physical">40 (+40) sát thương</span> rồi <span class="damage magic">40 (+20) sát thương</span>`
+    );
+  });
+
+  it('gives a true span whichever of the two the caster actually built', () => {
+    const adBuild = { stats: { attackDamage: { value: 30, baseValue: 10 } } };
+    expect(
+      amplifiedDamageText(`<span class="damage true">40 sát thương</span>`, adBuild)
+    ).toBe(`<span class="damage true">40 (+40) sát thương</span>`);
+    expect(
+      amplifiedDamageText(`<span class="damage true">40 sát thương</span>`, power(0.5))
+    ).toBe(`<span class="damage true">40 (+20) sát thương</span>`);
   });
 
   it('and still refuses a class it was never told about', () => {
