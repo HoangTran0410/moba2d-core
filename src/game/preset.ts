@@ -929,6 +929,14 @@ export interface MinionMusterPoint {
   y: number;
   /** `MinionSlot.scatter`, or 0 for a slot that declared none. */
   scatter: number;
+  /**
+   * This point's own wave formation, or absent to use the map's.
+   *
+   * `readonly string[]` and not `string[]`: an **empty** array is a real
+   * declaration — this point forms up nothing — and it must survive the trip
+   * distinguishable from absent. See `MinionSlot.stats`.
+   */
+  composition?: readonly string[];
 }
 
 /**
@@ -955,6 +963,7 @@ export const minionMusterSlotsFrom = (
       x: slot.x,
       y: slot.y,
       scatter: slot.scatter ?? 0,
+      composition: slot.stats?.composition,
     });
   }
   return points;

@@ -512,6 +512,37 @@ export interface MapTuning {
   minions?: MinionTuning;
   monsters?: MonsterTuning;
   terrain?: TerrainTuning;
+  vision?: VisionTuning;
+}
+
+/**
+ * What giving yourself away costs.
+ *
+ * League's rule is one sentence and two numbers — a unit-targeted attack out of
+ * the fog lights a 300 radius around the attacker for 2 seconds
+ * (`combat/AttackReveal.ts` quotes it) — and those two numbers are the whole of
+ * how much a map's brushes are worth.
+ *
+ * Both ends are real maps. `attackRevealMs: 0` turns brush into genuine
+ * stealth: you can fight out of it and never be seen, which makes a map of
+ * dense hedges a map about ambushes with no counterplay but walking in.
+ * `attackRevealMs: 5000` makes one swing a commitment, and brush a place to
+ * wait rather than a place to fight from. Neither is core's answer; both are a
+ * map's to make.
+ */
+export interface VisionTuning {
+  /**
+   * How long an attacker stays lit after a unit-targeted action. Default 2000.
+   * 0 disables the reveal entirely.
+   */
+  attackRevealMs?: number;
+  /**
+   * How much of the map around them is lit with them. Default 300.
+   *
+   * Not merely cosmetic: this is what decides whether the partner waiting in
+   * the same brush is revealed too, which is most of what the rule feels like.
+   */
+  attackRevealRadius?: number;
 }
 
 /**
@@ -839,6 +870,29 @@ export interface MinionSlot {
    * who can see whether it needs a scatter radius, and how big.
    */
   scatter?: number;
+  /**
+   * What *this* muster point fields, instead of the map's own wave formation.
+   *
+   * `tuning.minions.waves.composition` is one formation for the whole map:
+   * every lane of every team sends the same six bodies. That is the right
+   * default and it is the only thing a map could say until now — so "top lane
+   * pushes with siege minions, bot lane trickles two melee" was not a map
+   * anybody could build.
+   *
+   * Ids are read against the same roster the map-wide formation is
+   * (`tuning.minions.types`, or core's three when a map declares none), and
+   * `validate.ts` refuses one that names a type nothing supplies.
+   *
+   * An **empty array** is a real declaration, distinct from absent: this point
+   * forms up no wave at all. A lane that exists for the bots to walk and ships
+   * no minions is a legitimate map, and `[]` is how it says so.
+   */
+  stats?: MinionSlotStats;
+}
+
+/** A muster point's own overrides — see `MinionSlot.stats`. */
+export interface MinionSlotStats {
+  composition?: string[];
 }
 
 /** Core's own vocabulary — `Turret` and `Fountain` are core classes. */

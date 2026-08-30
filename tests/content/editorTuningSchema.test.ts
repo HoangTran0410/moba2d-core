@@ -48,6 +48,43 @@ function editorSchema(): Record<string, string[]> {
   return groups;
 }
 
+/**
+ * `{ slotType: { statKey: a plausible value } }`, read out of `PROP_FIELDS`.
+ *
+ * Only the `stats.` half: `faction`, `lane` and `r` are slot fields core reads
+ * by name and are already exercised by every fixture in this file. The value
+ * comes from the field's own `kind`, because a `list` field written as `1` and
+ * a number field written as `[]` would both fail for the wrong reason.
+ */
+function slotSchema(): Record<string, Record<string, unknown>> {
+  const start = UI.indexOf('const PROP_FIELDS = {');
+  expect(start, 'PROP_FIELDS is gone from ui.js — this test proves nothing').toBeGreaterThan(-1);
+  const block = UI.slice(start, UI.indexOf('\n  };', start));
+
+  const out: Record<string, Record<string, unknown>> = {};
+  const types = block.split(/\n    ([a-z]+): \[/).slice(1);
+  for (let i = 0; i < types.length; i += 2) {
+    const stats: Record<string, unknown> = {};
+    for (const match of types[i + 1].matchAll(/\{[^{}]*key: "stats\.([A-Za-z]+)"[^{}]*\}/g)) {
+      // `melee` is a type id core's own roster always holds, so a composition
+      // naming it passes on a map that declares no roster of its own.
+      stats[match[1]] = /kind: "list"/.test(match[0])
+        ? ['melee']
+        : /kind: "choice"/.test(match[0])
+          ? optionOf(match[0])
+          : 1;
+    }
+    out[types[i]] = stats;
+  }
+  return out;
+}
+
+/** The first non-empty option of a `choice` field — any of them must validate. */
+function optionOf(field: string): string {
+  const options = [...field.matchAll(/"([a-z]+)"/g)].map(match => match[1]);
+  return options[options.length - 1];
+}
+
 /** Writes `obj.a.b.c = value`, building the objects on the way down. */
 function setDeep(root: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');
@@ -124,6 +161,47 @@ describe('the map editor\'s config panel', () => {
 
     expect(options('stats.attackStyle')).toEqual([...MONSTER_ATTACK_STYLES]);
     expect(options('stats.temperament')).toEqual([...MONSTER_TEMPERAMENTS]);
+  });
+
+  /**
+   * The same check, one panel over.
+   *
+   * `PROP_FIELDS` is the **slot** inspector — "ghi đè chỉ số cho trụ này" — and
+   * it had no guard at all: every `stats.*` key it offers is written straight
+   * into a slot, and a name core does not read is the identical silent refusal
+   * the global schema's test exists for. The neutral case above checks two
+   * *values*; this checks every key on every slot type.
+   */
+  it('offers only per-slot overrides core will accept', () => {
+    const slots = slotSchema();
+    expect(Object.keys(slots).length, 'no slot types found in PROP_FIELDS').toBeGreaterThanOrEqual(
+      4
+    );
+
+    const geometry = {
+      terrain: { wall: [], bush: [], water: [] },
+      slots: {
+        spawn: [{ faction: 'blue', x: 1, y: 1, r: 150, stats: slots.spawn }],
+        minion: [{ faction: 'blue', lane: 'MID', x: 1, y: 1, stats: slots.minion }],
+        structure: [{ faction: 'blue', kind: 'turret', x: 1, y: 1, stats: slots.structure }],
+        neutral: [{ role: 'warden', x: 1, y: 1, r: 150, stats: slots.neutral }],
+      },
+    };
+
+    const result = validatePack({
+      manifest: { id: 'p', version: '1.0.0', coreRange: '*' },
+      maps: [
+        {
+          id: 'm',
+          name: 'M',
+          size: 1_000,
+          factions: [{ id: 'blue' }, { id: 'red' }],
+          geometry,
+        },
+      ],
+    });
+
+    expect(result.ok ? [] : result.errors).toEqual([]);
   });
 
   it('and would fail loudly if it offered one core does not know', () => {

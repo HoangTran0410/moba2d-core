@@ -1,4 +1,10 @@
-import { checkMapGeometry, validatePack, validatePackCode, validatePackData } from './validate';
+import {
+  checkMapGeometry,
+  minionFormationOf,
+  validatePack,
+  validatePackCode,
+  validatePackData,
+} from './validate';
 import { isSpellLoader } from './ContentPack';
 import { assetManifest as coreAssetManifest } from '@/generated/assetManifest';
 import type {
@@ -615,7 +621,16 @@ export class PackRegistry {
     const summary = this.mapList.find(map => map.id === qualifiedId);
     const factions = new Set((summary?.factions ?? []).map(faction => faction.id));
     const errors: string[] = [];
-    checkMapGeometry(geometry as unknown as Record<string, unknown>, qualifiedId, factions, errors);
+    // The map's own minion roster travels with the summary, not the geometry,
+    // and `checkMinionRoster` needs both halves — a muster point may field a
+    // type the map-wide formation never names. See `minionFormationOf`.
+    checkMapGeometry(
+      geometry as unknown as Record<string, unknown>,
+      qualifiedId,
+      factions,
+      minionFormationOf(summary?.tuning),
+      errors
+    );
     if (errors.length > 0) {
       throw new Error(`map geometry rejected:\n  ${errors.join('\n  ')}`);
     }

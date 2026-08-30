@@ -547,6 +547,12 @@ const UI = (() => {
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "lane", label: "Lane", kind: "lane" },
       { key: "scatter", label: "Tản ra", kind: "number", unit: "px", min: 0, hint: "để trống = không tản" },
+      { group: "Ghi đè đội hình cho điểm này", groupKey: "minions" },
+      {
+        key: "stats.composition", label: "Đội hình", kind: "list",
+        ph: "melee, melee, ranged",
+        hint: "id các loại lính, cách nhau bằng dấu phẩy — để trống = theo đội hình chung của map",
+      },
     ],
     neutral: [
       { key: "role", label: "Role", kind: "text", placeholder: "warden" },
@@ -773,7 +779,7 @@ const UI = (() => {
           placeholder: f.placeholder || f.ph || "",
           min: f.min,
         });
-        if (f.kind === "text") input.style.fontFamily = "var(--font)";
+        if (f.kind === "text" || f.kind === "list") input.style.fontFamily = "var(--font)";
       }
       input.dataset.prop = f.key;
       input.dataset.pkind = f.kind;
@@ -782,6 +788,15 @@ const UI = (() => {
         const send = () => {
           let v = input.value;
           if (f.kind === "number") v = v === "" ? "" : Number(v);
+          // Mảng rỗng ("[]") là một khai báo thật — điểm này không ra con lính
+          // nào — nên nó phải phân biệt được với ô để trống, vốn nghĩa là
+          // "theo đội hình chung". Xem `MinionSlot.stats.composition`.
+          if (f.kind === "list") {
+            const trimmed = v.trim();
+            v = trimmed === "" ? ""
+              : trimmed === "[]" ? []
+              : trimmed.split(",").map((x) => x.trim()).filter(Boolean);
+          }
           Cmd.run("shape.prop", [f.key, v]);
         };
         input.addEventListener("change", send);
@@ -834,7 +849,13 @@ const UI = (() => {
       if (key.includes(".")) {
         if (document.activeElement === input) return;
         const v = readDeep(src, key);
-        input.value = v == null ? "" : v;
+        // `String([])` là chuỗi rỗng, tức là một đội hình rỗng đã khai báo sẽ
+        // hiện y hệt ô chưa khai gì — hai trạng thái khác hẳn nhau. `[]` là
+        // cách nó tự nói ra, và `send` ở trên đọc lại đúng chuỗi đó.
+        input.value =
+          v == null ? ""
+          : Array.isArray(v) ? (v.length ? v.join(", ") : "[]")
+          : v;
         return;
       }
 
@@ -1185,6 +1206,14 @@ const UI = (() => {
       { key: "waves.releaseIntervalMs", label: "Cách từng con", unit: "ms", ph: "650" },
       { key: "waves.liveCap", label: "Trần lính sống", unit: "con", ph: "160" },
     ]},
+    {
+      key: "vision",
+      label: "Tầm nhìn",
+      hint: "Đánh trong bụi thì bị lộ bao lâu, và lộ rộng bao nhiêu. Để 0 giây là bụi thành tàng hình thật.",
+      fields: [
+      { key: "attackRevealMs", label: "Lộ trong", unit: "ms", ph: "2000" },
+      { key: "attackRevealRadius", label: "Vùng bị lộ", unit: "px", ph: "300" },
+    ]},
   ];
 
   /** Các ô số của một loại lính, dùng lại cho mọi loại map khai ra. */
@@ -1285,6 +1314,14 @@ const UI = (() => {
     if (mi.waves && mi.waves.intervalMs != null) {
       bits.push(`wave mỗi ${n(mi.waves.intervalMs / 1000)}s`);
     }
+
+    const v = tuning.vision || {};
+    // 0 said in words, not as "lộ 0s": that number reads as a rounding error
+    // when it is in fact the most map-defining thing on the whole list.
+    if (v.attackRevealMs != null) {
+      bits.push(v.attackRevealMs > 0 ? `đánh trong bụi lộ ${n(v.attackRevealMs / 1000)}s` : "bụi tàng hình thật");
+    }
+    if (v.attackRevealRadius != null) bits.push(`lộ rộng ${n(v.attackRevealRadius)}px`);
 
     return bits;
   }

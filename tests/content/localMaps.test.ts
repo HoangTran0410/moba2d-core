@@ -106,7 +106,8 @@ function runEditor(tuning?: unknown): EditorRun {
                          props: { id: 'mid', from: 'amber', to: 'jade' } }),
       normalizeTerrain({ type: 'spawn', position: [400, 400], props: { faction: 'amber', r: 150 } }),
       normalizeTerrain({ type: 'spawn', position: [3600, 3600], props: { faction: 'jade', r: 150 } }),
-      normalizeTerrain({ type: 'minion', position: [700, 700], props: { faction: 'amber', lane: 'mid' } }),
+      normalizeTerrain({ type: 'minion', position: [700, 700],
+                         props: { faction: 'amber', lane: 'mid', stats: { composition: ['cannon', 'cannon'] } } }),
       normalizeTerrain({ type: 'minion', position: [3300, 3300], props: { faction: 'jade', lane: 'mid' } }),
       normalizeTerrain({ type: 'structure', position: [900, 900],
                          props: { faction: 'amber', kind: 'turret', stats: { health: 900, attackRange: 700 } } }),
@@ -132,6 +133,8 @@ function parseInEditor(doc: unknown): {
   summaryTuning: unknown;
   /** The first structure slot's own `stats`, as the editor read them back. */
   structureStats: unknown;
+  /** And the first muster point's — its own wave formation. */
+  minionStats: unknown;
 } {
   const store = new Map<string, string>();
   const sandbox: Record<string, unknown> = {
@@ -166,10 +169,12 @@ function parseInEditor(doc: unknown): {
       E.mapSize = parsed.mapSize;
       E.meta = parsed.meta;
       const turret = (parsed.terrains || []).find(t => t.type === 'structure');
+      const muster = (parsed.terrains || []).find(t => t.type === 'minion');
       return {
         meta: parsed.meta,
         summaryTuning: Store.mapSummary().tuning,
         structureStats: turret && turret.props ? turret.props.stats : undefined,
+        minionStats: muster && muster.props ? muster.props.stats : undefined,
       };
     })()
     `,
@@ -355,6 +360,47 @@ describe('local maps', () => {
     });
 
     expect(parsed.structureStats).toEqual({ health: 900 });
+  });
+
+  /**
+   * A muster point's own wave formation, out and back.
+   *
+   * `slots.minion` was the one slot group whose `stats` the editor neither
+   * exported nor read: it wrote `faction`/`lane`/`x`/`y`/`scatter` by hand
+   * while every other group went through `withStats`. So a per-point formation
+   * would have been typed into the panel, drawn on the canvas, saved to
+   * `localStorage` — and dropped on the way out, with the map playing core's
+   * wave and nothing saying why.
+   */
+  it("carries a muster point's own formation out to the game", () => {
+    stubStorage(published);
+    const [map] = readLocalMaps();
+    const slots = (map.geometry as { slots: { minion: { stats?: unknown }[] } }).slots;
+
+    expect(slots.minion[0].stats).toEqual({ composition: ['cannon', 'cannon'] });
+    // And only the point that declared one — the whole feature is that a point
+    // saying something says nothing about its neighbour.
+    expect(slots.minion[1].stats).toBeUndefined();
+  });
+
+  it('and reads it back when the map is reopened', () => {
+    const parsed = parseInEditor({
+      id: 'thung-lung',
+      name: 'Thung Lũng',
+      size: 4_000,
+      factions: [{ id: 'amber' }, { id: 'jade' }],
+      terrain: { wall: [], bush: [], water: [] },
+      slots: {
+        spawn: [],
+        minion: [
+          { faction: 'amber', lane: 'mid', x: 700, y: 700, stats: { composition: ['ranged'] } },
+        ],
+        structure: [],
+        neutral: [],
+      },
+    });
+
+    expect(parsed.minionStats).toEqual({ composition: ['ranged'] });
   });
 
   it('writes no tuning key at all for a map that tunes nothing', () => {

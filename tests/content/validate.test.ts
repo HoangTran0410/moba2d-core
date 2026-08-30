@@ -718,6 +718,71 @@ describe('validatePack', () => {
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/atMs/);
   });
 
+  /* ------------------------------- a muster point's own formation ------- */
+
+  const grunt = {
+    name: 'Grunt',
+    speed: 3,
+    size: 30,
+    health: 200,
+    damage: 7,
+    attackInterval: 1_000,
+    attackRange: 40,
+    aggroRange: 300,
+  };
+
+  /** A map declaring `types` and a muster point, with whatever else is passed. */
+  const musterMap = (types: Record<string, unknown>, musterStats: unknown, waves?: unknown) =>
+    mapWith({
+      tuning: { minions: { types, ...(waves === undefined ? {} : { waves }) } },
+      geometry: {
+        terrain: { wall: [], bush: [], water: [] },
+        slots: {
+          spawn: [],
+          minion: [{ faction: 'blue', lane: 'MID', x: 1, y: 1, stats: musterStats }],
+          structure: [],
+          neutral: [],
+        },
+      },
+    });
+
+  it('rejects a muster formation naming a type nothing supplies', () => {
+    // The same rule the map-wide formation follows, and the same silence if it
+    // is missed: `MinionSpawner` drops the id, so this point fields a smaller
+    // wave — or none — for the whole match, with nothing saying why.
+    const result = validatePack(musterMap({ grunt }, { composition: ['grunt', 'melee'] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/melee/);
+  });
+
+  /**
+   * The regression that moving the never-fielded rule out of `checkMinionTuning`
+   * exists to prevent.
+   *
+   * A type fielded **only** by a muster point is the whole point of the
+   * feature — "bot lane trickles grunts, nowhere else does" — and the old rule,
+   * which could see the tuning and not the slots, would have called it
+   * "declared but never fielded" and refused the map.
+   */
+  it('accepts a type that only a muster point fields', () => {
+    const result = validatePack(musterMap({ grunt }, { composition: ['grunt'] }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('still refuses a type no formation fields at all', () => {
+    const result = validatePack(musterMap({ grunt }, { composition: [] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/never fielded/);
+  });
+
+  it('rejects a key core does not read on a muster point', () => {
+    // A misspelled key is a formation the engine keeps its own value for, in
+    // silence — the reason every other `stats` block here is checked too.
+    const result = validatePack(musterMap({ grunt }, { compositon: ['grunt'] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/compositon/);
+  });
+
   it('checks a per-slot stats block too', () => {
     const result = validatePack(
       mapWith({

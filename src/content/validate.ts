@@ -835,6 +835,45 @@ const WAVE_NUMBER_KEYS = ['intervalMs', 'firstDelayMs', 'releaseIntervalMs', 'li
  * otherwise. A wave listing an id nothing can supply spawns nothing, silently
  * and forever.
  */
+/**
+ * What a map's minion tuning says about its roster and its formations, read
+ * without validating anything.
+ *
+ * Two readers need this and only one of them is the tuning check. The other is
+ * `checkMapGeometry`, because **a muster point may field a type nothing else
+ * does** (`MinionSlot.stats.composition`), and "is every declared type ever
+ * fielded?" therefore stopped being a question the tuning alone can answer.
+ */
+export interface MinionFormationView {
+  /** The roster a composition resolves against — the map's, or core's three. */
+  types: ReadonlySet<string>;
+  /** Whether the map replaced core's roster. The never-fielded rule is about its types. */
+  declaresRoster: boolean;
+  /** Type ids the map-wide waves and stages field, before any muster is read. */
+  fielded: ReadonlySet<string>;
+}
+
+export function minionFormationOf(tuning: unknown): MinionFormationView {
+  const minions = isObject(tuning) && isObject(tuning.minions) ? tuning.minions : undefined;
+  // `resolveMinionTypes` replaces rather than merges, so a map that declares
+  // `grunt` has no `melee` any more — see `checkMinionTuning`'s own comment.
+  const declaresRoster = isObject(minions?.types) && Object.keys(minions.types).length > 0;
+  const types = new Set<string>(
+    declaresRoster ? Object.keys(minions!.types as object) : ['melee', 'ranged', 'cannon']
+  );
+
+  const fielded = new Set<string>();
+  const waves = isObject(minions?.waves) ? minions.waves : undefined;
+  const collect = (list: unknown): void => {
+    if (isStringArray(list)) for (const id of list) fielded.add(id);
+  };
+  collect(waves?.composition);
+  if (Array.isArray(waves?.stages)) {
+    for (const stage of waves.stages) if (isObject(stage)) collect(stage.composition);
+  }
+  return { types, declaresRoster, fielded };
+}
+
 function checkMinionTuning(path: string, value: unknown, errors: string[]): void {
   if (!isObject(value)) {
     errors.push(`${path}: must be an object`);
@@ -897,47 +936,13 @@ function checkMinionTuning(path: string, value: unknown, errors: string[]): void
     return;
   }
 
-  /**
-   * Every type any formation ever fields — the map's own compositions and its
-   * stages', together.
-   *
-   * Needed because a declared roster and a declared formation are two
-   * independent statements, and the failure when they disagree is silent:
-   * `MinionSpawner.spawn` returns `null` for an id its roster does not hold,
-   * so a wave is simply smaller, or empty, for ever, with nothing on screen or
-   * in a log saying why. Checked here rather than left to the runtime for the
-   * same reason every other rule in this file is.
-   */
-  const fielded = new Set<string>();
-  const collect = (list: unknown): void => {
-    if (isStringArray(list)) for (const id of list) fielded.add(id);
-  };
-  collect(waves?.composition);
-  if (Array.isArray(waves?.stages)) {
-    for (const stage of waves.stages) if (isObject(stage)) collect(stage.composition);
-  }
-
-  if (declaredTypes) {
-    // A map that declares its own roster **replaces** core's three, so core's
-    // default formation — which names `melee`, `ranged` and `cannon` — stops
-    // resolving to anything. Declaring a roster and no formation is therefore
-    // a map whose waves are empty, which is never what anybody meant.
-    if (fielded.size === 0) {
-      errors.push(
-        `${path}.waves.composition: missing, and this map declares its own minion types ` +
-          `(${[...known].join(', ')}). Core's default wave names melee/ranged/cannon, which ` +
-          `this roster no longer supplies, so every wave would be empty.`
-      );
-    }
-    for (const id of known) {
-      if (!fielded.has(id)) {
-        errors.push(
-          `${path}.types.${id}: declared but never fielded — no composition lists it, ` +
-            `so this minion can never spawn.`
-        );
-      }
-    }
-  }
+  // The two rules about *which types get fielded* used to live here. They
+  // moved to `checkMinionRoster`, which `checkMapGeometry` calls: a muster
+  // point may now field a type the map-wide formation never names
+  // (`MinionSlot.stats.composition`), so the answer stopped being visible from
+  // the tuning alone. See that function for what it costs on a lazily-loaded
+  // geometry.
+  void declaredTypes;
 
   if (waves === undefined) return;
   const { composition, stages, ...numbers } = waves;
@@ -966,7 +971,7 @@ function checkMinionTuning(path: string, value: unknown, errors: string[]): void
 function checkComposition(
   path: string,
   composition: unknown,
-  known: Set<string>,
+  known: ReadonlySet<string>,
   errors: string[]
 ): void {
   if (composition === undefined) return;
@@ -997,7 +1002,11 @@ const TUNING_GROUPS = [
   'minions',
   'monsters',
   'terrain',
+  'vision',
 ];
+
+/** `MapTuning.vision` — see `VisionTuning`. */
+const VISION_KEYS = ['attackRevealMs', 'attackRevealRadius'];
 
 const ECONOMY_KEYS = [
   'startingGold',
@@ -1070,6 +1079,9 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
   if (tuning.monsters !== undefined) {
     checkNumberBag(`${name}.tuning.monsters`, tuning.monsters, MONSTER_MAP_KEYS, errors);
   }
+  if (tuning.vision !== undefined) {
+    checkNumberBag(`${name}.tuning.vision`, tuning.vision, VISION_KEYS, errors);
+  }
   if (tuning.terrain !== undefined) {
     const path = `${name}.tuning.terrain`;
     if (!isObject(tuning.terrain)) {
@@ -1087,12 +1099,58 @@ export function checkMapTuning(tuning: unknown, name: string, errors: string[]):
   }
 }
 
+/**
+ * Every declared minion type is fielded by something, and something fields a
+ * minion at all.
+ *
+ * Here rather than in `checkMinionTuning` because a muster point may declare
+ * its own formation, so the full set of fielded ids is `tuning ∪ slots` and
+ * only this side sees the slots. The cost is timing, and it is worth stating:
+ * a map whose geometry is a **loader** — which is every big map — has these
+ * two errors raised when its geometry loads rather than when the pack
+ * installs. `checkMapGeometry`'s own header already records that trade for the
+ * terrain half; this joins it rather than inventing a second mechanism.
+ *
+ * The failure both rules exist for is silent. `MinionSpawner.spawn` returns
+ * `null` for an id its roster does not hold, so a wave is simply smaller — or
+ * empty, for the whole match — with nothing on screen or in a log saying why.
+ */
+function checkMinionRoster(
+  name: string,
+  minions: MinionFormationView,
+  musterFielded: ReadonlySet<string>,
+  errors: string[]
+): void {
+  if (!minions.declaresRoster) return;
+
+  const fielded = new Set([...minions.fielded, ...musterFielded]);
+  if (fielded.size === 0) {
+    errors.push(
+      `${name}.tuning.minions.waves.composition: missing, and this map declares its own ` +
+        `minion types (${[...minions.types].join(', ')}). Core's default wave names ` +
+        `melee/ranged/cannon, which this roster no longer supplies, so every wave would be ` +
+        `empty. Declare a formation here, or on a muster point's own stats.composition.`
+    );
+  }
+  for (const id of minions.types) {
+    if (!fielded.has(id)) {
+      errors.push(
+        `${name}.tuning.minions.types.${id}: declared but never fielded — no composition ` +
+          `lists it, on the map or on any muster point, so this minion can never spawn.`
+      );
+    }
+  }
+}
+
 export function checkMapGeometry(
   geometry: Record<string, unknown>,
   name: string,
   factions: Set<string>,
+  minions: MinionFormationView,
   errors: string[]
 ): void {
+  /** Type ids some muster point fields — read into `checkMinionRoster` below. */
+  const musterFielded = new Set<string>();
   if (!isObject(geometry.terrain)) {
     errors.push(`${name}.terrain: missing`);
   } else {
@@ -1156,10 +1214,33 @@ export function checkMapGeometry(
       }
     }
 
+    for (const slot of Array.isArray(slots.minion) ? slots.minion : []) {
+      if (!isObject(slot) || slot.stats === undefined) continue;
+      const path = `${name}.slots.minion.stats`;
+      if (!isObject(slot.stats)) {
+        errors.push(`${path}: must be an object`);
+        continue;
+      }
+      for (const key of Object.keys(slot.stats)) {
+        if (key !== 'composition') {
+          errors.push(`${path}.${key}: unknown; core provides composition`);
+        }
+      }
+      // Against the same roster the map-wide formation is checked against —
+      // a muster point naming a type the roster does not hold forms up a
+      // smaller wave, or none, in silence.
+      checkComposition(`${path}.composition`, slot.stats.composition, minions.types, errors);
+      if (isStringArray(slot.stats.composition)) {
+        for (const id of slot.stats.composition) musterFielded.add(id);
+      }
+    }
+
     if (Array.isArray(slots.minion)) {
       minionSlots = slots.minion.filter(isObject);
     }
   }
+
+  checkMinionRoster(name, minions, musterFielded, errors);
 
   // Absent lanes are a shape, not an omission: no waves, and BotBrain's PUSH
   // posture — the only rule that reads a lane — falls through to ROAM.
@@ -1245,7 +1326,7 @@ function checkMap(map: unknown, index: number, errors: string[]): void {
     errors.push(`${name}.geometry: must be an object or a loader function`);
     return;
   }
-  checkMapGeometry(map.geometry, name, factions, errors);
+  checkMapGeometry(map.geometry, name, factions, minionFormationOf(map.tuning), errors);
 }
 
 function checkMaps(pack: Record<string, unknown>, errors: string[]): void {

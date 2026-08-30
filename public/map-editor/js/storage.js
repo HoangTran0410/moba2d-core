@@ -522,7 +522,7 @@ const Store = (() => {
     for (const s of (slots.structure || []))
       marker("structure", s, keepStats(s, { faction: s.faction, kind: "turret" }));
     for (const s of (slots.minion || [])) {
-      const p = { faction: s.faction, lane: s.lane };
+      const p = keepStats(s, { faction: s.faction, lane: s.lane });
       if (s.scatter != null) p.scatter = +s.scatter;
       marker("minion", s, p);
     }
@@ -817,7 +817,7 @@ const Store = (() => {
         case "minion": {
           const m = { faction: p.faction || "", lane: p.lane || "", x: px, y: py };
           if (p.scatter > 0) m.scatter = R(p.scatter);
-          g.slots.minion.push(m);
+          g.slots.minion.push(withStats(p, m));
           break;
         }
         case "neutral": {
@@ -955,7 +955,7 @@ export const ${name}Geometry: MapGeometry = {
   },
   slots: {
     spawn: ${fmtObjList(g.slots.spawn, "    ", ["faction", "x", "y", "r", "stats"])}
-    minion: ${fmtObjList(g.slots.minion, "    ", ["faction", "lane", "x", "y", "scatter"])}
+    minion: ${fmtObjList(g.slots.minion, "    ", ["faction", "lane", "x", "y", "scatter", "stats"])}
     structure: ${fmtObjList(g.slots.structure, "    ", ["faction", "kind", "x", "y", "stats"])}
     neutral: ${fmtObjList(g.slots.neutral, "    ", ["role", "x", "y", "r", "rotationDeg", "stats"])}
   },${g.lanes ? `

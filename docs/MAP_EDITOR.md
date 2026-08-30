@@ -202,6 +202,13 @@ cuối cùng còn kịp sửa.
   lại điểm đầu để đóng hình.
 - **Lưới & hút điểm** với bước lưới tuỳ chỉnh.
 - **Lớp hiển thị** — ẩn/hiện riêng tường, bụi, nước, trụ từng đội.
+- **Vòng tròn quanh slot** — mỗi vòng là một con số, và **chọn slot thì mỗi
+  vòng tự ghi tên nó ra**. Trụ có ba: thân tô đặc (`size / 2`, chỗ trụ thật sự
+  đứng — và cũng là chỗ bấm/kéo được, không còn ô vuông nhỏ ở giữa nữa), vòng
+  cam nét đứt (`thân + 19px` — tâm một con lính không vào gần hơn thế, đúng
+  con số luật lane trong bảng *Kiểm tra* đang đo), và tầm bắn. Bệ đá vẽ thêm
+  **tầm mua đồ** khi map khai `shopRange` khác bán kính bệ. Bãi quái vẽ tầm
+  phát hiện và tầm đuổi.
 - **Ảnh nền** — dùng ảnh minimap/map LMHT có sẵn, hoặc upload ảnh top-down
   bất kỳ để đồ theo (ảnh được thu nhỏ ≤1600px, nén JPEG, lưu kèm map).
 - **Minimap** góc phải, nháy để nhảy camera tới đó.
@@ -281,6 +288,29 @@ bấm chứ không phải chép tay 24 con số. Mỗi loại có ô **Kiểu**
 (`melee`/`ranged`/`cannon`) tách rời khỏi id: id là tên loại, còn *Kiểu* mới
 quyết định nó đánh gần hay bắn xa và vẽ ra sao. Đặt tên `siege` mà quên chọn
 Kiểu thì nó đánh như lính cận chiến.
+
+Đội hình wave ở tầng map là một câu cho **cả bản đồ**: mọi lane của mọi phe
+đưa ra đúng ngần ấy con. Chọn một **điểm gom lính** thì mục *Ghi đè đội hình*
+của nó cho phép riêng điểm đó khác — id các loại lính, cách nhau bằng dấu
+phẩy. Đây là thứ làm được "lane trên đẩy bằng xe pháo, lane dưới nhỏ giọt hai
+con cận chiến", vốn trước đây không phải một map dựng ra được.
+
+Ô trống = theo đội hình chung của map. Gõ `[]` là một câu **khác hẳn**: điểm
+này không ra con lính nào — một lane để bot đi mà không có quân, cũng là một
+map hợp lệ. Id nào không có trong `types` của map thì bị bỏ chứ không đổi
+thành con khác, và `verify` bên pack chặn ngay từ lúc cài.
+
+**Tầm nhìn** là nhóm ngắn nhất và có lẽ là nhóm đổi lối chơi mạnh nhất. Trong
+LMHT, đánh thường hoặc dùng chiêu *nhắm vào một đơn vị* từ trong sương mù sẽ
+mở ra một vùng bán kính 300 quanh người đánh, trong 2 giây — nên bụi là chỗ
+nấp *bị lộ khi ra tay*, không phải tàng hình. Skillshot thì không lộ.
+
+Hai ô đó là hai con số ấy. Để **0 giây** là bụi thành tàng hình thật: đánh
+nhau trong bụi mà không ai thấy, một map toàn hàng rào sẽ thành map phục kích
+không có cách gỡ nào ngoài đi vào. Để **5000ms** thì một cú vung tay là một
+lời cam kết, và bụi thành chỗ để chờ chứ không phải chỗ để đánh. Vùng bị lộ
+quyết định thằng đứng chung bụi có lộ theo không — đó mới là phần cảm nhận rõ
+nhất.
 
 Mọi thay đổi ở đây **hoàn tác được** bằng `Ctrl+Z` như mọi thao tác khác.
 

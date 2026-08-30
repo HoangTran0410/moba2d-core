@@ -282,13 +282,14 @@ export default class MinionSpawner {
    */
   queueWave() {
     this.waveCount += 1;
-    const composition = this.plan.composition(this.waveCount, this._elapsedMs);
+    const mapWide = this.plan.composition(this.waveCount, this._elapsedMs);
 
     for (const fountain of this.game.fountains) {
       const teamId = fountain.teamId;
       if (teamId !== TeamId.BLUE && teamId !== TeamId.RED) continue;
 
       for (const lane of LANES) {
+        const composition = this.compositionAt(teamId, lane) ?? mapWide;
         for (let i = 0; i < composition.length; i++) {
           this._queue.push({
             teamId,
@@ -299,6 +300,32 @@ export default class MinionSpawner {
         }
       }
     }
+  }
+
+  /**
+   * What *this* muster point fields, or `undefined` to use the map's.
+   *
+   * The map-wide formation sends the same six bodies down every lane of every
+   * team, which is the right default and was the only thing a map could say.
+   * A point that declares its own is how "top pushes with siege, bot trickles
+   * two melee" becomes a map — see `MinionSlot.stats.composition`.
+   *
+   * An **empty** declared array is honoured, not treated as absent: a lane the
+   * bots walk that ships no minions is a legitimate map, and `[]` is how it
+   * says so. `??` rather than `||` is what makes that true.
+   *
+   * Filtered against the roster the same way the map-wide formation is
+   * (`resolveWavePlan`): a name the roster does not hold is dropped rather
+   * than spawned as something else. `validate.ts` refuses such a map at
+   * install, so reaching this is a locally-built or hand-edited one.
+   */
+  private compositionAt(teamId: string, lane: string): readonly string[] | undefined {
+    for (const slot of this.game.minionMuster) {
+      if (slot.teamId !== teamId || slot.lane !== lane) continue;
+      if (!slot.composition) return undefined;
+      return slot.composition.filter(id => id in this.plan.types);
+    }
+    return undefined;
   }
 
   releaseQueued() {
