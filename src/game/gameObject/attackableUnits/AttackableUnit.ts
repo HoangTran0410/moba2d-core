@@ -69,7 +69,7 @@ export const DISPLACEMENT_GRACE_FRAMES = 2;
 export const RECENT_ATTACKER_MS = 1500;
 
 /**
- * The widest assist window any map may ask for, and the only thing the
+ * The widest assist window a map may ask for, and the only thing the
  * per-hit prune measures against — `rememberParticipant` says why it is not
  * the map's own number.
  *
@@ -81,8 +81,8 @@ export const MAX_ASSIST_WINDOW_MS = 60_000;
 /**
  * How many participants a ledger holds before it is worth walking to prune.
  *
- * One entry per attacker, not per hit, so ten is already more bodies than any
- * fight puts on one target; the check exists so an ordinary duel never pays
+ * One entry per attacker, not per hit, so ten is already more bodies than a
+ * fight ever puts on one target; the check exists so an ordinary duel never pays
  * for the walk at all.
  */
 const ASSIST_LEDGER_PRUNE_AT = 10;
@@ -718,7 +718,7 @@ export default class AttackableUnit extends GameObject {
    *
    * One entry per attacker, holding the last time they landed anything, so a
    * champion who has been hitting for ten seconds costs one entry rather than
-   * six hundred. Pruned on write, against the widest window any map could ask
+   * six hundred. Pruned on write, against the widest window a map could ask
    * for; `die()` applies the map's real window when it reads.
    */
   private _assistLedger = new Map<AttackableUnit, number>();
@@ -856,7 +856,7 @@ export default class AttackableUnit extends GameObject {
 
     this.stats.health.baseValue -= damage;
 
-    // The vamp stats, and the only place any of them is paid. `takeDamage` is
+    // The vamp stats, and the only place they are paid. `takeDamage` is
     // the one funnel every source of damage already goes through — a swing, a
     // spell, a poison tick — so the stats cover all of them without a single
     // one of them knowing they exist. That is also why the three split by
@@ -870,7 +870,7 @@ export default class AttackableUnit extends GameObject {
     if (attacker && attacker !== this && !attacker.isDead) {
       // Which stat pays is the hit's own type's business — `combat/Vamp.ts`
       // owns that table and the clamp on the sum. This funnel stays the one
-      // place any of the three is ever cashed in.
+      // place all three are ever cashed in.
       const vamp = vampFraction(attacker, type);
       if (vamp > 0) {
         // Outside the attribution, deliberately. `damage` has *already* been
@@ -899,7 +899,7 @@ export default class AttackableUnit extends GameObject {
   /**
    * One assist-ledger entry, and the prune in the same breath.
    *
-   * The prune is against `MAX_ASSIST_WINDOW_MS` — a ceiling on what any map
+   * The prune is against `MAX_ASSIST_WINDOW_MS` — a ceiling on what a map
    * may ask for — and not against the map's own window, because this runs on
    * every hit and reading the map's tuning per hit to throw the answer away is
    * work for nothing. The real window is applied once, by `die()`.

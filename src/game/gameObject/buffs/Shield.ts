@@ -81,7 +81,7 @@ export default class Shield extends Buff {
   /**
    * The damage this pool answers for, in the words and the colours a spell
    * description uses. Unfiltered reads "sát thương" with no type word, because
-   * a shield that eats everything is not making a claim about any one type.
+   * a shield that eats everything makes no claim about one type over another.
    */
   private absorbedKinds(): string {
     if (!this.absorbs || this.absorbs.length === 0 || this.absorbs.length >= 3) {

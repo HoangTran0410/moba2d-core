@@ -119,7 +119,7 @@ describe('an assist', () => {
     const { killer, helper, victim } = skirmish();
 
     victim.takeDamage(30, helper);
-    helper.die({ attacker: victim });
+    helper.die({ attacker: victim, reviveAfter: 0 });
     finish(victim, killer);
 
     // They committed and lost, which is not nothing. The gold sits in a wallet
@@ -132,7 +132,7 @@ describe('an assist', () => {
 
     victim.takeDamage(30, helper);
     finish(victim, killer);
-    victim.die({ attacker: killer });
+    victim.die({ attacker: killer, reviveAfter: 0 });
 
     expect(helper.tally.assists).toBe(1);
   });

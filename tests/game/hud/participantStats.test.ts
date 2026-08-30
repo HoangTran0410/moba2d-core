@@ -52,13 +52,14 @@ const rowsOf = (champion: Champion): Record<string, string> => {
 };
 
 describe('scoreLine', () => {
-  it('reads the three headline numbers off the tally', () => {
+  it('reads the four headline numbers off the tally', () => {
     const champion = unit();
     champion.tally.kills = 2;
     champion.tally.deaths = 1;
+    champion.tally.assists = 5;
     champion.tally.minionsKilled = 37;
 
-    expect(scoreLine(champion)).toEqual({ kills: 2, deaths: 1, cs: 37 });
+    expect(scoreLine(champion)).toEqual({ kills: 2, deaths: 1, assists: 5, cs: 37 });
   });
 
   it('starts a fresh champion at zero rather than undefined', () => {
