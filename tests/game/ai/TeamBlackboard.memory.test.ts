@@ -33,7 +33,7 @@ describe('shared last-seen memory', () => {
     game.setPlayer(watcher);
     indexObjects(game, [watcher, blindMate, red]);
 
-    const sees = (observer: Champion) => observer === watcher;
+    const sees = (observers: readonly Champion[]) => observers.includes(watcher);
     const view = blackboardFor(game, 5_000, sees).viewFor(BLUE);
 
     // One map for the whole team: the far ally reads what the watcher saw.

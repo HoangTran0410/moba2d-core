@@ -328,3 +328,90 @@ export function canSee(observer: Seeable | undefined, target: Seeable | undefine
   }
   return false;
 }
+
+/**
+ * Whether **any** of `observers` can see `target` — the same question `canSee`
+ * answers, asked once for a whole roster instead of once per member.
+ *
+ * `observers.some(o => canSee(o, target))` returns the same answer and is what
+ * this replaces. It is not what this does, and the difference is the whole
+ * point: `canSee`'s expensive half is the borrowed-eye scan, which walks every
+ * ward, minion and turret that lights a circle for the observer's **team** and
+ * runs a line-of-sight test against each. That scan depends on the observer's
+ * `teamId` and on nothing else about the observer, so a five-champion roster
+ * ran it five times for one answer.
+ *
+ * `TeamBlackboard.refreshMemory` is the caller that made this worth having: it
+ * asks "has anyone on this side seen this enemy" for every ally × every enemy,
+ * twice a second, for both teams — 50 `canSee` calls and, in the case that
+ * matters (nobody can see them), 50 full eye scans where 2 would do. It was the
+ * single most expensive thing in the AI layer under a CPU throttle.
+ *
+ * The own-view pass is still per observer, because that half genuinely differs:
+ * a champion's own sight is not range-gated (`viewIsClear`) while a borrowed
+ * eye's is, so being on the eye list is not the same as being the one asking.
+ *
+ * **This must stay exactly `observers.some(o => canSee(o, target))`.** It is
+ * the same four rules in the same order over the same helpers, not a second
+ * opinion about them — `tests/game/combat/canTeamSee.test.ts` drives the two
+ * against each other over a grid of walls, bushes, teams and wards rather than
+ * trusting that reading.
+ */
+export function canTeamSee(
+  observers: readonly (Seeable | undefined)[],
+  target: Seeable | undefined
+): boolean {
+  if (!target) return false;
+
+  // Every rule `canSee` settles without touching the map, applied per observer
+  // because each is about the pair rather than about the team.
+  let first: Seeable | undefined;
+  for (const observer of observers) {
+    if (!observer) continue;
+    if (observer === target) return true;
+    if (target.alwaysVisible) return true;
+    if (target.teamId !== undefined && target.teamId === observer.teamId) return true;
+    if (!target.position || !observer.position) return true;
+    first ??= observer;
+  }
+  if (!first) return false;
+
+  // Then the geometry, in the order `canSee` itself reaches it *for the first
+  // observer*: its own view, then the team's borrowed eyes, and only then
+  // everyone else's own view.
+  //
+  // The order is the whole optimisation and running it any other way undoes
+  // it. Checking all five own views before any eye is correct but slower in
+  // the common case — an enemy the wave has already lit is answered by the
+  // first eye, and four extra sightline tests were done to get there. This way
+  // the visible case costs exactly what `canSee(allies[0], enemy)` cost, and
+  // the invisible case — the one that dominates, because most of the map is
+  // dark — pays for one eye scan instead of one per ally.
+  const seen = new Set<Seeable>();
+  for (const observer of observers) if (observer) seen.add(observer);
+
+  /** The team's borrowed eyes, minus the observers the loops here already ask directly. */
+  const eyesSee = (host: VisionHost | undefined, teamId: string | undefined): boolean => {
+    for (const eye of alliedEyes(host, teamId)) {
+      // Skipped because every observer is given the *unbounded* `viewIsClear`
+      // above or below, and a borrowed eye's answer is that same view with a
+      // range gate in front of it — a strict subset, so nothing is lost.
+      if (seen.has(eye)) continue;
+      if (borrowedEyeSees(host, eye, target)) return true;
+    }
+    return false;
+  };
+
+  if (viewIsClear(first.game, first, target)) return true;
+  if (eyesSee(first.game, first.teamId)) return true;
+
+  const scanned = new Set<string | undefined>([first.teamId]);
+  for (const observer of observers) {
+    if (!observer || observer === first) continue;
+    if (viewIsClear(observer.game, observer, target)) return true;
+    if (scanned.has(observer.teamId)) continue;
+    scanned.add(observer.teamId);
+    if (eyesSee(observer.game, observer.teamId)) return true;
+  }
+  return false;
+}

@@ -3,7 +3,7 @@ import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import Turret from '@/game/gameObject/structures/Turret';
 import { effectiveHealth } from '@/game/combat/ExecuteTargeting';
-import { canSee, type Seeable } from '@/game/combat/Vision';
+import { canTeamSee, type Seeable } from '@/game/combat/Vision';
 import { targetVelocity } from '@/game/ai/AimPredictor';
 import {
   assignLanes,
@@ -29,7 +29,7 @@ import type { Vec2 } from '@/game/spell/runtime/types';
  * advantage a tier does get is `memoryTtlMs`, applied by the *reader*: how long
  * a bot keeps hunting what it lost, not whether it ever loses it. `sees` is
  * injectable only so tests can be deterministic; in the game it is always the
- * honest `canSee`.
+ * honest `canTeamSee`.
  */
 
 /**
@@ -82,7 +82,22 @@ export interface TeamView {
   enemyTurrets: readonly Turret[];
 }
 
-export type SeesFn = (observer: Champion, target: Champion) => boolean;
+/**
+ * Whether **any** of `observers` can see `target`.
+ *
+ * A team question rather than a pair one, because that is the question
+ * `refreshMemory` actually asks and because asking it a pair at a time is what
+ * made this the most expensive thing in the AI layer: `canSee`'s borrowed-eye
+ * scan walks every ward, minion and turret lighting a circle for the observer's
+ * *team*, and depends on nothing else about the observer, so a five-champion
+ * roster ran the same scan five times for one answer.
+ *
+ * Injectable only so tests can be deterministic. In the game it is always
+ * `canTeamSee`, which is `observers.some(o => canSee(o, target))` with that one
+ * scan hoisted out — `canTeamSee.test.ts` drives the two against each other
+ * rather than trusting the claim.
+ */
+export type TeamSeesFn = (observers: readonly Champion[], target: Champion) => boolean;
 
 export interface BlackboardHost {
   objectManager?: { objects: GameObject[] };
@@ -99,8 +114,8 @@ export const EMPTY_VIEW: TeamView = Object.freeze({
   enemyTurrets: Object.freeze([]) as readonly Turret[],
 });
 
-const defaultSees: SeesFn = (observer, target) =>
-  canSee(observer as unknown as Seeable, target as unknown as Seeable);
+const defaultSees: TeamSeesFn = (observers, target) =>
+  canTeamSee(observers as unknown as Seeable[], target as unknown as Seeable);
 
 /** A unit and how far along its lane it is, 0 at the blue end and 1 at the red. */
 interface LaneUnit<T> {
@@ -118,13 +133,13 @@ export class TeamBlackboard {
     return this.views.get(teamId) ?? EMPTY_VIEW;
   }
 
-  refreshIfStale(game: BlackboardHost, nowMs: number, sees: SeesFn): void {
+  refreshIfStale(game: BlackboardHost, nowMs: number, sees: TeamSeesFn): void {
     if (nowMs - this.builtAtMs < BLACKBOARD_TTL_MS) return;
     this.builtAtMs = nowMs;
     this.rebuild(game, nowMs, sees);
   }
 
-  private rebuild(game: BlackboardHost, nowMs: number, sees: SeesFn): void {
+  private rebuild(game: BlackboardHost, nowMs: number, sees: TeamSeesFn): void {
     // One pass over the object list for the whole game. `filter` cannot narrow
     // types here — the polyfilled prototype in `src/main.ts` puts the
     // non-predicate overload first — so this is a plain loop, as MatchDirector.bots() is.
@@ -354,7 +369,7 @@ export class TeamBlackboard {
     allies: readonly Champion[],
     enemies: readonly Champion[],
     nowMs: number,
-    sees: SeesFn
+    sees: TeamSeesFn
   ): ReadonlyMap<Champion, SeenEnemy> {
     let memory = this.memories.get(teamId);
     if (!memory) {
@@ -363,16 +378,14 @@ export class TeamBlackboard {
     }
 
     for (const enemy of enemies) {
-      let spotted = false;
-      for (const ally of allies) {
-        // Break on the first ally who can see it: one pair of eyes is the whole
-        // question, and the rest of the team costs nothing to skip.
-        if (sees(ally, enemy)) {
-          spotted = true;
-          break;
-        }
-      }
-      if (!spotted) continue;
+      // One call for the whole roster, not one per ally. The pair-at-a-time
+      // loop that used to be here re-ran `canSee`'s borrowed-eye scan — every
+      // ward, minion and turret lighting a circle for this team, each with its
+      // own line-of-sight test — once per ally, for an answer that does not
+      // vary with which ally is asking. In the case that costs the most (an
+      // enemy nobody can see, so nothing short-circuits) that was five scans
+      // where one does, twice a second, for both teams.
+      if (!sees(allies, enemy)) continue;
       memory.set(enemy, {
         unit: enemy,
         atMs: nowMs,
@@ -395,14 +408,14 @@ const boards = new WeakMap<object, TeamBlackboard>();
  * The board for this game, rebuilt if the window has elapsed.
  *
  * `sees` is injectable only so tests can be deterministic. In the game it is
- * always the honest `canSee` — the board holds what a team legitimately knows,
+ * always the honest `canTeamSee` — the board holds what a team legitimately knows,
  * and must not carry one difficulty tier's privileges, because every tier reads
  * this same object.
  */
 export function blackboardFor(
   game: BlackboardHost,
   nowMs: number,
-  sees: SeesFn = defaultSees
+  sees: TeamSeesFn = defaultSees
 ): TeamBlackboard {
   let board = boards.get(game as object);
   if (!board) {
