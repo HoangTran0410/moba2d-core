@@ -999,6 +999,12 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * Không dùng chung tiền tố `lol-mapeditor-2` với mấy khoá bên trên: đó là
    * kho riêng của editor, muốn đổi hình dạng lúc nào cũng được. Khoá này là
    * giao kèo với một chương trình khác.
+   *
+   * ĐÂY LÀ LỜI NHẮN, KHÔNG PHẢI THƯ VIỆN. Game *lấy* nội dung ra rồi xoá khoá
+   * ngay trong lần đọc đầu tiên (`takeStagedMaps` bên core), nên map chỉ sống
+   * đúng một lượt tải trang — đúng thứ nút "Chơi thử" hứa hẹn. Trước đây nó
+   * được xử như thư viện: mọi map từng bấm chơi thử nằm lại trong picker của
+   * game vĩnh viễn, và từ phía game không có đường nào gỡ ra.
    */
   const LOCAL_MAPS_KEY = "moba2d-local-maps-v1";
 

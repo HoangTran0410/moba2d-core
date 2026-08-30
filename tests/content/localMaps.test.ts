@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installLocalMaps, LOCAL_MAPS_KEY, readLocalMaps } from '@/content/localMaps';
+import {
+  installLocalMaps,
+  LOCAL_MAPS_KEY,
+  readLocalMaps,
+  resetStagedMapsForTests,
+  takeStagedMaps,
+} from '@/content/localMaps';
 import { PackRegistry } from '@/content/PackRegistry';
 
 /**
@@ -171,19 +177,35 @@ function parseInEditor(doc: unknown): {
   );
 }
 
-/** Point core's `localStorage` reads at a value the editor produced. */
-function stubStorage(value: string | null): void {
+/**
+ * Point core's `localStorage` reads at a value the editor produced.
+ *
+ * A real store rather than a getter over one string, because taking the staged
+ * map *out* is now half of what this module does — a stub whose `removeItem`
+ * is a no-op would let the removal case pass without a removal.
+ */
+function stubStorage(value: string | null): { get(): string | null } {
+  const cell = { value };
   vi.stubGlobal('localStorage', {
-    getItem: (key: string) => (key === LOCAL_MAPS_KEY ? value : null),
-    setItem: () => {},
-    removeItem: () => {},
+    getItem: (key: string) => (key === LOCAL_MAPS_KEY ? cell.value : null),
+    setItem: (key: string, next: string) => {
+      if (key === LOCAL_MAPS_KEY) cell.value = next;
+    },
+    removeItem: (key: string) => {
+      if (key === LOCAL_MAPS_KEY) cell.value = null;
+    },
   });
+  return { get: () => cell.value };
 }
 
 describe('local maps', () => {
   let published: string;
 
   beforeEach(() => {
+    // Every case here installs from scratch, and `takeStagedMaps` remembers
+    // what it took for the life of the *document* — see its own header for why
+    // that is the point rather than an accident.
+    resetStagedMapsForTests();
     const run = runEditor();
     expect(run.key, 'the editor wrote to a different key than core reads').toBe(LOCAL_MAPS_KEY);
     expect(run.published).not.toBeNull();
@@ -192,6 +214,49 @@ describe('local maps', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('empties the handover slot as it takes the map out of it', () => {
+    // The bug, and the whole of the fix. The editor writes here from one
+    // place — the "Chơi thử" button — and nothing ever took an entry back
+    // out (`unpublishLocal` in `storage.js` has no callers), so every map
+    // anybody had pressed playtest on sat in the game's picker for good with
+    // no way to remove it from the game side. Reported with a screenshot of
+    // two of them.
+    const store = stubStorage(published);
+    expect(store.get()).not.toBeNull();
+
+    installLocalMaps(new PackRegistry());
+
+    expect(store.get()).toBeNull();
+  });
+
+  it('keeps the map for the rest of the page load, storage or no storage', () => {
+    // `rebuildContentRegistry()` builds a fresh registry mid-session, when the
+    // player installs a pack from the Packs screen. Re-reading storage there
+    // would find the emptied slot and the map being played would vanish out
+    // of the picker underneath them.
+    stubStorage(published);
+    installLocalMaps(new PackRegistry());
+
+    const rebuilt = new PackRegistry();
+    installLocalMaps(rebuilt);
+
+    expect(rebuilt.maps().map(map => map.id)).toContain('local:thung-lung');
+  });
+
+  it('is gone on the next page load, which is what "chơi thử" means', () => {
+    const store = stubStorage(published);
+    installLocalMaps(new PackRegistry());
+    expect(store.get()).toBeNull();
+
+    // A new document: module state starts empty and storage is what is left.
+    resetStagedMapsForTests();
+    expect(takeStagedMaps()).toEqual([]);
+
+    const fresh = new PackRegistry();
+    installLocalMaps(fresh);
+    expect(fresh.maps().map(map => map.id)).not.toContain('local:thung-lung');
   });
 
   it('installs a map the editor published, under the local pack', () => {

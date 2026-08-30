@@ -42,6 +42,17 @@ import { validatePackData } from './validate';
  * shape is a new key rather than a migration — the editor and this file ship
  * together now, but a browser can hold an old value while the tab that wrote
  * it is long gone.
+ *
+ * **It is a handover, not a library, and it used to behave like one.** The
+ * editor writes here from exactly one place — the "Chơi thử" button — and
+ * nothing ever took an entry back out: `unpublishLocal` exists in
+ * `storage.js` and has no callers. So every map anybody had ever pressed
+ * playtest on stayed in the game's map picker for good, under a name like
+ * "Summoner's Rift (bản sửa)", with no way to remove it from the game side
+ * at all. Reported with a screenshot of two of them.
+ *
+ * `takeStagedMaps` below is the whole fix: the key is emptied the moment its
+ * contents are read.
  */
 export const LOCAL_MAPS_KEY = 'moba2d-local-maps-v1';
 
@@ -81,6 +92,56 @@ export function readLocalMaps(): LocalMap[] {
   }
 }
 
+/** Empty the handover slot. Every way this can fail is a slot left alone. */
+function clearLocalMaps(): void {
+  try {
+    localStorage.removeItem(LOCAL_MAPS_KEY);
+  } catch {
+    // Same three reasons `readLocalMaps` swallows, and the same answer: a
+    // player who cannot write to storage still gets to play the map they
+    // staged, they simply get to keep it too.
+  }
+}
+
+/**
+ * What this page load is playtesting — read once, and taken out of storage as
+ * it is read.
+ *
+ * ## Why taking rather than reading
+ *
+ * A staged map is a *handover*, and the shape of the bug it caused is that it
+ * was stored like a library: pressing "Chơi thử" put a map in the picker for
+ * ever, and the game had no way to take one out. Emptying the slot on the way
+ * past makes the lifetime the one the button actually promises — this map, on
+ * this page load, because you just asked to try it.
+ *
+ * ## Why the result is remembered here rather than re-read
+ *
+ * `rebuildContentRegistry()` builds a fresh `PackRegistry` mid-session, when
+ * the player installs a pack from the Packs screen. Re-reading storage there
+ * would find an empty slot and the map being played would vanish out of the
+ * picker underneath them. The taken list is module state for the life of the
+ * document instead, which is exactly the lifetime being promised.
+ *
+ * A reload during a playtest therefore loses the map. That is the honest cost
+ * and it is small: the editor tab is still open — it opens the game in a
+ * *named* second tab precisely so it survives — and the button is one click.
+ */
+let staged: LocalMap[] | null = null;
+
+export function takeStagedMaps(): LocalMap[] {
+  if (staged === null) {
+    staged = readLocalMaps();
+    if (staged.length > 0) clearLocalMaps();
+  }
+  return staged;
+}
+
+/** Test seam: forget what this page load took, so the next read goes to storage. */
+export function resetStagedMapsForTests(): void {
+  staged = null;
+}
+
 /**
  * The pack a set of local maps forms, or `null` for none.
  *
@@ -115,14 +176,15 @@ function keepValid(maps: LocalMap[]): LocalMap[] {
 }
 
 /**
- * Install the player's own maps into `registry`, if they have any.
+ * Install the map this page load is playtesting, if there is one.
  *
- * Called from `contentCatalog()` right after the bundled data, so a local map
- * is in the picker from the first paint and `rebuildContentRegistry()` picks
- * up a newly published one without a reload.
+ * Called from `contentCatalog()` right after the bundled data, so a staged map
+ * is in the picker from the first paint and every later
+ * `rebuildContentRegistry()` still has it — see `takeStagedMaps` for why that
+ * is a property of this module rather than of storage.
  */
 export function installLocalMaps(registry: PackRegistry): void {
-  const pack = packOf(keepValid(readLocalMaps()));
+  const pack = packOf(keepValid(takeStagedMaps()));
   if (pack === null) return;
   try {
     registry.installData(pack);
