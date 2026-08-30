@@ -300,6 +300,25 @@ const Renderer = (() => {
     labels.push({ x: tmp[0], y: tmp[1] + dy, text, color: LINE_HI[t.type] });
   }
 
+  /**
+   * Tên của một vòng tròn, vẽ ngay trên mép nó — chỉ khi slot đang được chọn.
+   *
+   * Một cái trụ đang vẽ ba vòng đồng tâm và một bãi quái vẽ ba, mà không vòng
+   * nào tự nói nó là gì: câu hỏi "cái vòng cam nét đứt ngoài kia là gì" là
+   * câu hỏi phải mở mã nguồn ra mới trả lời được, và đó là editor thiếu chữ
+   * chứ không phải người dùng thiếu chú ý.
+   *
+   * Chỉ khi chọn, vì đó là lúc người ta đang hỏi về *cái này*; vẽ luôn cho
+   * mọi slot thì bản đồ đầy chữ chồng lên nhau và không đọc được cái nào.
+   */
+  function queueRingLabel(t, radius, text) {
+    if (!(radius > 0) || labels.length > 140) return;
+    // Mép trên của vòng, ở hệ toạ độ của slot — khối vẽ đang `translate` về
+    // tâm nó, còn nhãn thì vẽ ở hệ màn hình nên cần toạ độ world.
+    Cam.toScreen(t.position[0], t.position[1] - radius, tmp);
+    labels.push({ x: tmp[0], y: tmp[1] - 15, text, color: "rgba(200,210,225,.85)" });
+  }
+
   function labelFor(t) {
     const p = t.props || {};
     switch (t.type) {
@@ -327,25 +346,10 @@ const Renderer = (() => {
     }
   }
 
-  /**
-   * Các mặc định của core, chép sang đây vì không import được.
-   *
-   * `public/map-editor/` là HTML + global thuần, không bundler, nên `src/`
-   * không với tới được và ngược lại. Ba số này là `DEFAULT_TURRET_PRESET`
-   * (`structures/Turret.ts`) và `MONSTER_CHASE_MARGIN` (`Monster.ts`); nếu
-   * bên kia đổi thì vòng tròn ở đây chỉ vẽ sai một chút chứ không hỏng gì —
-   * đây là bản xem trước, không phải nguồn sự thật.
-   */
-  const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
-
-  /** Đọc `stats` của slot rồi tới tuning của map — đúng thứ tự core merge. */
-  function slotNumber(t, key, group, fallback) {
-    const own = t.props && t.props.stats ? t.props.stats[key] : undefined;
-    if (Number.isFinite(+own)) return +own;
-    const tuning = (E.meta && E.meta.tuning && E.meta.tuning[group]) || {};
-    if (Number.isFinite(+tuning[key])) return +tuning[key];
-    return fallback;
-  }
+  // `slotStat`, `turretBodyR` và `CORE_DEFAULTS` ở `state.js`: `pickR` cần
+  // đúng công thức này để bắt chuột trúng chỗ vừa vẽ, và hai bản sao của một
+  // công thức là hai bản sẽ lệch nhau.
+  const slotNumber = slotStat;
 
   /**
    * Một vòng tròn "tầm với", vẽ mảnh và nhạt.
@@ -365,8 +369,7 @@ const Renderer = (() => {
     ctx.setLineDash([]);
   }
 
-  /** Điểm đánh dấu (trụ, điểm lính): cỡ cố định theo màn hình nên zoom mức
-   *  nào cũng thấy và bấm trúng. */
+  /** Điểm gom lính: hình thoi cỡ cố định theo màn hình, zoom nào cũng thấy. */
   function drawMarker(t, s, hot, selected) {
     const r = MARKER_PX / s;
     ctx.lineWidth = (selected ? 2.2 : 1.6) / s;
@@ -374,14 +377,8 @@ const Renderer = (() => {
     ctx.fillStyle = hot ? FILL_HI[t.type] : FILL[t.type];
 
     ctx.beginPath();
-    if (t.type === "structure") {
-      // hình vuông đứng — trụ
-      ctx.rect(-r * 0.8, -r * 0.8, r * 1.6, r * 1.6);
-    } else {
-      // hình thoi — điểm gom lính
-      ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0);
-      ctx.closePath();
-    }
+    ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
@@ -389,56 +386,60 @@ const Renderer = (() => {
     ctx.arc(0, 0, r * 0.22, 0, Geom.TAU);
     ctx.fillStyle = hot ? LINE_HI[t.type] : LINE[t.type];
     ctx.fill();
-
-    // Tầm bắn, ở đúng kích thước thật. Cái ô vuông cố định theo màn hình nói
-    // được "có một cái trụ ở đây" và không nói được điều duy nhất quyết định
-    // chỗ đặt nó: nó với tới đâu. Hai trụ cách nhau bao nhiêu thì vùng bắn
-    // còn chồng nhau là câu hỏi phải nhìn thấy mới trả lời được.
-    if (t.type === "structure") {
-      drawReach(slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
-        s, LINE_HI[t.type], [9, 6]);
-    }
   }
 
   /**
-   * Cái trụ **to bằng đúng cỡ thật**, vẽ dưới hình đánh dấu.
+   * Cái trụ, **to bằng đúng cỡ thật**, và chính nó là thứ để bấm vào.
    *
-   * Ô vuông ở trên cố định theo màn hình — zoom mức nào nó cũng bằng ngần ấy
-   * pixel, để còn bấm trúng. Cái giá phải trả là nó nói dối về kích thước, và
-   * người đặt trụ không có cách nào thấy được thân trụ thật sự chiếm bao
-   * nhiêu chỗ: `DEFAULT_TURRET_PRESET.size` là 92px world, gần bằng ba thân
-   * lính xếp cạnh nhau. Kéo hai trụ sát nhau trong editor trông vẫn thoáng.
+   * Trước đây trụ vẽ ra một ô vuông cố định 12px màn hình *nằm chồng lên*
+   * vòng tròn cỡ thật. Ô vuông đó là vùng bấm duy nhất, nên thứ người ta nhìn
+   * và thứ người ta bấm trúng là hai chỗ khác nhau — kéo trụ phải nhắm vào
+   * cái chấm giữa, còn cái vòng to bao quanh thì trơ ra. Ô vuông đi rồi;
+   * `pickR` (state.js) giờ trả về đúng bán kính thân này, nên hover, click và
+   * kéo đều ăn trên cả mặt tròn.
    *
-   * Nên vẽ hai vòng, và chúng trả lời hai câu khác nhau:
+   * Ba vòng, trả lời ba câu khác nhau:
    *
-   *   - **Thân** (`size / 2`, tô đặc mờ): chỗ trụ thật sự đứng. Đây là vật
-   *     bất động trong `UnitCollisionSystem` — không ai đi xuyên qua nó.
-   *   - **Vòng chặn** (`size / 2 + MINION_BODY_RADIUS`, nét đứt mảnh): tâm
-   *     một con lính không bao giờ vào gần hơn thế. Đây đúng là con số mà
-   *     luật lane trong `mapRules.js` đo, nên khi bảng "Kiểm tra" báo
-   *     "waypoint chỉ cách tâm trụ 67px", cái vòng này là thứ nó đang nói tới.
+   *   - **Thân** (`size / 2`, tô đặc): chỗ trụ thật sự đứng. Đây là vật bất
+   *     động trong `UnitCollisionSystem` — không ai đi xuyên qua nó.
+   *   - **Vòng chặn** (`size / 2 + MINION_BODY_RADIUS`, cam nét đứt): tâm một
+   *     con lính không bao giờ vào gần hơn thế. Đây đúng là con số mà luật
+   *     lane trong `mapRules.js` đo, nên khi bảng "Kiểm tra" báo "waypoint chỉ
+   *     cách tâm trụ 67px", cái vòng cam này là thứ nó đang nói tới.
+   *   - **Tầm bắn** (xanh nét đứt thưa): trụ với tới đâu. Hai trụ cách nhau
+   *     bao nhiêu thì vùng bắn còn chồng nhau là câu hỏi phải nhìn mới trả
+   *     lời được.
+   *
+   * Cái chấm giữa ở lại, cỡ cố định theo màn hình: zoom ra đủ xa thì thân trụ
+   * nhỏ hơn một pixel, và lúc đó nó là thứ duy nhất còn nói "có trụ ở đây".
    */
-  function drawTurretBody(t, s, hot) {
-    const size = slotNumber(t, "size", "turrets", CORE_DEFAULTS.turretSize);
-    if (!(size > 0)) return;
-    const body = size / 2;
+  function drawTurret(t, s, hot, selected) {
+    const body = turretBodyR(t);
 
     ctx.beginPath();
     ctx.arc(0, 0, body, 0, Geom.TAU);
     ctx.fillStyle = hot ? FILL_HI[t.type] : FILL[t.type];
     ctx.fill();
-    ctx.strokeStyle = LINE[t.type];
-    ctx.lineWidth = 1.4 / s;
+    ctx.strokeStyle = hot ? LINE_HI[t.type] : LINE[t.type];
+    ctx.lineWidth = (selected ? 2.4 : 1.6) / s;
     ctx.stroke();
 
     const blocked = body + (globalThis.MapRules ? MapRules.MINION_BODY_RADIUS : 19);
+    drawReach(blocked, s, "rgba(255,150,120,.55)", [5, 5]);
+    drawReach(slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
+      s, LINE_HI[t.type], [9, 6]);
+
+    const dot = Math.min(MARKER_PX / s, body * 0.5);
     ctx.beginPath();
-    ctx.arc(0, 0, blocked, 0, Geom.TAU);
-    ctx.strokeStyle = "rgba(255,150,120,.55)";
-    ctx.lineWidth = 1.1 / s;
-    ctx.setLineDash([5 / s, 5 / s]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.arc(0, 0, dot, 0, Geom.TAU);
+    ctx.fillStyle = hot ? LINE_HI[t.type] : LINE[t.type];
+    ctx.fill();
+
+    if (selected) {
+      queueRingLabel(t, blocked, "lính không vào gần hơn");
+      queueRingLabel(t, slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
+        "tầm bắn");
+    }
   }
 
   /** Vòng tròn có bán kính thật (điểm hồi sinh, bãi quái). */
@@ -476,8 +477,34 @@ const Renderer = (() => {
     if (t.type === "neutral") {
       const aggro = slotNumber(t, "aggroRange", "monsters", 0);
       const margin = slotNumber(t, "chaseMargin", "monsters", CORE_DEFAULTS.chaseMargin);
+      const leash = Math.max(r, aggro) + margin;
       drawReach(aggro, s, "rgba(255,196,92,.75)", [4, 5]);
-      drawReach(Math.max(r, aggro) + margin, s, "rgba(255,120,120,.6)", [12, 8]);
+      drawReach(leash, s, "rgba(255,120,120,.6)", [12, 8]);
+      if (selected) {
+        if (aggro > 0) queueRingLabel(t, aggro, "tầm phát hiện");
+        queueRingLabel(t, leash, "tầm đuổi");
+      }
+    }
+
+    /**
+     * Tầm mua đồ của bệ đá.
+     *
+     * `shopRange` là field duy nhất của bệ đá không nhìn thấy được: bán kính
+     * bệ thì chính là cái vòng đang vẽ, hồi máu/mana là con số trong bảng, còn
+     * "đứng tới đâu thì mở được shop" thì chỉ hiện ra khi vào trận mà đứng thử.
+     * Mà đó lại đúng là thứ làm nên map "mua đồ ở giữa đường" — cái lý do
+     * field này tồn tại.
+     *
+     * 0 nghĩa là "bằng đúng bệ" (`Fountain.shopRadius` resolve như vậy), nên
+     * lúc đó không vẽ thêm gì: vẽ chồng một vòng nét đứt lên đúng đường viền
+     * sẵn có chỉ làm người ta tưởng có hai thứ khác nhau.
+     */
+    if (t.type === "spawn") {
+      const shop = slotNumber(t, "shopRange", "fountain", 0);
+      if (shop > 0 && Math.round(shop) !== Math.round(r)) {
+        drawReach(shop, s, "rgba(120,220,160,.7)", [7, 5]);
+        if (selected) queueRingLabel(t, shop, "tầm mua đồ");
+      }
     }
 
     // Bãi quái có thể xoay bố cục quái bên trong — vẽ kim chỉ hướng.
@@ -571,8 +598,8 @@ const Renderer = (() => {
       if (shape === "circle") {
         drawCircleSlot(t, s, hot, selected);
       } else if (shape === "point") {
-        if (t.type === "structure") drawTurretBody(t, s, hot);
-        drawMarker(t, s, hot, selected);
+        if (t.type === "structure") drawTurret(t, s, hot, selected);
+        else drawMarker(t, s, hot, selected);
       } else if (shape === "line") {
         drawLane(t, s, hot, selected);
       } else if (t.polygon.length >= 3) {
@@ -613,7 +640,10 @@ const Renderer = (() => {
         const lab = shape === "line"
           ? (t.polygon.length ? [t.polygon[0][0] + t.position[0], t.polygon[0][1] + t.position[1]] : t.position)
           : t.position;
-        const off = shape === "circle" ? circleR(t) * s + 5 : MARKER_PX + 5;
+        const off =
+          shape === "circle" ? circleR(t) * s + 5
+          : t.type === "structure" ? Math.max(turretBodyR(t) * s, MARKER_PX) + 5
+          : MARKER_PX + 5;
         queueLabel(t, lab[0], lab[1], off);
       }
     }
@@ -639,7 +669,10 @@ const Renderer = (() => {
     const host = vertexHost();
     for (const t of E.selection) {
       if (isMarker(t)) {
-        const r = (KIND[t.type].shape === "circle" ? circleR(t) : MARKER_PX / s) + 7 / s;
+        const r =
+          (KIND[t.type].shape === "circle" ? circleR(t)
+           : t.type === "structure" ? Math.max(turretBodyR(t), MARKER_PX / s)
+           : MARKER_PX / s) + 7 / s;
         ctx.beginPath();
         ctx.arc(t.position[0], t.position[1], r, 0, Geom.TAU);
         ctx.strokeStyle = C.accent;
@@ -808,7 +841,11 @@ const Renderer = (() => {
       const shape = KIND[t.type].shape;
       if (shape === "circle" || shape === "point") {
         mctx.beginPath();
-        mctx.arc(t.position[0], t.position[1], shape === "circle" ? circleR(t) : 90, 0, Geom.TAU);
+        // Trụ vẽ đúng thân của nó; điểm gom lính không có bán kính thật nên
+        // giữ con số cũ để còn thấy được ở cỡ minimap.
+        mctx.arc(t.position[0], t.position[1],
+          shape === "circle" ? circleR(t) : t.type === "structure" ? turretBodyR(t) : 90,
+          0, Geom.TAU);
         mctx.fill();
       } else if (shape === "line") {
         if (t.polygon.length >= 2) {

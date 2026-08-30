@@ -25,6 +25,19 @@ export interface FountainPresetData {
   shopRange?: number;
 }
 
+/**
+ * How far out the shop ring starts fading in, as a multiple of the reach.
+ *
+ * Wide enough that it arrives before a player walking home has to guess, short
+ * enough that it is not simply always on — which is the whole objection to
+ * drawing it at all.
+ */
+export const SHOP_RING_FADE = 1.9;
+
+/** Peak opacity, and how many dashes the ring is cut into. */
+const SHOP_RING_ALPHA = 190;
+const SHOP_RING_SEGMENTS = 40;
+
 interface Mote {
   angle: number;
   radius: number;
@@ -209,10 +222,81 @@ export default class Fountain extends GameObject {
       circle(mx, my, 6 * m.life + 2);
     }
     pop();
+
+    this.drawShopReach();
+  }
+
+  /**
+   * Where the shop reaches, drawn only when that is news.
+   *
+   * Nothing in a match said how far `shopRadius` went. On the default map that
+   * was fine, because the reach *is* the platform and the platform is drawn —
+   * but a map that widens it (`FountainStats.shopRange`, the field maps like
+   * "mua đồ ở giữa đường" are built out of) left a player with no way to learn
+   * the rule except opening the shop and reading whether the tiles were grey.
+   *
+   * The obvious fix is a ring, and the obvious objection is that a ring is
+   * clutter. Both are right, so it is gated twice — and what is left is a
+   * circle that is invisible on every ordinary map and, on the maps that do
+   * widen it, appears only while somebody is walking home:
+   *
+   *   - **Only when the map widened it.** `shopRadius === radius` by default,
+   *     and a second circle drawn on an edge already drawn is a new line that
+   *     says nothing.
+   *   - **Only the player's own, and only near it.** A ring on the far side of
+   *     the map is decoration. A ring under your feet as you come back is the
+   *     answer to the question you are actually asking, which is "am I close
+   *     enough yet" — so it fades in over the last stretch of the approach and
+   *     goes solid the moment you cross it. Crossing it is the moment the shop
+   *     becomes usable, and it is now a thing you can see happen.
+   */
+  private drawShopReach(): void {
+    const alpha = this.shopRingAlpha();
+    if (alpha <= 0) return;
+
+    push();
+    translate(this.position.x, this.position.y);
+    noFill();
+    stroke(150, 235, 255, alpha * SHOP_RING_ALPHA);
+    strokeWeight(alpha === 1 ? 3 : 2);
+    // Dashed by hand — p5 has no line dash — and it stays dashed inside the
+    // reach too: a solid ring reads as a wall, and this one stops nothing.
+    const step = TWO_PI / SHOP_RING_SEGMENTS;
+    for (let i = 0; i < SHOP_RING_SEGMENTS; i++) {
+      const a0 = step * i;
+      arc(0, 0, this.shopRadius * 2, this.shopRadius * 2, a0, a0 + step * 0.55);
+    }
+    pop();
+  }
+
+  /**
+   * How strongly to draw the ring, 0 (not at all) to 1 (the player is inside).
+   *
+   * Separate from the drawing because the *decision* is the part with rules in
+   * it — three gates and a fade — and the drawing is p5 calls that no test can
+   * run. `Fountain.test.ts` holds the gates.
+   */
+  shopRingAlpha(): number {
+    if (this.shopRadius <= this.radius) return 0;
+    const player = this.game.player;
+    if (!player || player.teamId !== this.teamId) return 0;
+
+    const dx = player.position.x - this.position.x;
+    const dy = player.position.y - this.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= this.shopRadius) return 1;
+
+    const fadeFrom = this.shopRadius * SHOP_RING_FADE;
+    if (distance >= fadeFrom) return 0;
+    return 1 - (distance - this.shopRadius) / (fadeFrom - this.shopRadius);
   }
 
   getDisplayBoundingBox() {
-    const size = this.radius * 2.2;
+    // Covers the shop ring as well as the platform: this object paints past
+    // its own radius on a map that widened the reach, and a box sized to the
+    // platform culls the fountain — ring included — while a corner of that
+    // ring is still on screen.
+    const size = Math.max(this.radius * 2.2, this.shopRadius * 2.1);
     return new Rectangle({
       x: this.position.x - size / 2,
       y: this.position.y - size / 2,

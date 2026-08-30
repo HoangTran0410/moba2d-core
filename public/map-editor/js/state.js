@@ -52,9 +52,56 @@ const POINT_BOX = 45;
 /** Bán kính thật (world) của một đối tượng dạng vòng tròn. */
 const circleR = (t) => Math.max(4, Number(t.props && t.props.r) || 150);
 
-/** Bán kính bắt chuột: vòng tròn dùng bán kính thật, điểm dùng cỡ màn hình. */
-const pickR = (t) =>
-  KIND[t.type].shape === "circle" ? circleR(t) : Math.max(6, MARKER_PX / Cam.scale);
+/**
+ * Các mặc định của core, chép sang đây vì `public/map-editor/` là HTML +
+ * global thuần, không bundler, nên `src/` không với tới được.
+ *
+ * `turretSize` là `DEFAULT_TURRET_PRESET.size` (`structures/Turret.ts`),
+ * `chaseMargin` là `MONSTER_CHASE_MARGIN` (`Monster.ts`), `turretRange` là
+ * tầm bắn mặc định của trụ. Bên kia đổi thì ở đây chỉ vẽ lệch một chút chứ
+ * không hỏng — đây là bản xem trước, không phải nguồn sự thật.
+ */
+const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
+
+/**
+ * Đọc một chỉ số của slot: `stats` của chính nó, rồi tới tuning của map, rồi
+ * tới mặc định của core — đúng ba lớp mà `MapTuning` merge bên kia.
+ *
+ * Ở `state.js` chứ không phải `render.js` vì cả hai đều cần: `render` để vẽ
+ * đúng cỡ, và `pickR`/AABB dưới đây để bắt chuột đúng chỗ đã vẽ. Hai bản sao
+ * của cùng công thức là hai bản sẽ lệch nhau, và lúc lệch thì cái người ta
+ * thấy không còn là cái người ta bấm trúng.
+ */
+function slotStat(t, key, group, fallback) {
+  const own = t.props && t.props.stats ? t.props.stats[key] : undefined;
+  if (Number.isFinite(+own)) return +own;
+  const tuning = (E.meta && E.meta.tuning && E.meta.tuning[group]) || {};
+  if (Number.isFinite(+tuning[key])) return +tuning[key];
+  return fallback;
+}
+
+/** Bán kính thân trụ (world) — `size / 2`, đúng chỗ trụ thật sự đứng. */
+const turretBodyR = (t) =>
+  Math.max(1, slotStat(t, "size", "turrets", CORE_DEFAULTS.turretSize) / 2);
+
+/**
+ * Bán kính bắt chuột.
+ *
+ * Vòng tròn dùng bán kính thật. **Trụ cũng vậy** — nó từng là một ô vuông cố
+ * định 12px màn hình, tức là thứ người ta bấm trúng không liên quan gì tới
+ * thứ người ta nhìn thấy; thân trụ mặc định rộng 92px world, gần ba thân lính
+ * xếp cạnh nhau, mà vùng bấm thì bé tí ở giữa.
+ *
+ * `Math.max` với cỡ màn hình là chỗ duy nhất còn nói dối, và nó nói dối đúng
+ * hướng: zoom ra thật xa thì thân trụ chỉ còn vài pixel, và một đối tượng
+ * không bấm nổi thì tệ hơn một vùng bấm rộng hơn hình vẽ.
+ */
+const pickR = (t) => {
+  const screenFloor = Math.max(6, MARKER_PX / Cam.scale);
+  if (KIND[t.type].shape === "circle") return circleR(t);
+  if (t.type === "structure") return Math.max(turretBodyR(t), screenFloor);
+  return screenFloor;
+};
 
 /* ------------------------- thuộc tính theo loại ------------------------- */
 
@@ -329,7 +376,14 @@ function refreshTerrain(t) {
     return t;
   }
 
-  const r = shape === "circle" ? circleR(t) : POINT_BOX;
+  // AABB cho quét chọn và cho lọc khung nhìn. Trụ dùng thân thật của nó: hộp
+  // 45px cố định gần đúng bằng thân mặc định (46) hoàn toàn do trùng hợp, và
+  // một trụ khai `size` lớn hơn sẽ bị cắt mất khỏi khung nhìn trước khi ra
+  // khỏi màn hình.
+  const r =
+    shape === "circle" ? circleR(t)
+    : t.type === "structure" ? Math.max(POINT_BOX, turretBodyR(t))
+    : POINT_BOX;
   t._bbox = [t.position[0] - r, t.position[1] - r, t.position[0] + r, t.position[1] + r];
   return t;
 }
