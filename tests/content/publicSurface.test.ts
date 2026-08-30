@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the sixteen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the seventeen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -155,6 +155,23 @@ describe('package.json public surface', () => {
         // module, and this one value-imports `game/items/Item` and
         // `gameObject/Stats` for the two constants it refuses to copy.
         './testing/items',
+        // The seventeenth, published for exactly the reason `./testing/items`
+        // was and one step further along the same road: `./testing/maps` is
+        // `mapIssues`, the rules a map has to satisfy — a lane wide enough for
+        // a body, a turret some wave walks past, a wave able to stand where it
+        // forms up. Both shipped packs had written their own half of that,
+        // differently, as tables of coordinates measured off the map on the
+        // day somebody looked at it.
+        //
+        // The implementation is not here and not in either pack: it is
+        // `public/map-editor/js/mapRules.js`, plain browser JavaScript,
+        // because the map editor has no bundler and cannot import anything
+        // else — so the tool a person draws maps in runs the same function
+        // this gate does, and the two cannot disagree about whether a map is
+        // shippable. `./seams` publishes the same functions for core's own
+        // use; a pack is held to a named list of subpaths and that barrel,
+        // full of source scanners, is rightly not on it.
+        './testing/maps',
         './testing/vitest',
         './testing/setup',
         // The two build helpers a pack's own tooling runs, added when the
@@ -304,18 +321,24 @@ describe('what each subpath actually publishes, not just that it exists', () => 
         'checkTerrainField',
         'checkUnitTargetTeam',
         'checkWorldMouseInSpellCode',
-        // The three map-geometry entries are the odd ones out and belong here
-        // anyway: every other name is a static *source* scan, these are a
-        // geometric rule over map data — can a minion body walk this lane.
-        // They are published for the same reason the scans are, that the rule
-        // belongs to the engine and the population belongs to the content;
-        // and their single implementation lives in the map editor's own plain
-        // JavaScript, because that tool has no bundler and cannot import
-        // anything else. Three copies of those thresholds existed before this
-        // (this repo's own test, a pack's, and the editor's), and two of them
-        // already disagreed.
+        // The map-rule entries are the odd ones out and belong here anyway:
+        // every other name is a static *source* scan, these are geometric
+        // rules over map data — can a minion body walk this lane, does every
+        // turret have a wave that walks past it, is a paired camp the mirror
+        // of its twin. They are published for the same reason the scans are,
+        // that the rule belongs to the engine and the population belongs to
+        // the content; and their single implementation lives in the map
+        // editor's own plain JavaScript, because that tool has no bundler and
+        // cannot import anything else. Three copies of those thresholds
+        // existed before this (this repo's own test, a pack's, and the
+        // editor's), and two of them already disagreed.
+        //
+        // A pack reaches them through `./testing/maps` instead — this barrel
+        // carries core's source scanners and its own boundary checker, which
+        // is not a surface content has any business in.
         'laneIssues',
         'laneRuleLimits',
+        'mapIssues',
         'mapRules',
         'packAssetKeySeam',
         'packCoreBoundarySeam',
@@ -324,6 +347,7 @@ describe('what each subpath actually publishes, not just that it exists', () => 
         'seams',
         'staleSkipEntries',
         'stripComments',
+        'structureIssues',
       ].sort()
     );
   });

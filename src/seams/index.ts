@@ -208,9 +208,12 @@ export { scanImports, stripComments, type ImportKind, type ImportReference } fro
 export {
   laneIssues,
   laneRuleLimits,
+  mapIssues,
   mapRules,
+  structureIssues,
   type MapRuleInput,
   type MapRuleIssue,
+  type MapRuleTurret,
 } from './mapRules';
 
 /** Every seam this module exports, named for reporting. */

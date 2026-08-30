@@ -159,6 +159,15 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     copies. Out of the `/testing` barrel for exactly `/testing/spells`'
  *     reason: `export *` evaluates the whole module, and a pack test that
  *     only wanted `createGame` should not pay for the engine's item graph.
+ *   - `/testing/maps` — `mapIssues`, the rules a map has to satisfy for the
+ *     same reason `/testing/items` publishes the rules a shop has to satisfy:
+ *     they are facts about what *core* does with a map, and both shipped packs
+ *     had written their own half of them, differently, as tables of
+ *     coordinates measured off the map on the day somebody looked at it. Not
+ *     via `/seams`, where the same functions also appear: that barrel carries
+ *     core's source scanners and its own boundary checker — this one — and a
+ *     pack has no business reaching into either. A pack's map suite imported
+ *     `/seams` for exactly one commit and this seam was right to refuse it.
  *   - `/pack-webp` and `/pack-assets` — the two build helpers a pack's own
  *     tooling runs: a Vite plugin that re-encodes art on the way into
  *     `dist/`, and the asset-manifest generator (a bin, but a pack test may
@@ -178,6 +187,7 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/vitest`,
   `${CORE_PACKAGE}/testing/setup`,
   `${CORE_PACKAGE}/testing/items`,
+  `${CORE_PACKAGE}/testing/maps`,
   `${CORE_PACKAGE}/seams`,
   `${CORE_PACKAGE}/pack-webp`,
   `${CORE_PACKAGE}/pack-assets`,

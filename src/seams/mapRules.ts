@@ -49,20 +49,41 @@ export interface MapRuleIssue {
   at: [number, number];
 }
 
+/** A turret centre: a bare pair, or a slot that also knows whose it is. */
+export type MapRuleTurret = [number, number] | { x: number; y: number; faction?: string };
+
 export interface MapRuleInput {
   lanes: { id: string; points: [number, number][] }[];
   /** Every wall polygon, in world coordinates. */
   walls: [number, number][][];
   /** Every turret centre, in world coordinates. */
-  turrets: [number, number][];
+  turrets: MapRuleTurret[];
+  /**
+   * The map's own extent, needed only by the point-symmetry rule. Square maps
+   * are the only shape the slot rules have an opinion about, so this is one
+   * number rather than a width and a height.
+   */
+  size?: number;
+  /** Fountains. Two of them, one per faction, is what the rules assume. */
+  spawns?: { x: number; y: number; faction?: string }[];
+  /** Where a wave forms up — `slots.minion`. */
+  musters?: { x: number; y: number; faction?: string; lane?: string; scatter?: number }[];
+  /** Jungle camps — `slots.neutral`. Only paired roles are graded. */
+  neutrals?: { x: number; y: number; r?: number; role?: string }[];
 }
 
 interface MapRulesModule {
   MIN_LANE_WALL_CLEARANCE: number;
+  TURRET_BODY_RADIUS: number;
+  MINION_BODY_RADIUS: number;
   TURRET_BLOCKED_RADIUS: number;
   MIN_WAYPOINT_TURRET_CLEARANCE: number;
   MIN_SEGMENT_TURRET_CLEARANCE: number;
+  LANE_COVERS_TURRET: number;
+  BASE_RADIUS: number;
   laneIssues(map: MapRuleInput): MapRuleIssue[];
+  structureIssues(map: MapRuleInput): MapRuleIssue[];
+  mapIssues(map: MapRuleInput): MapRuleIssue[];
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -104,18 +125,50 @@ export function laneIssues(map: MapRuleInput): MapRuleIssue[] {
   return mapRules().laneIssues(map);
 }
 
+/**
+ * Everything wrong with how the map's *slots* relate to each other.
+ *
+ * A separate call from `laneIssues` because it answers a separate question —
+ * whether a lane is walkable, versus whether the things placed around it hang
+ * together — and because a caller holding only lanes and walls can still ask
+ * the first. `mapIssues` is both.
+ *
+ * These rules replace the coordinate tables a pack's map suite used to carry:
+ * "blue's top turrets are these three points", "a lane starts at (400, 6075)",
+ * "each row has eleven turrets". A table like that is not a rule, it is a
+ * photograph of the map on the day it was written — drag one turret in the
+ * editor and nine assertions go red without one of them naming anything that
+ * is actually wrong.
+ */
+export function structureIssues(map: MapRuleInput): MapRuleIssue[] {
+  return mapRules().structureIssues(map);
+}
+
+/** Both sets, which is what the editor's panel and a pack's gate both want. */
+export function mapIssues(map: MapRuleInput): MapRuleIssue[] {
+  return mapRules().mapIssues(map);
+}
+
 /** The thresholds, for a test that wants to state one in its own message. */
 export const laneRuleLimits = (): Readonly<{
   wall: number;
+  turretBody: number;
+  minionBody: number;
   turretBlocked: number;
   waypointTurret: number;
   segmentTurret: number;
+  laneCoversTurret: number;
+  baseRadius: number;
 }> => {
   const rules = mapRules();
   return {
     wall: rules.MIN_LANE_WALL_CLEARANCE,
+    turretBody: rules.TURRET_BODY_RADIUS,
+    minionBody: rules.MINION_BODY_RADIUS,
     turretBlocked: rules.TURRET_BLOCKED_RADIUS,
     waypointTurret: rules.MIN_WAYPOINT_TURRET_CLEARANCE,
     segmentTurret: rules.MIN_SEGMENT_TURRET_CLEARANCE,
+    laneCoversTurret: rules.LANE_COVERS_TURRET,
+    baseRadius: rules.BASE_RADIUS,
   };
 };

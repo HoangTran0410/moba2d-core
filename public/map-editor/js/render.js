@@ -336,7 +336,7 @@ const Renderer = (() => {
    * bên kia đổi thì vòng tròn ở đây chỉ vẽ sai một chút chứ không hỏng gì —
    * đây là bản xem trước, không phải nguồn sự thật.
    */
-  const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350 };
+  const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
 
   /** Đọc `stats` của slot rồi tới tuning của map — đúng thứ tự core merge. */
   function slotNumber(t, key, group, fallback) {
@@ -398,6 +398,47 @@ const Renderer = (() => {
       drawReach(slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
         s, LINE_HI[t.type], [9, 6]);
     }
+  }
+
+  /**
+   * Cái trụ **to bằng đúng cỡ thật**, vẽ dưới hình đánh dấu.
+   *
+   * Ô vuông ở trên cố định theo màn hình — zoom mức nào nó cũng bằng ngần ấy
+   * pixel, để còn bấm trúng. Cái giá phải trả là nó nói dối về kích thước, và
+   * người đặt trụ không có cách nào thấy được thân trụ thật sự chiếm bao
+   * nhiêu chỗ: `DEFAULT_TURRET_PRESET.size` là 92px world, gần bằng ba thân
+   * lính xếp cạnh nhau. Kéo hai trụ sát nhau trong editor trông vẫn thoáng.
+   *
+   * Nên vẽ hai vòng, và chúng trả lời hai câu khác nhau:
+   *
+   *   - **Thân** (`size / 2`, tô đặc mờ): chỗ trụ thật sự đứng. Đây là vật
+   *     bất động trong `UnitCollisionSystem` — không ai đi xuyên qua nó.
+   *   - **Vòng chặn** (`size / 2 + MINION_BODY_RADIUS`, nét đứt mảnh): tâm
+   *     một con lính không bao giờ vào gần hơn thế. Đây đúng là con số mà
+   *     luật lane trong `mapRules.js` đo, nên khi bảng "Kiểm tra" báo
+   *     "waypoint chỉ cách tâm trụ 67px", cái vòng này là thứ nó đang nói tới.
+   */
+  function drawTurretBody(t, s, hot) {
+    const size = slotNumber(t, "size", "turrets", CORE_DEFAULTS.turretSize);
+    if (!(size > 0)) return;
+    const body = size / 2;
+
+    ctx.beginPath();
+    ctx.arc(0, 0, body, 0, Geom.TAU);
+    ctx.fillStyle = hot ? FILL_HI[t.type] : FILL[t.type];
+    ctx.fill();
+    ctx.strokeStyle = LINE[t.type];
+    ctx.lineWidth = 1.4 / s;
+    ctx.stroke();
+
+    const blocked = body + (globalThis.MapRules ? MapRules.MINION_BODY_RADIUS : 19);
+    ctx.beginPath();
+    ctx.arc(0, 0, blocked, 0, Geom.TAU);
+    ctx.strokeStyle = "rgba(255,150,120,.55)";
+    ctx.lineWidth = 1.1 / s;
+    ctx.setLineDash([5 / s, 5 / s]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   /** Vòng tròn có bán kính thật (điểm hồi sinh, bãi quái). */
@@ -530,6 +571,7 @@ const Renderer = (() => {
       if (shape === "circle") {
         drawCircleSlot(t, s, hot, selected);
       } else if (shape === "point") {
+        if (t.type === "structure") drawTurretBody(t, s, hot);
         drawMarker(t, s, hot, selected);
       } else if (shape === "line") {
         drawLane(t, s, hot, selected);

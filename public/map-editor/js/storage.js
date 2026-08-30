@@ -1173,12 +1173,13 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * 'warn' là nhiều khả năng sai ý đồ.
    */
   /**
-   * Ba luật hình học mà cổng đẩy lên của pack kiểm, và editor thì không.
+   * Những luật mà cổng đẩy lên của pack kiểm, và editor thì không.
    *
    * Đây là lý do "0 lỗi" trong editor mà `npm run verify` vẫn đỏ: bộ kiểm của
    * editor xưa nay chỉ soi *schema và topology* — id, phe, chiều lane, điểm
    * gom lính, khung map. Còn "lane có đi xuyên tường không", "lính có đứng
-   * được lên waypoint này không" là hình học, và không ai hỏi.
+   * được lên waypoint này không", "cái trụ này có wave nào đi qua không" là
+   * hình học, và không ai hỏi.
    *
    * Phần tính toán **không nằm ở đây**: nó ở `js/mapRules.js`, một bản duy
    * nhất mà cả `tests/maps/Lanes.test.ts` của pack cũng nạp (qua
@@ -1186,20 +1187,50 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * cổng báo đỏ, tức đúng cái đang được sửa. Việc của hàm này chỉ là dịch dữ
    * liệu của editor — polygon lưu theo toạ độ tương đối — sang toạ độ world
    * tuyệt đối mà luật nhận vào.
+   *
+   * Truyền cả slot chứ không chỉ lane và tường: nhóm luật thứ hai
+   * (`structureIssues`) hỏi về *quan hệ* giữa chúng — lane có nối hai nhà
+   * không, trụ có nằm trên lane nào không, điểm gom lính có đứng được không,
+   * cặp bãi quái có đối xứng không. Đó đúng là những câu mà suite của pack
+   * trước đây trả lời bằng bảng toạ độ gõ tay, thứ hỏng ngay lần đầu ai đó
+   * kéo một cái trụ trong editor này.
    */
   function laneGeometryIssues(err) {
     const world = (t) => t.polygon.map((p) => [p[0] + t.position[0], p[1] + t.position[1]]);
+    const slots = (type) => E.terrains.filter((t) => t.type === type);
+    const props = (t) => t.props || {};
 
-    const issues = MapRules.laneIssues({
+    const issues = MapRules.mapIssues({
+      size: Math.max(E.mapSize[0], E.mapSize[1]),
       lanes: E.terrains
         .filter((t) => t.type === "lane" && (t.polygon || []).length >= 2)
-        .map((t) => ({ id: (t.props || {}).id || "?", points: world(t) })),
+        .map((t) => ({ id: props(t).id || "?", points: world(t) })),
       walls: E.terrains
         .filter((t) => t.type === "wall" && (t.polygon || []).length >= 3)
         .map(world),
-      turrets: E.terrains
-        .filter((t) => t.type === "structure")
-        .map((t) => [t.position[0], t.position[1]]),
+      turrets: slots("structure").map((t) => ({
+        x: t.position[0],
+        y: t.position[1],
+        faction: props(t).faction || "",
+      })),
+      spawns: slots("spawn").map((t) => ({
+        x: t.position[0],
+        y: t.position[1],
+        faction: props(t).faction || "",
+      })),
+      musters: slots("minion").map((t) => ({
+        x: t.position[0],
+        y: t.position[1],
+        faction: props(t).faction || "",
+        lane: props(t).lane || "",
+        scatter: +props(t).scatter || 0,
+      })),
+      neutrals: slots("neutral").map((t) => ({
+        x: t.position[0],
+        y: t.position[1],
+        r: circleR(t),
+        role: props(t).role || "",
+      })),
     });
 
     for (const issue of issues) err(issue.text, issue.at);

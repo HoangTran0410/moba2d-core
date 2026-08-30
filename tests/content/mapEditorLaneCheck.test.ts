@@ -176,6 +176,158 @@ describe('the editor checks what the push gate checks', () => {
 });
 
 /**
+ * The rules that replaced a pack's coordinate tables.
+ *
+ * `lol/tests/maps/Lanes.test.ts` used to carry, written out by hand: the three
+ * points of blue's top turret row, the exact coordinate every lane starts at,
+ * and the claim that each row holds eleven turrets. None of that is a rule —
+ * it is a photograph of the map on the day somebody measured it, and dragging
+ * a single turret in the editor turned nine assertions red without one of them
+ * naming anything that was actually wrong. That is the state the map was in
+ * when this was written: twelve turrets a side, lanes starting at the mouth of
+ * the base rather than on the fountain, and a push blocked by arithmetic.
+ *
+ * What replaced them are questions about *relationships*, which survive the map
+ * being edited: does a lane join two different bases, does every turret have a
+ * wave that walks past it, does a wave form up somewhere it can stand. They run
+ * here, in the editor, so a person sees them on the canvas — which is the half
+ * that was missing when the gate and the tool disagreed.
+ */
+describe('the structural rules, on slots rather than on coordinates', () => {
+  it('passes the map the lane cases are built on', () => {
+    // The control again, for this group: every case below has to be the rule
+    // firing, not the fixture being unsound.
+    const issues = check(laneThrough([[200, 200], [3800, 3800]]));
+    expect(errors(issues)).toEqual([]);
+  });
+
+  it('refuses a lane with both ends at the same base', () => {
+    // Replaces `expect(path[0]).toEqual(BLUE_FOUNTAIN)`. The old assertion
+    // could not tell a lane that had been redrawn to start at the mouth of the
+    // base — a real and deliberate edit — from one that had been cut in half.
+    const issues = errors(check(laneThrough([[200, 200], [900, 300]])));
+
+    expect(about(issues, 'không nối hai nhà').length).toBe(1);
+  });
+
+  it('refuses a second lane drawn back to front', () => {
+    // `getLaneWaypoints` reverses one team's copy of the list, so a lane whose
+    // points run the other way sends that team's whole wave home.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'lane', position: [0, 0], polygon: [[3700, 3700], [300, 300]],
+           props: { id: 'top', from: 'jade', to: 'amber' } }`
+      )
+    );
+
+    expect(about(issues, 'ngược chiều').length).toBe(1);
+  });
+
+  it('refuses a turret standing where no wave will ever walk', () => {
+    // Replaces the two hand-written turret-to-lane tables. What they were
+    // really guarding is this: a turret nothing pushes is a turret that stands
+    // until the match ends.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [3000, 800], props: { faction: 'amber', kind: 'turret' } }`
+      )
+    );
+
+    expect(about(issues, 'không nằm trên lane nào').length).toBe(1);
+  });
+
+  it('leaves a turret inside its own base alone', () => {
+    // The other half of that rule, and the reason it needs `BASE_RADIUS` at
+    // all: all three lanes leave through one gate, so inside the base "which
+    // lane owns this turret" has no answer and does not need one.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [200, 800], props: { faction: 'amber', kind: 'turret' } }`
+      )
+    );
+
+    expect(about(issues, 'không nằm trên lane nào')).toEqual([]);
+  });
+
+  it('refuses a lane that passes the enemy’s turrets before its own', () => {
+    // Replaces the `blueAlong`/`redAlong` sort, which needed the tables to
+    // know which turret belonged to whom. The factions are on the slots.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [1000, 1000], props: { faction: 'jade', kind: 'turret' } },
+         { type: 'structure', position: [3000, 3000], props: { faction: 'amber', kind: 'turret' } }`
+      )
+    );
+
+    expect(about(issues, 'TRƯỚC trụ').length).toBe(1);
+  });
+
+  it('refuses a muster point buried in a wall', () => {
+    // Replaces "the muster point equals the midpoint of the two turrets
+    // nearest the fountain" — a formula belonging to `musterPointFor`, deleted
+    // long ago. The map declares the point outright now and a person drags it,
+    // so what is left to be true of it is that a wave can stand there.
+    const issues = errors(
+      check(`${laneThrough([[200, 200], [3800, 3800]])}, ${block(400, 400)}`)
+    );
+
+    expect(about(issues, 'vòng rải quân').length).toBe(1);
+  });
+
+  it('refuses a muster point sitting on a turret', () => {
+    // A body inside a turret is shoved out by `UnitCollisionSystem` on the
+    // frame it appears, which reads as the wave exploding outward on spawn.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'structure', position: [400, 400], props: { faction: 'amber', kind: 'turret' } }`
+      )
+    );
+
+    expect(about(issues, 'chồng lên thân trụ').length).toBe(1);
+  });
+
+  it('refuses a camp whose twin has drifted further than the camp is wide', () => {
+    // The tolerance is the camp's own radius, and it is the only threshold in
+    // this group nobody chose: a mirror image landing inside the camp is one
+    // no player can measure. The 1px the pack used to demand is not a rule
+    // about fairness, it is a rule about whether the map was produced by a
+    // script.
+    //
+    // (3200, 3000) misses all three of the frame's symmetries: its half-turn
+    // image is 200px away and both flips are further still. A pair that is a
+    // mirror under *any* of them is left alone — Twisted Treeline is built on
+    // the vertical flip, and the first draft of this rule, which only knew the
+    // half-turn, reported that map's whole jungle as broken.
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'neutral', position: [1000, 1000], props: { role: 'gromp', r: 50 } },
+         { type: 'neutral', position: [3200, 3000], props: { role: 'gromp', r: 50 } }`
+      )
+    );
+
+    expect(about(issues, 'không phải ảnh đối xứng').length).toBe(1);
+  });
+
+  it('accepts a twin that drifted less than that', () => {
+    const issues = errors(
+      check(
+        `${laneThrough([[200, 200], [3800, 3800]])},
+         { type: 'neutral', position: [1000, 1000], props: { role: 'gromp', r: 50 } },
+         { type: 'neutral', position: [3030, 3000], props: { role: 'gromp', r: 50 } }`
+      )
+    );
+
+    expect(about(issues, 'không phải ảnh đối xứng')).toEqual([]);
+  });
+});
+
+/**
  * The editor draws on demand, and that is a trap for anything timed.
  *
  * `render.js`'s loop schedules the next frame only while the camera reports
