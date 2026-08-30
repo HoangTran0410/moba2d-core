@@ -477,3 +477,81 @@ describe('GameScene — leaving and returning to the page', () => {
     expect(source).toContain("window.addEventListener('blur', this._handleWindowBlur)");
   });
 });
+
+/**
+ * Two matches starting at once, which a 20x CPU throttle makes easy.
+ *
+ * Reported as `lanes.ts`'s own guard firing on the way into a match:
+ * "setActiveLanes() called while a previous match's lane set is still
+ * installed". That guard was right and the caller was wrong.
+ *
+ * `startGame` is async, and `_exited` — the flag that cancels an attempt whose
+ * scene has gone — is **one flag shared by every attempt**, cleared by whichever
+ * one starts last. So: enter, begin loading kits, leave for the menu (nothing
+ * is destroyed, because no `Game` exists yet), come back and start again. The
+ * new attempt clears the flag, the old attempt's await lands and finds itself
+ * live again, and two `Game`s are built over one process-wide lane slot.
+ *
+ * The counter is what a boolean could not express: not "has the scene left"
+ * but "am I still the attempt it wants".
+ */
+describe('a superseded match start', () => {
+  const scene = (over: Partial<Record<string, unknown>> = {}) =>
+    ({ _exited: false, _attempt: 1, ...over }) as unknown as GameScene;
+
+  /** Private by design; the rule it encodes is what the match depends on. */
+  const isCurrent = (self: GameScene, attempt: number): boolean =>
+    (GameScene.prototype as unknown as { isCurrentAttempt(n: number): boolean }).isCurrentAttempt.call(
+      self,
+      attempt
+    );
+
+  it('keeps building for the attempt the scene is still waiting on', () => {
+    expect(isCurrent(scene(), 1)).toBe(true);
+  });
+
+  it('drops an attempt a later one has replaced, even though nothing exited', () => {
+    // The reported sequence exactly: `_exited` is false, because the *second*
+    // attempt cleared it. Only the counter can tell the first one apart.
+    expect(isCurrent(scene({ _attempt: 2 }), 1)).toBe(false);
+  });
+
+  it('and drops one whose scene left without being replaced', () => {
+    expect(isCurrent(scene({ _exited: true, _attempt: 2 }), 1)).toBe(false);
+  });
+
+  it('asks at every point startGame resumes, which is where the race lives', () => {
+    // A source scan, because the failure is an `await` that forgets to ask —
+    // and a new one is added by writing `await`, not by touching anything a
+    // behavioural test would run. Every guard in the file must be the counter
+    // one; a bare `_exited` check after an await is the bug coming back.
+    const source = readFileSync('src/scenes/GameScene.ts', 'utf8');
+    const body = source.slice(source.indexOf('async startGame('));
+    expect(body).not.toContain('if (this._exited) return;');
+    expect((body.match(/isCurrentAttempt\(attempt\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('abandons an in-flight attempt when the scene stops with none to replace it', () => {
+    // `stopGame` bumps the counter as well as setting the flag, so a kit load
+    // that lands after the player walked away builds nothing — and cannot be
+    // revived by the *next* entry clearing the flag.
+    const source = readFileSync('src/scenes/GameScene.ts', 'utf8');
+    const stop = source.slice(source.indexOf('  stopGame() {'));
+    expect(stop.slice(0, 400)).toContain('this._attempt++');
+  });
+
+  it('releases the lane slot when construction throws part-way', () => {
+    // The other end of the same invariant. `setActiveLanes` is claimed early in
+    // the constructor because a wave and a blackboard both read it, so anything
+    // after it that throws left the slot held by a `Game` nobody has a
+    // reference to — and every later match start threw, blaming a match that
+    // had ended cleanly.
+    const source = readFileSync('src/game/Game.ts', 'utf8');
+    expect(source).toContain('static create(');
+    const create = source.slice(source.indexOf('static create('));
+    expect(create.slice(0, 300)).toContain('clearActiveLanes()');
+    // ...and the scene builds matches only that way.
+    const scene = readFileSync('src/scenes/GameScene.ts', 'utf8');
+    expect(scene).not.toMatch(/=\s*new Game\(/);
+  });
+});

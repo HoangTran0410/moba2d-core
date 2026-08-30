@@ -325,6 +325,30 @@ export default class Game {
    *   constructor then builds from. Omitted, this plans for itself — which is
    *   correct only when the catalogue is already loaded, i.e. in tests.
    */
+  /**
+   * The only way `GameScene` builds a match, and the difference is what happens
+   * when the constructor throws.
+   *
+   * `setActiveLanes` claims a process-wide slot early — before anything queues
+   * a wave or builds a blackboard, because those read it — and everything after
+   * it can fail. A throw there left the slot claimed by a `Game` that does not
+   * exist and that nobody holds a reference to, so `destroy()` could never run
+   * and *every later match start* threw out of `setActiveLanes`, blaming a
+   * previous match rather than the failure that actually happened.
+   *
+   * `destroy()` already reasons about exactly this for teardown, and clears the
+   * lanes before anything that can throw. This is the same rule for the other
+   * end of a match's life.
+   */
+  static create(map: ActiveMap, plan?: MatchPlan): Game {
+    try {
+      return new Game(map, plan);
+    } catch (error) {
+      clearActiveLanes();
+      throw error;
+    }
+  }
+
   constructor(map: ActiveMap, plan?: MatchPlan) {
     this.mapSize = map.size;
     this.activeMapId = map.id;

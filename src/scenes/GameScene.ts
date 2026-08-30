@@ -103,6 +103,26 @@ export default class GameScene extends Scene {
   private readonly runTick = guardUpdate(() => this.game?.update());
   /** Set by `stopGame`, so a slow kit load that resolves after an exit is dropped. */
   private _exited = false;
+
+  /**
+   * Which start attempt is the live one.
+   *
+   * `_exited` alone cannot answer that, and the gap is what a 20x CPU throttle
+   * makes wide enough to fall into. It is one flag shared by every in-flight
+   * `startGame`, and a *new* attempt used to clear it — so: enter, begin
+   * loading kits, leave for the menu (`stopGame` sets it, and destroys nothing
+   * because no `Game` exists yet), come back and start again. The second
+   * attempt clears the flag; the first one's await then lands, finds itself
+   * un-cancelled, and builds a `Game`. The second builds another, and the
+   * loser is `lanes.ts`'s one process-wide slot, which throws exactly the way
+   * it promises to.
+   *
+   * A counter answers the real question — "am I still the attempt this scene
+   * wants" — which a boolean shared between attempts cannot. Bumped by every
+   * start *and* by every stop, so an abandoned attempt stays abandoned whether
+   * or not another one replaced it.
+   */
+  private _attempt = 0;
   /** How far this match's kits have got, for the screen `draw` paints while waiting. */
   private _kitsLoaded = 0;
   private _kitsTotal = 0;
@@ -267,13 +287,16 @@ export default class GameScene extends Scene {
    */
   private async beginMatch(): Promise<void> {
     hideMatchStartFailure();
+    this._exited = false;
+    const attempt = ++this._attempt;
     try {
-      await this.startGame();
+      await this.startGame(attempt);
     } catch (error) {
-      // A scene on its way out is not a failure to report: `stopGame` sets
-      // `_exited`, and a kit load that lands afterwards is expected to be
-      // dropped in silence.
-      if (this._exited) return;
+      // Neither a scene on its way out nor an attempt that has been replaced is
+      // a failure to report: both are expected to be dropped in silence, and a
+      // superseded attempt reporting a failure would put a retry screen over a
+      // match that is starting perfectly well.
+      if (!this.isCurrentAttempt(attempt)) return;
       showMatchStartFailure(error instanceof Error ? error : new Error(String(error)), {
         onRetry: () => void this.beginMatch(),
         onMenu: () => this.sceneManager.showScene(MenuScene),
@@ -281,8 +304,18 @@ export default class GameScene extends Scene {
     }
   }
 
-  async startGame() {
-    this._exited = false;
+  /**
+   * Whether this attempt is still the one the scene wants.
+   *
+   * Every point where `startGame` resumes after an `await` asks this, and the
+   * asking is the whole fix — see `_attempt`. A `return` here is not an error:
+   * the work was for a match nobody is waiting for any more.
+   */
+  private isCurrentAttempt(attempt: number): boolean {
+    return !this._exited && attempt === this._attempt;
+  }
+
+  async startGame(attempt: number = ++this._attempt) {
 
     // A LAN match, armed by URL (`?net=host|join&server=…&room=…` — LAN
     // design spec §5). A *client* takes its map, kit and team from the
@@ -292,8 +325,8 @@ export default class GameScene extends Scene {
     const netRequest = netRequestFromUrl();
     if (netRequest?.mode === 'join') {
       const netMatch = await startNetClientMatch(netRequest);
-      if (this._exited) return;
-      this.game = new Game(netMatch.activeMap, netMatch.plan);
+      if (!this.isCurrentAttempt(attempt)) return;
+      this.game = Game.create(netMatch.activeMap, netMatch.plan);
       netMatch.attach(this.game);
       this.finishBoot();
       return;
@@ -341,7 +374,7 @@ export default class GameScene extends Scene {
       ]),
       contentCatalog().loadMapGeometry(mapSummary.id),
     ]);
-    if (this._exited) return;
+    if (!this.isCurrentAttempt(attempt)) return;
     if (!geometry) {
       throw new Error(`GameScene.startGame: map ${mapSummary.id} has no geometry`);
     }
@@ -360,7 +393,7 @@ export default class GameScene extends Scene {
     notePackSpellFailures(failedSpellIds);
 
     const activeMap = activeMapOf(mapSummary, geometry);
-    this.game = new Game(activeMap, plan);
+    this.game = Game.create(activeMap, plan);
     if (netRequest?.mode === 'host') {
       // Attached after construction, with the plan it was built from so
       // every champion's kit can cross the wire as the data it came from.
@@ -412,6 +445,9 @@ export default class GameScene extends Scene {
 
   stopGame() {
     this._exited = true;
+    // An in-flight attempt is abandoned even when nothing replaces it, so a
+    // kit load that lands after the player has walked away builds nothing.
+    this._attempt++;
     // The failure screen belongs to this scene's attempt to start, so it must
     // not outlive it — a leftover overlay would sit on top of the menu.
     hideMatchStartFailure();
