@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validatePack } from '@/content/validate';
+import { TUNING_SCHEMA } from '@/game/config/tuningSchema';
 import { MONSTER_ATTACK_STYLES, MONSTER_TEMPERAMENTS } from '@/content/ContentPack';
 
 /**
@@ -29,22 +30,24 @@ const UI = readFileSync(
 );
 
 /** `{ group: [field paths] }`, read out of the editor's own schema literal. */
+/**
+ * The schema, imported.
+ *
+ * This used to slice `TUNING_SCHEMA` out of the editor's source text and pick
+ * the keys back out with a regex — because the editor was plain JavaScript in
+ * `public/` that no compiler and no import could reach. The table lives in
+ * core now (`src/game/config/tuningSchema.ts`), type-locked to `MapTuning`, so
+ * the parser is gone and with it the whole class of failure where the regex
+ * quietly matched nothing and this suite passed on an empty population.
+ *
+ * What is left for a test is the half a type cannot state: that `validatePack`
+ * actually *accepts* a value written at each of these paths. The compiler says
+ * the key exists on the interface; only running the validator says the map
+ * installs.
+ */
 function editorSchema(): Record<string, string[]> {
-  const start = UI.indexOf('const TUNING_SCHEMA: TuningGroup[] = [');
-  expect(start, 'TUNING_SCHEMA is gone from ui.ts — this test proves nothing').toBeGreaterThan(-1);
-  const end = UI.indexOf('\n  ];', start);
-  const block = UI.slice(start, end);
-
   const groups: Record<string, string[]> = {};
-  // Group headers are the entries that carry a `label`; a field entry never
-  // does. Splitting on that is what keeps a field id from being read as a
-  // group id when both are written `key: "..."`.
-  const chunks = block.split(/\n    \{\n      key: "/).slice(1);
-  for (const chunk of chunks) {
-    const name = chunk.slice(0, chunk.indexOf('"'));
-    const fields = [...chunk.matchAll(/\{ key: "([a-zA-Z.]+)"/g)].map(match => match[1]);
-    groups[name] = fields;
-  }
+  for (const group of TUNING_SCHEMA) groups[group.key] = group.fields.map(f => f.key);
   return groups;
 }
 

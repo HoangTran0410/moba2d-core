@@ -313,6 +313,19 @@ export default defineConfig({
            * `scripts/check-chunks.mjs` forbids — for a 25-line lookup table.
            */
           if (id.includes('src/game/hud/statIcons')) return 'shared';
+
+          /**
+           * The map tuning schema, for the same reason and with a second one.
+           *
+           * It is an import-free table (its only import is a `type`), and it
+           * is read from two sides that share nothing else: the config panel
+           * of the map editor's own page, and — next — the map picker's rules
+           * list on the pregame screen. `src/game/config/` is pinned
+           * `pregame` by the rule below, so left to that rule the *editor
+           * page* would pull the whole pregame chunk to read one label table.
+           * Ahead of it, deliberately: the more specific rule has to win.
+           */
+          if (id.includes('src/game/config/tuningSchema')) return 'shared';
           /**
            * Vite's own `__vitePreload` runtime, which every dynamic import in
            * the app calls.

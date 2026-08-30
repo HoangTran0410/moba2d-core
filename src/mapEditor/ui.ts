@@ -8,6 +8,7 @@
 
 import { Cmd } from './commands';
 import { Geom } from './geom';
+import { TUNING_SCHEMA } from '@/game/config/tuningSchema';
 import { requestRender } from './frame';
 import { Cam, E, KIND, SLOT_KINDS, Sel, TERRAIN_KINDS, circleR, commit, countByType, factionColor, hasVerts, isLine, laneIds, newId } from './state';
 import { Store } from './storage';
@@ -1151,141 +1152,16 @@ export const UI = (() => {
    * gõ, chứ không phải mở mã nguồn engine ra tra.
    */
   /**
-   * Một ô trong bảng tuning. Khai kiểu ở đây thay vì để TypeScript suy ra
-   * union của mọi literal — không có nó, một nhóm có `hint` và nhóm bên cạnh
-   * không có là hai kiểu khác nhau, và vòng lặp đọc `f.hint` thành lỗi.
+   * Bảng tuning, đọc từ core (`src/game/config/tuningSchema.ts`).
    *
-   * Bảng này sắp chuyển hẳn sang core và khoá theo `MapTuning`; kiểu tại chỗ
-   * là bước đệm để build xanh trước.
+   * Trước đây nó nằm ngay ở đây, và đó là một bản ý kiến thứ hai viết tay về
+   * `MapTuning` — sai một khoá thì map bị từ chối lúc cài, sau một dòng
+   * console không ai đọc. Giờ trình biên dịch giữ hai bên khớp nhau: thiếu
+   * một nhóm là lỗi build, gõ sai một khoá cũng vậy.
    */
-  interface TuningField {
-    key: string;
-    label: string;
-    unit?: string;
-    ph?: string;
-    hint?: string;
-  }
-  interface TuningGroup {
-    key: string;
-    label: string;
-    hint?: string;
-    fields: TuningField[];
-    /** Nhóm "Lính" gắn thêm bảng loại lính riêng bên dưới các ô thường. */
-    minions?: boolean;
-  }
-
-  const TUNING_SCHEMA: TuningGroup[] = [
-    {
-      key: "champions",
-      label: "Tướng",
-      hint: "Chết bao lâu thì sống lại, và map nhân chỉ số tướng lên bao nhiêu.",
-      fields: [
-      // Hệ số nhân chứ không phải số tuyệt đối, y hệt lý do bên quái: gốc là
-      // của pack, và map không biết gốc là bao nhiêu. Sáu mươi tướng mỗi
-      // tướng một bảng máu, nên "ai cũng 400 máu" là câu map không có tư cách
-      // nói — còn "ở map này ai cũng dày gấp đôi" thì có.
-      { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
-      { key: "damageMult", label: "Sát thương đánh thường", unit: "×", ph: "1", hint: "chỉ đánh thường, không đụng tới chiêu" },
-      { key: "speedMult", label: "Tốc chạy", unit: "×", ph: "1" },
-      { key: "reviveTime", label: "Hồi sinh", unit: "ms", ph: "5000" },
-      { key: "reviveCurve.base", label: "Hồi sinh — mốc đầu", unit: "ms", hint: "khai cả ba ô thì đường cong thắng ô phẳng ở trên" },
-      { key: "reviveCurve.perMinute", label: "Cộng mỗi phút", unit: "ms" },
-      { key: "reviveCurve.max", label: "Trần", unit: "ms" },
-    ]},
-    {
-      key: "economy",
-      label: "Kinh tế",
-      hint: "Vàng khởi đầu, thu nhập, và giết cái gì được bao nhiêu. Đây là cần gạt đổi nhịp trận mạnh nhất mà không phải vẽ lại gì.",
-      fields: [
-        { key: "startingGold", label: "Vàng khởi đầu", unit: "g", ph: "500" },
-        { key: "passiveGoldPerSecond", label: "Vàng mỗi giây", unit: "g/s", ph: "2" },
-        { key: "minionBounty", label: "Giết lính", unit: "g", ph: "20" },
-        { key: "monsterBounty", label: "Giết quái", unit: "g", ph: "32" },
-        { key: "championBounty", label: "Giết tướng", unit: "g", ph: "200" },
-        { key: "turretBounty", label: "Phá trụ", unit: "g", ph: "150" },
-        // Nửa còn lại của việc kinh tế siết chặt tới đâu: 0.7 nghĩa là mua
-        // nhầm một món tốn 30% để sửa, và đúng cái giá đó khiến việc chốt
-        // build trở thành một quyết định. Map muốn thử đồ thoải mái thì để 1;
-        // muốn mua là dứt khoát thì để 0.
-        { key: "sellRefund", label: "Bán lại được", unit: "×", ph: "0.7", hint: "phần trăm giá gốc, 0…1" },
-      ],
-    },
-    {
-      key: "turrets",
-      label: "Trụ",
-      hint: "Trụ đánh mạnh cỡ nào, xa cỡ nào, gãy xong bao lâu mọc lại.",
-      fields: [
-      { key: "health", label: "Máu", unit: "hp", ph: "400" },
-      { key: "damage", label: "Sát thương", unit: "dmg", ph: "12" },
-      { key: "attackRange", label: "Tầm bắn", unit: "px", ph: "430" },
-      { key: "attackInterval", label: "Nhịp bắn", unit: "ms", ph: "1300" },
-      { key: "size", label: "Kích thước", unit: "px", ph: "92" },
-      { key: "rebuildTime", label: "Xây lại", unit: "ms", ph: "30000" },
-      { key: "repairDelay", label: "Chờ tự sửa", unit: "ms", ph: "6000" },
-      { key: "repairRate", label: "Tốc tự sửa", unit: "hp/frame", ph: "0.4" },
-    ]},
-    {
-      key: "fountain",
-      label: "Bệ đá cổ",
-      hint: "Về nhà hồi máu/mana nhanh hay chậm, và phải về gần tới đâu mới mua được đồ.",
-      fields: [
-      { key: "tickInterval", label: "Nhịp hồi", unit: "ms", ph: "500" },
-      { key: "healPercent", label: "Hồi máu", unit: "×", ph: "0.12" },
-      { key: "manaPercent", label: "Hồi mana", unit: "×", ph: "0.12" },
-      // Tách khỏi bán kính bệ đá, và đó mới là điểm của nó: `r` vừa là chỗ
-      // hồi máu vừa là hình được vẽ, nên nới `r` ra để mua đồ từ xa cũng là
-      // phát cho cả map một tấm đệm hồi máu khổng lồ. Để trống = đúng luật
-      // cũ, phải đứng trong bệ đá. Số to = mua ở đâu cũng được. Con số thú vị
-      // nằm ở giữa: bằng nửa chiều rộng map nghĩa là mua được ở nửa sân nhà
-      // mà không mua được ở sân đối thủ.
-      { key: "shopRange", label: "Tầm mua đồ", unit: "px", ph: "= bán kính bệ" },
-    ]},
-    {
-      key: "monsters",
-      label: "Quái rừng",
-      hint: "Hệ số nhân lên chỉ số pack khai, quái đuổi xa tới đâu, và bao lâu mới hồi máu lại.",
-      fields: [
-      { key: "healthMult", label: "Máu", unit: "×", ph: "1" },
-      { key: "damageMult", label: "Sát thương", unit: "×", ph: "1" },
-      { key: "speedMult", label: "Tốc chạy", unit: "×", ph: "1" },
-      { key: "attackIntervalMult", label: "Nhịp đánh", unit: "×", ph: "1" },
-      { key: "aggroRangeMult", label: "Tầm phát hiện", unit: "×", ph: "1" },
-      { key: "reviveTimeMult", label: "Hồi sinh", unit: "×", ph: "1" },
-      { key: "chaseMargin", label: "Tầm đuổi thêm", unit: "px", ph: "350" },
-      { key: "giveUpDelayMs", label: "Chờ bỏ cuộc", unit: "ms", ph: "2000" },
-      { key: "regenDelayMs", label: "Trễ hồi máu", unit: "ms", ph: "4000" },
-    ]},
-    {
-      key: "terrain",
-      label: "Địa hình",
-      hint: "Đi trong bụi và dưới sông nhanh chậm thế nào.",
-      fields: [
-      { key: "bush.speedMultiplier", label: "Tốc trong bụi", unit: "×", ph: "1" },
-      { key: "water.speedMultiplier", label: "Tốc dưới sông", unit: "×", ph: "1" },
-    ]},
-    {
-      key: "minions",
-      label: "Lính",
-      hint: "Nhịp ra wave, và map có thể tự khai loại lính của riêng nó.",
-      minions: true,
-      fields: [
-      { key: "waves.intervalMs", label: "Cách wave", unit: "ms", ph: "30000" },
-      { key: "waves.firstDelayMs", label: "Wave đầu sau", unit: "ms", ph: "1000" },
-      { key: "waves.releaseIntervalMs", label: "Cách từng con", unit: "ms", ph: "650" },
-      { key: "waves.liveCap", label: "Trần lính sống", unit: "con", ph: "160" },
-    ]},
-    {
-      key: "vision",
-      label: "Tầm nhìn",
-      hint: "Đánh trong bụi thì bị lộ bao lâu, và lộ rộng bao nhiêu. Để 0 giây là bụi thành tàng hình thật.",
-      fields: [
-      { key: "attackRevealMs", label: "Lộ trong", unit: "ms", ph: "2000" },
-      { key: "attackRevealRadius", label: "Vùng bị lộ", unit: "px", ph: "300" },
-    ]},
-  ];
 
   /** Các ô số của một loại lính, dùng lại cho mọi loại map khai ra. */
-  const MINION_TYPE_FIELDS: TuningField[] = [
+  const MINION_TYPE_FIELDS: { key: string; label: string; unit?: string; hint?: string }[] = [
     { key: "health", label: "Máu", unit: "hp" },
     { key: "damage", label: "Sát thương", unit: "dmg" },
     { key: "speed", label: "Tốc chạy", unit: "px/frame" },
