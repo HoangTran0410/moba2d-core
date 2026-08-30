@@ -21,9 +21,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Minion, { MinionPresets } from '../../../src/game/gameObject/attackableUnits/Minion';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
-import { Lane, getLaneWaypoints } from '../../../src/game/lanes';
+import { Lane } from '../../../src/game/lanes';
 import TeamId from '../../../src/game/enums/TeamId';
 import { createGame, stubGameGlobals, type TestGame } from '../fixtures';
+
+/**
+ * A lane written out here rather than read from `getLaneWaypoints`.
+ *
+ * Lanes come from the *active map*, and core's own checkout has no optional
+ * pack in it — `getLaneWaypoints` answers with an empty list there, so
+ * `currentWaypoint` is `undefined` and every case below that reads one throws
+ * on `.y`. It passed with a pack linked and failed in CI's checkout, which is
+ * the worst way round for a test to be wrong. Two points down and to the
+ * right is all `aimAngle` needs.
+ */
+const LANE = [
+  { x: 300, y: 300 },
+  { x: 900, y: 900 },
+];
 
 const spawn = (game: TestGame, x: number, y: number, preset = MinionPresets.melee) =>
   new Minion({
@@ -31,7 +46,7 @@ const spawn = (game: TestGame, x: number, y: number, preset = MinionPresets.mele
     position: createVector(x, y),
     teamId: TeamId.BLUE,
     lane: Lane.MID,
-    waypoints: getLaneWaypoints(Lane.MID, TeamId.BLUE),
+    waypoints: LANE.map(point => ({ ...point })),
     preset,
   });
 

@@ -1,11 +1,16 @@
 import {
   CHAMPION_BOUNTY,
+  DEFAULT_TURRET_PRESET,
   MINION_BOUNTY,
   MONSTER_BOUNTY,
+  MONSTER_CHASE_MARGIN,
+  MONSTER_GIVE_UP_DELAY_MS,
+  MONSTER_REGEN_DELAY_MS,
+  MinionPresets,
   PASSIVE_GOLD_PER_SECOND,
   STARTING_GOLD,
   TURRET_BOUNTY,
-} from '@/game/economy/Wallet';
+} from './tuningDefaults';
 import type {
   ChampionTuning,
   EconomyTuning,
@@ -20,14 +25,13 @@ import type {
   TerrainTuning,
   TurretStats,
 } from '@/content/ContentPack';
-import { DEFAULT_TURRET_PRESET, type TurretPresetData } from '@/game/gameObject/structures/Turret';
-import {
-  MONSTER_CHASE_MARGIN,
-  MONSTER_GIVE_UP_DELAY_MS,
-  MONSTER_REGEN_DELAY_MS,
-  type MonsterPresetData,
-} from '@/game/gameObject/attackableUnits/Monster';
-import { MinionPresets, type MinionPresetData } from '@/game/gameObject/attackableUnits/Minion';
+// Types only, and that is load-bearing rather than tidy: a type import is
+// erased, so this file — pinned to the `pregame` chunk — names the three unit
+// classes without any of them reaching the menu. Every *value* it needs comes
+// from `./tuningDefaults`, which imports nothing at all.
+import type { TurretPresetData } from '@/game/gameObject/structures/Turret';
+import type { MonsterPresetData } from '@/game/gameObject/attackableUnits/Monster';
+import type { MinionPresetData } from '@/game/gameObject/attackableUnits/Minion';
 
 /**
  * Where a map's numbers meet core's, and the only place they do.

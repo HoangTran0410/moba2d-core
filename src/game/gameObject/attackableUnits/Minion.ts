@@ -1,6 +1,7 @@
 import { Circle } from '@/libs/quadtree';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
 import { MINION_BOUNTY } from '@/game/economy/Wallet';
+import { MinionPresets } from '@/game/config/tuningDefaults';
 import TeamId from '@/game/enums/TeamId';
 import type { LaneWaypoint } from '@/game/lanes';
 import { MINION_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
@@ -58,84 +59,15 @@ export interface MinionPresetData {
 }
 
 /**
- * Three bodies, all intentionally cheap. The melee line tanks, casters poke from
- * behind it, and the periodic cannon is a slower, tougher ranged siege body.
+ * Core's three bodies, defined in `game/config/tuningDefaults.ts` and
+ * re-exported here, where every caller already looks for them.
  *
- * ## Sized against the champion, which for a long time they were not
- *
- * These numbers used to be picked against each other alone — "a lane fight
- * resolves in roughly ten seconds" — and never against the thing that has to
- * walk through them. Measured against `DEFAULT_CHAMPION_ATTACK` and
- * `DEFAULT_CHAMPION_DEFENCE`, the wave they described was not an obstacle, it
- * was the strongest unit on the board:
- *
- *   - A melee minion had **140 health against a champion's 100** — more than
- *     every body but a tank's, in a pack that ships six of them. `Champion.ts`
- *     and `content/ContentPack.ts` both name that number as the thing wrong
- *     with the champion; it was equally the thing wrong with the minion.
- *   - The opening wave was 690 health, and a champion swinging at the default
- *     15.4 damage a second needed **45 seconds** of uninterrupted autoing to
- *     clear it. Waves arrive every `WAVE_INTERVAL_MS` — thirty. A lane could
- *     not be cleared as fast as it filled, by anyone, ever.
- *   - That same wave dealt **19.6 damage a second**, against the champion's
- *     15.4. Six minions out-damaged the player they were walking at, which is
- *     the whole of "I am more afraid of the wave than of the enemy laner".
- *
- * So health comes down by half and damage with it, holding the minion-versus-
- * minion clock roughly where it was (three melee focusing one still take it
- * down in about nine seconds, against ten before) while moving both numbers
- * back under the champion's. `minionBalance.test.ts` holds all three of the
- * bounds above as arithmetic over these constants and the champion's, so a
- * future retune of either side cannot quietly cross them again.
- *
- * ## The cannon is the wave's payday
- *
- * It is the one body worth stopping for — three times the melee bounty, the
- * way the source game prices its siege minion — and `MinionSpawner` leaves a
- * `goldBounty` a type names for itself alone, so a map that retunes
- * `economy.minionBounty` retunes the other two and not this one. That is the
- * documented behaviour of the field rather than a surprise: a type that
- * priced itself said something more specific than the map did.
+ * They moved because `config/mapTuning.ts` has to read them and that file is
+ * pinned to the `pregame` chunk — importing this module for them put the
+ * whole match chunk on the menu's first paint. See the defaults module's own
+ * header for the rule, and its own doc comment for what the numbers are.
  */
-export const MinionPresets: Record<MinionKind, MinionPresetData> = {
-  melee: {
-    name: 'Lính Cận Chiến',
-    kind: 'melee',
-    style: 'melee',
-    speed: 2.6,
-    size: 34,
-    health: 70,
-    damage: 3,
-    attackInterval: 1_100,
-    attackRange: 40,
-    aggroRange: 300,
-  },
-  ranged: {
-    name: 'Lính Phép Sư',
-    kind: 'ranged',
-    style: 'ranged',
-    speed: 2.6,
-    size: 30,
-    health: 45,
-    damage: 2,
-    attackInterval: 1_500,
-    attackRange: 280,
-    aggroRange: 340,
-  },
-  cannon: {
-    name: 'Lính Xe Pháo',
-    kind: 'cannon',
-    style: 'cannon',
-    goldBounty: 60,
-    speed: 2.6,
-    size: 38,
-    health: 150,
-    damage: 5,
-    attackInterval: 1_650,
-    attackRange: 300,
-    aggroRange: 360,
-  },
-};
+export { MinionPresets } from '@/game/config/tuningDefaults';
 
 /** World units from a waypoint that count as having reached it. */
 export const WAYPOINT_TOLERANCE = 40;

@@ -2,6 +2,11 @@ import { withinRadius } from '@/utils/math.utils';
 import { Circle } from '@/libs/quadtree';
 import { MONSTER_BOUNTY } from '@/game/economy/Wallet';
 import { packAsset } from '@/game/config/packAsset';
+import {
+  MONSTER_CHASE_MARGIN,
+  MONSTER_GIVE_UP_DELAY_MS,
+  MONSTER_REGEN_DELAY_MS,
+} from '@/game/config/tuningDefaults';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import AttackableUnit from './AttackableUnit';
 import type { AttackableUnitRenderOptions } from './AttackableUnit';
@@ -224,10 +229,8 @@ export const MONSTER_HOME_TOLERANCE = 12;
 
 /** Extra chase distance past a camp's pit/reach, so it actually pursues a
  *  fleeing target instead of stopping at the edge of its own ground. */
-export const MONSTER_CHASE_MARGIN = 350;
 /** Grace after a camp's target leaves the chase leash before it turns for
  *  home, so a target that ducks out and back is still pursued. */
-export const MONSTER_GIVE_UP_DELAY_MS = 2000;
 /**
  * How long after being hurt a camp refuses to regenerate at all.
  *
@@ -243,7 +246,6 @@ export const MONSTER_GIVE_UP_DELAY_MS = 2000;
  * camp's respawn and longer than the time to reposition, so kiting a camp is
  * still free and abandoning one is still a reset.
  */
-export const MONSTER_REGEN_DELAY_MS = 4000;
 
 /**
  * How long a camp takes to refill its own bar, from empty.
@@ -282,6 +284,21 @@ export const MONSTER_REGEN_DELAY_MS = 4000;
 export const MONSTER_IDLE_REGEN_SECONDS = 8;
 /** See `MONSTER_IDLE_REGEN_SECONDS`. */
 export const MONSTER_LEASH_REGEN_SECONDS = 4;
+
+/**
+ * The three leash-and-reset clocks, defined in `game/config/tuningDefaults.ts`
+ * and re-exported here, where every caller already looks for them.
+ *
+ * They moved because `config/mapTuning.ts` has to read them and that file is
+ * pinned to the `pregame` chunk — importing this module for three numbers put
+ * the whole match chunk on the menu's first paint. See the defaults module's
+ * own header.
+ */
+export {
+  MONSTER_CHASE_MARGIN,
+  MONSTER_GIVE_UP_DELAY_MS,
+  MONSTER_REGEN_DELAY_MS,
+} from '@/game/config/tuningDefaults';
 
 /**
  * How far a fleeing body tries to get in one order, longest first.

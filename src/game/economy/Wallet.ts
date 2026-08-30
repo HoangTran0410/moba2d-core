@@ -33,38 +33,23 @@
  */
 
 /**
- * Gold per second, to everyone, for existing.
+ * The economy's own numbers, defined in `game/config/tuningDefaults.ts` and
+ * re-exported here, where every caller already looks for them.
  *
- * The floor under a player who is losing: farm dries up when a lane is lost,
- * and a game where falling behind means falling further behind with no way
- * back is one nobody finishes. Roughly League's own 2.03/s, which is a number
- * two decades of tuning arrived at.
+ * They moved because `config/mapTuning.ts` has to read them and that file is
+ * pinned to the `pregame` chunk — importing them from this module put the
+ * whole match chunk on the menu's first paint, which `chunks:check` reported
+ * as `pregame statically imports game`. See the defaults module's own header.
  */
-export const PASSIVE_GOLD_PER_SECOND = 2;
-
-/** What a champion walks out of the fountain with at the start of a match. */
-export const STARTING_GOLD = 500;
-
-/**
- * What killing one of these is worth to whoever did it.
- *
- * The numbers are the shape of the economy, not a translation of anyone
- * else's: a match here is minutes rather than half an hour, and an item priced
- * for League's curve would never be reached. Sized against
- * `PASSIVE_GOLD_PER_SECOND` so a player who farms is meaningfully richer than
- * one who does not, and a player who does neither is still buying something.
- *
- * They live here rather than as a field on each unit class for the same reason
- * `Difficulty.ts` holds every knob a tier changes: an economy is a set of
- * numbers that only mean anything *relative to each other*, and one of them
- * living somewhere else is how the set gets retuned by halves.
- */
-export const MINION_BOUNTY = 20;
-/** A camp is worth a little more than a caster minion and takes longer to take. */
-export const MONSTER_BOUNTY = 32;
-export const CHAMPION_BOUNTY = 200;
-/** A building. Killer-only, like everything else here — no team split yet. */
-export const TURRET_BOUNTY = 150;
+import { PASSIVE_GOLD_PER_SECOND } from '@/game/config/tuningDefaults';
+export {
+  CHAMPION_BOUNTY,
+  MINION_BOUNTY,
+  MONSTER_BOUNTY,
+  PASSIVE_GOLD_PER_SECOND,
+  STARTING_GOLD,
+  TURRET_BOUNTY,
+} from '@/game/config/tuningDefaults';
 
 const isSpendable = (amount: number): boolean => Number.isFinite(amount) && amount >= 0;
 

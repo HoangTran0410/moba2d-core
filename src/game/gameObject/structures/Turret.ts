@@ -14,6 +14,7 @@ import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
 import { pickAggroTarget, type AggroLadder } from '@/game/combat/AggroPriority';
+import { DEFAULT_TURRET_PRESET } from '@/game/config/tuningDefaults';
 
 export interface TurretPresetData {
   health: number;
@@ -29,16 +30,14 @@ export interface TurretPresetData {
   repairRate: number;
 }
 
-export const DEFAULT_TURRET_PRESET: TurretPresetData = {
-  health: 400,
-  size: 92,
-  attackRange: 430,
-  attackInterval: 1300,
-  damage: 12,
-  rebuildTime: 30000,
-  repairDelay: 6000,
-  repairRate: 0.4,
-};
+/**
+ * Defined in `game/config/tuningDefaults.ts` and re-exported here, where every
+ * caller already looks for it. It moved because `config/mapTuning.ts` has to
+ * read it and that file is pinned to the `pregame` chunk — importing it from
+ * this module put the whole match on the menu's first paint. See the defaults
+ * module's own header.
+ */
+export { DEFAULT_TURRET_PRESET };
 
 export interface TurretOptions {
   game: AttackableUnitOptions['game'];

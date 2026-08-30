@@ -349,12 +349,19 @@ export function buyItem(
   // would leave a champion permanently tougher than the bar says.
   // The parts, named before they are taken off — `unequipItem` is about to
   // make them unreadable, and undo has to be able to put back exactly these.
-  const parts = consumed
-    .map(componentSlot => ({
-      slot: componentSlot,
-      def: champion.items?.[componentSlot]?.def as QualifiedItem | undefined,
-    }))
-    .filter((part): part is { slot: number; def: QualifiedItem } => part.def !== undefined);
+  //
+  // Built with a loop rather than `map().filter(predicate)`. The narrowing
+  // form typechecks under this file's ordinary program and **not** under
+  // `tsconfig.strict-core.json`, where `strictNullChecks` is on and the
+  // predicate overload does not survive the `as` cast that has to be there —
+  // `HeldItem.def` is an `ItemDef` and `ShopStep` wants the qualified one.
+  // Missed locally because nothing in the strict program reached this file
+  // until `AIChampion` grew a shopper; caught by CI, which runs both.
+  const parts: { slot: number; def: QualifiedItem }[] = [];
+  for (const componentSlot of consumed) {
+    const part = champion.items?.[componentSlot]?.def as QualifiedItem | undefined;
+    if (part) parts.push({ slot: componentSlot, def: part });
+  }
 
   for (const componentSlot of consumed) champion.unequipItem(componentSlot);
 
