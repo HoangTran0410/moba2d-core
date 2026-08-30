@@ -1016,6 +1016,8 @@ const ECONOMY_KEYS = [
   'championBounty',
   'turretBounty',
   'sellRefund',
+  'assistWindowMs',
+  'assistGoldShare',
 ] as const;
 
 /**

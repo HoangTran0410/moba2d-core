@@ -461,7 +461,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   private scoreOf(id: string): ScoreLine {
     const unit = this.unitOf(id);
-    return unit ? scoreLine(unit) : { kills: 0, deaths: 0, cs: 0 };
+    return unit ? scoreLine(unit) : { kills: 0, deaths: 0, assists: 0, cs: 0 };
   }
 
   private statGroupsOf(id: string): StatGroup[] {

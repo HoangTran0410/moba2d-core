@@ -125,6 +125,11 @@ const SCHEMA = [
       // build trở thành một quyết định. Map muốn thử đồ thoải mái thì để 1;
       // muốn mua là dứt khoát thì để 0.
       { key: "sellRefund", label: "Bán lại được", unit: "×", ph: "0.7", hint: "phần trăm giá gốc, 0…1" },
+      // Mạng hỗ trợ: cửa sổ tính công, và một mạng hỗ trợ đáng bao nhiêu so
+      // với tiền của người kết liễu. Tiền hỗ trợ được cộng thêm chứ không
+      // chia ra từ tiền mạng, nên chỉnh cái này không làm solo kill yếu đi.
+      { key: "assistWindowMs", label: "Cửa sổ hỗ trợ", unit: "ms", ph: "10000", hint: "0 để tắt hẳn" },
+      { key: "assistGoldShare", label: "Tiền hỗ trợ", unit: "×", ph: "0.5", hint: "phần của tiền mạng, 0…1" },
     ],
   },
   {

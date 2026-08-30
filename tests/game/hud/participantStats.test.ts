@@ -62,7 +62,7 @@ describe('scoreLine', () => {
   });
 
   it('starts a fresh champion at zero rather than undefined', () => {
-    expect(scoreLine(unit())).toEqual({ kills: 0, deaths: 0, cs: 0 });
+    expect(scoreLine(unit())).toEqual({ kills: 0, deaths: 0, assists: 0, cs: 0 });
   });
 });
 

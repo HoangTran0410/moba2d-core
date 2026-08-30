@@ -80,6 +80,29 @@ export const TURRET_BOUNTY = 150;
 export const SELL_REFUND_FRACTION = 0.7;
 
 /**
+ * How long after hurting somebody you are still counted as having helped kill
+ * them.
+ *
+ * Ten seconds, which is League's own window, and long enough that the number
+ * is about *participation* rather than about the last half-second. It is a map
+ * rule rather than a constant because it changes what a team fight is worth: a
+ * short window makes a kill the property of whoever landed the last two hits,
+ * a long one pays everybody who committed to the fight at all.
+ */
+export const ASSIST_WINDOW_MS = 10_000;
+
+/**
+ * What an assist pays, as a share of the bounty the killer collects.
+ *
+ * Paid *on top of* the killer's full bounty rather than carved out of it. The
+ * alternative — split one purse N ways, League's own rule — retunes every kill
+ * in the game the moment assists exist, and quietly nerfs solo kills that were
+ * balanced without them. This way nothing a killer earned before moved, and
+ * the map author has one number for how much a match rewards grouping.
+ */
+export const ASSIST_GOLD_SHARE = 0.5;
+
+/**
  * How long a unit stays lit after giving itself away, and how much of the map
  * around it is lit too — League's own 2 seconds and 300 units.
  * `combat/AttackReveal.ts` quotes the sentence they come from and re-exports

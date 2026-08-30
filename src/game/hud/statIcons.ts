@@ -55,6 +55,7 @@ export type NonItemStatKey =
   | 'size'
   | 'kills'
   | 'deaths'
+  | 'assists'
   | 'minionsKilled'
   | 'damageDealt'
   | 'damageTaken';
@@ -100,6 +101,7 @@ export const STAT_ICON: Record<StatIconKey, string> = {
   size: 'fa-expand',
   kills: 'fa-crosshairs',
   deaths: 'fa-skull',
+  assists: 'fa-handshake-angle',
   minionsKilled: 'fa-coins',
   damageDealt: 'fa-hand-fist',
   damageTaken: 'fa-heart-crack',

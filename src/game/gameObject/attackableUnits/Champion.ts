@@ -239,6 +239,7 @@ export const healthTickStep = (maxHealth: number): number => {
 export default class Champion extends AttackableUnit {
   static displayZIndex = CHAMPION_Z_INDEX;
   killCredit: KillCredit = 'champion';
+  awardsAssists = true;
 
   /** See `Wallet` — the base class has none, and this is the class that does. */
   wallet: Wallet | null = new Wallet(STARTING_GOLD);

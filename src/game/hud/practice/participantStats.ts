@@ -62,6 +62,8 @@ export interface StatGroup {
 export interface ScoreLine {
   kills: number;
   deaths: number;
+  /** Kills somebody else finished that this unit had a hand in. */
+  assists: number;
   /** Minions and camps — the CS number. */
   cs: number;
 }
@@ -69,7 +71,12 @@ export interface ScoreLine {
 /** The three headline numbers, always on the card. */
 export function scoreLine(unit: AttackableUnit): ScoreLine {
   const tally = unit.tally;
-  return { kills: tally.kills, deaths: tally.deaths, cs: tally.minionsKilled };
+  return {
+    kills: tally.kills,
+    deaths: tally.deaths,
+    assists: tally.assists,
+    cs: tally.minionsKilled,
+  };
 }
 
 /** Truncated, not rounded — the same `~~` the health bar prints. */
@@ -175,6 +182,7 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
       rows: [
         { icon: STAT_ICON.kills, label: 'Hạ gục', value: whole(tally.kills) },
         { icon: STAT_ICON.deaths, label: 'Bị hạ', value: whole(tally.deaths) },
+        { icon: STAT_ICON.assists, label: 'Hỗ trợ', value: whole(tally.assists) },
         { icon: STAT_ICON.minionsKilled, label: 'Lính & quái', value: whole(tally.minionsKilled) },
         { icon: STAT_ICON.damageDealt, label: 'Sát thương gây ra', value: whole(tally.damageDealt) },
         { icon: STAT_ICON.damageTaken, label: 'Sát thương nhận', value: whole(tally.damageTaken) },

@@ -346,7 +346,7 @@ const clearItems = (row: ConfigRosterEntry): void => {
 
 const scoreOf = (row: ConfigRosterEntry) => {
   void panel.version.value;
-  return live.value?.scoreOf(row.id) ?? { kills: 0, deaths: 0, cs: 0 };
+  return live.value?.scoreOf(row.id) ?? { kills: 0, deaths: 0, assists: 0, cs: 0 };
 };
 
 const statGroupsOf = (row: ConfigRosterEntry) => {
@@ -669,6 +669,8 @@ defineExpose({
               <span class="practice-score-k">{{ scoreOf(row).kills }}</span>
               <span class="practice-score-sep">/</span>
               <span class="practice-score-d">{{ scoreOf(row).deaths }}</span>
+              <span class="practice-score-sep">/</span>
+              <span class="practice-score-a">{{ scoreOf(row).assists }}</span>
               <span class="practice-score-sep">/</span>
               <span class="practice-score-cs">{{ scoreOf(row).cs }}</span>
             </span>

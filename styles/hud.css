@@ -1377,13 +1377,19 @@ body.touch-ui .practice-add-bot {
   font-size: 1.05em;
 }
 
-/* Killed / died / farmed, coloured the way the health bars already are: the
-   game's green is "yours and healthy", its red is "someone took damage". */
+/* Killed / died / helped / farmed, coloured the way the health bars already
+   are: the game's green is "yours and healthy", its red is "someone took
+   damage". An assist is a kill you were part of but did not land, so it wears
+   the kill green turned down rather than a fourth colour — the eye should read
+   the K and the A as the same kind of number. */
 .practice-score-k {
   color: #43c41d;
 }
 .practice-score-d {
   color: #c4431d;
+}
+.practice-score-a {
+  color: #7fae6c;
 }
 .practice-score-cs {
   color: var(--hextech-gold);

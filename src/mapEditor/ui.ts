@@ -1216,6 +1216,8 @@ export const UI = (() => {
     const e = tuning.economy || {};
     if (e.startingGold != null) bits.push(`vàng đầu ${n(e.startingGold)}`);
     if (e.passiveGoldPerSecond != null) bits.push(`${n(e.passiveGoldPerSecond)} vàng/giây`);
+    if (e.assistWindowMs != null) bits.push(`hỗ trợ trong ${n(e.assistWindowMs / 1000)}s`);
+    if (e.assistGoldShare != null) bits.push(`hỗ trợ ${n(e.assistGoldShare * 100)}% tiền mạng`);
     for (const [key, label] of [
       ["minionBounty", "lính"],
       ["monsterBounty", "quái"],

@@ -595,6 +595,23 @@ export interface EconomyTuning {
    * sell, repeat — and below 0 is a sale that charges you.
    */
   sellRefund?: number;
+  /**
+   * How long after hurting somebody you still count as having helped kill
+   * them. Default 10000. 0 turns assists off entirely.
+   *
+   * The lever for what a team fight is worth: a short window makes a kill the
+   * property of whoever landed the last two hits, a long one pays everybody
+   * who committed to the fight at all.
+   */
+  assistWindowMs?: number;
+  /**
+   * What an assist pays, as a share of the killer's bounty. Default 0.5.
+   *
+   * Paid *on top of* that bounty rather than carved out of it, so a map that
+   * raises this makes grouping better without making solo kills worse.
+   * Clamped to 0…1 where it is resolved.
+   */
+  assistGoldShare?: number;
 }
 
 /**

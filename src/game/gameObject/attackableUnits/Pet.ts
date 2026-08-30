@@ -94,6 +94,9 @@ export default class Pet extends Champion {
    * count, because a `Pet` *is* a `Champion` as far as `instanceof` goes.
    */
   killCredit: KillCredit = 'none';
+  // Off again, for the same reason `killCredit` is: a pet *is* a `Champion`
+  // by inheritance, and killing somebody's summon is not a team achievement.
+  awardsAssists = false;
 
   /**
    * Both halves of the same override, and both are needed for the same reason

@@ -9,6 +9,7 @@ import Stats from '@/game/gameObject/Stats';
 import EventType from '@/game/enums/EventType';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
 import { vampFraction } from '@/game/combat/Vamp';
+import { resolveEconomy } from '@/game/config/mapTuning';
 import CombatText, {
   DAMAGE_TEXT_COLOR,
   GOLD_TEXT_COLOR,
@@ -66,6 +67,25 @@ export const DISPLACEMENT_GRACE_FRAMES = 2;
  * last hit so a single stray shot does not pin the tower forever.
  */
 export const RECENT_ATTACKER_MS = 1500;
+
+/**
+ * The widest assist window any map may ask for, and the only thing the
+ * per-hit prune measures against — `rememberParticipant` says why it is not
+ * the map's own number.
+ *
+ * A ceiling rather than the default, so a map that wants a thirty-second
+ * window gets one and the ledger still cannot grow without bound.
+ */
+export const MAX_ASSIST_WINDOW_MS = 60_000;
+
+/**
+ * How many participants a ledger holds before it is worth walking to prune.
+ *
+ * One entry per attacker, not per hit, so ten is already more bodies than any
+ * fight puts on one target; the check exists so an ordinary duel never pays
+ * for the walk at all.
+ */
+const ASSIST_LEDGER_PRUNE_AT = 10;
 
 /**
  * The status flags that count as crowd control — what a cleanse takes off.
@@ -686,6 +706,36 @@ export default class AttackableUnit extends GameObject {
   private _deathSeq = 0;
 
   /**
+   * Who has hurt this unit lately, and when — the assist ledger.
+   *
+   * Kept apart from `recentDamageLog` beside it, which looks like it would do:
+   * that one holds *names and ids* for the death recap, is capped at
+   * `DEATH_RECAP_MAX_ENTRIES` and so silently drops the earliest participant
+   * in a long fight, and is cleared the moment `die()` snapshots it. An assist
+   * needs the unit itself (to pay a wallet and bump a tally), needs everyone
+   * who took part rather than the last N hits, and is read *by* `die()`. Two
+   * different questions that happen to be written from the same line.
+   *
+   * One entry per attacker, holding the last time they landed anything, so a
+   * champion who has been hitting for ten seconds costs one entry rather than
+   * six hundred. Pruned on write, against the widest window any map could ask
+   * for; `die()` applies the map's real window when it reads.
+   */
+  private _assistLedger = new Map<AttackableUnit, number>();
+
+  /**
+   * Whether finishing this unit off is something a *team* gets credit for.
+   *
+   * Asked of the **victim**, exactly like `killCredit` and `goldBounty`, and
+   * carrying the same `Pet` trap: a pet *is* a `Champion` by
+   * inheritance, so `Champion` turning this on means `Pet` has to turn it off
+   * again. Turrets say yes despite `killCredit: 'none'` — "who helped take
+   * that tower" is a real question and a scoreboard number, even though
+   * nobody's kill count moves for it.
+   */
+  awardsAssists = false;
+
+  /**
    * `type` is optional and defaults to `MAGIC` — see `combat/Mitigation.ts` for
    * why that default is the only one that could have been chosen. Every
    * ability in every published pack calls this with two arguments, and every
@@ -755,6 +805,11 @@ export default class AttackableUnit extends GameObject {
     if (attacker && attacker !== this && attacker.teamId !== this.teamId) {
       this.recentAttacker = attacker;
       this._recentAttackerTtl = RECENT_ATTACKER_MS;
+      // Written from `swung` rather than from what got through, for the same
+      // reason the turret's aggro above is: a shield eating the whole hit does
+      // not make it not a hit, and somebody who spent an ability on a target
+      // took part in killing it whether or not a bubble was up at the time.
+      this.rememberParticipant(attacker);
     }
 
     // shields and damage modifiers get first look; they may eat all of it
@@ -838,6 +893,62 @@ export default class AttackableUnit extends GameObject {
 
     if (this.stats.health.baseValue <= 0) {
       this.die({ attacker, reviveAfter: this.reviveTime });
+    }
+  }
+
+  /**
+   * One assist-ledger entry, and the prune in the same breath.
+   *
+   * The prune is against `MAX_ASSIST_WINDOW_MS` — a ceiling on what any map
+   * may ask for — and not against the map's own window, because this runs on
+   * every hit and reading the map's tuning per hit to throw the answer away is
+   * work for nothing. The real window is applied once, by `die()`.
+   */
+  private rememberParticipant(attacker: AttackableUnit): void {
+    const atMs = this.game?.matchTimeMs ?? 0;
+    this._assistLedger.set(attacker, atMs);
+    if (this._assistLedger.size <= ASSIST_LEDGER_PRUNE_AT) return;
+    const cutoff = atMs - MAX_ASSIST_WINDOW_MS;
+    for (const [unit, seen] of this._assistLedger) {
+      if (seen < cutoff || unit.toRemove) this._assistLedger.delete(unit);
+    }
+  }
+
+  /**
+   * Everyone but the killer who had a hand in this death, and what it pays
+   * them.
+   *
+   * The rules, and each of them is a decision:
+   *
+   *   - **the killer is not their own assister.** They already have the kill
+   *     and the whole bounty;
+   *   - **only the killer's own side.** A ledger holds anyone who hurt this
+   *     unit, and in a three-way fight that includes the team that did not get
+   *     the kill. Credit for a kill is a team fact;
+   *   - **death is not disqualifying.** Somebody who committed to the fight
+   *     and lost it still helped, and League agrees. They collect the gold
+   *     when they respawn, since a wallet outlives a corpse;
+   *   - **the gold is added, not divided.** See `ASSIST_GOLD_SHARE`.
+   */
+  private payAssists(killer: AttackableUnit): void {
+    if (!this.awardsAssists) return;
+    const economy = resolveEconomy(this.game?.mapTuning);
+    if (economy.assistWindowMs <= 0) return;
+
+    const cutoff = (this.game?.matchTimeMs ?? 0) - economy.assistWindowMs;
+    const reward = Math.round(this.goldBounty * economy.assistGoldShare);
+
+    for (const [helper, seen] of this._assistLedger) {
+      if (helper === killer || helper === this) continue;
+      if (seen < cutoff) continue;
+      if (helper.teamId !== killer.teamId) continue;
+
+      helper.tally.assists++;
+      if (reward > 0 && helper.wallet) {
+        helper.wallet.earn(reward);
+        // Over the helper, like the killer's own bounty — see `GOLD_TEXT_COLOR`.
+        CombatText.show(helper, 'gold', reward, [...GOLD_TEXT_COLOR]);
+      }
     }
   }
 
@@ -940,6 +1051,10 @@ export default class AttackableUnit extends GameObject {
       if (killer && killer !== this) {
         if (this.killCredit === 'champion') killer.tally.kills++;
         else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
+        // Inside the same `!isDead` guard as the ledger and the bounty, and
+        // before `clearBuffs` below touches anything: a second `die` on a
+        // corpse must not pay a second set of assists.
+        this.payAssists(killer);
         // Inside the same `!isDead` guard the ledger is: `die` is reachable on
         // a corpse (`Champion.die` runs cleanup that is safe to repeat), and a
         // bounty paid on every one of those calls is an unbounded gold press

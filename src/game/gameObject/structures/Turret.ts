@@ -67,6 +67,10 @@ export default class Turret extends AttackableUnit {
 
   /** A building is not farm — killing one moves nobody's CS. */
   killCredit: KillCredit = 'none';
+  // Yes, despite `killCredit: 'none'` right above. Nobody's kill count moves
+  // for a tower, but "who helped take that tower" is a real question and the
+  // gold that answers it is the second-biggest purse on the map.
+  awardsAssists = true;
 
   /** Above plain units, below champions. */
   zIndex = OBJECTIVE_Z_INDEX;

@@ -21,6 +21,12 @@ export default class MatchTally {
   kills = 0;
   /** Times this unit was finished off. */
   deaths = 0;
+  /**
+   * Enemy champions and structures somebody else finished off, that this unit
+   * had a hand in. `AttackableUnit.die` decides who had a hand in it, from the
+   * participation ledger `takeDamage` keeps.
+   */
+  assists = 0;
   /** Minions and jungle camps finished off — the CS number. */
   minionsKilled = 0;
   /** Damage that actually landed on someone else, after their shields. */

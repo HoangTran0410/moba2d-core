@@ -11,6 +11,8 @@ import {
   MinionPresets,
   PASSIVE_GOLD_PER_SECOND,
   SELL_REFUND_FRACTION,
+  ASSIST_WINDOW_MS,
+  ASSIST_GOLD_SHARE,
   STARTING_GOLD,
   TURRET_BOUNTY,
 } from './tuningDefaults';
@@ -174,6 +176,8 @@ export const DEFAULT_ECONOMY: Readonly<Required<EconomyTuning>> = Object.freeze(
   championBounty: CHAMPION_BOUNTY,
   turretBounty: TURRET_BOUNTY,
   sellRefund: SELL_REFUND_FRACTION,
+  assistWindowMs: ASSIST_WINDOW_MS,
+  assistGoldShare: ASSIST_GOLD_SHARE,
 });
 
 export type ResolvedEconomy = Required<EconomyTuning>;
@@ -204,6 +208,14 @@ export function resolveEconomy(tuning: MapTuning | undefined): ResolvedEconomy {
     // a generous map: buy, sell, repeat, and the match is decided by whoever
     // clicks fastest.
     sellRefund: Math.min(1, Math.max(0, num(own.sellRefund, DEFAULT_ECONOMY.sellRefund))),
+    assistWindowMs: Math.max(0, num(own.assistWindowMs, DEFAULT_ECONOMY.assistWindowMs)),
+    // Ceilinged like `sellRefund` and for a related reason: above 1 an assist
+    // pays better than the kill it attached to, and the cheapest way to get
+    // rich is to stop short of finishing anybody.
+    assistGoldShare: Math.min(
+      1,
+      Math.max(0, num(own.assistGoldShare, DEFAULT_ECONOMY.assistGoldShare))
+    ),
   };
 }
 

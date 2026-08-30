@@ -110,6 +110,8 @@ const economyLines = (tuning: MapTuning | undefined): MapRuleGroup[] =>
       { key: 'championBounty', label: 'Tiền hạ tướng', format: gold },
       { key: 'turretBounty', label: 'Tiền phá trụ', format: gold },
       { key: 'sellRefund', label: 'Bán lại được', format: pct },
+      { key: 'assistWindowMs', label: 'Cửa sổ hỗ trợ', format: secs },
+      { key: 'assistGoldShare', label: 'Tiền hỗ trợ', format: pct },
     ])
   );
 
