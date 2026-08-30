@@ -66,7 +66,7 @@ describe('a turret and a jungle camp', () => {
     // has hit the champion recently, which is the only thing the rung reads.
     defender.takeDamage(10, boss);
 
-    expect(turret.findTarget()).toBe(boss);
+    expect(turret.findTarget()?.unit).toBe(boss);
   });
 
   it('leaves one alone that is doing nothing to anybody', () => {
@@ -93,7 +93,7 @@ describe('a turret and a jungle camp', () => {
     });
     indexObjects(game, [turret, defender, boss, creep]);
 
-    expect(turret.findTarget()).toBe(creep);
+    expect(turret.findTarget()?.unit).toBe(creep);
   });
 
   it('answers a diving champion before a chewing camp', () => {
@@ -112,7 +112,7 @@ describe('a turret and a jungle camp', () => {
     defender.takeDamage(10, boss);
     second.takeDamage(10, diver);
 
-    expect(turret.findTarget()).toBe(diver);
+    expect(turret.findTarget()?.unit).toBe(diver);
   });
 
   it('holds the camp as a target instead of dropping it next frame', () => {
@@ -123,7 +123,7 @@ describe('a turret and a jungle camp', () => {
     indexObjects(game, [turret, defender, boss]);
     defender.takeDamage(10, boss);
 
-    turret.target = turret.findTarget();
+    turret.target = turret.findTarget()?.unit ?? null;
     expect(turret.target).toBe(boss);
     expect(turret.stillValidTarget(turret.target)).toBe(true);
   });

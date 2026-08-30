@@ -50,6 +50,34 @@
  * of sight and untargetable are the caller's own predicates, which it already
  * has to re-check every frame rather than every scan. This module is passed the
  * answer.
+ *
+ * ## Why the held rung is remembered rather than recomputed
+ *
+ * A rung is read off `recentAttacker`, and `recentAttacker` is **one slot**: the
+ * last enemy to have hit that ally, aged out after `RECENT_ATTACKER_MS`. In a
+ * wave against a wave, every allied minion is being hit by two or three enemies
+ * at once, so that slot is rewritten several times a second and the answer to
+ * "is the thing I am shooting still marked?" flips to *no* the moment one of its
+ * neighbours lands the next swing.
+ *
+ * Recomputing the held rung from that slot therefore said `Infinity` — on no
+ * rung at all — for a target that was, in fact, still hitting an ally. Every
+ * other attacker sat on rung 3, `3 < Infinity`, and the whole wave swapped
+ * targets on every scan: shots spread over five bodies, nothing died, and with
+ * the minion silhouettes turning to face what they fight it was visible as a
+ * lane of minions spinning in place. It was there before they turned; there was
+ * simply nothing on screen that could show it.
+ *
+ * So the caller hands back the rung its target was *taken* on and passes it in
+ * again next scan. The remembered rung is only ever improved, never degraded —
+ * `min` against what the target is marked at now — so a held target that starts
+ * hitting a champion climbs, and one whose victim was hit by somebody else does
+ * not fall.
+ *
+ * This is the source game's rule, which is a rule about *events* and not about a
+ * scan: a minion retargets when its target dies, when its target leaves range,
+ * or when something lands on a strictly higher rung. Not when the rungs it is
+ * already on get reshuffled underneath it.
  */
 
 /** The little a ladder needs to know about a unit. */
@@ -156,12 +184,25 @@ export function nearestTarget<T extends AggroCandidate>(
   return null;
 }
 
+/** A pick, and the rung it was made on. `Infinity` is the nearest-body floor. */
+export interface AggroChoice<T> {
+  unit: T;
+  rank: number;
+}
+
 export interface AggroPick<T> {
   origin: { x: number; y: number };
   /** What is being shot at right now, or null. */
   current: T | null;
   /** Whether `current` is still shootable — the caller's own predicate. */
   held: boolean;
+  /**
+   * The rung `current` was taken on — `AggroChoice.rank` from the call that
+   * produced it, kept by the caller between scans. Defaults to the floor, which
+   * is what a target acquired by any other route (a taunt, a hit taken while
+   * idle) sits on. See the header for why this is not recomputed here.
+   */
+  currentRank?: number;
   /** Hostile, in range, visible, targetable. Everything the scanner may shoot. */
   candidates: readonly T[];
   /** Friendly units the ladder defends. Empty is legal and skips the rungs. */
@@ -183,20 +224,24 @@ export function pickAggroTarget<T extends AggroCandidate>({
   origin,
   current,
   held,
+  currentRank = Infinity,
   candidates,
   allies,
   ladder,
-}: AggroPick<T>): T | null {
+}: AggroPick<T>): AggroChoice<T> | null {
   const marked = markedTarget(origin, candidates, allies, ladder);
 
   // What rung the held target is on, so "better" is a comparison and not a
-  // guess. A target on no rung is `Infinity`, which any rung beats.
+  // guess. The remembered rung against what it is marked at *now*, whichever is
+  // better — climbing is a real change of situation, falling is the volatile
+  // `recentAttacker` slot moving on. See the header.
   const heldRank =
-    held && current && marked
-      ? markedTarget(origin, [current], allies, ladder)?.rank ?? Infinity
+    held && current
+      ? Math.min(currentRank, markedTarget(origin, [current], allies, ladder)?.rank ?? Infinity)
       : Infinity;
 
-  if (marked && marked.rank < heldRank) return marked.unit;
-  if (held && current) return current;
-  return nearestTarget(origin, candidates, ladder);
+  if (marked && marked.rank < heldRank) return marked;
+  if (held && current) return { unit: current, rank: heldRank };
+  const floor = nearestTarget(origin, candidates, ladder);
+  return floor ? { unit: floor, rank: Infinity } : null;
 }

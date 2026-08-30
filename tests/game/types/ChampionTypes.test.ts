@@ -231,7 +231,7 @@ describe('champion and direct-subclass type boundary', () => {
     const farther = new Champion({ game, teamId: 'red', position: createVector(60, 0) });
     indexObjects(game, [monster, turret, nearest, farther]);
 
-    expect(turret.findTarget()).toBe(nearest);
+    expect(turret.findTarget()?.unit).toBe(nearest);
     monster.aggroOn(nearest);
     turret.target = nearest;
     nearest.die({ reviveAfter: 100 });

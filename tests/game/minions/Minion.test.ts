@@ -121,7 +121,7 @@ describe('Minion', () => {
       const champion = new Champion({ game, teamId: 'other', position: createVector(60, 0) });
       indexObjects(game, [minion, enemyMinion, champion]);
 
-      expect(minion.findTarget()).toBe(enemyMinion);
+      expect(minion.findTarget()?.unit).toBe(enemyMinion);
     });
 
     it('takes the nearest of several hostile minions', () => {
@@ -130,7 +130,7 @@ describe('Minion', () => {
       const far = makeMinion({ teamId: TeamId.RED, position: createVector(260, 0) });
       indexObjects(game, [minion, far, near]);
 
-      expect(minion.findTarget()).toBe(near);
+      expect(minion.findTarget()?.unit).toBe(near);
     });
 
     it('falls back to a champion when no minion is in range', () => {
@@ -138,7 +138,7 @@ describe('Minion', () => {
       const champion = new Champion({ game, teamId: 'other', position: createVector(150, 0) });
       indexObjects(game, [minion, champion]);
 
-      expect(minion.findTarget()).toBe(champion);
+      expect(minion.findTarget()?.unit).toBe(champion);
     });
 
     it('never aggros a jungle camp, however close it is', () => {
@@ -209,7 +209,7 @@ describe('Minion', () => {
 
       expect(minion.distanceToLane()).toBeGreaterThan(MINION_LEASH_RANGE);
       // in range, and would be picked if the leash were not consulted
-      expect(minion.findTarget()).toBe(champion);
+      expect(minion.findTarget()?.unit).toBe(champion);
 
       minion.targetLock = champion;
       minion.phase = Minion.PHASES.ATTACK;
@@ -298,7 +298,7 @@ describe('Minion', () => {
       const champion = new Champion({ game, teamId: 'other', position: createVector(100, 0) });
       indexObjects(game, [minion, champion]);
 
-      expect(minion.findTarget()).toBe(champion);
+      expect(minion.findTarget()?.unit).toBe(champion);
 
       champion.isInsideBush = true;
       expect(minion.findTarget()).toBeNull();
@@ -311,7 +311,7 @@ describe('Minion', () => {
 
       champion.isInsideBush = true;
       minion.isInsideBush = true;
-      expect(minion.findTarget()).toBe(champion);
+      expect(minion.findTarget()?.unit).toBe(champion);
     });
   });
 

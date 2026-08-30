@@ -15,7 +15,7 @@ import type {
 } from './AttackableUnit';
 import Champion from './Champion';
 import Monster from './Monster';
-import { pickAggroTarget, type AggroLadder } from '@/game/combat/AggroPriority';
+import { pickAggroTarget, type AggroChoice, type AggroLadder } from '@/game/combat/AggroPriority';
 
 /**
  * How a minion fights and draws — core's three built-in bodies, and the only
@@ -182,6 +182,17 @@ export default class Minion extends AttackableUnit {
   targetLock: AttackableUnit | null = null;
 
   /**
+   * The rung `targetLock` was taken on, carried from one scan to the next.
+   *
+   * Not a cache of something re-derivable: the rung is read off the victim's
+   * `recentAttacker`, which is one slot per unit and is overwritten by whoever
+   * swung last, so re-deriving it says "on no rung" for a target that is still
+   * hitting an ally. `combat/AggroPriority`'s header has the whole account —
+   * this field is what made the wave stop swapping targets every scan.
+   */
+  private _lockRank = Infinity;
+
+  /**
    * Whether this minion has stood on a lane waypoint yet.
    *
    * A wave does not start on its lane: it musters between the two turrets
@@ -269,7 +280,9 @@ export default class Minion extends AttackableUnit {
       // takes it off — `combat/AggroPriority`. `updateAttack` drops a stale
       // lock every frame, which is what makes "am I still holding one" a fair
       // question to ask here once every scan.
-      this.targetLock = leashed ? null : this.findTarget(this.targetLock);
+      const picked = leashed ? null : this.findTarget(this.targetLock, this._lockRank);
+      this.targetLock = picked?.unit ?? null;
+      this._lockRank = picked?.rank ?? Infinity;
       this.phase = this.targetLock ? Minion.PHASES.ATTACK : Minion.PHASES.WALK;
       if (wasAttacking && this.phase === Minion.PHASES.WALK) this.resyncWaypoint();
     }
@@ -370,6 +383,7 @@ export default class Minion extends AttackableUnit {
     // longer see you.
     if (!target || target.toRemove || target.isDead || !target.position || target.isStealthed) {
       this.targetLock = null;
+      this._lockRank = Infinity;
       this.phase = Minion.PHASES.WALK;
       return;
     }
@@ -469,8 +483,14 @@ export default class Minion extends AttackableUnit {
    *
    * @param current The lock being carried in, or null. Only a better rung of
    *   the ladder takes it away — see `combat/AggroPriority`.
+   * @param currentRank The rung `current` was taken on. Passed back in rather
+   *   than recomputed, which is the whole of the fix for a wave that re-aimed
+   *   five times a second; the module's header says why.
    */
-  findTarget(current: AttackableUnit | null = null): AttackableUnit | null {
+  findTarget(
+    current: AttackableUnit | null = null,
+    currentRank = Infinity
+  ): AggroChoice<AttackableUnit> | null {
     const found = this.game.objectManager.queryObjects({
       area: new Circle({
         x: this.position.x,
@@ -506,6 +526,7 @@ export default class Minion extends AttackableUnit {
       origin: this.position,
       current: held ? current : null,
       held,
+      currentRank,
       candidates,
       allies: this.alliesInRange(),
       ladder: Minion.LADDER,
@@ -538,6 +559,9 @@ export default class Minion extends AttackableUnit {
   forceAttackTarget(attacker: AttackableUnit): void {
     if (this.isDead || attacker.isDead) return;
     this.targetLock = attacker;
+    // Taken by force rather than off a rung, so it holds nothing against the
+    // ladder — a taunt keeps its grip by being re-issued, not by outranking.
+    this._lockRank = Infinity;
     this.phase = Minion.PHASES.ATTACK;
   }
 
@@ -551,6 +575,7 @@ export default class Minion extends AttackableUnit {
     if (!attacker || attacker instanceof Monster) return;
     if (attacker.teamId === this.teamId || attacker.isDead) return;
     this.targetLock = attacker;
+    this._lockRank = Infinity;
     this.phase = Minion.PHASES.ATTACK;
   }
 
@@ -563,6 +588,7 @@ export default class Minion extends AttackableUnit {
   die(deathData: UnitDeathData) {
     super.die(deathData);
     this.targetLock = null;
+    this._lockRank = Infinity;
     this.stopMovement();
     this.toRemove = true;
   }

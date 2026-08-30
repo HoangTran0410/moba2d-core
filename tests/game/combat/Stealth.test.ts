@@ -82,7 +82,7 @@ describe('nothing acquires a target it cannot see', () => {
     const champion = new Champion({ game, teamId: 'solo', position: createVector(60, 0) });
     indexObjects(game, [minion, champion]);
 
-    expect(minion.findTarget()).toBe(champion);
+    expect(minion.findTarget()?.unit).toBe(champion);
 
     vanish(champion);
     expect(minion.findTarget()).toBeNull();
@@ -110,7 +110,7 @@ describe('nothing acquires a target it cannot see', () => {
     const champion = new Champion({ game, teamId: 'solo', position: createVector(120, 0) });
     indexObjects(game, [turret, champion]);
 
-    expect(turret.findTarget()).toBe(champion);
+    expect(turret.findTarget()?.unit).toBe(champion);
 
     vanish(champion);
     expect(turret.findTarget()).toBeNull();
@@ -137,7 +137,7 @@ describe('nothing acquires a target it cannot see', () => {
 
     reveal(champion, minion as never);
     expect(champion.isStealthed).toBe(false);
-    expect(minion.findTarget()).toBe(champion);
+    expect(minion.findTarget()?.unit).toBe(champion);
   });
 });
 

@@ -47,7 +47,7 @@ describe('Turret as a team building', () => {
       const champion = new Champion({ game, teamId: 'solo', position: createVector(80, 0) });
       indexObjects(game, [turret, minion, champion]);
 
-      expect(turret.findTarget()).toBe(minion);
+      expect(turret.findTarget()?.unit).toBe(minion);
     });
 
     it('picks the nearest of several hostile minions', () => {
@@ -56,7 +56,7 @@ describe('Turret as a team building', () => {
       const near = makeMinion(TeamId.RED, 150);
       indexObjects(game, [turret, far, near]);
 
-      expect(turret.findTarget()).toBe(near);
+      expect(turret.findTarget()?.unit).toBe(near);
     });
 
     it('falls back to a champion when no minion is in range', () => {
@@ -65,7 +65,7 @@ describe('Turret as a team building', () => {
       const distantMinion = makeMinion(TeamId.RED, DEFAULT_TURRET_PRESET.attackRange + 400);
       indexObjects(game, [turret, champion, distantMinion]);
 
-      expect(turret.findTarget()).toBe(champion);
+      expect(turret.findTarget()?.unit).toBe(champion);
     });
 
     it('never shoots its own side', () => {
@@ -188,8 +188,8 @@ describe('Turret as a team building', () => {
       const nearRed = new Champion({ game, teamId: 'other', position: createVector(1_100, 0) });
       indexObjects(game, [blueTurret, redTurret, champion, nearRed]);
 
-      expect(blueTurret.findTarget()).toBe(champion);
-      expect(redTurret.findTarget()).toBe(nearRed);
+      expect(blueTurret.findTarget()?.unit).toBe(champion);
+      expect(redTurret.findTarget()?.unit).toBe(nearRed);
     });
 
     it('no longer documents itself as a neutral hazard', () => {

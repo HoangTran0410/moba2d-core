@@ -120,7 +120,8 @@ describe('the ladder itself', () => {
       allies: [],
       ladder: LADDER,
     });
-    expect(picked).toBe(held);
+    expect(picked?.unit).toBe(held);
+    expect(picked?.rank).toBe(Infinity);
   });
 
   it('gives it up to a better rung', () => {
@@ -137,7 +138,8 @@ describe('the ladder itself', () => {
       allies: [ally],
       ladder: LADDER,
     });
-    expect(picked).toBe(attacker);
+    expect(picked?.unit).toBe(attacker);
+    expect(picked?.rank).toBe(0);
   });
 
   it('but not to an equal one, which would only thrash', () => {
@@ -154,11 +156,68 @@ describe('the ladder itself', () => {
       origin,
       current: held,
       held: true,
+      currentRank: 0,
       candidates: [held, rival],
       allies: [first, second],
       ladder: LADDER,
     });
-    expect(picked).toBe(held);
+    expect(picked?.unit).toBe(held);
+  });
+
+  /**
+   * The reported bug, in the four objects it takes to produce.
+   *
+   * `recentAttacker` is one slot. The held attacker is still hitting the ally
+   * every swing, but the ally's slot names whoever swung *last*, so asking the
+   * ladder a second time about a target it already gave you answers "on no rung
+   * at all" — and every rival on a real rung then beats `Infinity`.
+   *
+   * There is exactly one ally here on purpose. With two, each attacker can own
+   * a slot of its own and the held one keeps its rung by luck; a wave clash is
+   * several enemies onto the same body, which is the case that broke.
+   */
+  it('holds a target whose victim has since been hit by somebody else', () => {
+    const ally = unit('ally', 'champion', 50);
+    const held = unit('held', 'minion', 300);
+    const rival = unit('rival', 'minion', 40);
+    // Both are hitting `ally`; `rival` landed the more recent swing, so the
+    // one slot names it and `held` is no longer marked anywhere.
+    ally.recentAttacker = rival;
+
+    const picked = pickAggroTarget<Fake>({
+      origin,
+      current: held,
+      held: true,
+      // Rung 1 — where `held` was taken, back when its swing was the recent one.
+      currentRank: 1,
+      candidates: [held, rival],
+      allies: [ally],
+      ladder: LADDER,
+    });
+    expect(picked?.unit).toBe(held);
+    expect(picked?.rank).toBe(1);
+  });
+
+  it('lets a held target climb when it starts hitting a champion', () => {
+    // The remembered rung is a floor under the target, not a ceiling on it: a
+    // minion taken off the nearest-body rung that then attacks an allied
+    // champion is now defended-against at rung 1, and keeps that rung against
+    // any later rival on the same one.
+    const ally = unit('ally', 'champion', 50);
+    const held = unit('held', 'minion', 300);
+    ally.recentAttacker = held;
+
+    const picked = pickAggroTarget<Fake>({
+      origin,
+      current: held,
+      held: true,
+      currentRank: Infinity,
+      candidates: [held],
+      allies: [ally],
+      ladder: LADDER,
+    });
+    expect(picked?.unit).toBe(held);
+    expect(picked?.rank).toBe(1);
   });
 
   it('takes the nearest when it is holding nothing', () => {
@@ -173,7 +232,10 @@ describe('the ladder itself', () => {
       allies: [],
       ladder: LADDER,
     });
-    expect(picked).toBe(near);
+    expect(picked?.unit).toBe(near);
+    // The floor is not a rung, so nothing about it can be defended: the next
+    // scan's `currentRank` has to be beatable by every rule in the ladder.
+    expect(picked?.rank).toBe(Infinity);
   });
 });
 
@@ -205,10 +267,10 @@ describe('a turret, in the world', () => {
     indexObjects(game, [turret, started, nearer]);
 
     // Cold, it takes the nearest — that part never changed.
-    expect(turret.findTarget()).toBe(nearer);
+    expect(turret.findTarget()?.unit).toBe(nearer);
     // Holding one, it keeps it. This is what stopped a tower spraying its
     // shots across a wave without killing any of it.
-    expect(turret.findTarget(started)).toBe(started);
+    expect(turret.findTarget(started)?.unit).toBe(started);
   });
 
   it('answers a minion beating on a champion standing under it', () => {
@@ -220,10 +282,10 @@ describe('a turret, in the world', () => {
     const nearer = minionOf(TeamId.RED, 40);
     indexObjects(game, [turret, ally, attacker, nearer]);
 
-    expect(turret.findTarget()).toBe(nearer);
+    expect(turret.findTarget()?.unit).toBe(nearer);
 
     ally.takeDamage(1, attacker);
-    expect(turret.findTarget()).toBe(attacker);
+    expect(turret.findTarget()?.unit).toBe(attacker);
   });
 
   it('and puts an enemy champion doing it above that minion', () => {
@@ -237,7 +299,7 @@ describe('a turret, in the world', () => {
     ally.takeDamage(1, minion);
     second.takeDamage(1, diver);
 
-    expect(turret.findTarget()).toBe(diver);
+    expect(turret.findTarget()?.unit).toBe(diver);
   });
 });
 
@@ -271,10 +333,10 @@ describe('a wave, in the world', () => {
     const poker = new Champion({ game, teamId: TeamId.RED, position: createVector(200, 0) });
     indexObjects(game, [defender, carry, enemyMinion, poker]);
 
-    expect(defender.findTarget()).toBe(enemyMinion);
+    expect(defender.findTarget()?.unit).toBe(enemyMinion);
 
     carry.takeDamage(1, poker);
-    expect(defender.findTarget()).toBe(poker);
+    expect(defender.findTarget()?.unit).toBe(poker);
   });
 
   it('answers a minion beating on an allied minion over a nearer one', () => {
@@ -284,10 +346,10 @@ describe('a wave, in the world', () => {
     const bystander = minionOf(TeamId.RED, 30);
     indexObjects(game, [defender, beaten, attacker, bystander]);
 
-    expect(defender.findTarget()).toBe(bystander);
+    expect(defender.findTarget()?.unit).toBe(bystander);
 
     beaten.takeDamage(1, attacker);
-    expect(defender.findTarget()).toBe(attacker);
+    expect(defender.findTarget()?.unit).toBe(attacker);
   });
 
   it('holds the minion it is fighting instead of re-picking the nearest', () => {
@@ -296,8 +358,39 @@ describe('a wave, in the world', () => {
     const nearer = minionOf(TeamId.RED, 30);
     indexObjects(game, [defender, started, nearer]);
 
-    expect(defender.findTarget()).toBe(nearer);
-    expect(defender.findTarget(started)).toBe(started);
+    expect(defender.findTarget()?.unit).toBe(nearer);
+    expect(defender.findTarget(started)?.unit).toBe(started);
+  });
+
+  it('does not swap between two enemies beating on the same ally', () => {
+    /**
+     * The reported bug at the level a player sees it: a lane of minions
+     * re-aiming several times a second with nobody having touched them.
+     *
+     * `beaten` is hit by `first` and then by `second`, and its one
+     * `recentAttacker` slot ends up naming `second`. Re-deriving the rung of a
+     * lock on `first` then answers "no rung", `second` sits on rung 2, and the
+     * defender turns — every scan, forever, as the two of them take turns
+     * swinging. Carrying the rung across the scan is what holds it.
+     */
+    const defender = minionOf(TeamId.BLUE, 0);
+    const beaten = minionOf(TeamId.BLUE, 60);
+    const first = minionOf(TeamId.RED, 120);
+    const second = minionOf(TeamId.RED, 130);
+    indexObjects(game, [defender, beaten, first, second]);
+
+    beaten.takeDamage(1, first);
+    const taken = defender.findTarget();
+    expect(taken?.unit).toBe(first);
+
+    // `second` swings next and takes over the slot. Nothing about `first` has
+    // changed: it is in range, alive, and still hitting the same ally.
+    beaten.takeDamage(1, second);
+    expect(beaten.recentAttacker).toBe(second);
+
+    const kept = defender.findTarget(taken!.unit, taken!.rank);
+    expect(kept?.unit).toBe(first);
+    expect(kept?.rank).toBe(taken!.rank);
   });
 
   it('drops a held target that walked out of its range', () => {
@@ -308,6 +401,6 @@ describe('a wave, in the world', () => {
     const near = minionOf(TeamId.RED, 30);
     indexObjects(game, [defender, gone, near]);
 
-    expect(defender.findTarget(gone)).toBe(near);
+    expect(defender.findTarget(gone)?.unit).toBe(near);
   });
 });

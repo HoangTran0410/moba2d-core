@@ -13,7 +13,7 @@ import Monster from '@/game/gameObject/attackableUnits/Monster';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
-import { pickAggroTarget, type AggroLadder } from '@/game/combat/AggroPriority';
+import { pickAggroTarget, type AggroChoice, type AggroLadder } from '@/game/combat/AggroPriority';
 import { DEFAULT_TURRET_PRESET } from '@/game/config/tuningDefaults';
 
 export interface TurretPresetData {
@@ -85,6 +85,14 @@ export default class Turret extends AttackableUnit {
   repairRate: number;
 
   target: AttackableUnit | null = null;
+  /**
+   * The rung `target` was taken on. Held between scans for the same reason a
+   * minion holds one — `combat/AggroPriority`'s header. A tower's ladder only
+   * defends champions, so it churned less than a wave did, but it churned:
+   * two enemies trading on the same ally under the tower took the shots in
+   * turn and neither of them died.
+   */
+  private _targetRank = Infinity;
   _attackCooldown = 0;
   /** Time left until the next full target scan — see `update`. */
   _scanCooldown = 0;
@@ -165,7 +173,9 @@ export default class Turret extends AttackableUnit {
     const holds = this.stillValidTarget(this.target);
     if (this._scanCooldown <= 0 || !holds) {
       this._scanCooldown = AGGRO_SCAN_INTERVAL_MS;
-      this.target = this.findTarget(holds ? this.target : null);
+      const picked = this.findTarget(holds ? this.target : null, holds ? this._targetRank : Infinity);
+      this.target = picked?.unit ?? null;
+      this._targetRank = picked?.rank ?? Infinity;
     }
 
     // `canAttack` for the same reason minions and camps need it: a building
@@ -246,8 +256,15 @@ export default class Turret extends AttackableUnit {
   /**
    * @param current The target being held, or null when there is none to keep —
    *   `update` passes it only while `stillValidTarget` still says yes.
+   * @param currentRank The rung `current` was taken on, carried between scans
+   *   rather than re-derived from a victim's `recentAttacker` — see
+   *   `combat/AggroPriority`, which has the account of why that slot cannot be
+   *   asked twice and give the same answer.
    */
-  findTarget(current: AttackableUnit | null = null): AttackableUnit | null {
+  findTarget(
+    current: AttackableUnit | null = null,
+    currentRank = Infinity
+  ): AggroChoice<AttackableUnit> | null {
     const candidates = this.game.objectManager.queryObjects({
       area: new Circle({
         x: this.position.x,
@@ -271,6 +288,7 @@ export default class Turret extends AttackableUnit {
       origin: this.position,
       current,
       held: current !== null,
+      currentRank,
       candidates,
       allies: this.alliesInRange(),
       ladder: Turret.LADDER,
@@ -320,6 +338,7 @@ export default class Turret extends AttackableUnit {
     this._sinceDamaged = Infinity;
     this._attackCooldown = 0;
     this.target = null;
+    this._targetRank = Infinity;
   }
 
   // ---------------------------------------------------------------- rendering
