@@ -17,6 +17,10 @@ export const CHILL_DURATION_MS = 3_000;
 export default class Chilled extends Buff {
   image: Buff['image'] = AssetManager.get('buff_chill');
   name = 'Nhiễm Lạnh';
+  // No flags and no numbers of its own: this is a *mark*, and what it means is
+  // whatever the kit that reads it does with it. The one thing worth telling
+  // the player is that it is being read at all.
+  description = 'Bị đánh dấu — một số chiêu thức gây thêm hiệu lực lên mục tiêu đang nhiễm lạnh.';
   buffAddType = BuffAddType.RENEW_EXISTING;
 
   draw(): void {

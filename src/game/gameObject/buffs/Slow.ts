@@ -2,6 +2,7 @@ import AssetManager from '@/managers/AssetManager';
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
 import { StatsModifier } from '@/game/gameObject/Stats';
+import { percent, term } from '@/game/gameObject/buffs/describeBuff';
 
 export default class Slow extends Buff {
   image: Buff['image'] = AssetManager.get('buff_slow');
@@ -15,6 +16,7 @@ export default class Slow extends Buff {
   onCreate(): void {
     this.statsModifier = new StatsModifier();
     this.statsModifier.speed.percentBaseBonus = -this.percent;
+    this.description ??= `Giảm ${term(percent(this.percent))} tốc chạy.`;
   }
 
   onActivate(): void {

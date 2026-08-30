@@ -2,6 +2,7 @@ import AssetManager from '@/managers/AssetManager';
 import type { DamageType } from '@/game/combat/Mitigation';
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
+import { DAMAGE_CLASS, DAMAGE_WORD, seconds } from '@/game/gameObject/buffs/describeBuff';
 
 interface Flame {
   baseX: number;
@@ -54,6 +55,19 @@ export default class DamageOverTime extends Buff {
   emberColor: [number, number, number] = [210, 35, 10];
 
   _timeSinceLastTick = 0;
+
+  /**
+   * Written here rather than derived from flags because a burn sets none: its
+   * whole meaning is the two numbers above, and neither is knowable from
+   * anything but this instance. Both are read after the caster has set them —
+   * see `Buff.activateBuff`.
+   */
+  onCreate(): void {
+    this.description ??=
+      `Gây <span class="damage ${DAMAGE_CLASS[this.damageType]}">` +
+      `${Math.round(this.damagePerTick * 10) / 10} sát thương ${DAMAGE_WORD[this.damageType]}</span>` +
+      ` mỗi ${seconds(this.tickInterval)}.`;
+  }
   _flames: Flame[] = [];
   _timeSinceLastSpawn = 0;
 

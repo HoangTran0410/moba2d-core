@@ -53,6 +53,9 @@ export default class Shield extends Buff {
   onCreate(): void {
     if (abilityPowerScales()) this.amount = amplifiedAbilityDamage(this.amount, this.sourceUnit);
     this._initialAmount = this.amount;
+    // The amplified figure, not the one the caster asked for: this is the
+    // pool the tooltip's reader is actually standing behind.
+    this.description ??= `Hấp thụ <span class="heal">${Math.round(this.amount)} sát thương</span> tiếp theo.`;
   }
 
   modifyIncomingDamage(damage: number, _attacker?: AttackableUnit): number {

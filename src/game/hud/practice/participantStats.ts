@@ -17,7 +17,7 @@ import { STAT_ICON } from '@/game/hud/statIcons';
  */
 
 /** How many times `Stats.update` — and so regeneration — runs in a second. */
-const FRAMES_PER_SECOND = 60;
+import { FRAMES_PER_SECOND } from '@/game/gameObject/Stats';
 
 /**
  * `BasicAttackController.attacksPerSecond`'s floor, restated here rather than

@@ -16,6 +16,12 @@ export default class Stasis extends Buff {
   // fc0908ad8621e96ad635b5bac67e09f663ec80735efd732b10f07d8c498443aa
   image: Buff['image'] = AssetManager.get('buff_stasis');
   name = 'Bất Động';
+  // The flags alone would say "stunned, untargetable, phases units" and miss
+  // the half that matters — the damage immunity, which is a
+  // `modifyIncomingDamage` override rather than a flag.
+  description =
+    'Miễn mọi sát thương, nhưng không thể di chuyển, đánh thường hay dùng chiêu ' +
+    'và không thể bị chọn làm mục tiêu.';
   buffAddType = BuffAddType.REPLACE_EXISTING;
 
   // Stunned is what actually locks movement and casting: Stats.updateActionState

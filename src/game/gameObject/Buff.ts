@@ -1,4 +1,5 @@
 import BuffAddType from '@/game/enums/BuffAddType';
+import { describeStatusFlags } from '@/game/gameObject/buffs/describeBuff';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type { GameObjectRuntimeContext } from './GameObject';
 import type AttackableUnit from './attackableUnits/AttackableUnit';
@@ -155,6 +156,13 @@ export default class Buff {
   activateBuff(): void {
     if (!this._created) {
       this.onCreate();
+      // After `onCreate`, because that is the first moment a buff is fully
+      // built — callers set `percent`, `amount` and `bonuses` on the instance
+      // after the constructor returns, which is what `onCreate` exists for —
+      // and only when nothing has written one, so a buff that describes itself
+      // always wins. See `buffs/describeBuff.ts` for why the control effects
+      // are derived from their own flags rather than written out.
+      this.description ??= describeStatusFlags(this.statusFlagsToEnable, this.statusFlagsToDisable);
       this._created = true;
     }
     if (this._activated) return;

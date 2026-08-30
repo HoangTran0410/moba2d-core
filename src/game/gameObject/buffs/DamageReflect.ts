@@ -1,4 +1,5 @@
 import Buff from '@/game/gameObject/Buff';
+import { percent, term } from '@/game/gameObject/buffs/describeBuff';
 import type { DamageType } from '@/game/combat/Mitigation';
 import CombatText from '@/game/gameObject/helpers/CombatText';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
@@ -54,6 +55,16 @@ export default class DamageReflect extends Buff {
    * both and nothing here has to branch.
    */
   flat = 0;
+
+  onCreate(): void {
+    const shares = [
+      this.percent ? `${term(percent(this.percent))} sát thương nhận vào` : '',
+      this.flat ? `${term(String(this.flat))} sát thương` : '',
+    ].filter(Boolean);
+    if (shares.length) {
+      this.description ??= `Phản lại ${shares.join(' và ')} cho kẻ tấn công.`;
+    }
+  }
 
   /**
    * What the returned damage is. Magic by default — thorns return magic in

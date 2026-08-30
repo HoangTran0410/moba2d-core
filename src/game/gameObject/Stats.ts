@@ -116,7 +116,19 @@ export class Stat {
 
 import { hasFlag } from '@/utils/index';
 import ActionState from '@/game/enums/ActionState';
-import StatusFlags from '@/game/enums/StatusFlags';
+import StatusFlags, { deniesAttacking, deniesCasting, deniesMovement } from '@/game/enums/StatusFlags';
+
+/**
+ * What `healthRegen` and `manaRegen` are denominated in.
+ *
+ * `update()` below adds the whole stat once per frame, so the stored number is
+ * *per frame* — 0.06 health, which is a figure no player can do anything with.
+ * Every place that shows regeneration to a human has to multiply by this, and
+ * it lives here because this is the file that makes it true; the practice
+ * panel and the buff tooltip both read it rather than each writing their own
+ * 60 and drifting the day the tick rate changes.
+ */
+export const FRAMES_PER_SECOND = 60;
 
 export class StatsModifier {
   maxHealth = new StatModifier(0);
@@ -438,47 +450,13 @@ export default class Stats {
     this.setActionState(ActionState.STEALTHED, hasFlag(statusFlag, StatusFlags.Stealthed));
     this.setActionState(ActionState.TARGETABLE, hasFlag(statusFlag, StatusFlags.Targetable));
 
-    this.setActionState(
-      ActionState.CAN_MOVE,
-      !(
-        hasFlag(statusFlag, StatusFlags.Charmed) ||
-        hasFlag(statusFlag, StatusFlags.Feared) ||
-        hasFlag(statusFlag, StatusFlags.Immovable) ||
-        hasFlag(statusFlag, StatusFlags.Rooted) ||
-        hasFlag(statusFlag, StatusFlags.Stunned) ||
-        hasFlag(statusFlag, StatusFlags.Suppressed)
-      )
-    );
-
-    this.setActionState(
-      ActionState.CAN_CAST,
-      !(
-        hasFlag(statusFlag, StatusFlags.Silenced) ||
-        hasFlag(statusFlag, StatusFlags.Charmed) ||
-        hasFlag(statusFlag, StatusFlags.Feared) ||
-        // A taunt takes the decision away, not the weapon: `CAN_ATTACK` and
-        // `CAN_MOVE` stay on deliberately, because `Taunt` spends both of them
-        // on the taunted champion every frame. It is the only control effect in this list
-        // that appears in exactly one of the three.
-        hasFlag(statusFlag, StatusFlags.Taunted) ||
-        hasFlag(statusFlag, StatusFlags.Stunned) ||
-        hasFlag(statusFlag, StatusFlags.Suppressed)
-      )
-    );
-
-    // Disarm is the dedicated flag, but everything that takes control of a unit
-    // stops its swings too — a stunned or fleeing champion attacking nothing in
-    // particular would read as a bug.
-    this.setActionState(
-      ActionState.CAN_ATTACK,
-      !(
-        hasFlag(statusFlag, StatusFlags.Disarmed) ||
-        hasFlag(statusFlag, StatusFlags.Charmed) ||
-        hasFlag(statusFlag, StatusFlags.Feared) ||
-        hasFlag(statusFlag, StatusFlags.Stunned) ||
-        hasFlag(statusFlag, StatusFlags.Suppressed)
-      )
-    );
+    // The three lists live on `StatusFlags` itself, because the buff tooltip
+    // has to say what a control effect takes away and the only honest way to
+    // write that sentence is to ask the predicate the engine obeys. See their
+    // own comments there, including why a taunt appears in exactly one.
+    this.setActionState(ActionState.CAN_MOVE, !deniesMovement(statusFlag));
+    this.setActionState(ActionState.CAN_CAST, !deniesCasting(statusFlag));
+    this.setActionState(ActionState.CAN_ATTACK, !deniesAttacking(statusFlag));
   }
 
   update() {

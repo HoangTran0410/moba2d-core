@@ -32,6 +32,9 @@ import Buff from '@/game/gameObject/Buff';
  */
 export default class Invulnerable extends Buff {
   name = 'Bất Tử';
+  // Not derivable: this buff sets no status flag at all — it works by
+  // returning 0 from `modifyIncomingDamage`, which no tooltip can read.
+  description = 'Miễn mọi sát thương.';
   buffAddType = BuffAddType.REPLACE_EXISTING;
 
   modifyIncomingDamage(): number {

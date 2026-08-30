@@ -1,6 +1,7 @@
 import AssetManager from '@/managers/AssetManager';
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
+import { percent, term } from '@/game/gameObject/buffs/describeBuff';
 import { StatsModifier } from '@/game/gameObject/Stats';
 import ParticleSystem from '@/game/gameObject/helpers/ParticleSystem';
 
@@ -45,6 +46,7 @@ export default class Speedup extends Buff {
   onCreate(): void {
     this.statsModifier = new StatsModifier();
     this.statsModifier.speed.percentBaseBonus = this.percent;
+    this.description ??= `Tăng ${term(percent(this.percent))} tốc chạy.`;
 
     this.game.objectManager.addObject(this.particleSystem);
   }

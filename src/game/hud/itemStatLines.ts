@@ -44,8 +44,15 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
   visionRadius: 'Tầm nhìn',
 };
 
-/** Stats a player reads as a percentage rather than as points. */
-const AS_PERCENT = new Set<ItemStatKey>([
+/**
+ * Stats a player reads as a percentage rather than as points.
+ *
+ * Exported because a buff asks the same question — `buffs/describeBuff.ts`
+ * lists what a `StatAmp` grants — and the answer is a property of the stat,
+ * not of the shop. Note who is *not* on it: `attackSpeed` is points in this
+ * engine, and a second copy of this list written from memory gets that wrong.
+ */
+export const AS_PERCENT = new Set<ItemStatKey>([
   'critChance',
   'critDamage',
   'omnivamp',

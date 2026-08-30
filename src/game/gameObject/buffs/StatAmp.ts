@@ -1,5 +1,6 @@
 import BuffAddType from '@/game/enums/BuffAddType';
 import Buff from '@/game/gameObject/Buff';
+import { describeStatBonuses } from '@/game/gameObject/buffs/describeBuff';
 import { StatsModifier } from '@/game/gameObject/Stats';
 
 /**
@@ -45,6 +46,9 @@ export default class StatAmp extends Buff {
     // built here rather than at construction so callers can set `bonuses` first
     this.statsModifier = new StatsModifier();
     this.applyBonuses();
+    // Read off `bonuses`, the same object the modifier was just built from, so
+    // the sentence cannot promise a stat this buff does not apply.
+    this.description ??= describeStatBonuses(this.bonuses, this.stacks);
   }
 
   /**
