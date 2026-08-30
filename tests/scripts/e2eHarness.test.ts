@@ -7,7 +7,7 @@
  * `pageerror`/`console` capture, same CDP session, same `check()`, same
  * `dispatch`/`touchStart`/`touchMove`/`touchEnd`. 32 lines of code, copied
  * three times verbatim and four more times with a different viewport, plus a
- * stray `tests/e2e/_s.mjs` in the working tree that was an eighth copy made by
+ * stray `_s.mjs` in the working tree that was an eighth copy made by
  * hand.
  *
  * That is what makes a `src/` change expensive: the boot is not the part

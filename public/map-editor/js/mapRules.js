@@ -8,7 +8,7 @@
    lâu) rồi xuất ra dưới dạng có kiểu. Nhờ vậy:
 
      - bảng "Kiểm tra" trong editor,
-     - `tests/maps/Lanes.test.ts` của pack,
+     - `lol/tests/maps/Lanes.test.ts` của pack,
      - và bất cứ cổng nào của core,
 
    đều hỏi cùng một hàm với cùng những con số. Hai bản cài đặt là cách mà
@@ -242,8 +242,8 @@
      cấu trúc: lane nối hai nhà, trụ nằm trên lane, điểm gom lính đứng được,
      bãi quái có cặp thì đối xứng.
 
-     Mấy luật này trước đây nằm trong `tests/maps/Lanes.test.ts` và
-     `tests/maps/summonersRift.test.ts` của pack, dưới dạng **bảng toạ độ gõ
+     Mấy luật này trước đây nằm trong `lol/tests/maps/Lanes.test.ts` và
+     `lol/tests/maps/summonersRift.test.ts` của pack, dưới dạng **bảng toạ độ gõ
      tay**: "trụ top của xanh là ba điểm này", "lane bắt đầu đúng tại
      (400, 6075)", "hàng trụ có đúng 11 cái". Một bảng như thế không phải là
      luật, nó là ảnh chụp map tại một thời điểm — kéo một cái trụ trong editor

@@ -28,7 +28,7 @@
  * scaffold's fixed `Hero`/`Q` default — then registers the new spell in
  * `pack.ts`: the import, the champion's own `spells: [...]` roster entry,
  * and the code half's `spells: {...}` factory map. Ported from
- * `scripts/new-spell.mjs`'s `registerInBarrel`/`registerInChampionKit`
+ * `scripts/pack-add.mjs`'s `registerInBarrel`/`registerInChampionKit`
  * (lines 568-633 as of this writing) — the working prior art for rewriting
  * a barrel and a champion's kit in place — minus that script's
  * `docs/spell-names-vi.json` dependency, which is Riot's own localisation
@@ -152,7 +152,7 @@ const BARREL_MARKER = '// moba2d-pack-add spell: new barrel entries go above thi
  * Inserts `line` immediately before the first (and, if this pack's own
  * `pack.ts` still matches the scaffold's shape, only) occurrence of
  * `marker`. Reports which happened, the same three outcomes
- * `scripts/new-spell.mjs`'s own `registerInBarrel`/`registerInChampionKit`
+ * `scripts/pack-add.mjs`'s own `registerInBarrel`/`registerInChampionKit`
  * report: already present, written, or the marker is gone and this needs a
  * human.
  */

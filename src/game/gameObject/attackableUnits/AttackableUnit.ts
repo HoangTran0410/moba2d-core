@@ -110,7 +110,7 @@ export default class AttackableUnit extends GameObject {
    * bush the player had not lit, and could target one across the map the
    * player had. `combat/Vision.ts` (`canSee` / `PredefinedFilters.visibleTo`)
    * answers that question per observer and is the only thing that may decide
-   * what a unit is allowed to do; `tests/game/spells/target-vision-seam.test.ts`
+   * what a unit is allowed to do; `target-vision-seam.test.ts`
    * keeps the old name from coming back.
    *
    * It lives here rather than on `GameObject` because the fog only ever

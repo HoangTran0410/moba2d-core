@@ -13,7 +13,7 @@ import Spell from '../../../src/game/gameObject/Spell';
  *
  * Everything here is a plain string transform, so it is driven with plain
  * strings; the wiring half — that the HUD reads the scaled one — is
- * `tests/game/hud/hudState.spellDescription.test.ts`.
+ * `hudState.spellDescription.test.ts`.
  */
 
 const power = (value: number) => ({ stats: { abilityPower: { value } } });

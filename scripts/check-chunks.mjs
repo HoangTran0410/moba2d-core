@@ -189,7 +189,7 @@ const PREGAME_ENGINE_LEAK = ['DamageReflect', 'TrueSight', 'ParticleSystem', 'Mi
 // Task 4 is the fix that comment predicted was coming: `MapDefinition` split
 // into an eager `MapSummary` (`id`/`name`/`size`/`factions`) and a lazy
 // `geometry` — `summonersRift.ts` now exports only the summary, and
-// `src/content/maps/summonersRiftGeometry.ts` (the terrain, the slots, the
+// `summonersRiftGeometry.ts` (the terrain, the slots, the
 // lanes, and the `?raw` JSON import that dominates their weight) sits behind
 // `() => import('./summonersRiftGeometry')`, fetched only once a match is
 // starting. **The split alone did not move a single byte on the first

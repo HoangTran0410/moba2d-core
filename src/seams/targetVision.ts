@@ -10,7 +10,7 @@ import { exemptionFor, readSource, stripComments, walkTsFiles } from './shared';
  *
  * The worked example (a leap ability finding a camp through a wall) used to
  * live as a hand-written scan of `packs/riot/spells/` in
- * `tests/game/spells/target-vision-seam.test.ts`; content-pack-extraction
+ * `target-vision-seam.test.ts`; content-pack-extraction
  * batch 5 task 6 fix round 1 removed that file — its whole population was
  * pack content (core's own `coreSpells/` neither auto-locks nor reads the
  * fog flag) — in favour of `packs/riot`'s own `check-seams` script running

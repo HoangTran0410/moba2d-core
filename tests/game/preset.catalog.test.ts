@@ -15,7 +15,7 @@
  * left:
  *
  *   - The completeness audit moved to the pack's own suite
- *     (`tests/catalogCompleteness.test.ts` there), reformulated against
+ *     (`catalogCompleteness.test.ts` there), reformulated against
  *     `data.ts`/`code.ts`/`generated/spellCatalog.ts` directly — the pack's
  *     own barrel and its own generated catalogue — rather than through
  *     `listSpellCatalog()`/`spellGroups()`, neither of which core publishes

@@ -18,7 +18,7 @@ import vm from 'node:vm';
  *
  * The alternative was tried for about an hour and is what this replaces: the
  * same three thresholds written out in the editor *and* in a pack's own
- * `tests/maps/Lanes.test.ts`. Two copies of a rule drift, and the drift has a
+ * `lol/tests/maps/Lanes.test.ts`. Two copies of a rule drift, and the drift has a
  * direction — the editor says `0 lỗi`, the pack's push gate says no, and the
  * person holding both is told the map is fine by the only tool that could
  * have helped them fix it. That is not hypothetical; it is the report this

@@ -79,7 +79,7 @@ describe('the bundled-pack loader', () => {
     // === 'function'` alone (fix round 1's finding) is true of both a real
     // class and the still-unresolved lazy loader that produces it — an
     // arrow function and a class are the same JS type. `.prototype` is the
-    // discriminator `tests/packs/riot/pack.test.ts` already uses for the
+    // discriminator `pack.test.ts` already uses for the
     // opposite claim ("every entry is a loader, not a resolved class"): a
     // class always has one, an arrow-function loader never does. `.name`
     // pins it further — a bare `class Recall` grabs `Recall` as the name

@@ -79,7 +79,7 @@ const ASIDE = '.core-npm';
 
 /**
  * Written beside the link with the linked core's path in it, read by the
- * pack's own `scripts/check-core-link.mjs`. An `npm install` (or `bun
+ * pack's own `scripts/pack-core-link.mjs`. An `npm install` (or `bun
  * install`) in the pack replaces the pack->core symlink with the registry/git
  * copy and leaves everything else in the scope directory alone — so this file
  * outliving the symlink is how the pack detects the stomp and can print the

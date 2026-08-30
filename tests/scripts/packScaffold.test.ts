@@ -493,7 +493,7 @@ describe('the scaffolded pack is publishable, not only buildable', () => {
       expect(files, `${required} is missing from the scaffold`).toContain(required);
     }
 
-    // `scripts/write-manifest.mjs` is deliberately NOT in that list any more.
+    // `scripts/pack-manifest.mjs` is deliberately NOT in that list any more.
     // It was a file the scaffold copied, and every copy that existed had
     // drifted from it — one hardcoding `icon: 'icon.png'` where this tests
     // for the file, which points a published manifest at a 404 the day

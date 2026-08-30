@@ -790,7 +790,7 @@ describe('pack-core-boundary: a pack reaches core through its public subpaths an
 
 describe("pack-asset-key: a pack resolves art through its own manifest, never core's", () => {
   // Moved here by the whole-branch review of batch 5: it used to be
-  // `tests/content/packAssetKeyBoundary.test.ts`, a scan of all of `packs/`
+  // `packAssetKeyBoundary.test.ts`, a scan of all of `packs/`
   // living in core's own suite, so a violation planted in a pack spell
   // reddened *core's* build — the inversion `pack-core-boundary` had already
   // been created to fix a task earlier, and one with the same shelf life

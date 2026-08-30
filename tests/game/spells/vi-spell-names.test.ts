@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  *
  * The names were hand-written and 97 of them had drifted — Pantheon W read
  * "Khiên Xung Kích" against the official "Khiên Trời Giáng", R read "Thiên
- * Thạch Giáng Thế" against "Trời Sập". `scripts/wiki/sync-spell-names.mjs`
+ * Thạch Giáng Thế" against "Trời Sập". `lol/scripts/wiki/sync-spell-names.mjs`
  * pulls the real strings from Data Dragon's `vi_VN` locale into
  * `docs/abilities/generated/spell-names-vi.json` and rewrites the files; this
  * is the offline half, so the rule holds on every run of the suite without

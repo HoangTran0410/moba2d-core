@@ -189,7 +189,7 @@ export {
 export { checkPackCoreBoundary } from './packCoreBoundary';
 export { checkPackAssetKey } from './packAssetKey';
 // `stripComments` joins `scanImports` here in content-pack-extraction batch 6
-// task 5: `tests/packs/riot/noCoreReach.test.ts` — a pack's own scan for a
+// task 5: `lol/tests/noCoreReach.test.ts` — a pack's own scan for a
 // `vi.mock()` naming a core path, the one shape `scanImports` cannot see at
 // all (it is an ordinary call, not import syntax) — needs to strip comments
 // itself before running its own textual match, the same way every other

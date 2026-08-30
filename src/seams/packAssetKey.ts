@@ -19,7 +19,7 @@ import { codeOnly, readSource, walkTsFiles } from './shared';
  *
  * ## Why this is a seam and not a test in core's suite
  *
- * It used to be `tests/content/packAssetKeyBoundary.test.ts`, which walked
+ * It used to be `packAssetKeyBoundary.test.ts`, which walked
  * *all of* `packs/` from inside core's own Vitest run. The whole-branch
  * review of content-pack-extraction batch 5 found it by planting a real
  * violation in a pack spell and watching **core's** build go red — the exact

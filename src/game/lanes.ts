@@ -28,7 +28,7 @@ export interface LaneWaypoint {
  * installs one explicitly, the same way a real match does —
  * `tests/game/minions/Lanes.test.ts`'s own "the active lane set" describe
  * covers the mechanism with synthetic waypoints, and
- * `tests/packs/riot/maps/Lanes.test.ts` covers Summoner's Rift's own shape
+ * `lol/tests/maps/Lanes.test.ts` covers Summoner's Rift's own shape
  * against the pack's real data.
  *
  * A `let`, not a `const`. `setActiveLanes` **reassigns** this to a fresh

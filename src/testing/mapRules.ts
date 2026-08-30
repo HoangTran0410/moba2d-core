@@ -6,7 +6,7 @@
  * The rules are implemented once, in `public/map-editor/js/mapRules.js`, and
  * republished typed by `src/seams/mapRules.ts`. A pack cannot import that: a
  * pack's tests are held to a named list of core subpaths
- * (`tests/noCoreReach.test.ts`), and `@moba2d/core/seams` is not on it and
+ * (`lol/tests/noCoreReach.test.ts`), and `@moba2d/core/seams` is not on it and
  * should not be — that barrel carries the source scanners and the boundary
  * checker, which are core's own tooling and nothing a pack has business
  * reaching into.

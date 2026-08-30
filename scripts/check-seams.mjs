@@ -59,7 +59,7 @@
  *     extraction rests on reddened *core's* build and nothing of the pack's).
  *   - `pack-asset-key` — "a pack resolves art through its own manifest, never
  *     a bare key from core's" (batch 5 whole-branch review; before it, that
- *     rule was `tests/content/packAssetKeyBoundary.test.ts`, a core-side scan
+ *     rule was `packAssetKeyBoundary.test.ts`, a core-side scan
  *     of all of `packs/`, with the same inversion).
  *
  * So this script resolves the `package.json` that owns the scanned tree

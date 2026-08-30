@@ -21,7 +21,7 @@ const ROOT = join(__dirname, '../..');
  * `verify`'s script list. Nothing asserted that ordering, and script ordering is
  * not a mechanism.
  *
- * (`scripts/wiki/check-abilities.mjs` asks a deliberately different and
+ * (`lol/scripts/wiki/check-abilities.mjs` asks a deliberately different and
  * narrower question — does the root *being validated* contain a pack's tree —
  * and is named `packTreeIsPresent` so it cannot be mistaken for a third answer
  * to this one. `checkAbilities(root)` runs against temporary fixture roots with

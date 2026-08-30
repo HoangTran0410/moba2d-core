@@ -13,7 +13,7 @@
  * `tests/game/attackableUnits/attack-gate-seam.test.ts`: a static source
  * scan, walking every real file rather than trusting a rule that lives only
  * in a code-review comment. `stripComments` is `src/seams/importScan.ts`'s
- * shared parser (formerly `tests/support/importScan.ts` — see that file's
+ * shared parser (formerly `importScan.ts` — see that file's
  * own header) rather than a hand-rolled one: CLAUDE.md names the exact
  * failure a second copy risks — a `//` comment containing `/*` blinding six
  * scans at once.
@@ -38,11 +38,11 @@
  * is another task's file to edit, not this scan's to carve a hole for.
  *
  * Two more used to be excused here — `scripts/wiki/*.mjs` ("leaves with the
- * pack in a later task") and `scripts/new-spell.mjs` ("superseded, slated
+ * pack in a later task") and `scripts/pack-add.mjs` ("superseded, slated
  * for deletion rather than migration") — and both predictions came true:
  * content-pack-and-repo-split batch 6 task 10 deleted `scripts/wiki/`
  * outright and moved it into `@moba2d/content-riot`'s own repository, and
- * `scripts/new-spell.mjs` is gone the same way. Neither path exists in this
+ * `scripts/pack-add.mjs` is gone the same way. Neither path exists in this
  * checkout any more, so `readdirSync` above cannot produce either one for
  * `EXEMPTIONS` to match — whole-branch fix pass: the two entries are
  * removed rather than left carrying a future-tense reason for something

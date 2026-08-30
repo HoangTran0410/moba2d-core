@@ -1,6 +1,6 @@
 /**
  * The bug `packs/riot/maps/summonersRiftGeometry.ts`'s own header and
- * `tests/packs/riot/maps/Lanes.test.ts`'s `MIN_SEGMENT_TURRET_CLEARANCE`
+ * `lol/tests/maps/Lanes.test.ts`'s `MIN_SEGMENT_TURRET_CLEARANCE`
  * check exist to prevent — a lane waypoint sitting on (or a lane segment
  * passing through) a turret's own body, so a wave drives into the building,
  * is shoved around it by `UnitCollisionSystem`, and re-acquires the same

@@ -12,13 +12,13 @@ import { srcSourceFilePaths } from '../support/srcTree';
  * files (fountains, all three lanes' waypoints, all eleven jungle slots) —
  * lifted verbatim before the move, not recomputed from anything under `src/`
  * after it, or a scan that reads its own answer back would prove nothing.
- * `tests/content/coordinateBoundaryFixture.test.ts`-style self-check is
+ * `coordinateBoundaryFixture.test.ts`-style self-check is
  * folded into the first `it` below: the needle list itself must be non-empty,
  * or an empty list would make every other assertion vacuously pass.
  *
  * Written to fail first: run against the pre-move tree, it names
  * `src/game/lanes.ts` (30 pairs — three lanes' worth of waypoints, fountains
- * included) and `src/game/mapPresets.ts` (11 pairs — every jungle slot) as
+ * included) and `mapPresets.ts` (11 pairs — every jungle slot) as
  * the two offenders. Recorded in `task-6-report.md`.
  */
 

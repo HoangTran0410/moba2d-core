@@ -1182,7 +1182,7 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    * hình học, và không ai hỏi.
    *
    * Phần tính toán **không nằm ở đây**: nó ở `js/mapRules.js`, một bản duy
-   * nhất mà cả `tests/maps/Lanes.test.ts` của pack cũng nạp (qua
+   * nhất mà cả `lol/tests/maps/Lanes.test.ts` của pack cũng nạp (qua
    * `src/seams/mapRules.ts`). Hai bản cài đặt là cách mà editor báo xanh còn
    * cổng báo đỏ, tức đúng cái đang được sửa. Việc của hàm này chỉ là dịch dữ
    * liệu của editor — polygon lưu theo toạ độ tương đối — sang toạ độ world

@@ -11,7 +11,7 @@
  *
  * ## Why it lives in `src/seams/` and not under `tests/`
  *
- * It used to live at `tests/support/importScan.ts`, and that file's own
+ * It used to live at `importScan.ts`, and that file's own
  * header argued the placement: the seams beside it are content-authoring
  * rules a *pack* runs against its own tree, whereas "what does this file
  * import" was a question about this engine's own source that no pack ever

@@ -40,7 +40,7 @@ import { srcSourceFilePaths } from '../support/srcTree';
  *   file's own header) is that core statically imports a pack's factory
  *   today and dynamically imports the same shape from a URL in Stage 2. It
  *   imports `packs/reference/pack` and `packs/riot/pack` directly — the
- *   latter used to go through `src/content/bundledPack.ts`'s own adapter,
+ *   latter used to go through `bundledPack.ts`'s own adapter,
  *   deleted in batch 4 task 7 (that file's own header called itself
  *   "scaffolding with a date on it" since batch 2). Exempted as a whole
  *   file rather than picked apart line by line: every reach it makes into

@@ -81,7 +81,7 @@ export function describeContents(contents: PackContents | undefined): string {
  * The install confirmation holds a manifest and nothing else — no registry to
  * count, because none of the pack's code has run and, until the player presses
  * through, none of it will. So the pack's own build declares the numbers
- * (`scripts/write-manifest.mjs`) and this renders them through
+ * (`scripts/pack-manifest.mjs`) and this renders them through
  * `describeContents`, deliberately, so the line a player reads *before*
  * installing is word for word the line their row carries afterwards.
  *

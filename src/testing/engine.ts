@@ -130,7 +130,7 @@ export { validatePack } from '../content/validate';
  * a field and a champion and takes a minute to fix — a scaffolded pack ships
  * four abilities and a portrait because this function requires them of
  * anything `playable` — and none of them could be discovered in less than a
- * deploy cycle. The scaffold's own `tests/packInstallable.test.ts` is what
+ * deploy cycle. The scaffold's own `packInstallable.test.ts` is what
  * says so out loud, in that pack's test run.
  *
  * `validatePack` above is the stricter one and needs the code half too; this

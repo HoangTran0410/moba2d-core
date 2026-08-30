@@ -9,7 +9,7 @@ import { playableKits } from '../../../src/game/preset';
  *
  * The pack-specific assertions that used to live beside this one — the six
  * `ATTACK` role profiles' own gaps, ordering and dps bands — moved to
- * `tests/attackProfiles.test.ts` in the pack's own repository in a fix
+ * `lol/tests/attackProfiles.test.ts` in the pack's own repository in a fix
  * round: `ATTACK` itself lives in a pack's own `data.ts` (a role taxonomy is
  * the roster's vocabulary, not the engine's), so the test that guards its
  * specific numbers lives with it. This one stays here because it names no

@@ -24,7 +24,7 @@ import { scanImports, stripComments } from '@/seams/importScan';
  * Batch 4 moved the 240 spells (and everything else Riot-content) out from
  * under `src/game/` entirely, into `packs/riot/`. The specifier this scan
  * used to catch the barrel with — `spells/index`, back when the barrel lived
- * at `src/game/gameObject/spells/index.ts` — no longer names anything: the
+ * at `src/game/gameObject/coreSpells/index.ts` — no longer names anything: the
  * barrel is `packs/riot/spells/index.ts` now, a path with no `/game/` in it
  * at all, so `reachesTheMatch`'s `/game/`-substring test walks straight past
  * it. A pregame file reaching `packs/riot/spells` (the exact 1.1MB the

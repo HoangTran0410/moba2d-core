@@ -41,8 +41,8 @@
  * ## Why `scripts/` is walked too
  *
  * A test can reach a pack without any `packs/` string of its own, through a
- * *build script* it exercises. `tests/wiki/import-abilities.test.ts` used to
- * be exactly this: it drove `scripts/wiki/import-abilities.mjs`, whose
+ * *build script* it exercises. `lol/tests/wiki/import-abilities.test.ts` used to
+ * be exactly this: it drove `lol/scripts/wiki/import-abilities.mjs`, whose
  * asset-download path loaded `packs/riot/scripts/generate-assets.mjs` to
  * regenerate the pack's own manifest, and nine of its seventeen tests failed
  * on the drill's first clean run with

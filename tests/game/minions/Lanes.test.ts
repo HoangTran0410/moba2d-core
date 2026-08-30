@@ -21,7 +21,7 @@ import Game from '../../../src/game/Game';
  * cleanup of it — not any particular map's shape. Batch 4 task 6 moved
  * Summoner's Rift's own waypoints (and the wall/turret clearance every
  * segment of them has to hold) out of `src/game/lanes.ts` and into the pack;
- * `tests/packs/riot/maps/Lanes.test.ts` is what checks that data now, against
+ * `lol/tests/maps/Lanes.test.ts` is what checks that data now, against
  * the pack's own module. Two small, synthetic lane sets stand in here —
  * nothing below cares what shape a real lane has, only that the mechanism
  * installs, serves and releases whichever one it is handed.

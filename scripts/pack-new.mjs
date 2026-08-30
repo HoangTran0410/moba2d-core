@@ -14,13 +14,13 @@
  * pack that only typechecks against a checkout of core sitting beside it is
  * a package; what makes it a thing a *player* can install is
  * `dist/manifest.json` at a URL, which is `runtime-entry.ts` +
- * `vite.config.ts` + `scripts/write-manifest.mjs` + the workflow. Every one
+ * `vite.config.ts` + `scripts/pack-manifest.mjs` + the workflow. Every one
  * of those was something a pack author had to discover by reading an
  * existing pack's source.
  *
  * Every file it writes is read from `scripts/templates/pack/**` — real
  * files under version control, not inline template literals. That is a
- * deliberate reversal of `scripts/new-spell.mjs`, the prior art this
+ * deliberate reversal of `scripts/pack-add.mjs`, the prior art this
  * generator (and `pack-add.mjs`) replaces for pack content: that script's
  * spell and test bodies are JS template strings, and its `TESTS_DIR`
  * pointed at an abandoned directory for a day before anyone noticed,

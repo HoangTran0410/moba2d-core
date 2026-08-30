@@ -1,6 +1,6 @@
 /**
  * End-to-end drive of the in-game practice panel — the three-tab modal that
- * reshapes a *running* match (`src/game/hud/PracticePanel.vue` over
+ * reshapes a *running* match (`PracticePanel.vue` over
  * `src/game/MatchDirector.ts`).
  *
  * Boots its own Vite dev server, opens the game in system Chrome through

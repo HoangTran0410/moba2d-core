@@ -44,8 +44,8 @@ function packedPaths(): string[] {
  * `packs/`. The `files` field it gained fixed that and this test asserted it
  * — `!path.startsWith('packs/')` — and stayed green while the same tarball
  * shipped `assets/source-manifest.json` (296 rows of Riot image provenance),
- * `scripts/wiki/*` (the Riot Wiki import toolchain), `scripts/new-spell.mjs`
- * and a dead `scripts/register-champions.mjs` hardcoding 19 champion names.
+ * `scripts/wiki/*` (the Riot Wiki import toolchain), `scripts/pack-add.mjs`
+ * and a dead `register-champions.mjs` hardcoding 19 champion names.
  * A path prefix answers "is it in the pack directory". The question is "is
  * it Riot's", and none of those four ever lived in the pack directory.
  *

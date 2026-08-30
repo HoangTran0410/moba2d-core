@@ -53,8 +53,8 @@ describe('which tests need a pack this checkout does not have', () => {
     // engine rule against a real subject.
     //
     // Signal 3 ("through a build script rather than a module") had exactly
-    // one member — `tests/wiki/import-abilities.test.ts`, which drove
-    // `scripts/wiki/import-abilities.mjs`'s pack-asset-download path — and
+    // one member — `lol/tests/wiki/import-abilities.test.ts`, which drove
+    // `lol/scripts/wiki/import-abilities.mjs`'s pack-asset-download path — and
     // content-pack-and-repo-split batch 6 task 10 moved both the test and
     // the script it drove out of this repository entirely, along with the
     // rest of `scripts/wiki/`. There is nothing left under `tests/` for that
@@ -118,7 +118,7 @@ describe('which tests need a pack this checkout does not have', () => {
     expect(withoutRiot).not.toContain('tests/game/spells/terrain-field-seam.test.ts');
     // Each of the three above must actually exist, or `not.toContain` is
     // vacuously true — which is what this assertion was for a fourth entry,
-    // `tests/content/packAssetKeyBoundary.test.ts`, from the moment the
+    // `packAssetKeyBoundary.test.ts`, from the moment the
     // whole-branch review moved that scan into the `pack-asset-key` seam and
     // deleted the file. A named file that is gone reads exactly like a named
     // file that is correctly kept in the run.
