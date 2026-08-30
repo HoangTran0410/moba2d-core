@@ -25,13 +25,23 @@
  * Both are landscape (`OrientationHint.vue`), so the difference is not width,
  * it is height and how much of the world the panel may cover. With room, the
  * grid and the pane sit side by side and the pane shows a placeholder until
- * something is picked. On a short screen the panel stays narrow — it must not
- * cover the champion and the fountain, since the rule it enforces is about
- * where the player is *standing* — and the two share the space by turns: the
+ * something is picked. On a short screen the two share the space by turns: the
  * grid fills it, picking a tile swaps the pane in over it, and the pane's
  * "‹ Danh sách" button (hidden entirely on a wide screen) swaps back. One
  * `has-detail` class on this element is the whole switch; see `styles/shop.css`
- * for the media query that decides which layout is in force.
+ * for the media query that decides which layout is in force. The panel still
+ * may not cover the champion and the fountain, since the rule it enforces is
+ * about where the player is *standing*.
+ *
+ * The markup is arranged for the *short* screen, because that is the one with
+ * a problem. A landscape phone gives this sheet about 350px of height and
+ * nearly 850px of width, and it was spending ~170 of the height on a header, a
+ * search band, a chip row and the bag — the shelf got two rows of tiles while
+ * half the screen beside the panel stayed empty. So nothing that can be a rail
+ * down the side is written as a band across the top: the search box is a child
+ * of `.shop-header`, and the chips are a direct child of the panel so the
+ * compact grid can stand them on their end beside `.shop-main` rather than
+ * above it. Both read the same on a wide screen, where the row has the room.
  *
  * ## The bag strip is the only place a phone can rearrange a bag
  *
@@ -336,6 +346,35 @@ const lifted = (slot: number): boolean => {
         Cửa hàng
         <span v-if="subject" class="shop-subject">{{ subject }}</span>
       </h3>
+
+      <!--
+        The search box, in the header rather than on a line of its own beneath
+        it.
+
+        On a phone held sideways this panel is about 350px tall, and the title,
+        the box, the chips and the bag were taking ~170 of them: half the sheet
+        was chrome and the grid it exists to show was two rows deep. A box on
+        its own line costs ~38px of that, for one control that is already the
+        same height as the four beside it up here — and the header has width to
+        spare on every screen this ships to, because the panel is landscape
+        everywhere (`OrientationHint.vue`).
+
+        `.lazy` is deliberately absent — the grid narrows as the letters land,
+        which is the whole feel of the control. `@keydown.escape` clears rather
+        than closing the shop: an empty box over a filtered grid is the one
+        state a player gets stuck in without a way out that is not the mouse.
+      -->
+      <label class="shop-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input
+          v-model="searchText"
+          type="search"
+          placeholder="Tìm trang bị…"
+          aria-label="Tìm trang bị"
+          @keydown.escape.stop="clearFilter()"
+        />
+      </label>
+
       <div class="shop-gold">
         <i class="fa-solid fa-coins"></i>
         <span>{{ gold }}</span>
@@ -395,66 +434,62 @@ const lifted = (slot: number): boolean => {
     </p>
 
     <!--
-      Finding one item without reading the shelf.
+      The chips: "something with armour", for the player who knows what they
+      want and not what it is called. They come off `stats`, the same list the
+      detail pane prints, so a chip exists exactly when some item on this shelf
+      grants that stat. They stay put when the panel closes (`shopFilter.ts`),
+      which is what makes them worth having: the shop is opened and shut
+      several times on one trip to the fountain.
 
-      The box first because it is the faster of the two when a player already
-      has a name; the chips under it for when they do not — "something with
-      armour". Both stay put when the panel closes (`shopFilter.ts`), which is
-      what makes them worth having: this panel is opened and shut several times
-      on one trip to the fountain.
+      One wrapping row above the grid where there is height for it, and a
+      vertical icon rail down the left of the grid where there is not — the
+      same trade every phone MOBA's shop makes, because a landscape phone is
+      wide and short and a band across the top is the most expensive place to
+      put anything. `styles/shop.css` decides which; the markup is one.
 
-      `.lazy` is deliberately absent — the grid narrows as the letters land,
-      which is the whole feel of the control. `@keydown.escape` clears rather
-      than closing the shop: an empty box under a filtered grid is the one
-      state a player gets stuck in without a way out that is not the mouse.
+      The word is in the DOM either way. The rail hides `.shop-chip-label` and
+      the button carries the same word as its `title` and its `aria-label`, so
+      on a phone the label is a tooltip and an accessible name rather than
+      something that was never written — which is the difference between a
+      compressed control and a row of pills nobody can read.
     -->
-    <div class="shop-filter">
-      <label class="shop-search">
-        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <input
-          v-model="searchText"
-          type="search"
-          placeholder="Tìm trang bị…"
-          aria-label="Tìm trang bị"
-          @keydown.escape.stop="clearFilter()"
-        />
-      </label>
+    <div v-if="chips.length" class="shop-chips">
+      <button
+        v-for="chip of chips"
+        :key="chip.key"
+        type="button"
+        class="shop-chip"
+        :class="{ 'is-on': filter.stats.includes(chip.key) }"
+        :title="chip.label"
+        :aria-label="chip.label"
+        :aria-pressed="filter.stats.includes(chip.key)"
+        @click="toggleStat(chip.key)"
+        v-tap="() => toggleStat(chip.key)"
+      >
+        <!-- The stat's own icon, from the table the roster's stat sheet reads
+             too (`statIcons.ts`) — an anchor to find a chip by without reading
+             the whole row, and the only thing left of the chip once the rail
+             takes the word away. -->
+        <i class="fa-solid shop-chip-icon" :class="chip.icon" aria-hidden="true"></i>
+        <span class="shop-chip-label">{{ chip.label }}</span>
+        <span class="shop-chip-count">{{ chip.count }}</span>
+      </button>
 
-      <div v-if="chips.length" class="shop-chips">
-        <button
-          v-for="chip of chips"
-          :key="chip.key"
-          type="button"
-          class="shop-chip"
-          :class="{ 'is-on': filter.stats.includes(chip.key) }"
-          :aria-pressed="filter.stats.includes(chip.key)"
-          @click="toggleStat(chip.key)"
-          v-tap="() => toggleStat(chip.key)"
-        >
-          <!-- The stat's own icon, from the table the roster's stat sheet
-               reads too (`statIcons.ts`) — an anchor to find a chip by
-               without reading the whole row. The word stays: seventeen
-               wordless pills is a puzzle, not a filter. -->
-          <i class="fa-solid shop-chip-icon" :class="chip.icon" aria-hidden="true"></i>
-          {{ chip.label }}
-          <span class="shop-chip-count">{{ chip.count }}</span>
-        </button>
-
-        <!-- Only while something is on. A permanently visible clear button is
-             a control that does nothing most of the time, and it would push
-             the chips it clears off the end of the row. -->
-        <button
-          v-if="filtering"
-          type="button"
-          class="shop-chip is-clear"
-          title="Bỏ hết bộ lọc"
-          @click="clearFilter()"
-          v-tap="() => clearFilter()"
-        >
-          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-          Xoá lọc
-        </button>
-      </div>
+      <!-- Only while something is on. A permanently visible clear button is a
+           control that does nothing most of the time, and it would push the
+           chips it clears off the end of the row. -->
+      <button
+        v-if="filtering"
+        type="button"
+        class="shop-chip is-clear"
+        title="Bỏ hết bộ lọc"
+        aria-label="Bỏ hết bộ lọc"
+        @click="clearFilter()"
+        v-tap="() => clearFilter()"
+      >
+        <i class="fa-solid fa-xmark shop-chip-icon" aria-hidden="true"></i>
+        <span class="shop-chip-label">Xoá lọc</span>
+      </button>
     </div>
 
     <div class="shop-main">

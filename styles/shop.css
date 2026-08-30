@@ -20,16 +20,24 @@
    cover.
 
    With room, both columns are on screen at once and the pane shows a
-   placeholder until a tile is picked. Below `COMPACT` (a short viewport, which
-   is every phone held sideways, or a genuinely narrow window) the panel
-   narrows — it must keep the champion and the fountain visible, because the
-   rule it enforces is about where the player is *standing*, and a sheet that
-   hides that is a sheet that hides the rule — and the two columns take turns
-   instead: the grid fills the panel, `.has-detail` swaps the pane in over it,
-   and `.shop-detail-back` (which exists only in this mode) swaps back.
+   placeholder until a tile is picked. In a window too thin to hold both, they
+   take turns instead: the grid fills the panel, `.has-detail` swaps the pane
+   in over it, and `.shop-detail-back` (which exists only in that mode) swaps
+   back. That is `NARROW`, and it is a width question — whether both columns
+   fit — which is the whole of what it decides. A landscape phone is not
+   narrow, so it keeps both.
 
-   Everything below is written wide-first; the compact block at the bottom of
-   the file is the only place that overrides it.
+   `SHORT` is the other one, and it is the larger of the two: on a viewport
+   with no height to spare it moves every band it can off the vertical axis,
+   since a landscape phone is wide and short and the sheet was more chrome
+   than shelf. The stat chips become an icon rail beside the grid, the search
+   box lives in the header in both layouts, and the column becomes a four-row
+   grid to hold the result. The two blocks are keyed to one axis each on
+   purpose: they were a single two-clause query until a phone lost its detail
+   pane over its height. The long comments on the blocks have the arithmetic.
+
+   Everything below is written wide-first; the two blocks at the bottom of the
+   file are the only places that override it.
    =================================================================== */
 
 /* Over the match and *not* over a pause — see `ShopPanel.vue`. Right-hand side
@@ -75,16 +83,52 @@
   vertical-align: middle;
 }
 
+/* Shrinks rather than pushing, now that the search box shares the row: the
+   subject badge can be a champion's whole name, and a title that refused to
+   give ground would squeeze the box down to nothing on the narrowest phone. */
 .shop-header h3 {
   margin: 0;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 1em;
   color: var(--hextech-gold, #c8aa6e);
 }
 
+/* The search box, in the header — see `src/game/hud/shop/ShopPanel.vue` for
+   why it is not a band of its own. `30px` and `border-box` so it is exactly
+   as tall as the undo, redo and close buttons beside it and the header keeps
+   the single-row height it had before the box arrived. */
+.shop-search {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 260px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #ffffff1f;
+  border-radius: 5px;
+  background: #10141c;
+  color: #7c8798;
+}
+
+/* `margin-left: auto` is what right-aligns the whole control cluster, and it
+   has to be here rather than on the title: the title used to be `flex: 1` and
+   was itself the spacer, until the search box joined the row and the title had
+   to stop growing to make room for it. With neither growing, the slack
+   collected at the end of the row and the close button sat in the middle of a
+   wide header — reported exactly that way. This puts the gap in one place: the
+   title and the box read as the left of the row, the gold, the history and the
+   close as the right of it. */
 .shop-gold {
   display: flex;
   align-items: center;
+  margin-left: auto;
   gap: 5px;
   color: #ffe2a3;
   font-weight: bold;
@@ -147,28 +191,6 @@
 
 /* ----------------------------------------------------------------- filter */
 
-/* The search box and the stat chips, between the header and the shelf.
-
-   `flex: none` for the reason `.shop-warning` above it carries it: `.shop-main`
-   is the only thing in this column allowed to take the leftover height, and a
-   chip row that wrapped to three lines would otherwise eat the grid. */
-.shop-filter {
-  flex: none;
-  padding: 7px 8px 0;
-  border-bottom: 1px solid #fff1;
-}
-
-.shop-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border: 1px solid #ffffff1f;
-  border-radius: 5px;
-  background: #10141c;
-  color: #7c8798;
-}
-
 .shop-search:focus-within {
   border-color: #c8aa6e88;
 }
@@ -194,11 +216,19 @@
   appearance: none;
 }
 
+/* One wrapping row between the header and the shelf, where there is height
+   for it. `flex: none` for the reason `.shop-warning` carries it: `.shop-main`
+   is the only thing in this column allowed to take the leftover height, and a
+   chip row that wrapped to three lines would otherwise eat the grid.
+
+   The compact block at the foot of this file stands it on its end. */
 .shop-chips {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 7px 0;
+  padding: 7px 8px;
+  border-bottom: 1px solid #fff1;
 }
 
 .shop-chip {
@@ -244,6 +274,13 @@
 .shop-chip:hover .shop-chip-icon,
 .shop-chip.is-on .shop-chip-icon {
   opacity: 1;
+}
+
+/* The word. An element of its own rather than a bare text node, because the
+   compact rail hides it and CSS cannot hide text it has no handle on — the
+   button keeps it as `title` and `aria-label`, so nothing is lost but pixels. */
+.shop-chip-label {
+  white-space: nowrap;
 }
 
 /* How many items on the shelf grant it. Dim, because it is the chip's
@@ -904,40 +941,123 @@
 }
 
 /* =====================================================================
-   COMPACT — a phone held sideways, or a window that is genuinely small.
+   SHORT — a viewport with no height to spare: every phone held sideways.
 
-   The height clause is the one that fires on a phone: landscape is wide and
-   short (844x390 on the iPhone this is tested at), so a `max-width` rule
-   alone would never see it. The width clause is for a narrow desktop window,
-   where the two columns would each be too thin to read.
+   Height only. Landscape is wide and short (844x390 on the iPhone this is
+   tested at), so this is the clause that fires on a phone — and it is
+   deliberately *not* the clause that decides whether the detail pane fits.
+   That is `NARROW`, below, and the two were one query until a phone with 844
+   pixels of width lost its detail pane because it was 390 tall.
 
-   In this mode the grid and the pane take turns rather than sitting side by
-   side, switched by `.has-detail` on the panel.
+   ## Everything here is one trade: pay in width, get height back
+
+   The report was that the shelf was a slot rather than a shop. It was: the
+   panel came to 343px on that iPhone (`88vh`), and the header, the search
+   band, the chip row and the bag took ~170 of them — half the sheet was
+   chrome and the shelf got ~173px, which is two rows of tiles. Meanwhile 452
+   of the phone's 844px of width sat empty beside a 392px panel.
+
+   That is the shape every phone MOBA's shop already answers, and they all
+   answer it the same way: nothing that can be a rail down the side is allowed
+   to be a band across the top. So here the search box moved into the header
+   (`ShopPanel.vue`), the chips stand on their end as an icon rail beside the
+   grid, the bag loses a few pixels of padding, and the panel grows wider to
+   pay for the rail. The stack becomes a grid, because a rail beside the shelf
+   and a bag under both is not a column any more:
+
+       head head        header, with the search box in it
+       warn warn        only when out of range
+       rail main        chips | (shelf or detail)
+       bag  bag         the six slots
+
+   Chrome falls to ~88px and the shelf to ~279px — up about three fifths, and
+   at 620px the panel holds the rail, six tiles to a row *and* the detail pane
+   at once. (Arithmetic off the declared paddings and control heights, not a
+   measurement: there is no layout engine in this repo's tests.) Both `auto`
+   tracks collapse to nothing when their element is absent, which is how the
+   missing warning and the `v-if`'d chips cost no space at all.
+
+   ## What the width costs, and what pays for it
+
+   620px on an 844px screen leaves the panel starting at x=216, and
+   `Game.camera.target` is the player's own position — so the champion sits at
+   x=422 and the panel now covers them. The old 392px width cleared that by
+   22px, and the header of this file used to claim the clearance as the reason
+   for it: the rule the shop enforces is about where the player is *standing*.
+
+   That claim is worth keeping honest. There is no width that both shows two
+   panes and clears the centre here — two panes need ~470px and the centre
+   needs ~414 — so one of the two had to go, and the pane is the one that was
+   asked for. What carries the rule instead is what was built for it since:
+   `.shop-warning` names it in words the moment it is broken, and the fountain
+   draws its shop reach as a ring on the ground (`structures/Fountain.ts`), so
+   "am I in range" is answered on approach rather than by watching your own
+   feet through a gap beside a sheet.
    ===================================================================== */
-@media (max-width: 700px), (max-height: 560px) {
+@media (max-height: 560px) {
   .shop-panel {
     right: 8px;
-    width: min(392px, calc(100vw - 16px));
-    max-height: min(88vh, 460px);
+    width: min(620px, calc(100vw - 16px));
+    max-height: min(94vh, 520px);
+
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'head head'
+      'warn warn'
+      'rail main'
+      'bag  bag';
+  }
+
+  .shop-header {
+    grid-area: head;
+    gap: 8px;
+    padding: 6px 8px;
+  }
+
+  .shop-warning {
+    grid-area: warn;
+  }
+
+  .shop-main {
+    grid-area: main;
+    min-width: 0;
+  }
+
+  .shop-bag {
+    grid-area: bag;
   }
 
   .shop-grid {
     grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
   }
 
-  /* One line of chips that scrolls sideways, not four lines that wrap.
+  /* The chips, stood on their end: a scrolling icon rail down the left of the
+     grid instead of a row of pills above it. Seventeen wrapped chips took a
+     third of the sheet before a single item was drawn; a rail takes 48px of
+     width, which is the axis this screen has to spare.
 
-     The panel is 460px tall at most here and the grid has to stay the largest
-     thing in it; fifteen wrapped chips would take a third of that before a
-     single item is drawn. `pan-x` for the reason `.shop-shelf` needs `pan-y`:
-     `GameScene` cancels every touch on the page, so this strip scrolls only
-     because the property says it may. */
+     The word goes — see `.shop-chip-label` below — and the count stays under
+     the icon, because "armour: 11 items" is what tells you a chip is worth
+     tapping. `pan-y` for the reason `.shop-shelf` needs it: `GameScene`
+     cancels every touch on the page, so this scrolls only because the
+     property says it may. */
   .shop-chips {
+    grid-area: rail;
+    flex-direction: column;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+    align-items: stretch;
+    gap: 3px;
+    width: 48px;
+    padding: 6px 5px;
+    border-bottom: none;
+    border-right: 1px solid #fff1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
+    touch-action: pan-y;
     scrollbar-width: none;
   }
 
@@ -945,12 +1065,91 @@
     display: none;
   }
 
+  .shop-chip {
+    flex-direction: column;
+    gap: 0;
+    padding: 5px 0 4px;
+    border-radius: 6px;
+    line-height: 1.15;
+  }
+
+  /* The word is what does not fit, and it is the one part of the chip that is
+     recoverable: the button carries it as `title` and `aria-label`, so it is
+     still a tooltip and still an accessible name. On a desktop the icon is an
+     anchor beside the word; here it is the whole chip, which is the trade the
+     rail is. */
+  .shop-chip-label {
+    display: none;
+  }
+
+  .shop-chip-icon {
+    width: auto;
+    font-size: 1.2em;
+    opacity: 0.85;
+  }
+
+  .shop-chip-count {
+    font-size: 0.9em;
+  }
+
   /* The clear button is the one chip that must not be scrolled past — it is
-     the way out of a filter that emptied the grid. */
+     the way out of a filter that emptied the grid. Last in the rail, so
+     `bottom` is the edge it pins itself to. */
   .shop-chip.is-clear {
     position: sticky;
-    right: 0;
+    bottom: 0;
     background: #161b25;
+  }
+
+  /* Trimmed, not removed. Six slots is the answer to "is there room for what
+     I am about to buy", and `NO_SLOT` is a refusal a player should see coming
+     — so the strip stays on screen and gives back what it can: eight pixels
+     of padding and four of slot. 36px is still a comfortable target, and it
+     is a *drag* target rather than a tap, so it is forgiving of a near miss
+     in a way a button is not. */
+  .shop-bag {
+    padding: 4px 8px;
+  }
+
+  .shop-bag-slot {
+    width: 36px;
+    height: 36px;
+  }
+
+  .shop-bag-slot img,
+  .shop-bag-blank {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* =====================================================================
+   NARROW — a window too thin to hold both columns at once.
+
+   A width decision, and *only* a width decision. This used to be one clause
+   of the compact query above, which meant a landscape phone — short, and
+   844px wide — took the take-turns layout because of its **height**, and lost
+   a detail pane it had ample room for. Reported exactly that way: "chiều
+   ngang đủ thì cứ hiện detail side-by-side".
+
+   So the two axes ask two different questions. Height asks how much chrome
+   the sheet can afford (above). Width asks whether the grid and the pane can
+   both be on screen, which is the only thing take-turns is about: below this
+   the grid fills the panel, `.has-detail` swaps the pane in over it, and
+   `.shop-detail-back` — which exists only here — swaps back. The chip rail
+   goes with the grid, since a filter for a shelf that is off screen is a
+   control acting on nothing.
+
+   Ordered after the short block so its narrower panel wins where both apply.
+   ===================================================================== */
+@media (max-width: 700px) {
+  .shop-panel {
+    right: 8px;
+    width: min(468px, calc(100vw - 16px));
+  }
+
+  .shop-grid {
+    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
   }
 
   /* Full width when it is in force, and absent when it is not. */
@@ -967,6 +1166,12 @@
 
   .shop-panel.has-detail .shop-detail {
     display: flex;
+  }
+
+  /* It filters the grid, so it goes wherever the grid goes. Left up while the
+     pane is showing it would be a control acting on something off screen. */
+  .shop-panel.has-detail .shop-chips {
+    display: none;
   }
 
   /* The way back to the grid. A real target, not a chevron on its own: it is
@@ -987,16 +1192,5 @@
     font-size: 0.8em;
     text-align: left;
     cursor: pointer;
-  }
-
-  .shop-bag-slot {
-    width: 40px;
-    height: 40px;
-  }
-
-  .shop-bag-slot img,
-  .shop-bag-blank {
-    width: 22px;
-    height: 22px;
   }
 }
