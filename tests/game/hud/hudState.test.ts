@@ -212,6 +212,88 @@ describe('computeHudState', () => {
     expect(slowRow.timeLeftText).toBe(4);
   });
 
+  /**
+   * The row is hoverable now, and a hover panel is handed the display *object*
+   * (`HudInteractions.showSpellInfo` keeps the reference it was given, not a
+   * copy of its fields). So a fresh object every 50ms is not merely wasteful —
+   * it freezes the panel's countdown at whatever it said the instant the
+   * pointer arrived, for as long as the pointer stays there.
+   */
+  it('hands back the same row object for a buff that is still up', () => {
+    const buff = (timeElapsed: number) => ({
+      image: { path: 'buff.png', key: 'buff_x', status: 'ready' },
+      name: 'Chậm',
+      description: 'Giảm tốc chạy.',
+      duration: 5_000,
+      timeElapsed,
+      stackId: 'slow',
+    });
+    const game = { player: fakePlayer({ buffs: [buff(1_000)] }) } as any;
+    const first = computeHudState(game)!.buffs[0];
+
+    game.player = fakePlayer({ buffs: [buff(3_000)] });
+    const second = computeHudState(game)!.buffs[0];
+
+    expect(second).toBe(first);
+    // …and the same object is carrying the newer numbers, which is the half
+    // that makes reusing it worth anything.
+    expect(second.timeLeftText).toBe(2);
+    expect(second.note).toBe('còn 2s');
+  });
+
+  it('carries the name, the prose and a duration line for the hover panel', () => {
+    const player = fakePlayer({
+      buffs: [
+        {
+          image: { path: 'buff.png', key: 'buff_x', status: 'ready' },
+          name: 'Choáng',
+          description: 'Không thể di chuyển hay đánh.',
+          duration: 1_500,
+          timeElapsed: 500,
+          stackId: 'stun_hover',
+        },
+      ],
+    });
+    const row = computeHudState({ player } as any)!.buffs[0];
+
+    expect(row.name).toBe('Choáng');
+    expect(row.description).toBe('Không thể di chuyển hay đánh.');
+    expect(row.note).toBe('còn 1s');
+  });
+
+  it('says a permanent buff is permanent rather than counting it down', () => {
+    const player = fakePlayer({
+      buffs: [
+        {
+          image: { path: 'item.png', key: 'buff_x', status: 'ready' },
+          name: 'Nội tại',
+          duration: 0,
+          timeElapsed: 90_000,
+          stackId: 'permanent_hover',
+        },
+      ],
+    });
+    const row = computeHudState({ player } as any)!.buffs[0];
+
+    expect(row.note).toBe('vĩnh viễn');
+    expect(row.description).toBe('');
+  });
+
+  it('counts the layers in the note when a buff stacks', () => {
+    const layer = (timeElapsed: number) => ({
+      image: { path: 'buff.png', key: 'buff_x', status: 'ready' },
+      name: 'Cộng dồn',
+      duration: 4_000,
+      timeElapsed,
+      stackId: 'stacking_hover',
+    });
+    const player = fakePlayer({ buffs: [layer(1_000), layer(2_000), layer(3_000)] });
+    const row = computeHudState({ player } as any)!.buffs[0];
+
+    expect(row.stacks).toBe(3);
+    expect(row.note).toBe('còn 3s · 3 lớp');
+  });
+
   it('shows no countdown for a permanent buff instead of counting into the negatives', () => {
     // duration 0 is Buff's own convention for "never expires" — an item
     // passive three minutes into a match used to render "-172" under its icon.

@@ -80,6 +80,21 @@ export interface BuffDisplay {
   timeElapsed: number;
   timeLeftText: number;
   stacks: number;
+  /**
+   * What the buff calls itself — `Buff.name`, which core's own buffs set to a
+   * Vietnamese word ('Choáng', 'Khiên', 'Chậm') and everything else inherits
+   * from its class name.
+   *
+   * Here because the row is hoverable now. Six unlabelled icons under the
+   * portrait is a row a player can only learn by having been hit by each of
+   * them once and remembering the picture; the name and the remaining time
+   * were both already known and simply never shown.
+   */
+  name: string;
+  /** `Buff.description`, '' for the many that declare none. */
+  description: string;
+  /** The one line under the name in the hover panel: how long is left. */
+  note: string;
 }
 
 /** One source line inside a death-recap attacker row. */
@@ -416,6 +431,34 @@ function buildPassive(player: any): PassiveDisplay | null {
 }
 
 /**
+ * One `BuffDisplay` object per kind of buff, reused between reads.
+ *
+ * `buildBuffs` used to mint a fresh object every 50ms, which this file's own
+ * `HUD_UPDATE_INTERVAL_MS` comment already calls out as the thing to avoid —
+ * and it became a correctness problem, not just a cost one, the moment the row
+ * grew a hover panel. `HudInteractions.showSpellInfo` keeps the *object* it was
+ * handed, so a countdown read off a snapshot taken at hover time freezes at
+ * whatever it said then and sits there being wrong for as long as the pointer
+ * rests on the icon.
+ *
+ * Keyed by `stackId ?? constructor`, the same identity the aggregation below
+ * groups on: both are stable for the life of the process, and the map is
+ * bounded by how many kinds of buff the installed content declares — not by
+ * how many are applied, and not by how long the match runs.
+ */
+const buffDisplays = new Map<unknown, BuffDisplay>();
+
+/** How long is left, in the words the hover panel puts under the name. */
+function buffNote(duration: number, timeLeft: number, stacks: number): string {
+  const parts: string[] = [];
+  // duration 0 is `Buff`'s "never expires" — a countdown there would be a
+  // number counting down to nothing.
+  parts.push(duration > 0 ? `còn ${Math.max(0, Math.ceil(timeLeft / 1000))}s` : 'vĩnh viễn');
+  if (stacks > 1) parts.push(`${stacks} lớp`);
+  return parts.join(' · ');
+}
+
+/**
  * One row per kind of buff, not per stack: one stacking spell alone can hold hundreds of
  * StatAmp instances, which used to render hundreds of icons. The longest
  * remaining instance drives the countdown.
@@ -445,18 +488,30 @@ function buildBuffs(player: any): BuffDisplay[] {
         existing.timeElapsed = buff.timeElapsed;
         existing.timeLeftText = Math.ceil(timeLeft / 1000);
       }
+      existing.note = buffNote(
+        existing.duration,
+        existing.duration - existing.timeElapsed,
+        existing.stacks
+      );
       continue;
     }
 
-    buffRows.set(key, {
-      image: buff.image.path,
-      duration: buff.duration,
-      timeElapsed: buff.timeElapsed,
-      // duration 0 is `Buff`'s "never expires": no countdown, rather than the
-      // negative seconds a permanent buff used to count into.
-      timeLeftText: buff.duration ? Math.ceil(timeLeft / 1000) : 0,
-      stacks,
-    });
+    // The same object as last read when this kind was up then — see
+    // `buffDisplays`. Every field is written here, so an entry coming back
+    // after a gap carries nothing over from the last time it was on.
+    const display = buffDisplays.get(key) ?? ({} as BuffDisplay);
+    buffDisplays.set(key, display);
+    display.image = buff.image.path;
+    display.duration = buff.duration;
+    display.timeElapsed = buff.timeElapsed;
+    // duration 0 is `Buff`'s "never expires": no countdown, rather than the
+    // negative seconds a permanent buff used to count into.
+    display.timeLeftText = buff.duration ? Math.ceil(timeLeft / 1000) : 0;
+    display.stacks = stacks;
+    display.name = buff.name ?? '';
+    display.description = buff.description ?? '';
+    display.note = buffNote(buff.duration, timeLeft, stacks);
+    buffRows.set(key, display);
   }
   return [...buffRows.values()];
 }

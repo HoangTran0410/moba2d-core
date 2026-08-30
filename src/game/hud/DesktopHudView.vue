@@ -124,6 +124,13 @@ const lifted = (slot: number): boolean => {
           >{{ hud.spellHover.manaCost }} mana</span
         >
       </div>
+      <!-- A buff's own line, where a spell prints its cooldown and cost: how
+           long is left, and how many layers. Nothing casts a buff, so the two
+           numbers above are always zero for one and the row would otherwise be
+           blank. -->
+      <div v-else-if="hud.spellHover.note" class="costs">
+        <span>{{ hud.spellHover.note }}</span>
+      </div>
     </div>
     <!--
       The stat block, above the prose and only for an item — a spell hover
@@ -278,8 +285,27 @@ const lifted = (slot: number): boolean => {
           <p>{{ state.stats.mana }} / {{ state.stats.maxMana }}</p>
         </div>
       </div>
+      <!--
+        Hoverable, on the same handlers and into the same panel as a spell or an
+        item: `BuffDisplay` carries `name`, `description` and `note`, and
+        nothing in the tooltip's own markup below is buff-specific. Six
+        unlabelled icons is a row a player can only learn by being hit by each
+        of them once and remembering the picture — the name and the time left
+        were both already known and simply never shown.
+
+        `hudState.ts` reuses one display object per kind of buff, which is what
+        makes the countdown in the panel keep counting: `showSpellInfo` holds
+        the object it was handed, so a fresh one every 50ms would have frozen
+        the note at whatever it said when the pointer arrived.
+      -->
       <div class="buffs">
-        <div v-for="(buff, index) of state.buffs" :key="index" class="buff">
+        <div
+          v-for="(buff, index) of state.buffs"
+          :key="index"
+          class="buff"
+          @mouseover="hud.mouseover(buff, $event)"
+          @mouseout="hud.mouseout(buff)"
+        >
           <img crossorigin="anonymous" :src="buff.image" alt="buff" />
           <span v-if="buff.timeLeftText > 0">{{ buff.timeLeftText }}</span>
           <span v-if="buff.stacks > 1" class="stacks">{{ buff.stacks }}</span>

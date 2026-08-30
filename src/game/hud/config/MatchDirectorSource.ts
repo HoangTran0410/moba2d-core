@@ -66,6 +66,7 @@ import type {
 } from './MatchConfigSource';
 import { ABILITY_LETTERS } from './rosterVisuals';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
+import { statLinesFor } from '@/game/hud/itemStatLines';
 
 /**
  * What this source needs from the HUD. `HudInteractions` satisfies it
@@ -273,10 +274,20 @@ export default class MatchDirectorSource implements MatchConfigSource {
     for (let slot = 0; slot < INVENTORY_SIZE; slot++) {
       const item = held[slot];
       if (!item) {
-        slots.push({ filled: false, url: '', name: '' });
+        slots.push({ filled: false, url: '', name: '', cost: 0, stats: [], description: '' });
         continue;
       }
-      slots.push({ filled: true, url: item.icon?.url ?? '', name: item.def?.name ?? '' });
+      // The def's own numbers and prose, so the panel a square opens says the
+      // same thing the shop card does — `statLinesFor` is the shop's own
+      // builder, not a second one that could format `+8%` differently here.
+      slots.push({
+        filled: true,
+        url: item.icon?.url ?? '',
+        name: item.def?.name ?? '',
+        cost: item.def?.cost ?? 0,
+        stats: statLinesFor(item.def),
+        description: item.def?.description ?? '',
+      });
     }
 
     return slots;

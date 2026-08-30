@@ -60,6 +60,7 @@ import type { RenderQuality } from '@/game/managers/ObjectManager';
 import type { ScoreLine, StatGroup } from '@/game/hud/practice/participantStats';
 import type { SpellDisplay } from '@/game/config/spellCatalog';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
+import type { StatLine } from '@/game/hud/itemStatLines';
 
 /** One Q/W/E/R icon on a roster row. */
 export interface RosterAbility {
@@ -158,6 +159,23 @@ export interface RosterItem {
   /** '' for an empty slot, and for an item whose pack named art nothing registered. */
   url: string;
   name: string;
+  /**
+   * What the item grants and what it does, for the panel that opens when a
+   * square is tapped.
+   *
+   * These squares carried a `title` and nothing else, on the argument that a
+   * shop-sized description belongs in the shop and the shop is one button away
+   * in the drawer. That holds for *your own* bag and stops holding for anyone
+   * else's: the Đội tab is the only place a player sees what the other nine
+   * champions are carrying, and the shop button beside a row opens a shop for
+   * that champion to *buy* in — it is not a way to read what they already own.
+   * A hover title also does not exist under a thumb.
+   */
+  cost: number;
+  /** One line per stat, in `ITEM_STAT_KEYS` order — the shop card's own list. */
+  stats: StatLine[];
+  /** The pack's prose: the passive, the active, whatever the numbers cannot say. */
+  description: string;
 }
 
 /**

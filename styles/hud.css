@@ -2399,3 +2399,85 @@ body.touch-ui .corner-btn {
   text-align: right;
   opacity: 0.85;
 }
+
+/* The card a bag square opens in the Đội tab.
+
+   Sits between the row and its stat sheet, full width, and only ever one at a
+   time — `RosterTab.vue`'s `openedItem` is a single `{ rowId, slot }`. Styled
+   off the stat sheet rather than off the shop's detail pane: this is a read of
+   somebody else's bag, in a list, not a shopping surface. */
+.practice-item-card {
+  padding: 0.55rem 0.7rem 0.65rem;
+  border-top: 1px solid var(--hextech-line);
+  background: var(--hextech-sunken);
+}
+
+.practice-item-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.practice-item-head img {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--hextech-line);
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.practice-item-head h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--hextech-gold, #c8aa6e);
+}
+
+/* Pushed to the far end: the price is the one number here, and a number that
+   lines up on the right is one a reader can compare down a column of cards. */
+.practice-item-cost {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #e0c179;
+}
+
+.practice-item-stats {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.1rem 0.7rem;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.practice-item-amount {
+  color: #63d69b;
+  font-variant-numeric: tabular-nums;
+}
+
+.practice-item-body {
+  margin: 0.45rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+/* The open square keeps the highlight, so a card with four items above it says
+   which one it belongs to. */
+.practice-roster-item.is-open {
+  border-color: var(--hextech-gold, #c8aa6e);
+  box-shadow: 0 0 0 1px rgba(200, 170, 110, 0.35);
+}
+
+/* It is a `<button>` now (it opens the card above); undo what that arrives
+   with, since `.practice-roster-item` was drawn for a `<span>`. */
+button.practice-roster-item {
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+}

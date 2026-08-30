@@ -79,6 +79,47 @@ describe('a roster row shows what its champion is holding', () => {
     expect(roster()).toMatch(/v-if="live && itemStock\.length"[\s\S]{0,120}practice-roster-items/);
   });
 
+  /**
+   * The squares open a card.
+   *
+   * They were a `<span>` with a `title` and nothing else, and the comment above
+   * them argued the case: a shop-sized description belongs in the shop, and the
+   * shop is one button away in the drawer. That argument is about *your own*
+   * bag. This tab is the only place a player sees the other nine champions'
+   * items, the shop button beside a row opens a shop to buy in rather than a
+   * way to read what is already owned, and a `title` does not exist under a
+   * thumb at all.
+   */
+  it('makes each square a real control rather than a hover target', () => {
+    const source = roster();
+    const strip = source.indexOf('practice-roster-items');
+    const after = source.slice(strip, strip + 1200);
+
+    expect(after).toMatch(/<button[\s\S]*?class="practice-roster-item"/);
+    expect(after).toMatch(/@click="toggleItem\(row, slot, item\)"/);
+    // The same pairing every other control in this file carries: `GameScene`
+    // cancels every touch on the page, so `@click` alone is dead under a thumb.
+    expect(after, 'the square answers a mouse and not a thumb').toMatch(/v-tap=/);
+  });
+
+  it('draws the card between the row and its stat sheet, not inside the drawer', () => {
+    const source = roster();
+    const card = source.indexOf('practice-item-card');
+
+    expect(card, 'no item card at all').toBeGreaterThan(-1);
+    expect(card, 'the card is only visible after opening the row').toBeLessThan(drawerAt(source));
+  });
+
+  it('reads the open square back out of the live bag rather than remembering it', () => {
+    // An item sold, swapped or replaced while its card is open leaves the card
+    // holding a snapshot of something the champion no longer has. `openedItem`
+    // is `{ rowId, slot }` and the contents come from `itemsOf` every read.
+    const source = roster();
+
+    expect(source).toMatch(/const openedItem = ref<\{ rowId: string; slot: number \} \| null>/);
+    expect(source).toMatch(/const item = itemsOf\(row\)\[open\.slot\]/);
+  });
+
   it('draws the wallet on the collapsed row too, not only in the cheat drawer', () => {
     const source = roster();
     const wallet = source.indexOf('practice-roster-gold');

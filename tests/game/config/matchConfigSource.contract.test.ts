@@ -29,19 +29,34 @@ import { contentCatalog } from '../../../src/content/catalog';
  * test's leftovers.
  */
 let probeSeed = 0;
-const seedItems = (): { id: string; name: string }[] => {
+/**
+ * `boots` carries stats and prose, `ghost` carries neither.
+ *
+ * The pair is deliberate on both halves: `ghost` names art nothing registered
+ * (the reason a slot's `url` may be `''`) and declares no `stats` and no
+ * `description`, which is the shape a roster row's item card has to survive
+ * without printing an empty list or a blank paragraph.
+ */
+const seedItems = (): { id: string; name: string; cost: number; description?: string }[] => {
   const packId = `probe${probeSeed++}`;
   contentCatalog().installData({
     manifest: { id: packId, version: '1.0.0', coreRange: '*' },
     items: {
-      boots: { id: 'boots', name: 'Giày Thử', icon: 'spell_basic_attack', cost: 300 },
+      boots: {
+        id: 'boots',
+        name: 'Giày Thử',
+        icon: 'spell_basic_attack',
+        cost: 300,
+        stats: { speed: 45, armor: 20 },
+        description: 'Đi nhanh hơn.',
+      },
       // A key nothing registered: legal, and the reason `image` may be `''`.
       ghost: { id: 'ghost', name: 'Đồ Ma', icon: 'no_such_asset_key', cost: 400 },
     },
   } as never);
   return [
-    { id: `${packId}:boots`, name: 'Giày Thử' },
-    { id: `${packId}:ghost`, name: 'Đồ Ma' },
+    { id: `${packId}:boots`, name: 'Giày Thử', cost: 300, description: 'Đi nhanh hơn.' },
+    { id: `${packId}:ghost`, name: 'Đồ Ma', cost: 400 },
   ];
 };
 
@@ -612,7 +627,42 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
       source.live.giveItem(id, ghost.id);
 
-      expect(source.live.itemsOf(id)[0]).toEqual({ filled: true, url: '', name: ghost.name });
+      expect(source.live.itemsOf(id)[0]).toEqual({
+        filled: true,
+        url: '',
+        name: ghost.name,
+        cost: ghost.cost ?? 0,
+        stats: expect.any(Array),
+        description: ghost.description ?? '',
+      });
+    });
+
+    /**
+     * The squares open a card now (`RosterTab.vue`), so a slot has to carry
+     * enough to fill one. Read off the item's own def rather than composed
+     * here: the price the shop charges, the stat list the shop card prints —
+     * through `statLinesFor`, the shop's own builder — and the pack's prose.
+     */
+    it('carries the price, the stat lines and the prose of a filled slot', () => {
+      if (!source.live) return;
+      const [boots] = seedItems();
+      const id = source.roster()[0].id;
+      source.live.clearItems(id);
+
+      source.live.giveItem(id, boots.id);
+      const [slot, empty] = source.live.itemsOf(id);
+
+      expect(slot.cost).toBe(boots.cost);
+      expect(slot.description).toBe(boots.description ?? '');
+      // One line per non-zero stat, formatted the way the shop card formats it.
+      expect(slot.stats.length).toBeGreaterThan(0);
+      for (const line of slot.stats) {
+        expect(typeof line.label).toBe('string');
+        expect(line.amount).toMatch(/^[+-]/);
+      }
+
+      // An empty square opens nothing, so it carries nothing to open.
+      expect(empty).toEqual({ filled: false, url: '', name: '', cost: 0, stats: [], description: '' });
     });
   });
 

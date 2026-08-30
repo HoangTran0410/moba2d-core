@@ -42,7 +42,7 @@ import { computed, inject, ref, shallowRef } from 'vue';
 import { CONFIG_PANEL } from './panelState';
 import { vTap } from '../tapGuard';
 import { expandedRosterRows } from './expandedRows';
-import type { ConfigRosterEntry } from './MatchConfigSource';
+import type { ConfigRosterEntry, RosterItem } from './MatchConfigSource';
 import {
   AI_COUNT_MAX,
   BOT_DIFFICULTY_ORDER,
@@ -250,9 +250,15 @@ const STACK_STEPS = [1, 10, 100];
  * Buttons rather than a text field, and relative rather than absolute, for the
  * same reason `STACK_STEPS` is: this panel has to work under a thumb on a
  * phone, where opening a keyboard over a modal to type "2500" is a control
- * that does not work. Two sizes — a component and roughly a finished item.
+ * that does not work.
+ *
+ * A component and a finished item was the original pairing, and it was the
+ * wrong pair for what the buttons are actually used for: nobody cheats gold to
+ * buy one component. They cheat it to skip to a build, and 200 at a time is
+ * twenty taps to get there. A finished item and a whole build is the pairing
+ * that matches — one tap to shop, five taps to be done shopping for the match.
  */
-const GOLD_STEPS = [200, 1000];
+const GOLD_STEPS = [1_000, 5_000];
 
 const goldOf = (row: ConfigRosterEntry): number => {
   void panel.version.value;
@@ -289,6 +295,45 @@ const itemsOf = (row: ConfigRosterEntry) => {
  */
 const openShop = (row: ConfigRosterEntry): void => {
   live.value?.openShopFor(row.id);
+};
+
+/**
+ * Which bag square is open, if any — one at a time, across the whole roster.
+ *
+ * The squares used to carry a `title` and nothing else, on the argument that a
+ * shop-sized description belongs in the shop and the shop is one button away.
+ * That argument is about *your own* bag. This tab is the only place a player
+ * sees what the other nine champions are carrying, the shop button beside a
+ * row opens a shop to *buy* in rather than a way to read what is already
+ * owned, and a hover title does not exist under a thumb at all.
+ *
+ * Held as `{ rowId, slot }` rather than as a flag on the row: rows are rebuilt
+ * from the source on every `panel.version` bump, so anything stored on one is
+ * gone the next time a bot buys something.
+ */
+const openedItem = ref<{ rowId: string; slot: number } | null>(null);
+
+const isItemOpen = (row: ConfigRosterEntry, slot: number): boolean =>
+  openedItem.value?.rowId === row.id && openedItem.value?.slot === slot;
+
+const toggleItem = (row: ConfigRosterEntry, slot: number, item: RosterItem): void => {
+  // An empty square has nothing to say. Tapping one closes whatever is open,
+  // which is also the way out of the card without hunting for its own corner.
+  if (!item.filled) {
+    openedItem.value = null;
+    return;
+  }
+  openedItem.value = isItemOpen(row, slot) ? null : { rowId: row.id, slot };
+};
+
+/** The open square's contents, re-read from the live bag rather than remembered. */
+const openedItemOf = (row: ConfigRosterEntry): RosterItem | null => {
+  const open = openedItem.value;
+  if (!open || open.rowId !== row.id) return null;
+  const item = itemsOf(row)[open.slot];
+  // Sold, swapped or replaced while the card was open: the slot is still a
+  // slot, so this asks the bag rather than trusting what was there.
+  return item?.filled ? item : null;
 };
 
 const clearItems = (row: ConfigRosterEntry): void => {
@@ -526,15 +571,28 @@ defineExpose({
             would be the row explaining a feature that build does not have.
           -->
           <span v-if="live && itemStock.length" class="practice-roster-items">
-            <span
+            <!--
+              A `<button>`, not the `<span>` this was: it opens a card now, and
+              a control that only answers a mouse click is one a keyboard and a
+              screen reader cannot reach. `v-tap` beside `@click` for the reason
+              every other control in this file carries it — `GameScene` cancels
+              every touch on the page, so a `@click`-only control is perfect
+              under a mouse and dead under a thumb.
+            -->
+            <button
               v-for="(item, slot) of itemsOf(row)"
               :key="slot"
+              type="button"
               class="practice-roster-item"
-              :class="{ 'is-empty': !item.filled }"
+              :class="{ 'is-empty': !item.filled, 'is-open': isItemOpen(row, slot) }"
               :title="item.name || undefined"
+              :aria-expanded="item.filled ? isItemOpen(row, slot) : undefined"
+              :aria-label="item.filled ? `Chi tiết ${item.name}` : 'Ô trống'"
+              @click="toggleItem(row, slot, item)"
+              v-tap="() => toggleItem(row, slot, item)"
             >
               <img crossorigin="anonymous" v-if="item.url" :src="item.url" alt="" />
-            </span>
+            </button>
           </span>
 
           <!-- KDA doubles as the drawer toggle in a match; outside one there is
@@ -599,6 +657,45 @@ defineExpose({
                construction, and the switch takes the whole rail on the one
                row that has no delete. -->
           <span v-else class="practice-roster-gap" aria-hidden="true"></span>
+        </div>
+
+        <!--
+          The open square's card, between the row and its stat sheet.
+
+          The shop's own pane (`shop/ShopDetail.vue`) is not reused: that one
+          buys and sells, prices against the champion's wallet and draws the
+          whole build tree, and every one of those is wrong here — this is a
+          read of somebody else's bag. What is left is what a player is
+          actually asking, in the order they ask it: what is it, what does it
+          give, what does it do.
+        -->
+        <div v-if="openedItemOf(row)" class="practice-item-card">
+          <div class="practice-item-head">
+            <img
+              crossorigin="anonymous"
+              v-if="openedItemOf(row)!.url"
+              :src="openedItemOf(row)!.url"
+              alt=""
+            />
+            <h4>{{ openedItemOf(row)!.name }}</h4>
+            <span v-if="openedItemOf(row)!.cost > 0" class="practice-item-cost">
+              <i class="fas fa-coins" aria-hidden="true"></i>
+              {{ openedItemOf(row)!.cost }}
+            </span>
+          </div>
+          <!-- One stat to a line, in the shop card's own order and through the
+               shop card's own builder (`itemStatLines.ts`), so the same item
+               never reads two ways in two panels. -->
+          <ul v-if="openedItemOf(row)!.stats.length" class="practice-item-stats">
+            <li v-for="line of openedItemOf(row)!.stats" :key="line.label">
+              <span class="practice-item-amount">{{ line.amount }}</span> {{ line.label }}
+            </li>
+          </ul>
+          <p
+            v-if="openedItemOf(row)!.description"
+            class="practice-item-body"
+            v-html="openedItemOf(row)!.description"
+          ></p>
         </div>
 
         <div v-if="isExpanded(row)" class="practice-stat-sheet">
