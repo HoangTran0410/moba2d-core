@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
  * A spell's icon, name, cooldown/mana and description — the one presentation
- * every "what does this spell do" surface on the pregame screen reuses: the
- * hover/long-press panel over the loadout picker's roster (`KitRoster.vue`,
- * via `useSpellPeek.ts`) and the read-only preview opened from
- * `ParticipantCard.vue`'s kit-icon row (`SpellPreviewModal.vue`). One
- * component, not two copies of this markup.
+ * every "what does this spell do" surface reuses: the hover/long-press panel
+ * over the loadout picker's roster (`KitRoster.vue`, via `useSpellPeek.ts`)
+ * and the card a kit icon opens in the in-match panel's Đội tab
+ * (`src/game/hud/config/RosterTab.vue`). One component, not two copies of
+ * this markup — which is why the second of those could stop being a dialog
+ * of its own and become a card in the list without restating any of it.
  *
  * It used to carry a `collapsible`/`expanded` mode as well — the touch
  * bottom sheet the per-slot spell selector needed, so its catalogue and its

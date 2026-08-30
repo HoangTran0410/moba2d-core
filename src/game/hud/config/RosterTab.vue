@@ -59,7 +59,7 @@ import {
   peerPacksDismissed,
 } from '@/content/peerPacks';
 import LoadoutEditorModal from '@/scenes/setup/LoadoutEditorModal.vue';
-import SpellPreviewModal from '@/scenes/setup/SpellPreviewModal.vue';
+import SpellDetailPane from '@/scenes/setup/SpellDetailPane.vue';
 
 const panel = inject(CONFIG_PANEL)!;
 const source = panel.source;
@@ -317,6 +317,9 @@ const isItemOpen = (row: ConfigRosterEntry, slot: number): boolean =>
   openedItem.value?.rowId === row.id && openedItem.value?.slot === slot;
 
 const toggleItem = (row: ConfigRosterEntry, slot: number, item: RosterItem): void => {
+  // One card at a time: a bag square and a kit icon open into the same strip
+  // between the row and its stat sheet, so opening either closes the other.
+  openedSpell.value = null;
   // An empty square has nothing to say. Tapping one closes whatever is open,
   // which is also the way out of the card without hunting for its own corner.
   if (!item.filled) {
@@ -360,10 +363,50 @@ const statGroupsOf = (row: ConfigRosterEntry) => {
 // so they win the click), the shape `ParticipantCard.vue` used: a nested
 // `<button>` is not valid markup.
 
-const previewSpell = shallowRef<SpellDisplay | null>(null);
+/**
+ * Which ability's card is open — `{ rowId, letter }`, the same shape as
+ * `openedItem` above and held for the same reason: rows are rebuilt from the
+ * source on every `panel.version` bump, so anything stored on one is gone the
+ * next time a bot buys something.
+ *
+ * ## It was a modal holding a snapshot, and both halves were wrong
+ *
+ * A dialog over the list, to read one paragraph about one spell, while the
+ * bag square directly beside it answered the same kind of question by opening
+ * a card *in* the list. Two shapes for one act, and the heavier of the two on
+ * the lighter question — reported as "sao ko dùng chung slot detail inline
+ * của item luôn". So the kit icon now opens into the same strip the bag
+ * square does, and reuses `SpellDetailPane` exactly as the modal did.
+ *
+ * The state is the *identity* of the open ability rather than a resolved
+ * `SpellDisplay`, which is the half that fixes the numbers: a display taken
+ * once at open time is a description that stops being true the moment the
+ * champion buys the ability power it quotes. `openedSpellOf` re-describes on
+ * every read, the way `openedItemOf` re-reads the bag.
+ */
+const openedSpell = ref<{ rowId: string; letter: string } | null>(null);
 
-const openPreview = (row: ConfigRosterEntry, letter: string): void => {
-  previewSpell.value = source.describeAbility(row.id, letter);
+const isSpellOpen = (row: ConfigRosterEntry, letter: string): boolean =>
+  openedSpell.value?.rowId === row.id && openedSpell.value?.letter === letter;
+
+const toggleSpell = (row: ConfigRosterEntry, letter: string): void => {
+  const open = isSpellOpen(row, letter);
+  openedItem.value = null;
+  openedSpell.value = open ? null : { rowId: row.id, letter };
+};
+
+/**
+ * The open ability, re-described from the live spell rather than remembered.
+ *
+ * `void panel.version.value` is what makes the numbers move: the panel bumps
+ * on its own tick, so an item bought while this card is open redraws it with
+ * the damage that item just paid for.
+ */
+const openedSpellOf = (row: ConfigRosterEntry): SpellDisplay | null => {
+  void panel.version.value;
+  const open = openedSpell.value;
+  if (!open || open.rowId !== row.id) return null;
+  return source.describeAbility(row.id, open.letter);
 };
 
 // ------------------------------------------------------------ loadout editor
@@ -396,9 +439,12 @@ const applyLoadout = async (loadout: ChampionLoadout): Promise<void> => {
  */
 defineExpose({
   closeEditor: (): boolean => {
-    if (!editing.value && !previewSpell.value) return false;
-    if (previewSpell.value) previewSpell.value = null;
-    else editing.value = null;
+    // The ability card is deliberately not a layer here, exactly as the bag
+    // square's card is not: both are rows in the list rather than something
+    // over it, and Escape with one open should close the panel the way it
+    // does with an item card open.
+    if (!editing.value) return false;
+    editing.value = null;
     return true;
   },
 });
@@ -535,9 +581,16 @@ defineExpose({
                   :key="ability.letter"
                   type="button"
                   class="practice-roster-spell"
-                  :class="{ 'is-inert': !ability.describable }"
+                  :class="{
+                    'is-inert': !ability.describable,
+                    'is-open': isSpellOpen(row, ability.letter),
+                  }"
                   :title="ability.describable ? 'Xem mô tả chiêu' : ability.letter"
-                  @click="ability.describable && openPreview(row, ability.letter)"
+                  :aria-expanded="
+                    ability.describable ? isSpellOpen(row, ability.letter) : undefined
+                  "
+                  @click="ability.describable && toggleSpell(row, ability.letter)"
+                  v-tap="() => ability.describable && toggleSpell(row, ability.letter)"
                 >
                   <img crossorigin="anonymous" v-if="ability.url" :src="ability.url" alt="" />
                   <span v-else class="practice-roster-spell-empty">{{ ability.letter }}</span>
@@ -696,6 +749,19 @@ defineExpose({
             class="practice-item-body"
             v-html="openedItemOf(row)!.description"
           ></p>
+        </div>
+
+        <!--
+          The kit icon's card, in the same strip and directly under the same
+          rule as the bag square's above it: one open at a time, full width,
+          between the row and its stat sheet.
+
+          `SpellDetailPane` is the pregame screen's own — the component the
+          modal this replaces was already wrapping — so a spell reads the same
+          here, in the loadout editor's peek panel, and on the setup screen.
+        -->
+        <div v-if="openedSpellOf(row)" class="practice-spell-card">
+          <SpellDetailPane :display="openedSpellOf(row)" placeholder="" />
         </div>
 
         <div v-if="isExpanded(row)" class="practice-stat-sheet">
@@ -961,9 +1027,6 @@ defineExpose({
           @change="applyLoadout"
           @close="editing = null"
         />
-      </div>
-      <div v-if="previewSpell" class="practice-editor-host">
-        <SpellPreviewModal :display="previewSpell" @close="previewSpell = null" />
       </div>
     </Teleport>
   </div>

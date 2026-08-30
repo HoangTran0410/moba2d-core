@@ -2484,10 +2484,21 @@ body.touch-ui .corner-btn {
 }
 
 /* The open square keeps the highlight, so a card with four items above it says
-   which one it belongs to. */
-.practice-roster-item.is-open {
+   which one it belongs to. The kit icon above it opens into the same strip and
+   answers for its card the same way. */
+.practice-roster-item.is-open,
+.practice-roster-spell.is-open {
   border-color: var(--hextech-gold, #c8aa6e);
   box-shadow: 0 0 0 1px rgba(200, 170, 110, 0.35);
+}
+
+/* The kit icon's card, sharing the bag card's slot and its frame — see
+   `RosterTab.vue`. Its body is `SpellDetailPane`, which brings its own type
+   scale from `styles/pregame-scene.css`; all this owes is the strip. */
+.practice-spell-card {
+  padding: 0.55rem 0.7rem 0.65rem;
+  border-top: 1px solid var(--hextech-line);
+  background: var(--hextech-sunken);
 }
 
 /* It is a `<button>` now (it opens the card above); undo what that arrives

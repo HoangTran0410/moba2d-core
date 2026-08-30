@@ -326,6 +326,16 @@ export default class MatchDirectorSource implements MatchConfigSource {
    * under URF. `effectiveCoolDownMs` and `effectiveManaCost` are the seams that
    * apply those rules (see `Spell.effectiveMana`), so this cannot express them
    * differently from a cast.
+   *
+   * **`effectiveDescription`, not `description`** — the third of those seams,
+   * and it was the one this read past. `description` is authored text with a
+   * first-frame number baked into it, while `takeDamage` scales that number by
+   * the owner's `Stats.abilityPower`; quoting the raw string here meant the
+   * roster's ability card showed a champion's damage *before its build*, and
+   * kept showing it after six items. Reported as not being able to read
+   * another champion's real damage. `Spell.effectiveDescription` is the same
+   * accessor the player's own HUD bar reads (`hudState.ts`), so the two
+   * surfaces cannot quote one spell two ways.
    */
   describeAbility(id: string, letter: string): SpellDisplay | null {
     const unit = this.unitOf(id);
@@ -335,7 +345,7 @@ export default class MatchDirectorSource implements MatchConfigSource {
     return {
       iconUrl: image?.url ?? null,
       name: spell.name,
-      description: String(spell.description ?? ''),
+      description: String(spell.effectiveDescription ?? spell.description ?? ''),
       coolDownMs: spell.coolDown,
       manaCost: spell.manaCost,
       effectiveCoolDownMs: spell.effectiveCoolDownMs,

@@ -313,8 +313,9 @@ try {
   // already renders the champion standing on the map as plain text
   // (`row.title` — `MatchDirectorSource.roster()` — is `entry.unit.name`) and
   // each of her four ability slots as its own button (`row.abilities`,
-  // `ABILITY_LETTERS = ['Q','W','E','R']`) that opens `SpellPreviewModal` with
-  // that slot's own live `Spell.name` — fallback and all, the same field
+  // `ABILITY_LETTERS = ['Q','W','E','R']`) that opens a `.practice-spell-card`
+  // in the row with that slot's own live `Spell.name` — fallback and all, the
+  // same field
   // `verify-runtime-pack.mjs` reads off `spell.name` through the game object
   // directly. Wrapped in its own try so a selector that never appears — the
   // finding itself, in a first run — reports through the checks below rather
@@ -339,11 +340,14 @@ try {
     const abilityCount = await abilityButtons.count();
     const casts = [];
     for (let i = 0; i < abilityCount; i++) {
+      // The card opens in the row rather than as a dialog over it, so the way
+      // out is the icon that opened it — a toggle, like the bag square beside
+      // it. There is no close button to click any more.
       await abilityButtons.nth(i).click();
-      await page.waitForSelector('.spell-preview-modal', { state: 'visible', timeout: 15_000 });
-      casts.push({ name: (await page.textContent('.spell-preview-modal h3'))?.trim() ?? null });
-      await page.click('.spell-preview-modal .pregame-icon-btn[title="Đóng"]');
-      await page.waitForSelector('.spell-preview-modal', { state: 'detached', timeout: 15_000 });
+      await page.waitForSelector('.practice-spell-card', { state: 'visible', timeout: 15_000 });
+      casts.push({ name: (await page.textContent('.practice-spell-card h3'))?.trim() ?? null });
+      await abilityButtons.nth(i).click();
+      await page.waitForSelector('.practice-spell-card', { state: 'detached', timeout: 15_000 });
     }
     offlineMatch = { name: name?.trim() ?? null, casts };
 

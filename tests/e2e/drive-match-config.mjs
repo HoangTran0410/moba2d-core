@@ -311,17 +311,19 @@ await page.waitForSelector('.practice-roster-row');
 check('a KDA readout appears only in a match', await page.isVisible('.practice-score'));
 await shot('match-roster');
 
-// A kit icon opens that ability's description. It used to do this only on the
-// setup screen; in the panel the same icons were decorative, which is one of
-// the divergences the single panel removes.
-await page.click('.practice-roster-row.is-player .practice-roster-spell >> nth=0');
-await page.waitForSelector('.spell-preview-modal', { timeout: 5_000 });
+// A kit icon opens that ability's description — as a card in the row, in the
+// same strip a bag square opens into, and closed by tapping the icon again.
+// It used to do this only on the setup screen; in the panel the same icons
+// were decorative, which is one of the divergences the single panel removes.
+const firstAbility = '.practice-roster-row.is-player .practice-roster-spell >> nth=0';
+await page.click(firstAbility);
+await page.waitForSelector('.practice-spell-card', { timeout: 5_000 });
 check(
   'a kit icon opens the ability description inside a match',
-  await page.isVisible('.spell-preview-modal')
+  await page.isVisible('.practice-spell-card')
 );
-await page.click('.spell-preview-modal .pregame-icon-btn');
-await page.waitForSelector('.spell-preview-modal', { state: 'detached', timeout: 5_000 });
+await page.click(firstAbility);
+await page.waitForSelector('.practice-spell-card', { state: 'detached', timeout: 5_000 });
 
 await page.click('#practice-tab-rules');
 await page.waitForSelector('#practice-cdr');

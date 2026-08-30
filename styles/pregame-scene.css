@@ -452,7 +452,7 @@
 /* One dialog, one view: a header, the pinned slot bar, a hint line and the
    scrolling roster. There is no second view to swap in and no dialog on a
    dialog — see LoadoutEditorModal.vue's file comment for what this replaced.
-   `.spell-preview-modal` shares the shell. */
+   `.map-picker-modal` shares the shell. */
 
 .pregame-modal-backdrop {
   position: fixed;
@@ -490,16 +490,9 @@
   flex-direction: column;
 }
 
-/* Narrower than the loadout editor — one spell's icon, name, cost and
-   description, not a grid or a catalogue. */
-.spell-preview-modal {
-  width: min(480px, 92vw);
-  max-height: 70vh;
-}
-
 /* The single scrolling region a `.pregame-modal` ever has — the loadout
-   picker's roster, or a read-only ability preview (`LoadoutEditorModal.vue`,
-   `SpellPreviewModal.vue`). Everything around it — the header, the slot bar,
+   picker's roster, or the map picker's list and preview
+   (`LoadoutEditorModal.vue`, `MapPickerModal.vue`). Everything around it — the header, the slot bar,
    the hint line — is a fixed sibling within the same column, so it never
    scrolls out of reach. There is exactly one scroller per dialog and no
    second view to swap in that would need its own: the picker is one screen
@@ -1470,8 +1463,8 @@
   color: var(--hextech-text);
 }
 
-/* The pane is a panel here, not a column inside a bordered dialog, so it
-   drops the top rule/padding it uses in `SpellPreviewModal`. */
+/* The pane is a panel here, not a column inside a bordered frame, so it drops
+   the top rule/padding it carries in the roster's ability card. */
 .spell-peek .spell-detail-header {
   padding-top: 0;
   margin-top: 0;
@@ -1780,10 +1773,10 @@ body.touch-ui .spell-peek .spell-detail-body {
    ================================================================ */
 
 @media (max-width: 640px) {
-  /* Applies to both `.pregame-modal` (below) and `.spell-preview-modal`,
-       whose own explicit width (see the "Loadout editor modal" section
-       above) still wins over this — a single spell's description does not
-       need to go edge to edge just because the viewport is a phone's. */
+  /* Applies to `.pregame-modal` (below); a dialog with its own explicit
+       width (see the "Loadout editor modal" section above) still wins over
+       this, so a narrow dialog is not made to go edge to edge just because
+       the viewport is a phone's. */
   .pregame-modal-backdrop {
     align-items: stretch;
     justify-content: stretch;
@@ -1832,10 +1825,9 @@ body.touch-ui .spell-peek .spell-detail-body {
      width stays bounded (`min(760px, 92vw)`), so a short *desktop* window
      gets a wide, edge-to-edge-in-height sheet rather than a phone layout.
 
-     Scoped to `.loadout-modal`, not `.pregame-modal`: the other dialog
-     sharing that shell is a single spell's description
-     (`SpellPreviewModal.vue`), which has no scroll region begging for room
-     and would just be a mostly-empty full-height panel. The explicit height
+     Scoped to `.loadout-modal`, not `.pregame-modal`: the other dialogs
+     sharing that shell — the map picker — size themselves and would not be
+     improved by a full-height panel. The explicit height
      needs no `align-items: stretch` on the backdrop to take effect — a flex
      item with a set cross-size keeps it while still being centred, which is
      what leaves the preview dialog alone. */
