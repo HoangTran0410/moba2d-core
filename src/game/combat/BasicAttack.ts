@@ -1,6 +1,6 @@
 import EventType from '@/game/enums/EventType';
 import { applyOnHitEffects } from '@/game/combat/OnHit';
-import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
+import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import AoePulse from '@/game/gameObject/spellObjects/AoePulse';
@@ -49,8 +49,6 @@ export const MELEE_SWING_TOTAL_MS = 380;
  * is a stat edit rather than a subclass.
  */
 export const MELEE_RANGE_THRESHOLD = 140;
-/** A bolt that somehow never arrives fizzles rather than living forever. */
-export const BOLT_MAX_LIFE_MS = 3_000;
 /**
  * The wind-up: the beat of stillness a swing costs before it releases.
  *
@@ -178,7 +176,13 @@ export class BasicAttackBolt extends MissileSpellObject {
   damage = 0;
   target: AttackableUnit | null = null;
   color: number[] = [255, 236, 190];
-  _life = BOLT_MAX_LIFE_MS;
+  /**
+   * Chases until it lands or its target is gone; gives up only on a target
+   * outrunning it. Was `BOLT_MAX_LIFE_MS`, a 1260px wall a champion on a map
+   * with a widened `attackRange` shot straight into. See
+   * `MissileSpellObject.stalledChaseMs`.
+   */
+  stalledChaseMs = STALLED_CHASE_MS;
   /**
    * ms the bolt is still on the string — the attacker's wind-up. While nocked
    * it rides the attacker instead of flying, brightening as the release nears
@@ -220,11 +224,6 @@ export class BasicAttackBolt extends MissileSpellObject {
     if (this.flightSpeed !== null) {
       this.speed = this.flightSpeed;
       this.flightSpeed = null;
-    }
-    this._life -= deltaTime;
-    if (this._life <= 0) {
-      this.toRemove = true;
-      return;
     }
     // keep homing while the target lives; once it is gone the bolt finishes its
     // flight to the last known point and lands on nobody

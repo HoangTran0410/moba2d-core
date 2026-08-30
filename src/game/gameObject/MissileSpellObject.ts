@@ -7,6 +7,13 @@ import TrailSystem from './helpers/TrailSystem';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 
 /**
+ * How long a homing bolt may go without getting any closer before it gives up
+ * — see `MissileSpellObject.stalledChaseMs`. Three seconds of losing ground,
+ * which nothing in this engine can do to a champion it is chasing.
+ */
+export const STALLED_CHASE_MS = 3_000;
+
+/**
  * Base for skillshot projectiles: travels from `position` to `destination`, damages
  * enemies it overlaps on the way, and dies on arrival.
  *
@@ -39,6 +46,52 @@ export default class MissileSpellObject extends SpellObject {
   /** False for missiles that survive their last hit, e.g. to latch onto the target. */
   removeOnMaxHit = true;
 
+  /**
+   * When a homing bolt gives up, in ms of **getting no closer**. `0` — the
+   * default, and every skillshot — never gives up at all.
+   *
+   * ## Two wrong answers before this one
+   *
+   * A homing bolt re-aims every frame, so it needs *some* end besides hitting:
+   * a target faster than it is a chase with no end. Each of the four homing
+   * bolts in this engine grew its own, and every one of them was a duration —
+   * `_life = 3000`, `4000`, `2000`, `3000`.
+   *
+   * A duration times a speed is a *range*, and none of them said so. The
+   * turret's 4000ms at 13px a frame is 3120px of reach, so the moment a map
+   * tuned `attackRange` past that, its turret fired bolts that stopped in mid
+   * air a fraction of the way to a target they could perfectly well have hit:
+   * "đạn của trụ đi tới 1 khoảng cách lớn nào đó là tự mất".
+   *
+   * Replacing it with a *distance* budget — some multiple of the shot — fixed
+   * the range and kept the shape of the mistake, which the next report found
+   * at once: budget the shot and you have capped the **chase**. A turret
+   * firing at somebody 400px away who then ran gave up 2000px into the
+   * pursuit. Both versions were a number standing in for the thing actually
+   * being asked.
+   *
+   * ## What is actually being asked
+   *
+   * "Đuổi theo target khi nào tới nơi thì thôi, hoặc khi target die." Those
+   * are the two ends, and neither is a distance: arrival is `removeOnArrive`,
+   * and a dead target freezes `destination` at its last known point so the
+   * bolt lands there and is done.
+   *
+   * This is not a third end beside those two — it is the case where the first
+   * one is unreachable. A bolt that has not gained a pixel on its target in
+   * three seconds is not flying towards anything; it is being outrun, and
+   * "when it arrives" will never come. A bolt that *is* closing — however
+   * slowly, and however far it has already flown — is never touched by this.
+   * Every bolt in this engine outruns every champion, so in an ordinary match
+   * it does not fire at all.
+   */
+  stalledChaseMs = 0;
+
+  /** The closest this has ever been to its destination. */
+  private closestApproach = Infinity;
+  /** How long since that number last improved. */
+  private stalledMs = 0;
+
   /** Assigned by subclasses that want a trail; registered automatically. */
   trailSystem: TrailSystem | null = null;
 
@@ -68,6 +121,13 @@ export default class MissileSpellObject extends SpellObject {
       this.onArrive();
       if (this.removeOnArrive) this.toRemove = true;
       if (this.shouldStopAfterArrival()) return;
+    }
+
+    // Checked after arrival, never before: a bolt that lands on the frame it
+    // would have given up has hit, not given up.
+    if (this.givingUpOnAChaseItCannotWin()) {
+      this.toRemove = true;
+      return;
     }
 
     this.onAfterMove();
@@ -144,6 +204,29 @@ export default class MissileSpellObject extends SpellObject {
       line(-this.visualWidth / 2, 0, this.visualWidth / 2, 0);
     }
     pop();
+  }
+
+  /**
+   * Whether this bolt is being outrun, and has been for `stalledChaseMs`.
+   *
+   * Only while it is actually flying: `BasicAttackBolt` rides its owner at
+   * `speed = 0` through the wind-up, where the gap to a moving target changes
+   * for reasons that have nothing to do with the shot.
+   *
+   * The pixel of slack is against float jitter — without it a bolt closing by
+   * a millionth of a unit a frame counts as progress for ever, which is the
+   * one thing this must not be talked out of.
+   */
+  private givingUpOnAChaseItCannotWin(): boolean {
+    if (this.stalledChaseMs <= 0 || this.speed <= 0) return false;
+    const gap = this.position.dist(this.destination);
+    if (gap < this.closestApproach - 1) {
+      this.closestApproach = gap;
+      this.stalledMs = 0;
+      return false;
+    }
+    this.stalledMs += deltaTime;
+    return this.stalledMs >= this.stalledChaseMs;
   }
 
   // for override

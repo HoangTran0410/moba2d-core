@@ -1,4 +1,4 @@
-import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
+import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import type AttackableUnit from './AttackableUnit';
 
@@ -220,15 +220,14 @@ export class MonsterSpit extends MissileSpellObject {
   damage = 0;
   target: AttackableUnit | null = null;
   color: number[] = [...DEFAULT_MONSTER_ATTACK_COLOR];
-  /** Fizzles on its own if it somehow never arrives. */
-  _life = 3_000;
+  /**
+   * Chases until it lands or its target is gone; gives up only on a target
+   * outrunning it. Was `_life = 3000`. See
+   * `MissileSpellObject.stalledChaseMs`.
+   */
+  stalledChaseMs = STALLED_CHASE_MS;
 
   onBeforeMove() {
-    this._life -= deltaTime;
-    if (this._life <= 0) {
-      this.toRemove = true;
-      return;
-    }
     if (this.target && !this.target.isDead && !this.target.toRemove) {
       this.destination.set(this.target.position.x, this.target.position.y);
     }

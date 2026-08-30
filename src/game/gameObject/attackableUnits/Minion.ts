@@ -5,7 +5,7 @@ import { MinionPresets } from '@/game/config/tuningDefaults';
 import TeamId from '@/game/enums/TeamId';
 import type { LaneWaypoint } from '@/game/lanes';
 import { MINION_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
-import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
+import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import AttackableUnit from './AttackableUnit';
 import type {
@@ -848,15 +848,14 @@ export class MinionBolt extends MissileSpellObject {
   damage = 0;
   target: AttackableUnit | null = null;
   color: number[] = [255, 235, 190];
-  /** Fizzles on its own if it somehow never arrives. */
-  _life = 2_000;
+  /**
+   * Chases until it lands or its target is gone; gives up only on a target
+   * outrunning it. Was `_life = 2000`, a silent 840px range cap. See
+   * `MissileSpellObject.stalledChaseMs`.
+   */
+  stalledChaseMs = STALLED_CHASE_MS;
 
   onBeforeMove() {
-    this._life -= deltaTime;
-    if (this._life <= 0) {
-      this.toRemove = true;
-      return;
-    }
     if (this.target && !this.target.isDead && !this.target.toRemove) {
       this.destination.set(this.target.position.x, this.target.position.y);
     }

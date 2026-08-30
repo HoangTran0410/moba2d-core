@@ -1,5 +1,5 @@
 import { Circle } from '@/libs/quadtree';
-import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
+import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
@@ -490,8 +490,14 @@ export class TurretBolt extends MissileSpellObject {
   removeOnArrive = true;
   damage = 12;
   target: AttackableUnit | null = null;
-  /** Fizzles if it somehow never arrives. */
-  _life = 4000;
+  /**
+   * It chases until it lands, or until its target dies and it finishes the
+   * flight to where that target last was. It gives up only on a target that
+   * is outrunning it — which nothing on foot does to 780 units a second. This
+   * was `_life = 4000`: a hard 3120px cap on a turret's reach, whatever its
+   * map said `attackRange` was. See `MissileSpellObject.stalledChaseMs`.
+   */
+  stalledChaseMs = STALLED_CHASE_MS;
 
   trailSystem: TrailSystem = new TrailSystem({
     trailColor: '#ffb04daa',
@@ -501,11 +507,6 @@ export class TurretBolt extends MissileSpellObject {
   });
 
   onBeforeMove() {
-    this._life -= deltaTime;
-    if (this._life <= 0) {
-      this.toRemove = true;
-      return;
-    }
     // keep homing while the target lives; once it dies the bolt flies to the last
     // known point and expires there
     if (this.target && !this.target.isDead && !this.target.toRemove) {
