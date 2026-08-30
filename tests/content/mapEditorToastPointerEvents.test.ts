@@ -22,8 +22,9 @@ import { describe, expect, it } from 'vitest';
  */
 
 const EDITOR = resolve(__dirname, '../../public/map-editor');
+const SOURCE = resolve(__dirname, '../../src/mapEditor');
 const css = readFileSync(resolve(EDITOR, 'css/style.css'), 'utf8');
-const ui = readFileSync(resolve(EDITOR, 'js/ui.js'), 'utf8');
+const ui = readFileSync(resolve(SOURCE, 'ui.ts'), 'utf8');
 
 /** The declarations of the first rule whose selector list contains `selector`. */
 function ruleBody(selector: string): string | null {

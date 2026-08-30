@@ -6,9 +6,14 @@
    rồi dừng hẳn. Máy đứng yên = 0% CPU, điện thoại không nóng.
    ========================================================================= */
 
-let requestRender = () => { };
+import { Geom } from './geom';
+import { requestRender, setRequestRender } from './frame';
+import { MapRules } from './mapRules';
+import { CORE_DEFAULTS, Cam, E, KIND, MARKER_PX, Sel, TYPES, TYPE_INFO, circleR, factionColor, isMarker, refreshTerrain, slotStat, turretBodyR, vertexHost } from './state';
+import { Store } from './storage';
+import { UI } from './ui';
 
-const Renderer = (() => {
+export const Renderer = (() => {
   let cv, ctx, mini, mctx;
   let rafId = 0;
   let lastT = 0;
@@ -59,9 +64,9 @@ const Renderer = (() => {
     mini = document.getElementById("minimap");
     mctx = mini.getContext("2d", { alpha: false });
 
-    requestRender = () => {
+    setRequestRender(() => {
       if (!rafId) rafId = requestAnimationFrame(frame);
-    };
+    });
 
     resize();
     window.addEventListener("resize", resize, { passive: true });
@@ -143,7 +148,11 @@ const Renderer = (() => {
     drawMarquee();
     if (E.showMinimap) drawMinimap();
 
-    UI.syncStatus(fps);
+    // `syncStatus` takes no argument, and the compiler saying so is how the
+    // whole readout turned out to be dead: there is no `#st-fps` in the page
+    // and no reader of `Renderer.fps` anywhere. The counter above still runs;
+    // the number has not reached a screen in some time.
+    UI.syncStatus();
   }
 
   /** Bao lâu vòng nháy ở chỗ lỗi còn sống, tính từ lúc bấm. */
@@ -424,7 +433,7 @@ const Renderer = (() => {
     ctx.lineWidth = (selected ? 2.4 : 1.6) / s;
     ctx.stroke();
 
-    const blocked = body + (globalThis.MapRules ? MapRules.MINION_BODY_RADIUS : 19);
+    const blocked = body + MapRules.MINION_BODY_RADIUS;
     drawReach(blocked, s, "rgba(255,150,120,.55)", [5, 5]);
     drawReach(slotNumber(t, "attackRange", "turrets", CORE_DEFAULTS.turretRange),
       s, LINE_HI[t.type], [9, 6]);

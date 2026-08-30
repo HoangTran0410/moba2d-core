@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { Geom } from '@/mapEditor/geom';
+import { installEditorVendorGlobals } from './editorVendor';
 import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeometry';
 
 /**
@@ -26,36 +25,15 @@ import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeom
  * checker will ever compare the two halves.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor');
 
 type Point = [number, number];
 type Ring = Point[];
 
-interface EditorGeom {
-  union(polys: Ring[]): Ring[];
-  decompose(polygon: Ring): Ring[];
-  area(pts: Ring): number;
-  /** Positive for a counter-clockwise ring, negative for a clockwise one. */
-  signedArea(pts: Ring): number;
-}
-
-/** The real `geom.js`, with the one global its decomposition helper expects. */
-function loadGeom(): EditorGeom {
-  const sandbox: Record<string, unknown> = { console, JSON, Math };
-  sandbox.window = sandbox; // the bundled poly-decomp is a UMD build
-  const context = vm.createContext(sandbox);
-  for (const lib of ['lib/decomp.min.js', 'lib/polygon-clipping.min.js']) {
-    vm.runInContext(readFileSync(resolve(EDITOR, lib), 'utf8'), context);
-  }
-  vm.runInContext(readFileSync(resolve(EDITOR, 'js/geom.js'), 'utf8'), context);
-  // `geom.js` declares `const Geom`, and a top-level `const` is not a property
-  // of the context's global the way a `var` would be — so hand it over
-  // explicitly rather than reaching into the sandbox for a name that is not
-  // there. In the browser the file's siblings see it as a script-scope global.
-  return vm.runInContext('Geom', context) as EditorGeom;
-}
-
-const Geom = loadGeom();
+// The two vendored libraries `Geom.decompose`/`Geom.union` reach for by bare
+// name; the module itself is now an ordinary import. This whole block used to
+// be a `vm` sandbox running the editor's classic scripts, because there was no
+// other way to reach a file that was never a module.
+installEditorVendorGlobals();
 
 /** A ring's corners as a set, so a comparison does not depend on where it starts. */
 const corners = (ring: Ring): string[] => ring.map(p => p.join(',')).sort();

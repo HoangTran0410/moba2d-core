@@ -164,7 +164,7 @@ describe('package.json public surface', () => {
         // day somebody looked at it.
         //
         // The implementation is not here and not in either pack: it is
-        // `public/map-editor/js/mapRules.js`, plain browser JavaScript,
+        // `src/mapEditor/mapRules.ts`, plain browser JavaScript,
         // because the map editor has no bundler and cannot import anything
         // else — so the tool a person draws maps in runs the same function
         // this gate does, and the two cannot disagree about whether a map is

@@ -44,6 +44,19 @@ const EXEMPT = new Set([
 ]);
 
 /**
+ * Directories this rule has no business in.
+ *
+ * `mapEditor/` is a *different page* — its own HTML entry, its own canvas, its
+ * own camera, and no `SceneManager` anywhere in it. The rule above is about
+ * one thing: a wheel notch over the game reaching the game's camera, because
+ * it fires over every HUD panel too and there is no way to scroll a list
+ * without zooming the world. An editor whose whole job is panning and zooming
+ * a map has the opposite requirement, and it arrived under `src/` only when it
+ * stopped being nine `<script>` tags in `public/`.
+ */
+const EXEMPT_TREES = ['mapEditor/'];
+
+/**
  * Anything that means "a wheel notch happened". `deltaY` is deliberately not
  * on the list: it is an ordinary name for a y-difference, and `NavGrid`'s DDA
  * walk and `quadtree`'s circle test both use it for arithmetic that has never
@@ -66,6 +79,7 @@ describe('the wheel', () => {
     for (const file of sourceFiles(SRC)) {
       const rel = relative(SRC, file).split('\\').join('/');
       if (EXEMPT.has(rel)) continue;
+      if (EXEMPT_TREES.some(tree => rel.startsWith(tree))) continue;
       const source = stripComments(readFileSync(file, 'utf8'));
       for (const token of WHEEL_TOKENS) {
         if (source.includes(token)) offenders.push(`${rel}: ${token}`);

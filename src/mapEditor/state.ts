@@ -7,6 +7,12 @@
    mỗi frame như bản cũ (bản cũ gọi decomp() trong draw()).
    ========================================================================= */
 
+import type { MapTuning } from '@/content/ContentPack';
+import { Geom } from './geom';
+import { requestRender } from './frame';
+import { Store } from './storage';
+import { UI } from './ui';
+
 /* ==================== các loại đối tượng trên map =======================
    Mô hình bám sát `MapGeometry` của moba2d
    (moba2d-core/src/content/ContentPack.ts):
@@ -22,7 +28,7 @@
      point  – một điểm thuần, vẽ cỡ cố định theo màn hình (trụ, điểm lính)
    ======================================================================= */
 
-const KIND = {
+export const KIND = {
   wall: { label: "Tường", color: "#8b98ab", shape: "poly", group: "terrain" },
   bush: { label: "Bụi", color: "#46c95f", shape: "poly", group: "terrain" },
   water: { label: "Nước", color: "#3ba0e6", shape: "poly", group: "terrain" },
@@ -33,24 +39,24 @@ const KIND = {
   lane: { label: "Lane", color: "#29d3c4", shape: "line", group: "lane" },
 };
 
-const TYPES = Object.keys(KIND);
-const TYPE_INFO = KIND;                       // tên cũ, giữ để khỏi sửa khắp nơi
-const TERRAIN_KINDS = ["wall", "bush", "water"];
-const SLOT_KINDS = ["spawn", "structure", "minion", "neutral"];
+export const TYPES = Object.keys(KIND);
+export const TYPE_INFO = KIND;                       // tên cũ, giữ để khỏi sửa khắp nơi
+export const TERRAIN_KINDS = ["wall", "bush", "water"];
+export const SLOT_KINDS = ["spawn", "structure", "minion", "neutral"];
 
 const shapeOf = (t) => KIND[t.type].shape;
-const isPoly = (t) => KIND[t.type].shape === "poly";
-const isLine = (t) => KIND[t.type].shape === "line";
-const hasVerts = (t) => isPoly(t) || isLine(t);
-const isMarker = (t) => !hasVerts(t);
+export const isPoly = (t) => KIND[t.type].shape === "poly";
+export const isLine = (t) => KIND[t.type].shape === "line";
+export const hasVerts = (t) => isPoly(t) || isLine(t);
+export const isMarker = (t) => !hasVerts(t);
 
 /** Bán kính hiển thị của điểm đánh dấu, tính theo pixel màn hình. */
-const MARKER_PX = 12;
+export const MARKER_PX = 12;
 /** Nửa cạnh hộp bao của điểm đánh dấu (đơn vị world) — dùng cho quét chọn. */
 const POINT_BOX = 45;
 
 /** Bán kính thật (world) của một đối tượng dạng vòng tròn. */
-const circleR = (t) => Math.max(4, Number(t.props && t.props.r) || 150);
+export const circleR = (t) => Math.max(4, Number(t.props && t.props.r) || 150);
 
 /**
  * Các mặc định của core, chép sang đây vì `public/map-editor/` là HTML +
@@ -61,7 +67,7 @@ const circleR = (t) => Math.max(4, Number(t.props && t.props.r) || 150);
  * tầm bắn mặc định của trụ. Bên kia đổi thì ở đây chỉ vẽ lệch một chút chứ
  * không hỏng — đây là bản xem trước, không phải nguồn sự thật.
  */
-const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
+export const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
 
 /**
  * Đọc một chỉ số của slot: `stats` của chính nó, rồi tới tuning của map, rồi
@@ -72,7 +78,7 @@ const CORE_DEFAULTS = { turretRange: 430, chaseMargin: 350, turretSize: 92 };
  * của cùng công thức là hai bản sẽ lệch nhau, và lúc lệch thì cái người ta
  * thấy không còn là cái người ta bấm trúng.
  */
-function slotStat(t, key, group, fallback) {
+export function slotStat(t, key, group, fallback) {
   const own = t.props && t.props.stats ? t.props.stats[key] : undefined;
   if (Number.isFinite(+own)) return +own;
   const tuning = (E.meta && E.meta.tuning && E.meta.tuning[group]) || {};
@@ -81,7 +87,7 @@ function slotStat(t, key, group, fallback) {
 }
 
 /** Bán kính thân trụ (world) — `size / 2`, đúng chỗ trụ thật sự đứng. */
-const turretBodyR = (t) =>
+export const turretBodyR = (t) =>
   Math.max(1, slotStat(t, "size", "turrets", CORE_DEFAULTS.turretSize) / 2);
 
 /**
@@ -96,7 +102,11 @@ const turretBodyR = (t) =>
  * hướng: zoom ra thật xa thì thân trụ chỉ còn vài pixel, và một đối tượng
  * không bấm nổi thì tệ hơn một vùng bấm rộng hơn hình vẽ.
  */
-const pickR = (t) => {
+/**
+ * Bán kính bắt chuột. Xuất ra vì `mapEditorSlotShapes.test.ts` kiểm đúng cái
+ * bất biến "bấm trúng thứ mình nhìn thấy" trên chính hàm này.
+ */
+export const pickR = (t) => {
   const screenFloor = Math.max(6, MARKER_PX / Cam.scale);
   if (KIND[t.type].shape === "circle") return circleR(t);
   if (t.type === "structure") return Math.max(turretBodyR(t), screenFloor);
@@ -107,19 +117,19 @@ const pickR = (t) => {
 
 /** Màu của phe theo thứ tự khai báo — dùng chung cho canvas lẫn bảng bên. */
 const FACTION_COLORS = ["#5b8cff", "#d962c8", "#f0883e", "#46c95f"];
-const factionColor = (id) => {
+export const factionColor = (id) => {
   const i = E.meta.factions.indexOf(id);
   return i >= 0 ? FACTION_COLORS[i % FACTION_COLORS.length] : "#8b98ab";
 };
 
 /** Phe thứ `i` của map, luôn trả về một chuỗi dùng được. */
-const factionAt = (i) => (E.meta.factions && E.meta.factions[i]) || E.meta.factions[0] || "amber";
+export const factionAt = (i) => (E.meta.factions && E.meta.factions[i]) || E.meta.factions[0] || "amber";
 
-const laneIds = () =>
+export const laneIds = () =>
   E.terrains.filter((t) => t.type === "lane").map((t) => (t.props && t.props.id) || "").filter(Boolean);
 
 /** Điền nốt những field mà schema đòi, giữ nguyên cái người dùng đã đặt. */
-function withDefaults(kind, props) {
+export function withDefaults(kind, props) {
   const p = Object.assign({}, props);
   switch (kind) {
     case "spawn":
@@ -152,15 +162,28 @@ function withDefaults(kind, props) {
 }
 
 /** Toàn bộ trạng thái runtime. */
-const E = {
+export const E = {
   // dữ liệu map
   mapId: null,
   mapName: "Map",
   mapSize: [6400, 6400],
   background: null,
   terrains: [],
-  /** Nửa "nhẹ" của map theo MapSummary: id + danh sách phe (mảng chuỗi). */
-  meta: { id: "my-map", factions: ["amber", "jade"] },
+  /**
+   * Nửa "nhẹ" của map theo MapSummary: id, danh sách phe, và bảng tuning.
+   *
+   * `MapTuning` là kiểu THẬT của core, `import` thẳng chứ không mô tả lại —
+   * thứ mà bản JavaScript thuần không làm được. Trước đây chỗ này là một
+   * object không tên, `tuning` được gắn vào lúc chạy, và cả một bài test
+   * (`editorTuningSchema.test.ts`) tồn tại chỉ để dò chữ xem editor có đang
+   * ghi vào một khoá mà core không đọc hay không. Giờ thì trình biên dịch trả
+   * lời câu đó.
+   */
+  meta: { id: "my-map", factions: ["amber", "jade"] } as {
+    id: string;
+    factions: string[];
+    tuning?: MapTuning;
+  },
 
   // tương tác
   tool: "select",           // select | marquee | hand | pen
@@ -212,7 +235,7 @@ const E = {
 
 /* ============================== camera ================================= */
 
-const Cam = {
+export const Cam = {
   x: 0, y: 0, scale: 1,
   tx: 0, ty: 0, tscale: 1,
   MIN: 0.015,
@@ -351,13 +374,13 @@ const Cam = {
 /* ============================== terrain ================================ */
 
 let idSeed = 0;
-function newId() {
+export function newId() {
   idSeed = (idSeed + 1) % 1e6;
   return Date.now().toString(36) + "-" + idSeed.toString(36) + Math.random().toString(36).slice(2, 5);
 }
 
 /** Tính lại mảnh lồi + AABB cho terrain. Gọi sau MỌI thay đổi hình học. */
-function refreshTerrain(t) {
+export function refreshTerrain(t) {
   t._path = null;
   const shape = KIND[t.type] ? KIND[t.type].shape : "poly";
 
@@ -392,13 +415,13 @@ function refreshTerrain(t) {
  * Hình đổi khi đang kéo đỉnh: bỏ cache đường vẽ + AABB, nhưng hoãn việc cắt
  * lồi (decomp) tới lúc thả tay — decomp mỗi frame là thứ làm bản cũ giật.
  */
-function markShapeDirty(t) {
+export function markShapeDirty(t) {
   t._path = null;
   t._bbox = Geom.bounds(t.polygon, t.position[0], t.position[1], t._bbox || [0, 0, 0, 0]);
 }
 
 /** Chỉ vị trí đổi (kéo thả) — khỏi decomp lại, chỉ dời AABB. */
-function moveTerrainTo(t, x, y) {
+export function moveTerrainTo(t, x, y) {
   const dx = x - t.position[0];
   const dy = y - t.position[1];
   if (dx === 0 && dy === 0) return;
@@ -412,7 +435,7 @@ function moveTerrainTo(t, x, y) {
   }
 }
 
-function makeTerrain(type, position, polygon, props) {
+export function makeTerrain(type, position, polygon, props?) {
   const kind = KIND[type] ? type : "wall";
   const t = {
     id: newId(),
@@ -442,7 +465,7 @@ function makeTerrain(type, position, polygon, props) {
  * phải để yên; map không có thì đang ở dạng đã cắt, và dựng lại hay không là
  * quyết định của tác giả chứ không phải chuyện tự xảy ra khi mở map lên.
  */
-function mergeTerrains(list) {
+export function mergeTerrains(list) {
   const out = [];
   const byType = new Map();
   for (const t of list || []) {
@@ -528,7 +551,7 @@ function mergeTerrains(list) {
 }
 
 /** Đọc dữ liệu đã lưu (kể cả bản firebase cũ, nơi mọi field là chuỗi JSON). */
-function normalizeTerrain(raw) {
+export function normalizeTerrain(raw) {
   const parse = (v, fb) => {
     if (typeof v === "string") {
       try { return JSON.parse(v); } catch (e) { return fb; }
@@ -560,7 +583,7 @@ function normalizeTerrain(raw) {
 }
 
 /** Bản sao gọn, đã làm tròn — dùng cho localStorage, file và undo. */
-function serializeTerrains(list = E.terrains) {
+export function serializeTerrains(list = E.terrains) {
   return list.map((t) => ({
     id: t.id,
     type: t.type || "wall",
@@ -571,7 +594,7 @@ function serializeTerrains(list = E.terrains) {
   }));
 }
 
-function countByType() {
+export function countByType() {
   const c = {};
   for (const k of TYPES) c[k] = 0;
   for (const t of E.terrains) if (c[t.type] != null) c[t.type]++;
@@ -580,7 +603,7 @@ function countByType() {
 
 /* ============================= selection =============================== */
 
-const Sel = {
+export const Sel = {
   has: (t) => E.selection.indexOf(t) !== -1,
   get size() { return E.selection.length; },
   get one() { return E.selection.length === 1 ? E.selection[0] : null; },
@@ -661,7 +684,7 @@ function afterSelectionChange() {
  * nhanh bằng AABB rồi mới ray-cast. Vẫn giữ luật cũ: nước nhường chỗ cho vật
  * thể khác đè lên nó.
  */
-function pickTerrain(wx, wy) {
+export function pickTerrain(wx, wy) {
   let water = null;
   for (let i = E.terrains.length - 1; i >= 0; i--) {
     const t = E.terrains[i];
@@ -707,14 +730,14 @@ function nearPolyline(wx, wy, t, tol) {
  * Chọn một hình rồi kéo thẳng một đỉnh vẫn dùng được như trước, không cần
  * vào mode; mode chỉ thêm khả năng chọn NHIỀU đỉnh.
  */
-function vertexHost() {
+export function vertexHost() {
   if (E.editing && hasVerts(E.editing)) return E.editing;
   const one = Sel.one;
   return one && hasVerts(one) ? one : null;
 }
 
 /** Đỉnh dưới con trỏ của polygon đang lộ tay cầm. `r` là bán kính world. */
-function pickVertex(wx, wy, r) {
+export function pickVertex(wx, wy, r) {
   const t = vertexHost();
   if (!t) return null;
   const r2 = r * r;
@@ -732,9 +755,9 @@ function pickVertex(wx, wy, r) {
 /* ------------------------- chế độ sửa đỉnh -------------------------- */
 
 /** Số đỉnh tối thiểu: polygon cần 3, đường gấp khúc cần 2. */
-const minVerts = (t) => (isLine(t) ? 2 : 3);
+export const minVerts = (t) => (isLine(t) ? 2 : 3);
 
-function enterEdit(t) {
+export function enterEdit(t) {
   if (!t || !hasVerts(t)) return false;
   E.editing = t;
   E.vertexSel.clear();
@@ -743,7 +766,7 @@ function enterEdit(t) {
   return true;
 }
 
-function exitEdit() {
+export function exitEdit() {
   if (!E.editing) return false;
   E.editing = null;
   E.vertexSel.clear();
@@ -752,21 +775,21 @@ function exitEdit() {
   return true;
 }
 
-const setVertexSel = (points) => {
+export const setVertexSel = (points) => {
   E.vertexSel.clear();
   for (const p of points || []) E.vertexSel.add(p);
   if (typeof UI !== "undefined") UI.syncSelection();
   requestRender();
 };
 
-const toggleVertex = (p) => {
+export const toggleVertex = (p) => {
   if (E.vertexSel.has(p)) E.vertexSel.delete(p); else E.vertexSel.add(p);
   if (typeof UI !== "undefined") UI.syncSelection();
   requestRender();
 };
 
 /** Các đỉnh của polygon đang sửa nằm trong hình chữ nhật world. */
-function pickVerticesInRect(t, rect) {
+export function pickVerticesInRect(t, rect) {
   const out = [];
   const ox = t.position[0], oy = t.position[1];
   for (const p of t.polygon) {
@@ -795,7 +818,7 @@ function hitsRect(t, rect) {
 }
 
 /** Mọi terrain vùng quét chạm tới — dùng cho chọn nhiều bằng kéo thả. */
-function pickInRect(rect) {
+export function pickInRect(rect) {
   const out = [];
   for (const t of E.terrains) {
     if (!E.visible[t.type]) continue;
@@ -813,7 +836,7 @@ function pickInRect(rect) {
  * Lịch sử kiểu snapshot. Map thực tế cỡ vài trăm polygon nên một snapshot
  * JSON chỉ tốn vài chục KB và đổi lại là undo tuyệt đối chính xác.
  */
-const History = {
+export const History = {
   past: [],
   future: [],
   current: null,
@@ -887,7 +910,7 @@ const History = {
  * Chốt một thay đổi: đẩy vào undo, hẹn giờ autosave, đồng bộ UI, vẽ lại.
  * Mọi lệnh sửa map đều kết thúc bằng hàm này.
  */
-function commit() {
+export function commit() {
   History.push();
   Store.scheduleSave();
   if (typeof UI !== "undefined") UI.syncSelection();

@@ -2,6 +2,14 @@
    main.js — khởi động và nối các mảnh lại với nhau.
    ========================================================================= */
 
+import { Cmd } from './commands';
+import { Input } from './input';
+import { requestRender } from './frame';
+import { Renderer } from './render';
+import { E } from './state';
+import { Store } from './storage';
+import { UI } from './ui';
+
 (function boot() {
   function start() {
     Store.loadPrefs();
@@ -14,7 +22,7 @@
     // Mọi nút có data-cmd đều chạy qua sổ đăng ký lệnh — không còn onclick
     // rải rác trong HTML như bản cũ.
     document.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-cmd]");
+      const btn = (e.target as Element | null)?.closest("[data-cmd]") as HTMLElement | null;
       if (!btn) return;
       e.preventDefault();
       Cmd.run(btn.dataset.cmd, btn);

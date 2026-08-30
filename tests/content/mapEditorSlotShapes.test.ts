@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { Cam, E, pickR, turretBodyR } from '@/mapEditor/state';
 import { DEFAULT_TURRET_PRESET } from '@/game/gameObject/structures/Turret';
 
 /**
@@ -20,62 +20,55 @@ import { DEFAULT_TURRET_PRESET } from '@/game/gameObject/structures/Turret';
  * functions rather than a re-implementation of them.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor/js');
-const read = (name: string): string => readFileSync(resolve(EDITOR, name), 'utf8');
 
-/** The editor's `state.js`, loaded with the globals it expects. */
-function editorState(): vm.Context {
-  const context = vm.createContext({
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-  });
-  vm.runInContext(read('geom.js'), context);
-  vm.runInContext(read('state.js'), context);
-  return context;
+/**
+ * A turret slot as the editor holds one. A real object now: this used to be a
+ * *string* of JavaScript, spliced into an expression and run inside a `vm`
+ * context, because `state.js` was a classic script with no way in. The
+ * functions under test are ordinary imports, so the fixture is an ordinary
+ * value and the assertions call them directly.
+ */
+const turret = (stats?: Record<string, number>) =>
+  ({ type: 'structure', position: [0, 0], props: stats ? { stats } : {} }) as never;
+
+/** Each case starts from a clean camera and no map tuning. */
+function reset(): void {
+  Cam.scale = 1;
+  E.meta.tuning = undefined;
 }
-
-const evaluate = <T>(context: vm.Context, expression: string): T =>
-  JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, context) as string) as T;
-
-const turret = (stats?: Record<string, number>): string =>
-  `{ type: 'structure', position: [0, 0], props: ${JSON.stringify(stats ? { stats } : {})} }`;
 
 describe('a turret in the map editor', () => {
   it('can be grabbed anywhere on the circle it draws', () => {
-    const context = editorState();
-    vm.runInContext('Cam.scale = 1;', context);
+    reset();
+    Cam.scale = 1;
 
     // One function behind both, which is the whole rule: `render.js` draws
     // `turretBodyR` and `pickR` returns it. Two copies of the formula would
     // drift, and the drift is invisible — the circle simply stops being the
     // thing you clicked.
-    expect(evaluate(context, `pickR(${turret({ size: 200 })})`)).toBe(100);
-    expect(evaluate(context, `turretBodyR(${turret({ size: 200 })})`)).toBe(100);
+    expect(pickR(turret({ size: 200 }))).toBe(100);
+    expect(turretBodyR(turret({ size: 200 }))).toBe(100);
   });
 
   it('is that big by default, which is why the square was a lie', () => {
-    const context = editorState();
-    vm.runInContext('Cam.scale = 1;', context);
+    reset();
+    Cam.scale = 1;
 
     // Read off core rather than restated: the editor cannot import `src/`, so
     // this number is copied into `state.js` by hand and this is the only thing
     // that notices when core moves it.
-    expect(evaluate(context, `turretBodyR(${turret()})`)).toBe(DEFAULT_TURRET_PRESET.size / 2);
+    expect(turretBodyR(turret())).toBe(DEFAULT_TURRET_PRESET.size / 2);
   });
 
   it('takes its size from the map’s own tuning, then from the slot', () => {
-    const context = editorState();
-    vm.runInContext('Cam.scale = 1; E.meta.tuning = { turrets: { size: 300 } };', context);
+    reset();
+    Cam.scale = 1;
+    E.meta.tuning = { turrets: { size: 300 } };
 
     // The same three layers core merges — core default, map tuning, slot
     // `stats` — so a map that made every turret huge is huge in the editor too.
-    expect(evaluate(context, `turretBodyR(${turret()})`)).toBe(150);
-    expect(evaluate(context, `turretBodyR(${turret({ size: 40 })})`)).toBe(20);
+    expect(turretBodyR(turret())).toBe(150);
+    expect(turretBodyR(turret({ size: 40 }))).toBe(20);
   });
 
   /**
@@ -85,17 +78,18 @@ describe('a turret in the map editor', () => {
    * than a grab area larger than the ink.
    */
   it('stays grabbable when zoomed out past the point of being visible', () => {
-    const context = editorState();
-    vm.runInContext('Cam.scale = 0.02;', context);
+    reset();
+    Cam.scale = 0.02;
 
-    const pick = evaluate<number>(context, `pickR(${turret({ size: 20 })})`);
+    const pick = pickR(turret({ size: 20 }));
     expect(pick).toBeGreaterThan(10);
     expect(pick * 0.02).toBeCloseTo(12, 5);
   });
 });
 
 describe('what the editor draws around a slot', () => {
-  const render = (): string => read('render.js');
+  const render = (): string =>
+    readFileSync(resolve(__dirname, '../../src/mapEditor/render.ts'), 'utf8');
 
   it('draws no square for a turret any more', () => {
     // `ctx.rect` inside the marker was the square. The diamond for a muster

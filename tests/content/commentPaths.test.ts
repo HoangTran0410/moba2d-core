@@ -74,7 +74,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 const files = (): string[] =>
-  ['src', 'tests', 'scripts', 'public/map-editor/js'].flatMap(dir =>
+  ['src', 'tests', 'scripts'].flatMap(dir =>
     sourceFiles(resolve(ROOT, dir))
   );
 
@@ -84,7 +84,7 @@ describe('every path this repository names in prose', () => {
     // pass while checking not one reference.
     const scanned = files();
     expect(scanned.length).toBeGreaterThan(400);
-    for (const root of ['/src/', '/tests/', '/scripts/', '/public/']) {
+    for (const root of ['/src/', '/tests/', '/scripts/']) {
       expect(
         scanned.some(file => file.includes(root)),
         `${root} contributed no files`

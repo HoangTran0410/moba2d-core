@@ -6,14 +6,26 @@
    (SweetAlert2 nặng 71KB và mang theo phong cách riêng của nó).
    ========================================================================= */
 
-const UI = (() => {
+import { Cmd } from './commands';
+import { Geom } from './geom';
+import { requestRender } from './frame';
+import { Cam, E, KIND, SLOT_KINDS, Sel, TERRAIN_KINDS, circleR, commit, countByType, factionColor, hasVerts, isLine, laneIds, newId } from './state';
+import { Store } from './storage';
+
+export const UI = (() => {
   const $ = (sel) => document.querySelector(sel);
   const modalRoot = () => $("#modal-root");
 
   const ico = (name, cls = "ico") =>
     `<svg class="${cls}" viewBox="0 0 24 24"><use href="#i-${name}"/></svg>`;
 
-  function el(tag, attrs, html) {
+  /**
+   * `attrs` and `html` are both optional, and saying so is the difference
+   * between a helper and 98 compile errors: under `<script>` tags every call
+   * site simply passed what it had, and nothing checked. The `?` marks state
+   * the contract those call sites were already relying on.
+   */
+  function el(tag, attrs?, html?) {
     const n = document.createElement(tag);
     if (attrs) for (const k in attrs) {
       if (k === "class") n.className = attrs[k];
@@ -93,7 +105,26 @@ const UI = (() => {
    * Khung hộp thoại chung. `build(body, close)` dựng nội dung; `close(value)`
    * đóng và trả giá trị về cho Promise.
    */
-  function openModal({ icon, title, wide, build, onKey }) {
+  /**
+   * The option bag is declared rather than inferred, and every key that a
+   * caller may leave out says so. Inferred from the destructuring alone,
+   * TypeScript reads all five as required and reports 28 perfectly good call
+   * sites — which is the shape of most of what the move to a compiler turned
+   * up: not bugs, but a contract that existed only in the heads of the people
+   * writing the calls.
+   *
+   * `any` for the DOM handles and the resolved value is deliberate. These
+   * dialogs build their bodies imperatively and resolve whatever their own
+   * `close()` was handed; pretending otherwise would be a type that describes
+   * a dialog system this file does not have.
+   */
+  function openModal({ icon, title, wide, build, onKey }: {
+    icon?: string;
+    title?: string;
+    wide?: boolean;
+    build?: (body: any, foot: any, close: (value?: any) => void) => void;
+    onKey?: (event: KeyboardEvent, close: (value?: any) => void) => void;
+  }): Promise<any> {
     return new Promise((resolve) => {
       modalDepth++;
       const scrim = el("div", { class: "scrim" });
@@ -137,7 +168,7 @@ const UI = (() => {
       document.addEventListener("keydown", key, true);
       scrim.addEventListener("pointerdown", (e) => { if (e.target === scrim) close(undefined); });
 
-      build(body, foot, close, modal);
+      build?.(body, foot, close);
       modalRoot().appendChild(scrim);
 
       const focusable = modal.querySelector("input, textarea, select, .btn.primary");
@@ -145,7 +176,9 @@ const UI = (() => {
     });
   }
 
-  const alertBox = ({ icon = "warn", title, text, html }) =>
+  const alertBox = ({ icon = "warn", title, text, html }: {
+    icon?: string; title?: string; text?: string; html?: string;
+  }) =>
     openModal({
       icon, title,
       build: (body, foot, close) => {
@@ -155,7 +188,10 @@ const UI = (() => {
       onKey: (e, close) => { if (e.key === "Enter") close(true); },
     });
 
-  const confirmBox = ({ icon = "warn", title, text, confirmText = "Đồng ý", cancelText = "Huỷ", danger }) =>
+  const confirmBox = ({ icon = "warn", title, text, confirmText = "Đồng ý", cancelText = "Huỷ", danger }: {
+    icon?: string; title?: string; text?: string;
+    confirmText?: string; cancelText?: string; danger?: boolean;
+  }) =>
     openModal({
       icon, title,
       build: (body, foot, close) => {
@@ -169,7 +205,9 @@ const UI = (() => {
     });
 
   /** Hộp thoại nhiều ô nhập. Trả object theo key, hoặc undefined nếu huỷ. */
-  const formBox = ({ icon, title, fields, confirmText = "Xong", note }) =>
+  const formBox = ({ icon, title, fields, confirmText = "Xong", note }: {
+    icon?: string; title?: string; fields: any[]; confirmText?: string; note?: string;
+  }) =>
     openModal({
       icon, title,
       build: (body, foot, close) => {
@@ -210,15 +248,17 @@ const UI = (() => {
         );
       },
       onKey: (e, close) => {
-        if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+        if (e.key === "Enter" && (e.target as Element).tagName !== "TEXTAREA") {
           const btn = document.querySelector(".scrim:last-child .btn.primary");
-          if (btn) btn.click();
+          if (btn) (btn as HTMLElement).click();
         }
       },
     });
 
   /** Ô xem/copy JSON — thay cho textarea của SweetAlert2 ngày trước. */
-  const textBox = ({ title, value, filename }) =>
+  const textBox = ({ title, value, filename }: {
+    title?: string; value?: string; filename?: string;
+  }) =>
     openModal({
       title, wide: true,
       build: (body, foot, close) => {
@@ -369,7 +409,7 @@ const UI = (() => {
       let t = 0;
       window.addEventListener("resize", () => {
         clearTimeout(t);
-        t = setTimeout(buildToolbar, 120);
+        t = setTimeout(buildToolbar, 120) as unknown as number;
       }, { passive: true });
     }
     syncToolbar();
@@ -388,7 +428,11 @@ const UI = (() => {
 
   /* ============================ bảng thuộc tính ========================== */
 
-  let R = {};  // các tham chiếu DOM trong inspector
+  // Các tham chiếu DOM trong inspector, gom theo tên. `Record` chứ không phải
+  // một interface liệt kê 30 khoá: chúng được gán trong `buildInspector` theo
+  // đúng thứ tự dựng DOM, và một danh sách viết tay ở đây sẽ là bản sao thứ
+  // hai của cái danh sách đó.
+  let R: Record<string, any> = {};
 
   /**
    * Two panes, one segmented control.
@@ -1004,7 +1048,7 @@ const UI = (() => {
   let checkTimer = 0;
   function scheduleCheck() {
     clearTimeout(checkTimer);
-    checkTimer = setTimeout(syncCheck, 320);
+    checkTimer = setTimeout(syncCheck, 320) as unknown as number;
   }
 
   /**
@@ -1106,7 +1150,31 @@ const UI = (() => {
    * trí: người vẽ map cần thấy mình đang đi lệch khỏi cái gì ngay tại ô đang
    * gõ, chứ không phải mở mã nguồn engine ra tra.
    */
-  const TUNING_SCHEMA = [
+  /**
+   * Một ô trong bảng tuning. Khai kiểu ở đây thay vì để TypeScript suy ra
+   * union của mọi literal — không có nó, một nhóm có `hint` và nhóm bên cạnh
+   * không có là hai kiểu khác nhau, và vòng lặp đọc `f.hint` thành lỗi.
+   *
+   * Bảng này sắp chuyển hẳn sang core và khoá theo `MapTuning`; kiểu tại chỗ
+   * là bước đệm để build xanh trước.
+   */
+  interface TuningField {
+    key: string;
+    label: string;
+    unit?: string;
+    ph?: string;
+    hint?: string;
+  }
+  interface TuningGroup {
+    key: string;
+    label: string;
+    hint?: string;
+    fields: TuningField[];
+    /** Nhóm "Lính" gắn thêm bảng loại lính riêng bên dưới các ô thường. */
+    minions?: boolean;
+  }
+
+  const TUNING_SCHEMA: TuningGroup[] = [
     {
       key: "champions",
       label: "Tướng",
@@ -1217,7 +1285,7 @@ const UI = (() => {
   ];
 
   /** Các ô số của một loại lính, dùng lại cho mọi loại map khai ra. */
-  const MINION_TYPE_FIELDS = [
+  const MINION_TYPE_FIELDS: TuningField[] = [
     { key: "health", label: "Máu", unit: "hp" },
     { key: "damage", label: "Sát thương", unit: "dmg" },
     { key: "speed", label: "Tốc chạy", unit: "px/frame" },
@@ -1326,7 +1394,7 @@ const UI = (() => {
     return bits;
   }
 
-  function tuningRow(label, hint, path, value, unit, ph) {
+  function tuningRow(label, hint, path, value, unit?, ph?) {
     const row = el("div", { class: "row", style: "margin-top:6px" });
     row.appendChild(el("label", { text: label, title: hint || label }));
     const input = el("input", {
@@ -1897,7 +1965,7 @@ const UI = (() => {
         let timer = 0;
         ta.addEventListener("input", () => {
           clearTimeout(timer);
-          timer = setTimeout(validate, 220);
+          timer = setTimeout(validate, 220) as unknown as number;
         });
 
         pick.onclick = () => {
@@ -2139,7 +2207,7 @@ const UI = (() => {
            </p>` +
           `<div class="keys">` +
           rows.map(([label, keys]) =>
-            `<div class="k"><span>${esc(label)}</span><em>${keys.map((k) => `<kbd>${esc(k)}</kbd>`).join("")}</em></div>`
+            `<div class="k"><span>${esc(label)}</span><em>${[keys].flat().map((k) => `<kbd>${esc(k)}</kbd>`).join("")}</em></div>`
           ).join("") +
           `</div>`;
         foot.appendChild(el("button", { class: "btn primary", text: "Đóng", onclick: () => close(true) }));

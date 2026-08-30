@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { makeTerrain, mergeTerrains } from '@/mapEditor/state';
+import { installEditorVendorGlobals } from './editorVendor';
 import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeometry';
 
 /**
@@ -22,7 +21,6 @@ import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeom
  * call, not something that happens to their map on open.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor');
 
 interface Terrain {
   id: string;
@@ -33,37 +31,13 @@ interface Terrain {
 }
 
 /** The real `geom.js` + `state.js`, with the globals they expect. */
-function loadEditor(): {
-  merge(list: Terrain[]): Terrain[];
-  make(type: string, position: [number, number], polygon: number[][]): Terrain;
-} {
-  const sandbox: Record<string, unknown> = {
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  };
-  sandbox.window = sandbox; // the bundled poly-decomp is a UMD build
-  const context = vm.createContext(sandbox);
-  for (const file of [
-    'lib/decomp.min.js',
-    'lib/polygon-clipping.min.js',
-    'js/geom.js',
-    'js/state.js',
-  ]) {
-    vm.runInContext(readFileSync(resolve(EDITOR, file), 'utf8'), context);
-  }
-  return {
-    merge: list => vm.runInContext('mergeTerrains', context)(list) as Terrain[],
-    make: (type, position, polygon) =>
-      vm.runInContext('makeTerrain', context)(type, position, polygon) as Terrain,
-  };
-}
+// `mergeTerrains` and `makeTerrain` are exports now — this used to be a `vm`
+// sandbox with a stubbed `UI`, because `state.js` was a classic script and the
+// only way to reach either function was to run the whole editor into a fake
+// global object.
+installEditorVendorGlobals();
 
-const editor = loadEditor();
+const editor = { merge: mergeTerrains, make: makeTerrain };
 
 /** A terrain's polygon in world coordinates, as a sorted corner set. */
 const worldCorners = (t: Terrain): string[] =>

@@ -6,12 +6,18 @@
    và không bao giờ có chuyện nút bấm với phím tắt làm hai việc khác nhau.
    ========================================================================= */
 
-const Cmd = (() => {
+import { Geom } from './geom';
+import { requestRender } from './frame';
+import { Cam, E, History, KIND, SLOT_KINDS, Sel, circleR, commit, enterEdit, exitEdit, hasVerts, isLine, isPoly, makeTerrain, mergeTerrains, minVerts, moveTerrainTo, normalizeTerrain, refreshTerrain, serializeTerrains, setVertexSel, vertexHost, withDefaults } from './state';
+import { Store } from './storage';
+import { UI } from './ui';
+
+export const Cmd = (() => {
   const map = new Map();
   const def = (id, spec) => map.set(id, Object.assign({ id }, spec));
 
   const get = (id) => map.get(id);
-  const run = (id, arg) => {
+  const run = (id, arg?) => {
     const c = map.get(id);
     if (!c) return;
     if (c.isEnabled && !c.isEnabled()) return;
@@ -880,7 +886,7 @@ const Cmd = (() => {
   def("ui.addMenu", {
     label: "Thêm…", icon: "square-plus", keyHint: "N",
     run: (anchor) => {
-      const item = (kind, extra) => Object.assign({
+      const item = (kind, extra?) => Object.assign({
         icon: KIND[kind].shape === "line" ? "pen" : KIND[kind].shape === "poly" ? "square-plus" : "target",
         label: KIND[kind].label,
         run: () => addObject(kind),
@@ -1272,7 +1278,7 @@ const Cmd = (() => {
   def("ui.overflow", {
     label: "Thêm", icon: "more",
     run: (anchor) => {
-      const item = (id, extra) => {
+      const item = (id, extra?) => {
         const c = get(id);
         return Object.assign({
           icon: c.icon, label: c.label, shortcut: c.keyHint,

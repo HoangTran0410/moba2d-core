@@ -3,7 +3,7 @@
  *
  * ## Why a subpath of its own
  *
- * The rules are implemented once, in `public/map-editor/js/mapRules.js`, and
+ * The rules are implemented once, in `src/mapEditor/mapRules.ts`, and
  * republished typed by `src/seams/mapRules.ts`. A pack cannot import that: a
  * pack's tests are held to a named list of core subpaths
  * (`lol/tests/noCoreReach.test.ts`), and `@moba2d/core/seams` is not on it and

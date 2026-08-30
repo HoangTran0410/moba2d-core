@@ -139,6 +139,12 @@ describe("@moba2d/core's published tarball", () => {
       const source = readFileSync(join(repoRoot, path), 'utf8');
       for (const { specifier } of scanImports(source)) {
         if (!specifier.startsWith('.')) continue;
+        // A specifier with an interpolation in it is not an import this file
+        // performs — it is an import this file *writes*. `mapEditor/storage.ts`
+        // generates a pack's `.ts` source as text, and the `from "./${name}
+        // Geometry"` inside that template is a line in the file it emits, for
+        // a module that will exist in somebody else's repository.
+        if (specifier.includes('${')) continue;
         const bare = specifier.split('?')[0];
         const target = posix.normalize(posix.join(posix.dirname(path), bare));
         const candidates = [

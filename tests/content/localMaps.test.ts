@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { E, normalizeTerrain } from '@/mapEditor/state';
+import { Store } from '@/mapEditor/storage';
+import { installEditorVendorGlobals, installHeadlessDom } from './editorVendor';
 import {
   installLocalMaps,
   LOCAL_MAPS_KEY,
@@ -10,6 +12,12 @@ import {
   takeStagedMaps,
 } from '@/content/localMaps';
 import { PackRegistry } from '@/content/PackRegistry';
+
+// The editor's browser half: called for real on the import path, irrelevant
+// to what this suite asserts, and a `TypeError` if it is simply absent.
+vi.mock('@/mapEditor/ui', () => ({ UI: new Proxy({}, { get: () => () => {} }) }));
+
+installEditorVendorGlobals();
 
 /**
  * The seam between the map editor and the game, tested from both sides at
@@ -28,8 +36,6 @@ import { PackRegistry } from '@/content/PackRegistry';
  * *real* installer. A rename on either side fails here.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor');
-const editorFile = (path: string): string => readFileSync(resolve(EDITOR, path), 'utf8');
 
 /** A concave 'C' — the shape the editor has to cut into convex pieces. */
 const CONCAVE_C = [
@@ -62,63 +68,37 @@ function runEditor(tuning?: unknown): EditorRun {
   const written: EditorRun = { published: null, key: null };
   const store = new Map<string, string>();
 
-  const sandbox: Record<string, unknown> = {
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value);
-        written.key = key;
-        written.published = value;
-      },
-      removeItem: (key: string) => void store.delete(key),
+  installHeadlessDom();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+      written.key = key;
+      written.published = value;
     },
-    document: {
-      createElement: () => ({ style: {}, appendChild() {}, click() {}, remove() {} }),
-      body: { appendChild() {} },
-    },
-  };
-  sandbox.window = sandbox; // the bundled poly-decomp is a UMD build
-  const context = vm.createContext(sandbox);
+    removeItem: (key: string) => void store.delete(key),
+  });
 
-  vm.runInContext(editorFile('lib/decomp.min.js'), context);
-  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/mapRules.js', 'js/geom.js', 'js/state.js', 'js/storage.js']) {
-    vm.runInContext(editorFile(file), context);
-  }
-
-  vm.runInContext(
-    `
-    E.mapName = 'Thung Lũng';
-    E.mapSize = [4000, 4000];
-    E.meta = { id: 'thung-lung', factions: ['amber', 'jade']${
-      tuning === undefined ? '' : `, tuning: ${JSON.stringify(tuning)}`
-    } };
-    E.terrains = [
-      normalizeTerrain({ type: 'wall', position: [1000, 1000], polygon: ${JSON.stringify(CONCAVE_C)} }),
-      normalizeTerrain({ type: 'bush', position: [2000, 2000], polygon: [[0,0],[200,0],[200,200],[0,200]] }),
-      normalizeTerrain({ type: 'lane', position: [0, 0], polygon: [[400,400],[2000,2000],[3600,3600]],
-                         props: { id: 'mid', from: 'amber', to: 'jade' } }),
-      normalizeTerrain({ type: 'spawn', position: [400, 400], props: { faction: 'amber', r: 150 } }),
-      normalizeTerrain({ type: 'spawn', position: [3600, 3600], props: { faction: 'jade', r: 150 } }),
-      normalizeTerrain({ type: 'minion', position: [700, 700],
-                         props: { faction: 'amber', lane: 'mid', stats: { composition: ['cannon', 'cannon'] } } }),
-      normalizeTerrain({ type: 'minion', position: [3300, 3300], props: { faction: 'jade', lane: 'mid' } }),
-      normalizeTerrain({ type: 'structure', position: [900, 900],
-                         props: { faction: 'amber', kind: 'turret', stats: { health: 900, attackRange: 700 } } }),
-      normalizeTerrain({ type: 'structure', position: [3100, 3100], props: { faction: 'jade', kind: 'turret' } }),
-      normalizeTerrain({ type: 'neutral', position: [2000, 1000],
-                         props: { role: 'warden', r: 200, stats: { aggroRange: 800 } } }),
-    ];
-    Store.publishLocal();
-    `,
-    context
-  );
+  E.mapName = 'Thung Lũng';
+  E.mapSize = [4000, 4000];
+  E.meta = { id: 'thung-lung', factions: ['amber', 'jade'], tuning: tuning as never };
+  E.terrains = [
+    normalizeTerrain({ type: 'wall', position: [1000, 1000], polygon: CONCAVE_C }),
+    normalizeTerrain({ type: 'bush', position: [2000, 2000], polygon: [[0,0],[200,0],[200,200],[0,200]] }),
+    normalizeTerrain({ type: 'lane', position: [0, 0], polygon: [[400,400],[2000,2000],[3600,3600]],
+                       props: { id: 'mid', from: 'amber', to: 'jade' } }),
+    normalizeTerrain({ type: 'spawn', position: [400, 400], props: { faction: 'amber', r: 150 } }),
+    normalizeTerrain({ type: 'spawn', position: [3600, 3600], props: { faction: 'jade', r: 150 } }),
+    normalizeTerrain({ type: 'minion', position: [700, 700],
+                       props: { faction: 'amber', lane: 'mid', stats: { composition: ['cannon', 'cannon'] } } }),
+    normalizeTerrain({ type: 'minion', position: [3300, 3300], props: { faction: 'jade', lane: 'mid' } }),
+    normalizeTerrain({ type: 'structure', position: [900, 900],
+                       props: { faction: 'amber', kind: 'turret', stats: { health: 900, attackRange: 700 } } }),
+    normalizeTerrain({ type: 'structure', position: [3100, 3100], props: { faction: 'jade', kind: 'turret' } }),
+    normalizeTerrain({ type: 'neutral', position: [2000, 1000],
+                       props: { role: 'warden', r: 200, stats: { aggroRange: 800 } } }),
+  ];
+  Store.publishLocal();
 
   return written;
 }
@@ -136,50 +116,26 @@ function parseInEditor(doc: unknown): {
   /** And the first muster point's — its own wave formation. */
   minionStats: unknown;
 } {
+  installHeadlessDom();
   const store = new Map<string, string>();
-  const sandbox: Record<string, unknown> = {
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
-    },
-    document: {
-      createElement: () => ({ style: {}, appendChild() {}, click() {}, remove() {} }),
-      body: { appendChild() {} },
-    },
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  });
+
+  const parsed = Store.parseMapJSON(JSON.stringify(doc), 'M');
+  E.mapName = parsed.name;
+  E.mapSize = parsed.mapSize;
+  E.meta = parsed.meta;
+  const turret = (parsed.terrains || []).find(t => t.type === 'structure');
+  const muster = (parsed.terrains || []).find(t => t.type === 'minion');
+  return {
+    meta: parsed.meta,
+    summaryTuning: Store.mapSummary().tuning,
+    structureStats: turret && turret.props ? turret.props.stats : undefined,
+    minionStats: muster && muster.props ? muster.props.stats : undefined,
   };
-  sandbox.window = sandbox;
-  const context = vm.createContext(sandbox);
-  vm.runInContext(editorFile('lib/decomp.min.js'), context);
-  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/mapRules.js', 'js/geom.js', 'js/state.js', 'js/storage.js']) {
-    vm.runInContext(editorFile(file), context);
-  }
-  return vm.runInContext(
-    `
-    (() => {
-      const parsed = Store.parseMapJSON(${JSON.stringify(JSON.stringify(doc))}, 'M');
-      E.mapName = parsed.name;
-      E.mapSize = parsed.mapSize;
-      E.meta = parsed.meta;
-      const turret = (parsed.terrains || []).find(t => t.type === 'structure');
-      const muster = (parsed.terrains || []).find(t => t.type === 'minion');
-      return {
-        meta: parsed.meta,
-        summaryTuning: Store.mapSummary().tuning,
-        structureStats: turret && turret.props ? turret.props.stats : undefined,
-        minionStats: muster && muster.props ? muster.props.stats : undefined,
-      };
-    })()
-    `,
-    context
-  );
 }
 
 /**

@@ -41,7 +41,7 @@ type Point = { x: number; y: number };
  * gate refused.
  *
  * `@moba2d/core/seams`' `laneIssues` is the single implementation now, loading
- * `public/map-editor/js/mapRules.js` — the editor has no bundler and cannot
+ * `src/mapEditor/mapRules.ts` — the editor has no bundler and cannot
  * import anything else, so the original lives on the narrower side. What is
  * left in this file is its own question: **every shipped map**, checked the
  * same way, which is the one thing a pack's own suite cannot ask.

@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import vm from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { E, History } from '@/mapEditor/state';
+import { Store } from '@/mapEditor/storage';
+import { installEditorVendorGlobals, installHeadlessDom } from './editorVendor';
+
+// The editor's browser half. `state.ts` and `storage.ts` call into it for
+// real on the import path, and this suite is about what they *stored*, not
+// what they drew — a Proxy answers every `UI.*` with a no-op so a name added
+// there later cannot fail here as a `TypeError`.
+vi.mock('@/mapEditor/ui', () => ({ UI: new Proxy({}, { get: () => () => {} }) }));
+
+installEditorVendorGlobals();
 import { EDIT_SUFFIX, PACK_MAPS_KEY, publishPackMaps } from '@/content/editorCatalog';
 import { PackRegistry } from '@/content/PackRegistry';
 
@@ -33,8 +41,6 @@ import { PackRegistry } from '@/content/PackRegistry';
  * form its author left it and is opened untouched.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor');
-const editorFile = (path: string): string => readFileSync(resolve(EDITOR, path), 'utf8');
 
 /** Two boxes butted together, plus a bush — the cut form a pack ships. */
 const CUT_MAP = {
@@ -129,71 +135,29 @@ interface EditorSession {
 
 /** Boot the real editor over a store already holding what core published. */
 function editorOver(store: Map<string, string>): EditorSession {
-  const sandbox: Record<string, unknown> = {
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
-    },
-    document: {
-      createElement: () => ({ style: {}, appendChild() {}, click() {}, remove() {} }),
-      body: { appendChild() {} },
-      getElementById: () => null,
-    },
-    // `render.js` and `ui.js` are the editor's browser half and are not loaded
-    // here, but the import path legitimately calls into both.
-    requestRender: () => {},
-    // Every `UI.*` that `state.js` and `storage.js` reach for. Stubbed rather
-    // than skipped: the import path calls into the browser half for real, and
-    // a missing name here fails as a `TypeError` inside the code under test.
-    UI: {
-      toast: () => {},
-      alert: () => {},
-      setSaveState: () => {},
-      syncAll: () => {},
-      syncHistory: () => {},
-      syncMapName: () => {},
-      syncSelection: () => {},
-      syncView: () => {},
-    },
-  };
-  sandbox.window = sandbox; // the bundled poly-decomp is a UMD build
-  const context = vm.createContext(sandbox);
-
-  vm.runInContext(editorFile('lib/decomp.min.js'), context);
-  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/geom.js', 'js/state.js', 'js/storage.js']) {
-    vm.runInContext(editorFile(file), context);
-  }
-
-  const run = <T>(code: string): T => vm.runInContext(code, context) as T;
   const count = (): number =>
-    JSON.parse(store.get('moba2d-local-maps-v1') ?? '[]').length as number;
+    (JSON.parse(store.get('moba2d-local-maps-v1') ?? '[]') as unknown[]).length;
+
+  const wallsAndBushes = () => ({
+    name: E.mapName,
+    walls: E.terrains.filter(t => t.type === 'wall').length,
+    bushes: E.terrains.filter(t => t.type === 'bush').length,
+  });
 
   return {
-    catalogNames: () => run<string[]>('Store.readPackMaps().map((m) => m.name)'),
+    catalogNames: () => Store.readPackMaps().map(m => m.name),
     open: id => {
-      run(`Store.openPackMap(${JSON.stringify(id)})`);
-      return run(`({
-        name: E.mapName,
-        walls: E.terrains.filter((t) => t.type === 'wall').length,
-        bushes: E.terrains.filter((t) => t.type === 'bush').length,
-      })`);
+      Store.openPackMap(id);
+      return wallsAndBushes();
     },
     undoOnce: () => {
-      run('History.undo()');
-      return run<number>("E.terrains.filter((t) => t.type === 'wall').length");
+      History.undo();
+      return E.terrains.filter(t => t.type === 'wall').length;
     },
     publishThenDelete: () => {
-      run('Store.publishLocal()');
+      Store.publishLocal();
       const afterPublish = count();
-      run('Store.deleteMap(E.mapId)');
+      Store.deleteMap(E.mapId);
       return { afterPublish, afterDelete: count() };
     },
   };
@@ -204,6 +168,7 @@ describe('editor catalog', () => {
 
   beforeEach(() => {
     store = new Map<string, string>();
+    installHeadlessDom();
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => void store.set(key, value),

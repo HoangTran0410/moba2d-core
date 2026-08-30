@@ -1,7 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 
 /**
  * `@moba2d/core/seams`' map-geometry rules — can a minion body actually walk
@@ -9,12 +5,14 @@ import vm from 'node:vm';
  *
  * ## One implementation, and this file is not it
  *
- * The rules live in `public/map-editor/js/mapRules.js`, as plain browser
- * JavaScript, and this module *loads that file* rather than restating it. The
- * direction is forced: the map editor has no bundler and no build step — it is
- * `<script>` tags talking to each other through globals — so it cannot import
- * TypeScript, while anything that can load TypeScript can also load a plain
- * script. The single source therefore has to sit on the narrower side.
+ * The rules live in `src/mapEditor/mapRules.ts`, beside the editor that draws
+ * the maps they judge, and this module *re-exports them typed* rather than
+ * restating them. Which side holds the implementation used to be forced: the
+ * editor had no bundler and no build step, so it could not import TypeScript
+ * and the single source had to sit on the narrower side. The editor is a Vite
+ * entry now, so the constraint is gone — but the answer did not change, and
+ * should not: the rules belong next to the tool that has to explain them to
+ * whoever is drawing a map.
  *
  * The alternative was tried for about an hour and is what this replaces: the
  * same three thresholds written out in the editor *and* in a pack's own
@@ -24,15 +22,21 @@ import vm from 'node:vm';
  * have helped them fix it. That is not hypothetical; it is the report this
  * module exists because of.
  *
- * ## Why `vm` and not an import
+ * A blank line's worth of history, because it explains the shape of this file:
+ * the sentence above was true while the two sides could only meet through a
+ * `node:vm` bridge, and the bridge is what made a *seam* necessary at all.
  *
- * `mapRules.js` assigns one object to `globalThis`. Loading it in a fresh
- * context and reading that object back is six lines and needs nothing of the
- * file except what it already does for the browser. An `export` would have
- * made it a module, which is the one thing the editor cannot load.
+ * ## It used to load that file through `node:vm`
  *
- * Loaded once and memoised: the file never changes inside a process, and a
- * pack's map suite asks for it per case.
+ * Because the editor was plain `<script>` tags with no build, `mapRules.js`
+ * could not be a module — so this file ran it in a fresh V8 context and read
+ * the object it published to `globalThis`. Six lines, and they worked, and
+ * they were the price of the editor being outside the compiler.
+ *
+ * The editor is a Vite entry now, so the price is gone: this is an ordinary
+ * `import`, type-checked like anything else, and a rename on either side is a
+ * build failure rather than a `did not define MapRules` thrown at runtime by
+ * a bridge nobody was looking at.
  *
  * ## What it takes
  *
@@ -41,86 +45,47 @@ import vm from 'node:vm';
  * that difference is the caller's to resolve — a rule that accepted both
  * would be a rule with a mode to get wrong.
  */
-
-/** One thing wrong with a lane, and where. */
-export interface MapRuleIssue {
-  text: string;
-  /** World coordinates, for a UI that can fly the camera there. */
-  at: [number, number];
-}
-
-/** A turret centre: a bare pair, or a slot that also knows whose it is. */
-export type MapRuleTurret = [number, number] | { x: number; y: number; faction?: string };
-
-export interface MapRuleInput {
-  lanes: { id: string; points: [number, number][] }[];
-  /** Every wall polygon, in world coordinates. */
-  walls: [number, number][][];
-  /** Every turret centre, in world coordinates. */
-  turrets: MapRuleTurret[];
-  /**
-   * The map's own extent, needed only by the point-symmetry rule. Square maps
-   * are the only shape the slot rules have an opinion about, so this is one
-   * number rather than a width and a height.
-   */
-  size?: number;
-  /** Fountains. Two of them, one per faction, is what the rules assume. */
-  spawns?: { x: number; y: number; faction?: string }[];
-  /** Where a wave forms up — `slots.minion`. */
-  musters?: { x: number; y: number; faction?: string; lane?: string; scatter?: number }[];
-  /** Jungle camps — `slots.neutral`. Only paired roles are graded. */
-  neutrals?: { x: number; y: number; r?: number; role?: string }[];
-  /**
-   * The map's factions, **in the order it declares them**.
-   *
-   * The order is the whole content: `preset.ts`'s `teamIdOfFaction` bridges
-   * positionally — `factions[0]` is blue, `factions[1]` is red, whatever they
-   * are spelled — and answers `undefined` for everything after, which drops
-   * the slot. A map may declare four; a match seats two.
-   */
-  factions?: string[];
-}
-
-interface MapRulesModule {
-  MIN_LANE_WALL_CLEARANCE: number;
-  TURRET_BODY_RADIUS: number;
-  MINION_BODY_RADIUS: number;
-  TURRET_BLOCKED_RADIUS: number;
-  MIN_WAYPOINT_TURRET_CLEARANCE: number;
-  MIN_SEGMENT_TURRET_CLEARANCE: number;
-  LANE_COVERS_TURRET: number;
-  BASE_RADIUS: number;
-  laneIssues(map: MapRuleInput): MapRuleIssue[];
-  structureIssues(map: MapRuleInput): MapRuleIssue[];
-  mapIssues(map: MapRuleInput): MapRuleIssue[];
-}
-
-const HERE = dirname(fileURLToPath(import.meta.url));
+// Relative, not `@/` — the convention every other module in this directory
+// follows, and it is load-bearing rather than stylistic: these ship inside the
+// published package and run from `moba2d-check-seams`, a bin with no bundler
+// and no alias. `@/mapEditor/mapRules` type-checked perfectly and made the bin
+// exit 1 with `Cannot find module` on every invocation.
+import {
+  MapRules,
+  type MapRuleInput,
+  type MapRuleIssue,
+  type MapRulesModule,
+} from '../mapEditor/mapRules';
 
 /**
- * Where the implementation lives, from here.
+ * The shapes these rules take and return.
  *
- * `../..` rather than a package resolve: this file ships inside the same
- * package as the editor (`package.json`'s `files` carries both `src` and
- * `public`), so the path is fixed relative to itself whether core is a
- * checkout or a `node_modules` copy.
+ * Declared beside the implementation and re-exported here, rather than the
+ * other way round: a contract that lives apart from the code satisfying it is
+ * a contract that can be edited without the code noticing. They were declared
+ * here while the implementation was untyped browser JavaScript and *could not*
+ * state them — which is exactly the drift the move to a Vite entry ended.
+ *
+ * The names stay exported from `@moba2d/core/seams`, where a pack's map suite
+ * already imports them.
  */
-const RULES_FILE = resolve(HERE, '..', '..', join('public', 'map-editor', 'js', 'mapRules.js'));
+export type {
+  MapRuleIssue,
+  MapRuleTurret,
+  MapRuleInput,
+  MapRulesModule,
+} from '../mapEditor/mapRules';
 
-let loaded: MapRulesModule | null = null;
 
-/** The rules object the editor's own script defines. */
+/**
+ * The rules object the editor's own module defines.
+ *
+ * Kept as a function rather than re-exporting `MapRules` directly so every
+ * caller below reads the same way it did through the `vm` bridge, and so the
+ * structural check against `MapRulesModule` happens in exactly one place.
+ */
 export function mapRules(): MapRulesModule {
-  if (loaded) return loaded;
-  const sandbox: Record<string, unknown> = { Math, JSON, console };
-  const context = vm.createContext(sandbox);
-  vm.runInContext(readFileSync(RULES_FILE, 'utf8'), context, { filename: RULES_FILE });
-  const found = (context as { MapRules?: MapRulesModule }).MapRules;
-  if (!found) {
-    throw new Error(`${RULES_FILE} did not define MapRules — the editor and core have drifted`);
-  }
-  loaded = found;
-  return loaded;
+  return MapRules;
 }
 
 /**

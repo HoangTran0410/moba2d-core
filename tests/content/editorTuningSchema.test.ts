@@ -14,7 +14,7 @@ import { MONSTER_ATTACK_STYLES, MONSTER_TEMPERAMENTS } from '@/content/ContentPa
  * **refused at install** with a console line nobody reads. Or worse, for a
  * local map: it silently never appears in the picker.
  *
- * So this reads the panel's own `TUNING_SCHEMA` out of `ui.js`, builds a map
+ * So this reads the panel's own `TUNING_SCHEMA` out of `ui.ts`, builds a map
  * that sets every single field it offers, and puts that through the real
  * validator. A field the editor invented fails here, named, in milliseconds.
  *
@@ -24,14 +24,14 @@ import { MONSTER_ATTACK_STYLES, MONSTER_TEMPERAMENTS } from '@/content/ContentPa
  */
 
 const UI = readFileSync(
-  resolve(__dirname, '../../public/map-editor/js/ui.js'),
+  resolve(__dirname, '../../src/mapEditor/ui.ts'),
   'utf8'
 );
 
 /** `{ group: [field paths] }`, read out of the editor's own schema literal. */
 function editorSchema(): Record<string, string[]> {
-  const start = UI.indexOf('const TUNING_SCHEMA = [');
-  expect(start, 'TUNING_SCHEMA is gone from ui.js — this test proves nothing').toBeGreaterThan(-1);
+  const start = UI.indexOf('const TUNING_SCHEMA: TuningGroup[] = [');
+  expect(start, 'TUNING_SCHEMA is gone from ui.ts — this test proves nothing').toBeGreaterThan(-1);
   const end = UI.indexOf('\n  ];', start);
   const block = UI.slice(start, end);
 

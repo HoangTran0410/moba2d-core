@@ -12,15 +12,15 @@
     <link rel="icon"
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M7 12.5 16 7l9 5.5-9 5.5-9-5.5Z' fill='none' stroke='%23c8aa6e' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='m7 19.5 9 5.5 9-5.5' fill='none' stroke='%2329d3c4' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="/map-editor/css/style.css">
 
     <!-- Hai lib, cả hai chạy offline 100%.
          - decomp: cắt polygon lõm thành mảnh lồi, thứ game cần (5KB).
          - polygon-clipping: phép ngược lại, gộp mảnh về hình gốc (28KB).
            Là thư viện chứ không tự viết vì bản tự viết sai trên map thật —
            xem `Geom.union` trong js/geom.js. -->
-    <script src="lib/decomp.min.js"></script>
-    <script src="lib/polygon-clipping.min.js"></script>
+    <script src="/map-editor/lib/decomp.min.js"></script>
+    <script src="/map-editor/lib/polygon-clipping.min.js"></script>
 </head>
 
 <body>
@@ -325,15 +325,10 @@
     <div id="modal-root"></div>
     <div id="toast-root"></div>
 
-    <script src="js/mapRules.js"></script>
-    <script src="js/geom.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/render.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/commands.js"></script>
-    <script src="js/input.js"></script>
-    <script src="js/main.js"></script>
+    <!-- One module, and the import graph decides the order — which is the
+         whole point of the move. This was nine `<script>` tags whose sequence
+         was load-bearing and stated nowhere but here. -->
+    <script type="module" src="/src/mapEditor/main.ts"></script>
 </body>
 
 </html>

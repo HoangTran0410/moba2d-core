@@ -3,9 +3,11 @@
    waypoint không.
 
    MỘT BẢN DUY NHẤT, HAI NƠI DÙNG. File này là bản cài đặt; phía TypeScript
-   không viết lại nó mà nạp chính file này qua `src/seams/mapRules.ts` (dùng
-   `node:vm`, đúng cách `tests/content/localMaps.test.ts` đã nạp cả editor từ
-   lâu) rồi xuất ra dưới dạng có kiểu. Nhờ vậy:
+   không viết lại nó mà `import` thẳng, rồi `src/seams/mapRules.ts` bọc lại
+   dưới dạng có kiểu để xuất ra ngoài. Trước đây editor là JavaScript thuần
+   không qua bundler nên core phải nạp file này bằng `node:vm`; từ khi editor
+   là một entry TypeScript của Vite thì cái cầu đó không còn lý do tồn tại —
+   và cùng với nó là cả một lớp test chỉ để so chữ giữa hai bên. Nhờ vậy:
 
      - bảng "Kiểm tra" trong editor,
      - `lol/tests/maps/Lanes.test.ts` của pack,
@@ -24,7 +26,73 @@
    editor. Vào là dữ liệu trần, ra là danh sách lỗi — đó là thứ khiến nó chạy
    được ở cả hai nơi.
    ===================================================================== */
-(function () {
+/** One thing wrong with a lane, and where. */
+export interface MapRuleIssue {
+  text: string;
+  /** World coordinates, for a UI that can fly the camera there. */
+  at: [number, number];
+}
+
+/** A turret centre: a bare pair, or a slot that also knows whose it is. */
+export type MapRuleTurret = [number, number] | { x: number; y: number; faction?: string };
+
+export interface MapRuleInput {
+  lanes: { id: string; points: [number, number][] }[];
+  /** Every wall polygon, in world coordinates. */
+  walls: [number, number][][];
+  /** Every turret centre, in world coordinates. */
+  turrets: MapRuleTurret[];
+  /**
+   * The map's own extent, needed only by the point-symmetry rule. Square maps
+   * are the only shape the slot rules have an opinion about, so this is one
+   * number rather than a width and a height.
+   */
+  size?: number;
+  /** Fountains. Two of them, one per faction, is what the rules assume. */
+  spawns?: { x: number; y: number; faction?: string }[];
+  /** Where a wave forms up — `slots.minion`. */
+  musters?: { x: number; y: number; faction?: string; lane?: string; scatter?: number }[];
+  /** Jungle camps — `slots.neutral`. Only paired roles are graded. */
+  neutrals?: { x: number; y: number; r?: number; role?: string }[];
+  /**
+   * The map's factions, **in the order it declares them**.
+   *
+   * The order is the whole content: `preset.ts`'s `teamIdOfFaction` bridges
+   * positionally — `factions[0]` is blue, `factions[1]` is red, whatever they
+   * are spelled — and answers `undefined` for everything after, which drops
+   * the slot. A map may declare four; a match seats two.
+   */
+  factions?: string[];
+}
+
+export interface MapRulesModule {
+  MIN_LANE_WALL_CLEARANCE: number;
+  TURRET_BODY_RADIUS: number;
+  MINION_BODY_RADIUS: number;
+  TURRET_BLOCKED_RADIUS: number;
+  MIN_WAYPOINT_TURRET_CLEARANCE: number;
+  MIN_SEGMENT_TURRET_CLEARANCE: number;
+  LANE_COVERS_TURRET: number;
+  BASE_RADIUS: number;
+  laneIssues(map: MapRuleInput): MapRuleIssue[];
+  structureIssues(map: MapRuleInput): MapRuleIssue[];
+  mapIssues(map: MapRuleInput): MapRuleIssue[];
+}
+
+
+/** Một điểm world, dạng cặp. */
+type Pt = [number, number];
+/** `{x, y}` hoặc `[x, y]` — cả hai phía đều đưa vào được, xem `pointOf`. */
+type LoosePoint = Pt | { x: number; y: number } | null | undefined;
+/** Một vòng đỉnh như JSON đưa vào — chưa hứa là đúng hai số mỗi điểm. */
+type Ring = number[][];
+/** Một tường đã chuẩn hoá: các đỉnh cộng hộp bao, để lọc nhanh. */
+interface PreparedWall {
+  points: Ring;
+  box: number[];
+}
+
+export const MapRules: MapRulesModule = (() => {
   "use strict";
 
   /**
@@ -77,7 +145,7 @@
   const CLEARANCE_STEP = 12;
 
   /** Bình phương khoảng cách từ điểm tới đoạn thẳng. */
-  function segDistSq(px, py, ax, ay, bx, by) {
+  function segDistSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
     const dx = bx - ax;
     const dy = by - ay;
     const len = dx * dx + dy * dy;
@@ -89,7 +157,7 @@
   }
 
   /** Ray casting. `pts` là mảng `[x, y]` theo toạ độ world. */
-  function pointInPolygon(x, y, pts) {
+  function pointInPolygon(x: number, y: number, pts: Ring): boolean {
     let inside = false;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
       const xi = pts[i][0];
@@ -102,7 +170,7 @@
   }
 
   /** AABB của một polygon world, nới ra `pad`. */
-  function bounds(pts, pad) {
+  function bounds(pts: Ring, pad: number): number[] {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -125,7 +193,7 @@
    * quan tâm "có hở đủ không" chứ không cần con số chính xác khi đã hở thoải
    * mái.
    */
-  function wallClearance(x, y, walls, ceiling) {
+  function wallClearance(x: number, y: number, walls: PreparedWall[], ceiling: number): number {
     let best = ceiling;
     for (const wall of walls) {
       const box = wall.box;
@@ -160,7 +228,7 @@
    * này im lặng, nên tệ hơn nhiều. Nhận cả hai dạng ở đúng cửa vào là cách
    * duy nhất khiến "chấm sạch" luôn có nghĩa là "đã chấm".
    */
-  function prepareWalls(walls) {
+  function prepareWalls(walls: LoosePoint[][]): PreparedWall[] {
     const out = [];
     for (const raw of walls || []) {
       if (!raw || raw.length < 3) continue;
@@ -186,8 +254,8 @@
    *   pack thì không, và đây là chỗ duy nhất khác nhau giữa hai bên.
    * @returns {{ text: string, at: [number, number] }[]}
    */
-  function laneIssues(map) {
-    const out = [];
+  function laneIssues(map: MapRuleInput): MapRuleIssue[] {
+    const out: MapRuleIssue[] = [];
     const walls = prepareWalls(map.walls || []);
     // `[x, y]` hay `{x, y, faction}` đều nhận: editor giữ slot là đối tượng,
     // còn phép kiểm bên pack cầm cặp toạ độ trần. Một cái `undefined` lọt vào
@@ -222,7 +290,7 @@
         const steps = Math.max(2, Math.ceil(Math.hypot(bx - ax, by - ay) / CLEARANCE_STEP));
 
         let worst = Infinity;
-        let worstAt = null;
+        let worstAt: Pt | null = null;
         for (let k = 0; k <= steps; k++) {
           const t = k / steps;
           const x = ax + (bx - ax) * t;
@@ -295,14 +363,14 @@
   const BASE_RADIUS = 900;
 
   /** `{x, y}` hoặc `[x, y]` đều nhận — editor và pack cầm hai kiểu khác nhau. */
-  function pointOf(p) {
+  function pointOf(p: LoosePoint): { x: number; y: number } | null {
     if (!p) return null;
     if (Array.isArray(p)) return { x: p[0], y: p[1] };
     if (Number.isFinite(p.x) && Number.isFinite(p.y)) return { x: p.x, y: p.y };
     return null;
   }
 
-  function pointsOf(list) {
+  function pointsOf(list: LoosePoint[]): { x: number; y: number }[] {
     const out = [];
     for (const p of list || []) {
       const q = pointOf(p);
@@ -312,7 +380,7 @@
   }
 
   /** Điểm trên đường gấp khúc gần `p` nhất: khoảng cách, và đi được bao xa. */
-  function nearestOnPath(pts, p) {
+  function nearestOnPath(pts: Ring, p: { x: number; y: number }) {
     let distance = Infinity;
     let along = 0;
     let travelled = 0;
@@ -335,7 +403,15 @@
     return { distance, along };
   }
 
-  const nearestSpawn = (spawns, p) => {
+  /**
+   * Trại gần nhất, kèm khoảng cách. `spawn` là CHÍNH phần tử được truyền vào
+   * chứ không phải bản sao chỉ có x/y — `structureIssues` đọc `.faction` của
+   * nó ngay sau đó.
+   */
+  const nearestSpawn = <T extends { x: number; y: number }>(
+    spawns: T[],
+    p: { x: number; y: number }
+  ): { spawn: T; distance: number } | null => {
     let best = null;
     let bd = Infinity;
     for (const s of spawns) {
@@ -348,7 +424,9 @@
     return best ? { spawn: best, distance: bd } : null;
   };
 
-  const at = (p) => [Math.round(p.x), Math.round(p.y)];
+  // Đúng cặp hai số, không phải `number[]`: `MapRuleIssue.at` là tuple, và
+  // đây là chỗ duy nhất dựng nó.
+  const at = (p: { x: number; y: number }): Pt => [Math.round(p.x), Math.round(p.y)];
 
   /**
    * Luật cấu trúc, trên dữ liệu trần. Phần nào của map không được truyền vào
@@ -364,19 +442,25 @@
    *           neutrals?: {x:number,y:number,r?:number,role?:string}[] }} map
    * @returns {{ text: string, at: [number, number] }[]}
    */
-  function structureIssues(map) {
-    const out = [];
+  function structureIssues(map: MapRuleInput): MapRuleIssue[] {
+    const out: MapRuleIssue[] = [];
     const lanes = (map.lanes || []).filter((l) => (l.points || []).length >= 2);
-    const spawns = pointsOf(map.spawns).map((p, i) => ({
+    // `pointOf` keeps only x and y, so whose fountain it is has to be carried
+    // over by hand — three rules below read it back.
+    const declaredSpawns = map.spawns || [];
+    const spawns = pointsOf(declaredSpawns).map((p, i) => ({
       ...p,
-      faction: (map.spawns[i] && map.spawns[i].faction) || "?",
+      faction: (declaredSpawns[i] && declaredSpawns[i].faction) || "?",
     }));
-    const turrets = (map.turrets || [])
-      .map((t) => {
-        const p = pointOf(t);
-        return p ? { ...p, faction: (t && t.faction) || "?" } : null;
-      })
-      .filter(Boolean);
+    // Một vòng lặp chứ không phải `.map(...).filter(Boolean)`: cái sau để lại
+    // `| null` trong kiểu phần tử, mà mọi luật bên dưới đều đọc thẳng `.x`.
+    const turrets: { x: number; y: number; faction: string }[] = [];
+    for (const t of map.turrets || []) {
+      const p = pointOf(t);
+      if (!p) continue;
+      // Trụ có thể vào dưới dạng cặp số trần — dạng đó không biết phe nào.
+      turrets.push({ ...p, faction: (!Array.isArray(t) && t.faction) || "?" });
+    }
 
     // ---- lane nối hai nhà, và cả ba đi cùng một chiều -----------------------
     //
@@ -509,7 +593,7 @@
         const slot = pointOf(raw);
         if (!slot) continue;
         const name = `Điểm gom lính ${raw.faction || "?"}/${raw.lane || "?"}`;
-        const scatter = Number.isFinite(+raw.scatter) ? +raw.scatter : 0;
+        const scatter = Number.isFinite(Number(raw.scatter)) ? Number(raw.scatter) : 0;
 
         let worst = Infinity;
         let worstAt = null;
@@ -570,7 +654,7 @@
     if (map.factions && map.factions.length > 2) {
         const seated = map.factions.slice(0, 2);
         const groups = new Map();
-        const consider = (list, kind) => {
+        const consider = (list: any[], kind: string) => {
         for (const raw of list || []) {
             const p = pointOf(raw);
             const faction = raw && raw.faction;
@@ -579,9 +663,9 @@
             groups.get(faction).count += 1;
         }
         };
-        consider(map.turrets, "trụ");
-        consider(map.spawns, "bệ đá");
-        consider(map.musters, "điểm gom lính");
+        consider(map.turrets || [], "trụ");
+        consider(map.spawns || [], "bệ đá");
+        consider(map.musters || [], "điểm gom lính");
 
         for (const [faction, group] of groups) {
         out.push({
@@ -615,7 +699,7 @@
     for (const [list, kind] of [
       [turrets, "Trụ"],
       [spawns, "Bệ đá"],
-    ]) {
+    ] as [{ x: number; y: number; faction?: string }[], string][]) {
       if (!list || !list.length) continue;
       const walls = prepareWalls(map.walls || []);
       for (const p of list) {
@@ -667,15 +751,15 @@
     // đối xứng qua trục dọc và lập tức bị báo lệch 3023px. Một cặp hợp lệ khi
     // nó là ảnh của nhau qua *một* phép đối xứng của khung map — quay nửa
     // vòng, lật ngang, hoặc lật dọc — nên hỏi cả ba rồi lấy cái khớp nhất.
-    if (map.neutrals && map.neutrals.length && Number.isFinite(+map.size)) {
-      const span = +map.size;
+    if (map.neutrals && map.neutrals.length && Number.isFinite(Number(map.size))) {
+      const span = Number(map.size);
       const byRole = new Map();
       for (const raw of map.neutrals) {
         const p = pointOf(raw);
         if (!p) continue;
         const role = raw.role || "?";
         if (!byRole.has(role)) byRole.set(role, []);
-        byRole.get(role).push({ ...p, r: Number.isFinite(+raw.r) ? +raw.r : 0 });
+        byRole.get(role).push({ ...p, r: Number.isFinite(Number(raw.r)) ? Number(raw.r) : 0 });
       }
       for (const [role, list] of byRole) {
         if (list.length !== 2) continue;
@@ -706,7 +790,7 @@
   }
 
   /** Cả hai bộ luật, một lần gọi. Đây là thứ editor và cổng của pack dùng. */
-  function mapIssues(map) {
+  function mapIssues(map: MapRuleInput): MapRuleIssue[] {
     return laneIssues(map).concat(structureIssues(map));
   }
 
@@ -727,7 +811,5 @@
     mapIssues,
   };
 
-  // Biến toàn cục cho editor; `globalThis` để bên `vm` của Node lấy được cùng
-  // một đối tượng mà không cần `window`.
-  globalThis.MapRules = MapRules;
+  return MapRules;
 })();

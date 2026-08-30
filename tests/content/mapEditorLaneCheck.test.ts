@@ -1,7 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import vm from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { E, normalizeTerrain } from '@/mapEditor/state';
+import { MapRules } from '@/mapEditor/mapRules';
+import { Store } from '@/mapEditor/storage';
+import { installEditorVendorGlobals } from './editorVendor';
+
+// `storage.ts` reports through the editor's toasts; this suite is about what
+// it *found*, not how it said so.
+vi.mock('@/mapEditor/ui', () => ({
+  UI: new Proxy({}, { get: () => () => {} }),
+}));
+
+vi.stubGlobal('localStorage', {
+  getItem: () => null,
+  setItem() {},
+  removeItem() {},
+});
 
 /**
  * The editor's own check, on the rules the pack's push gate cares about.
@@ -25,57 +40,32 @@ import { describe, expect, it } from 'vitest';
  * so nothing here can import it and no type checker will ever compare the two.
  */
 
-const EDITOR = resolve(__dirname, '../../public/map-editor');
-const editorFile = (path: string): string => readFileSync(resolve(EDITOR, path), 'utf8');
+installEditorVendorGlobals();
 
-interface Issue {
-  level: 'error' | 'warn';
-  text: string;
-  at?: [number, number];
-}
-
-/** Boot the editor's globals, install `terrains`, and run its validator. */
+/**
+ * `Store.validate()` over a set of terrains — an import now, where this used
+ * to build a `vm` sandbox and run four of the editor's classic scripts into
+ * it.
+ *
+ * The fixtures below are still written as *source text*, because that is what
+ * they had to be when they were spliced into a script string, and there are
+ * about thirty of them. Parsing them here keeps this change to the harness;
+ * turning them into plain values is a separate, purely mechanical edit that
+ * would bury the one that matters.
+ */
 function check(
   terrains: string,
   factions = `['amber', 'jade']`,
   tuning = 'undefined'
 ): Issue[] {
-  const store = new Map<string, string>();
-  const sandbox: Record<string, unknown> = {
-    console,
-    JSON,
-    Math,
-    Date,
-    setTimeout,
-    clearTimeout,
-    localStorage: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
-    },
-    document: {
-      createElement: () => ({ style: {}, appendChild() {}, click() {}, remove() {} }),
-      body: { appendChild() {} },
-    },
-  };
-  sandbox.window = sandbox;
-  const context = vm.createContext(sandbox);
-  vm.runInContext(editorFile('lib/decomp.min.js'), context);
-  vm.runInContext(editorFile('lib/polygon-clipping.min.js'), context);
-  for (const file of ['js/mapRules.js', 'js/geom.js', 'js/state.js', 'js/storage.js']) {
-    vm.runInContext(editorFile(file), context);
-  }
+  const build = new Function(`return { terrains: [${terrains}], factions: ${factions}, tuning: ${tuning} };`);
+  const fixture = build() as { terrains: unknown[]; factions: string[]; tuning: unknown };
 
-  return vm.runInContext(
-    `
-    E.mapName = 'Thử';
-    E.mapSize = [4000, 4000];
-    E.meta = { id: 'thu', factions: ${factions}, tuning: ${tuning} };
-    E.terrains = [${terrains}].map(normalizeTerrain);
-    Store.validate();
-    `,
-    context
-  ) as Issue[];
+  E.mapName = 'Thử';
+  E.mapSize = [4000, 4000];
+  E.meta = { id: 'thu', factions: fixture.factions, tuning: fixture.tuning as never };
+  E.terrains = fixture.terrains.map(normalizeTerrain);
+  return Store.validate() as Issue[];
 }
 
 /** A lane from `a` to `b`, with the muster points that keep it warning-free. */
@@ -94,14 +84,8 @@ const block = (x: number, y: number): string =>
      polygon: [[0,0],[400,0],[400,400],[0,400]] }`;
 
 /** `MapRules` on its own, with none of the editor around it. */
-function loadMapRules(): {
-  structureIssues(map: Record<string, unknown>): Issue[];
-} {
-  const sandbox: Record<string, unknown> = { Math, JSON, console };
-  sandbox.globalThis = sandbox;
-  const context = vm.createContext(sandbox);
-  vm.runInContext(editorFile('js/mapRules.js'), context);
-  return sandbox.MapRules as { structureIssues(map: Record<string, unknown>): Issue[] };
+function loadMapRules(): { structureIssues(map: Record<string, unknown>): Issue[] } {
+  return MapRules as never;
 }
 
 const errors = (issues: Issue[]): Issue[] => issues.filter(issue => issue.level === 'error');
@@ -464,10 +448,11 @@ describe('a minion roster that can never take the field', () => {
  * is that the two lines exist, which is what was missing.
  */
 describe('the focus animation keeps its own frames coming', () => {
-  const source = (path: string): string => editorFile(path);
+  const source = (name: string): string =>
+    readFileSync(resolve(__dirname, '../../src/mapEditor', name), 'utf8');
 
   it('kicks the render loop when an issue is clicked', () => {
-    const ui = source('js/ui.js');
+    const ui = source('ui.ts');
     const body = ui.slice(ui.indexOf('function focusIssue'), ui.indexOf('function syncCheck'));
 
     expect(body).toContain('Cam.fitRect');
@@ -477,7 +462,7 @@ describe('the focus animation keeps its own frames coming', () => {
   });
 
   it('keeps drawing while the marker is alive, not only while the camera moves', () => {
-    const render = source('js/render.js');
+    const render = source('render.ts');
 
     // The camera settling used to be the only reason to schedule another
     // frame, so the pulse died with it.

@@ -6,7 +6,14 @@
    ở chỗ vùng chạm rộng hơn và một ngón trên nền trống thì kéo màn hình.
    ========================================================================= */
 
-const Input = (() => {
+import { Cmd } from './commands';
+import { Geom } from './geom';
+import { requestRender } from './frame';
+import { Renderer } from './render';
+import { Cam, E, Sel, commit, enterEdit, exitEdit, hasVerts, isLine, markShapeDirty, moveTerrainTo, pickInRect, pickTerrain, pickVertex, pickVerticesInRect, refreshTerrain, setVertexSel, toggleVertex, vertexHost } from './state';
+import { UI } from './ui';
+
+export const Input = (() => {
   let cv;
   const ptrs = new Map();          // pointerId -> { x, y }
   let mode = null;                 // pan | drag | vertex | marquee | pinch
@@ -78,7 +85,8 @@ const Input = (() => {
     if (ptrs.size === 2) { startPinch(); return; }
     if (ptrs.size > 2) return;
 
-    if (document.activeElement && isTypingTarget(document.activeElement)) document.activeElement.blur();
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused && isTypingTarget(focused)) focused.blur();
 
     moved = false;
     downAt = [e.clientX, e.clientY];

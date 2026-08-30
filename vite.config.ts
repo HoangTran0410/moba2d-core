@@ -190,6 +190,24 @@ export default defineConfig({
     target: 'esnext',
     assetsInlineLimit: 0,
     rollupOptions: {
+      /**
+       * Two pages, not one. The map editor used to be nine `<script>` tags in
+       * `public/`, which Vite copies verbatim — no bundler, no types, no
+       * compiler. That is why it drifted: `CORE_DEFAULTS` was restated there
+       * by hand, its tuning schema was compared to `MapTuning` by a test that
+       * scanned text, and its map rules could only reach core through a
+       * `node:vm` bridge. Declared here it is ordinary TypeScript that can
+       * simply `import` from `@/`, and every one of those bridges goes away.
+       *
+       * Its `css/`, `lib/` and `asset/` stay under `public/map-editor/` and
+       * are referenced absolutely, so they keep their URLs — the page is
+       * still `/map-editor/`, and a bookmark, the PWA precache and every
+       * relative `asset/…` a saved map holds all keep working.
+       */
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        mapEditor: resolve(__dirname, 'map-editor/index.html'),
+      },
       output: {
         /**
          * Chunks split by **how often they change**, which is what a returning
@@ -212,6 +230,17 @@ export default defineConfig({
          * re-fetched.
          */
         manualChunks(id) {
+          /**
+           * The map editor is its own page and shares not one module with the
+           * game's graph, so it gets its own chunk rather than being allowed
+           * to land wherever Rollup's single-importer default puts it. Pinned
+           * rather than left implicit for the reason every other rule here is:
+           * "would anyway" is the assumption `DomUtils` and `__vitePreload`
+           * each falsified once, and `check-chunks.mjs` asserts the answer
+           * rather than trusting it.
+           */
+          if (id.includes('src/mapEditor/')) return 'editor';
+
           /**
            * `AssetManager` rides with the manifest it wraps. Both are needed
            * before the first frame, both change rarely, and — the reason this

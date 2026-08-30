@@ -4,7 +4,7 @@
    và mỗi lần hit-test mà không tạo rác cho GC.
    ========================================================================= */
 
-const Geom = (() => {
+export const Geom = (() => {
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
   const lerp = (a, b, t) => a + (b - a) * t;
   const TAU = Math.PI * 2;
@@ -159,7 +159,7 @@ const Geom = (() => {
   }
 
   /** Bình phương khoảng cách từ điểm tới đoạn thẳng + vị trí t trên đoạn. */
-  function segDistSq(px, py, ax, ay, bx, by, out) {
+  function segDistSq(px, py, ax, ay, bx, by, out?) {
     const dx = bx - ax, dy = by - ay;
     const len = dx * dx + dy * dy;
     let t = len > 0 ? ((px - ax) * dx + (py - ay) * dy) / len : 0;
@@ -320,109 +320,6 @@ const Geom = (() => {
   }
 
   /**
-   * Đoạn a→b có nằm CHÔN trong ruột một hình khác không?
-   *
-   * Triệt tiêu cạnh chỉ đúng khi các mảnh rời nhau — chồng nhau thì cạnh
-   * trong không thành cặp và cả phép gộp ra rác. Mà dữ liệu thật thì CÓ
-   * chồng: ở Sân Thử Nghiệm, dải viền trái và nhánh tây của hành lang đè lên
-   * nhau đúng 60x100, và chuyện đó biến thành một vệt chéo cắt ngang map.
-   *
-   * Xét TRUNG ĐIỂM chứ không xét hai đầu mút: đầu mút của một cạnh biên gần
-   * như luôn nằm trên biên hình khác, còn trung điểm thì phân biệt sạch giữa
-   * "đi dọc biên chung" (cặp sẽ tự triệt tiêu nhau) và "xuyên qua ruột" (phải
-   * bỏ hẳn). Đoạn đã được chẻ tại mọi đỉnh trước đó, nên trung điểm của nó
-   * không bao giờ rơi vào nửa trong nửa ngoài.
-   */
-  function buriedIn(a, b, shapes, boxes, skip) {
-    const mx = (a[0] + b[0]) / 2;
-    const my = (a[1] + b[1]) / 2;
-    for (let i = 0; i < shapes.length; i++) {
-      if (i === skip) continue;
-      const box = boxes[i];
-      if (mx < box[0] || mx > box[2] || my < box[1] || my > box[3]) continue;
-      // Điểm nằm ĐÚNG TRÊN biên hình kia thì không tính là chôn — đó là hai
-      // hình áp cạnh nhau, và cặp cạnh đó sẽ tự triệt tiêu. Phải xét riêng vì
-      // ray-casting trả kết quả không xác định cho điểm nằm trên biên: cạnh
-      // phải của nhánh hành lang đông nằm đúng trên mép ngoài của tường viền
-      // phải, bị đọc nhầm là "trong", bỏ mất, và vòng đi cụt ngay tại đó.
-      if (onOutline(mx, my, shapes[i])) continue;
-      if (pointInPolygon(mx, my, shapes[i])) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Các đỉnh nằm lọt hẳn trong đoạn a→b, đã xếp theo thứ tự dọc đoạn.
-   *
-   * Thẳng hàng xét bằng tích có hướng bằng đúng 0, không nới sai số: toạ độ ở
-   * đây là số nguyên, nên "gần thẳng hàng" là một điểm khác chứ không phải
-   * một điểm bị lệch.
-   */
-  function pointsWithin(a, b, verts) {
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const loX = a[0] < b[0] ? a[0] : b[0];
-    const hiX = a[0] > b[0] ? a[0] : b[0];
-    const loY = a[1] < b[1] ? a[1] : b[1];
-    const hiY = a[1] > b[1] ? a[1] : b[1];
-    const hits = [];
-    for (const v of verts) {
-      if (v[0] < loX || v[0] > hiX || v[1] < loY || v[1] > hiY) continue;
-      if ((v[0] === a[0] && v[1] === a[1]) || (v[0] === b[0] && v[1] === b[1])) continue;
-      if ((v[0] - a[0]) * dy - (v[1] - a[1]) * dx !== 0) continue;
-      hits.push(v);
-    }
-    if (hits.length > 1) {
-      hits.sort((p, q) => (p[0] - a[0]) * dx + (p[1] - a[1]) * dy - ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy));
-    }
-    return hits;
-  }
-
-  /**
-   * Cạnh tiếp theo của đường viền tại một đỉnh.
-   *
-   * Đây là luật duyệt mặt của đồ thị phẳng, không phải một mẹo: đi tới `cur`
-   * từ `prev`, cạnh kế tiếp là cạnh ĐẦU TIÊN gặp khi quay thuận chiều kim
-   * đồng hồ kể từ hướng `cur → prev`. Chọn như vậy thì phần trong luôn nằm
-   * cùng một phía suốt cả vòng, nên mỗi mặt của đồ thị ra đúng một vòng.
-   *
-   * Bản đầu tiên chọn "rẽ phải gắt nhất so với hướng đang đi" — nghe thì
-   * giống, và trùng kết quả ở mọi hình t thử tay. Nó sai ở đúng chỗ có nhiều
-   * hơn hai cạnh gặp nhau: Sân Thử Nghiệm là một khung viền cộng một dải
-   * hành lang cắt ngang, và ở mối chữ T giữa hai thứ đó nó nhảy sang nhánh
-   * kia, nối hai điểm ở hai đầu map thành một vệt chéo. Diện tích ra âm, và
-   * lỗi hiện ra thành một vết chém trên màn hình.
-   *
-   * Xét TOÀN BỘ cạnh đi ra chứ không riêng cạnh chưa dùng: thứ tự góc là thứ
-   * quyết định, và lọc trước theo "chưa dùng" có thể đẩy phép chọn sang một
-   * cạnh không phải hàng xóm thật của nó.
-   */
-  function pickNext(prev, cur, out, used) {
-    const cands = out.get(cur[0] + "," + cur[1]) || [];
-    if (!cands.length) return null;
-
-    let best = null;
-    if (cands.length === 1) {
-      best = cands[0];
-    } else {
-      const back = Math.atan2(prev[1] - cur[1], prev[0] - cur[0]);
-      let bestTurn = Infinity;
-      for (const c of cands) {
-        const a = Math.atan2(c[1] - cur[1], c[0] - cur[0]);
-        let turn = back - a;
-        while (turn <= 0) turn += TAU;
-        while (turn > TAU) turn -= TAU;
-        if (turn < bestTurn) {
-          bestTurn = turn;
-          best = c;
-        }
-      }
-    }
-    if (!best) return null;
-    return used.has(cur[0] + "," + cur[1] + "|" + best[0] + "," + best[1]) ? null : best;
-  }
-
-  /**
    * Kết quả gộp có phủ đúng cái mà các mảnh gốc phủ không?
    *
    * Kiểm bằng LẤY MẪU LƯỚI, và cố ý không dùng lại một dòng nào của `union`:
@@ -439,7 +336,7 @@ const Geom = (() => {
    * rơi đúng lên cạnh — chỗ mà cả hai bên đều có quyền trả lời thế nào cũng
    * được.
    */
-  function unionCovers(shapes, rings, steps) {
+  function unionCovers(shapes, rings, steps?) {
     const n = steps || 128;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of shapes) {

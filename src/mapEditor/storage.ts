@@ -5,7 +5,14 @@
    trong trình duyệt và mọi file đã export vẫn mở được bình thường.
    ========================================================================= */
 
-const Store = (() => {
+import type { MapGeometry, MapSummary, MapTuning } from '@/content/ContentPack';
+import { Geom } from './geom';
+import { MapRules } from './mapRules';
+import { requestRender } from './frame';
+import { Cam, E, History, KIND, Sel, TERRAIN_KINDS, TYPES, circleR, commit, factionAt, isPoly, mergeTerrains, newId, normalizeTerrain, refreshTerrain, serializeTerrains } from './state';
+import { UI } from './ui';
+
+export const Store = (() => {
   const PREFIX = "lol-mapeditor-2";
   const INDEX_KEY = PREFIX + "-maps";
   const CURRENT_KEY = PREFIX + "-current";
@@ -48,7 +55,8 @@ const Store = (() => {
       .filter((f) => typeof f === "string" && f.trim())
       .map((f) => f.trim());
     if (!factions.length) factions = ["amber", "jade"];
-    const out = { id: m.id || slugify(name), factions };
+    const out: MapSummary["tuning"] extends never ? never : { id: string; factions: string[]; tuning?: MapTuning } =
+      { id: m.id || slugify(name), factions };
     // `MapTuning` sống trong `meta` chứ không phải một khoá riêng, và đó là
     // quyết định có chủ đích: bản ghi trong kho editor đã lưu `meta` sẵn rồi,
     // nên tuning tự động đi theo mọi đường lưu/mở/tạo mà không phải sờ vào
@@ -133,7 +141,7 @@ const Store = (() => {
     if (lastView && lastView.x === x && lastView.y === y && Math.abs(lastView.scale - scale) < 1e-6) return;
     lastView = { x, y, scale: +scale.toFixed(6) };
     clearTimeout(viewTimer);
-    viewTimer = setTimeout(saveViewNow, 500);
+    viewTimer = setTimeout(saveViewNow, 500) as unknown as number;
   }
 
   /**
@@ -172,7 +180,7 @@ const Store = (() => {
     dirty = true;
     if (typeof UI !== "undefined") UI.setSaveState("saving");
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, delay);
+    saveTimer = setTimeout(saveNow, delay) as unknown as number;
   }
 
   function saveNow() {
@@ -221,7 +229,7 @@ const Store = (() => {
 
   /* ------------------------------ map CRUD --------------------------- */
 
-  function createMap(name, mapSize, terrains, background, meta) {
+  function createMap(name, mapSize, terrains, background?, meta?) {
     const id = newId();
     const record = {
       name,
@@ -348,7 +356,7 @@ const Store = (() => {
 
   /* ----------------------------- ảnh nền ----------------------------- */
 
-  function loadImage(src) {
+  function loadImage(src): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
@@ -428,7 +436,7 @@ const Store = (() => {
       .filter(Boolean);
 
   /** Một mảng điểm world -> terrain có gốc là trọng tâm. */
-  function terrainFromWorldPoints(type, pts, props, min) {
+  function terrainFromWorldPoints(type, pts, props?, min?) {
     if (pts.length < (min || 3)) return null;
     const c = Geom.centroid(pts);
     const o = [Math.round(c[0]), Math.round(c[1])];
@@ -527,7 +535,7 @@ const Store = (() => {
       marker("minion", s, p);
     }
     for (const s of (slots.neutral || [])) {
-      const p = { role: s.role, r: +s.r || 150 };
+      const p: Record<string, any> = { role: s.role, r: +s.r || 150 };
       if (s.rotationDeg) p.rotationDeg = +s.rotationDeg;
       marker("neutral", s, keepStats(s, p));
     }
@@ -728,9 +736,16 @@ const Store = (() => {
   const R = Math.round;
   const pt = (x, y) => ({ x: R(x), y: R(y) });
 
-  /** `MapSummary` — nửa nhẹ của map, thứ picker liệt kê. */
-  function mapSummary() {
-    const sum = {
+  /**
+   * `MapSummary` — nửa nhẹ của map, thứ picker liệt kê.
+   *
+   * Kiểu là kiểu THẬT của core chứ không phải object suy ra từ literal. Editor
+   * xuất ra đúng cái interface mà `validatePack` sẽ đọc, nên một khoá viết sai
+   * hay thiếu là lỗi biên dịch ngay ở đây — thay vì một map bị từ chối lúc
+   * cài, kèm một dòng console không ai đọc.
+   */
+  function mapSummary(): MapSummary {
+    const sum: MapSummary = {
       id: E.meta.id || slugify(E.mapName),
       name: E.mapName,
       // MapSummary.size là MỘT số: map moba2d hình vuông.
@@ -773,8 +788,12 @@ const Store = (() => {
    * deeper than it is wide is authored as several convex boxes butted
    * together"), nên editor cắt sẵn và xuất phần đã cắt.
    */
-  function mapGeometry() {
-    const g = {
+  function mapGeometry(): MapGeometry & { authoring?: any } {
+    // `authoring` là phần riêng của editor — hình gốc trước khi cắt lồi. Core
+    // không đọc và cũng không từ chối nó (`checkMapGeometry` chỉ cấm *layer*
+    // lạ trong `terrain`), nên nó được nối thêm vào chứ không nằm trong
+    // `MapGeometry`.
+    const g: MapGeometry & { authoring?: any } = {
       terrain: { wall: [], bush: [], water: [] },
       slots: { spawn: [], minion: [], structure: [], neutral: [] },
       lanes: [],
@@ -815,13 +834,13 @@ const Store = (() => {
           g.slots.structure.push(withStats(p, { faction: p.faction || "", kind: "turret", x: px, y: py }));
           break;
         case "minion": {
-          const m = { faction: p.faction || "", lane: p.lane || "", x: px, y: py };
+          const m: Record<string, any> = { faction: p.faction || "", lane: p.lane || "", x: px, y: py };
           if (p.scatter > 0) m.scatter = R(p.scatter);
           g.slots.minion.push(withStats(p, m));
           break;
         }
         case "neutral": {
-          const n = { role: p.role || "", x: px, y: py, r: R(circleR(t)) };
+          const n: Record<string, any> = { role: p.role || "", x: px, y: py, r: R(circleR(t)) };
           if (p.rotationDeg) n.rotationDeg = Number(p.rotationDeg);
           g.slots.neutral.push(withStats(p, n));
           break;
@@ -1104,7 +1123,7 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
     const sum = mapSummary();
     const geometry = mapGeometry();
     geometry.authoring = mapAuthoring();
-    const entry = {
+    const entry: Record<string, any> = {
       id: sum.id, name: sum.name, size: sum.size,
       factions: sum.factions, geometry,
     };
@@ -1297,8 +1316,11 @@ ${sum.tuning ? `  tuning: ${JSON.stringify(sum.tuning)},
    */
   function validate() {
     const out = [];
-    const err = (text, at) => out.push({ level: "error", text, at });
-    const warn = (text, at) => out.push({ level: "warn", text, at });
+    // `at` is optional: most of these are about the map as a whole and have
+    // nowhere to fly the camera to. The `?` states what 13 of the call sites
+    // below were already doing.
+    const err = (text, at?) => out.push({ level: "error", text, at });
+    const warn = (text, at?) => out.push({ level: "warn", text, at });
 
     const factions = E.meta.factions;
     const size = Math.max(E.mapSize[0], E.mapSize[1]);
