@@ -520,11 +520,63 @@ describe('basic attacks', () => {
     attacker.basicAttack.update();
     const swing = pending(game)[0] as BasicAttackSwing;
 
+    // 900 is a blink, not a stroll — nine times what walking covers in a
+    // wind-up. See the pair below for where the line actually sits.
     target.position.set(900, 0);
     vi.stubGlobal('deltaTime', MELEE_WINDUP_MS);
     swing.update();
 
     expect(swing.struck).toBe(true);
+    expect(target.stats.health.value).toBe(100);
+  });
+
+  /**
+   * The other half of that rule, and the bug it was hiding.
+   *
+   * The controller launches on the first frame the target is inside reach —
+   * when chasing something, that is *at* the boundary — and then roots the
+   * attacker for the whole wind-up. The target walks; the attacker cannot. So
+   * the plain `dist > reach` check that used to sit in `strike` meant every
+   * melee attack aimed at anything retreating missed, permanently, while
+   * `BasicAttackBolt.onArrive` checked no distance at all and a ranged
+   * champion never missed. Reported as melee champions whiffing constantly.
+   *
+   * `stillInReach` forgives exactly what the victim could have walked in the
+   * window, so walking is never enough and anything faster than walking still
+   * is.
+   */
+  it('lands a melee swing on a target that only walked out during the wind-up', () => {
+    const game = createGame();
+    const attacker = champion(game, 0, MELEE);
+    const target = champion(game, 100);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+    const swing = pending(game)[0] as BasicAttackSwing;
+
+    // Straight away from the attacker, at its own speed, for the whole wind-up:
+    // the most a body can put between itself and a rooted attacker by walking.
+    const walked = target.stats.speed.value * (MELEE_WINDUP_MS / (1000 / 60));
+    target.position.set(swing.reach + walked - 1, 0);
+    vi.stubGlobal('deltaTime', MELEE_WINDUP_MS);
+    swing.update();
+
+    expect(swing.struck).toBe(true);
+    expect(target.stats.health.value).toBeLessThan(100);
+  });
+
+  it('and still misses one that covered more ground than walking allows', () => {
+    const game = createGame();
+    const attacker = champion(game, 0, MELEE);
+    const target = champion(game, 100);
+    attacker.orderAttack(target);
+    attacker.basicAttack.update();
+    const swing = pending(game)[0] as BasicAttackSwing;
+
+    const walked = target.stats.speed.value * (MELEE_WINDUP_MS / (1000 / 60));
+    target.position.set(swing.reach + walked * 2, 0);
+    vi.stubGlobal('deltaTime', MELEE_WINDUP_MS);
+    swing.update();
+
     expect(target.stats.health.value).toBe(100);
   });
 

@@ -1,5 +1,6 @@
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
+import { stillInReach } from '@/game/combat/BasicAttack';
 import SpellObject from '@/game/gameObject/SpellObject';
 import { Chain } from '@/game/render/creature/chain';
 import { drawWhip } from '@/game/render/creature/drawCreature';
@@ -134,11 +135,16 @@ const aim = (
 const stillLands = (
   owner: AttackableUnit,
   target: AttackableUnit | null,
-  reach: number
+  reach: number,
+  windupMs: number
 ): target is AttackableUnit => {
   if (!target || target.isDead || target.toRemove || !target.targetable) return false;
   if (owner.isDead) return false;
-  return p5.Vector.dist(owner.position, target.position) <= reach;
+  // Forgiving by exactly what the target could have walked while the camp was
+  // committed to the swing — see `stillInReach`. A plain `<= reach` here is the
+  // same fault champions had: a camp cannot land a claw on anything retreating,
+  // and "retreating" is what a champion clearing a camp does all fight.
+  return stillInReach(owner, target, reach, windupMs);
 };
 
 /**
@@ -176,7 +182,7 @@ export class MonsterClaw extends SpellObject {
   }
 
   strike(): void {
-    if (!stillLands(this.owner, this.target, this.reach)) return;
+    if (!stillLands(this.owner, this.target, this.reach, CLAW_WINDUP_MS)) return;
     this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
@@ -348,7 +354,7 @@ export class MonsterBreath extends SpellObject {
   }
 
   strike(): void {
-    if (!stillLands(this.owner, this.target, this.reach)) return;
+    if (!stillLands(this.owner, this.target, this.reach, BREATH_WINDUP_MS)) return;
     this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
@@ -477,7 +483,10 @@ export class MonsterLash extends SpellObject {
   }
 
   strike(): void {
-    if (!stillLands(this.owner, this.target, this.reach)) return;
+    // The lash commits for longer than anything else — the whole rear plus the
+    // reach — so it forgives more, and has to: that window is where a target
+    // does most of its walking.
+    if (!stillLands(this.owner, this.target, this.reach, LASH_IMPACT_MS)) return;
     this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 

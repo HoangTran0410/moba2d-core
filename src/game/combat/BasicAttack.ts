@@ -1,6 +1,7 @@
 import EventType from '@/game/enums/EventType';
 import { applyOnHitEffects } from '@/game/combat/OnHit';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
+import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
@@ -92,6 +93,43 @@ export interface BasicAttackHit {
 /** A unit that can still be hit right now. */
 export const canBeHit = (victim: AttackableUnit | null): victim is AttackableUnit =>
   !!victim && !victim.isDead && !victim.toRemove && !!victim.position && victim.targetable;
+
+/** One frame at 60fps — `stats.speed` is units per frame at that rate. */
+const FRAME_MS = 1000 / 60;
+
+/**
+ * Whether a swing whose wind-up has just finished may still land.
+ *
+ * **A target cannot walk out of a melee attack. It can blink, dash or be
+ * knocked out of one.** That is the whole rule, and the reason it needs stating
+ * is that the obvious check — `dist > reach` against the same reach the swing
+ * was launched at — quietly meant the opposite.
+ *
+ * The controller launches on the first frame the target is inside reach, which
+ * when chasing something is exactly *at* the boundary, and then roots the
+ * attacker for the whole wind-up (`stopMovement()` every frame). So the target
+ * walks and the attacker cannot. At `MELEE_WINDUP_MS` of 180 and a default
+ * `speed` of 2.6 units per frame that is ~28 units of separation the attacker
+ * has no way to answer — every basic attack aimed at anything walking away
+ * missed, permanently, while `BasicAttackBolt.onArrive` checked no distance at
+ * all and a ranged champion never missed. Reported as melee champions whiffing
+ * constantly, which is exactly what it was.
+ *
+ * The tolerance is what the victim could have *walked* in that window, so the
+ * cancellation is exact: walking is never enough, and anything that covers more
+ * ground than walking still gets away. Read off the victim's own speed rather
+ * than a constant, because a fast champion opens a bigger gap and it is the
+ * same gap that has to be forgiven.
+ */
+export function stillInReach(
+  attacker: AttackableUnit,
+  victim: AttackableUnit,
+  reach: number,
+  windupMs: number
+): boolean {
+  const walked = Math.max(0, victim.stats?.speed?.value ?? 0) * (windupMs / FRAME_MS);
+  return p5.Vector.dist(attacker.position, victim.position) <= reach + walked;
+}
 
 /**
  * The one place a basic attack turns into damage. Both delivery objects funnel
@@ -297,7 +335,7 @@ export class BasicAttackSwing extends SpellObject {
     // the wind-up is a real window: the attacker can be disarmed or killed and
     // the target can die, go untargetable or simply walk out of reach inside it
     if (!this.owner.canAttack || !canBeHit(target)) return false;
-    if (p5.Vector.dist(this.owner.position, target.position) > this.reach) return false;
+    if (!stillInReach(this.owner, target, this.reach, MELEE_WINDUP_MS)) return false;
     return landBasicAttack(this.owner, target, this.damage, false);
   }
 
@@ -315,42 +353,27 @@ export class BasicAttackSwing extends SpellObject {
         dirY = dy / length;
       }
     }
-    const bodyRadius = this.owner.stats.size.value / 2;
-    const [r, g, b] = this.color;
+    const style = {
+      bodyRadius: this.owner.stats.size.value / 2,
+      reach: this.reach,
+      color: this.color,
+    };
 
     push();
     translate(pos.x, pos.y);
     rotate(Math.atan2(dirY, dirX));
-    noStroke();
 
     if (this.age < MELEE_WINDUP_MS) {
-      // wind-up: a glow pulling back behind the attacker, brightening as it charges
-      const charge = this.age / MELEE_WINDUP_MS;
-      fill(r, g, b, 60 + 120 * charge);
-      circle(-bodyRadius * 0.55, 0, 8 + 9 * charge);
+      drawMeleeWindup(style, this.age / MELEE_WINDUP_MS);
     } else {
-      // strike: a wide fan sweeping out past the body, fading over the rest of life
-      const swept = constrain(
-        (this.age - MELEE_WINDUP_MS) / (MELEE_SWING_TOTAL_MS - MELEE_WINDUP_MS),
-        0,
-        1
+      drawMeleeStrike(
+        style,
+        constrain(
+          (this.age - MELEE_WINDUP_MS) / (MELEE_SWING_TOTAL_MS - MELEE_WINDUP_MS),
+          0,
+          1
+        )
       );
-      const fade = 1 - swept;
-      const innerRadius = bodyRadius * 0.65;
-      const outerRadius = bodyRadius + this.reach * 0.9;
-      const halfAngle = 0.62;
-
-      fill(r, g, b, 210 * fade);
-      beginShape();
-      for (let i = 0; i <= 5; i++) {
-        const a = -halfAngle + 2 * halfAngle * (i / 5);
-        vertex(Math.cos(a) * outerRadius, Math.sin(a) * outerRadius);
-      }
-      for (let i = 5; i >= 0; i--) {
-        const a = -halfAngle + 2 * halfAngle * (i / 5);
-        vertex(Math.cos(a) * innerRadius, Math.sin(a) * innerRadius);
-      }
-      endShape(CLOSE);
     }
     pop();
   }

@@ -1,5 +1,7 @@
 import { Circle } from '@/libs/quadtree';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
+import { stillInReach } from '@/game/combat/BasicAttack';
+import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
 import { MINION_BOUNTY } from '@/game/economy/Wallet';
@@ -928,8 +930,10 @@ export class MinionSwing extends SpellObject {
     if (!target || target.isDead || target.toRemove || !target.targetable || this.owner.isDead) {
       return;
     }
-    // the target (or this minion) may have drifted during the wind-up
-    if (p5.Vector.dist(this.owner.position, target.position) > this.reach) return;
+    // The target may have drifted during the wind-up — but not by walking. See
+    // `stillInReach`: a swing that a target can stroll out of is a swing that
+    // never lands on anything retreating, which is most of a lane fight.
+    if (!stillInReach(this.owner, target, this.reach, MELEE_WINDUP_MS)) return;
     target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
   }
 
@@ -948,47 +952,23 @@ export class MinionSwing extends SpellObject {
       }
     }
     const angle = Math.atan2(dirY, dirX);
-    const bodyRadius = this.owner.stats.size.value / 2;
+    const style = {
+      bodyRadius: this.owner.stats.size.value / 2,
+      reach: this.reach,
+      color: this.color,
+    };
 
     push();
     translate(pos.x, pos.y);
     rotate(angle);
-    noStroke();
 
     if (this.age < MELEE_WINDUP_MS) {
-      // wind-up: a small glow pulling back, brightening as the swing charges
-      const windupRatio = this.age / MELEE_WINDUP_MS;
-      fill(this.color[0], this.color[1], this.color[2], 60 + 100 * windupRatio);
-      circle(-bodyRadius * 0.5, 0, 6 + 6 * windupRatio);
+      drawMeleeWindup(style, this.age / MELEE_WINDUP_MS);
     } else {
-      // strike: a wide fan swipe sweeping past the attacker, fading through
-      // the rest of the swing's life
-      const strikeRatio = constrain(
-        (this.age - MELEE_WINDUP_MS) / (MELEE_SWING_TOTAL_MS - MELEE_WINDUP_MS),
-        0,
-        1
+      drawMeleeStrike(
+        style,
+        constrain((this.age - MELEE_WINDUP_MS) / (MELEE_SWING_TOTAL_MS - MELEE_WINDUP_MS), 0, 1)
       );
-      const fade = 1 - strikeRatio;
-      const innerR = bodyRadius * 0.6;
-      const outerR = bodyRadius + this.reach * 0.9;
-      const half = 0.6;
-
-      fill(this.color[0], this.color[1], this.color[2], 200 * fade);
-      beginShape();
-      for (let i = 0; i <= 4; i++) {
-        const a = -half + 2 * half * (i / 4);
-        vertex(cos(a) * outerR, sin(a) * outerR);
-      }
-      for (let i = 4; i >= 0; i--) {
-        const a = -half + 2 * half * (i / 4);
-        vertex(cos(a) * innerR, sin(a) * innerR);
-      }
-      endShape(CLOSE);
-
-      noFill();
-      stroke(255, 255, 255, 220 * fade);
-      strokeWeight(2);
-      arc(0, 0, outerR * 2, outerR * 2, -half, half);
     }
 
     pop();
