@@ -1,26 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
-import { BasicAttackSwing, MELEE_WINDUP_MS } from '@/game/combat/BasicAttack';
+import { BasicAttackSwing, MELEE_SWING_TOTAL_MS, MELEE_WINDUP_MS } from '@/game/combat/BasicAttack';
 import { MinionSwing } from '@/game/gameObject/attackableUnits/Minion';
 import { createGame, stubGameGlobals, type TestGame } from '../fixtures';
 
 /**
  * What a melee basic attack looks like, and who it says it hit.
  *
- * Two faults, both reported off the same picture. It was a filled wedge from
- * the attacker's body out to its full reach — the shape this game uses for
- * **area** effects, so a single-target basic attack read as an ability that
- * hits everything standing in it. And nothing in the drawing named a victim:
- * the whole thing lived in the attacker's rotated frame, so a swing at one
- * champion in a crowd was the same picture as a swing at the crowd.
+ * Three reports off one picture, all of them the same complaint in the end:
+ * the swing painted **space**, and painted space in this game means an area
+ * effect. First it was a filled wedge out to the attacker's full reach — read
+ * as an ability hitting everyone inside it. Then a crescent sweeping through
+ * that reach — which against a target standing close swung out *past* it and
+ * read as damage carrying on to whatever was behind. And throughout, nothing
+ * in the drawing named a victim at all: it all lived in the attacker's rotated
+ * frame, so a swing at one champion in a crowd was the same picture as a swing
+ * at the crowd.
+ *
+ * Now neither half reaches: a flick on the attacker, a crescent on the victim,
+ * and nothing between them. The two assertions worth having are exactly those
+ * two facts, and both are numbers a headless test can hold.
  *
  * A champion's swing and a minion's were also two hand-written copies that had
- * drifted — one carried a bright leading edge and the other did not. Both go
- * through `vfx/MeleeSwing.ts` now.
+ * drifted. Both go through `vfx/MeleeSwing.ts` now, and counting calls is what
+ * catches the next edit to one of them.
  *
- * Counting calls is the only thing a headless test can hold, and a count is
- * exactly what drifts when somebody edits one copy. A camp's claw is
- * deliberately outside this family; see `monsterAttacks.ts`.
+ * A camp's claw is deliberately outside this family; see `monsterAttacks.ts`.
  */
 
 let game: TestGame;
@@ -75,18 +80,46 @@ describe('the melee swing is one picture', () => {
   });
 });
 
-describe('the melee swing is a blade, not a cone', () => {
-  /**
-   * The wedge was `beginShape`/`vertex`/`endShape` — a filled polygon from the
-   * body outwards. A crescent is two stroked arcs, a band and its leading edge,
-   * and the difference is that a band has an outside. Naming both halves rather
-   * than trusting the equality above: a drawing that painted nothing at all
-   * would satisfy "the same as each other".
-   */
-  it('strokes a band and a leading edge, and fills no wedge', () => {
-    const { champion } = pair(MELEE_WINDUP_MS + 40);
+describe('the melee swing paints no space between the two bodies', () => {
+  /** The widest thing drawn in the attacker's own frame, as a radius. */
+  const attackerPaintRadius = () => {
+    const radii = spies.arc.mock.calls
+      // Attacker-frame art is drawn at the origin; the victim's crescent is
+      // drawn at world coordinates and is not this question.
+      .filter(call => Number(call[0]) === 0 && Number(call[1]) === 0)
+      .map(call => Number(call[2]) / 2);
+    const dots = spies.circle.mock.calls.map(
+      call => Math.abs(Number(call[0])) + Number(call[2]) / 2
+    );
+    return Math.max(0, ...radii, ...dots);
+  };
 
-    expect(champion.arcs, 'the swing has no blade and no leading edge').toBe(2);
+  /**
+   * The assertion the last two attempts would each have failed. A filled wedge
+   * reached `bodyRadius + reach`; the sweeping crescent reached
+   * `bodyRadius + reach * 0.95`. Both cross the gap to the victim and keep
+   * going, which is what "damage swept out behind them" was describing.
+   */
+  it('keeps the strike on the attacker, nowhere near the victim', () => {
+    const attacker = new Champion({ game, teamId: 'blue' });
+    const victim = new Champion({ game, teamId: 'red' });
+    victim.position.set(80, 0);
+    const swing = new BasicAttackSwing(attacker, victim);
+    swing.reach = 90;
+
+    // The furthest frame of the strike, where any sweep is at full extension.
+    swing.age = MELEE_SWING_TOTAL_MS - 1;
+    paint(() => swing.draw());
+
+    const bodyRadius = attacker.stats.size.value / 2;
+    expect(attackerPaintRadius(), 'the swing reaches out past its own body').toBeLessThanOrEqual(
+      bodyRadius * 1.6
+    );
+    expect(attackerPaintRadius(), 'the swing reaches the victim').toBeLessThan(80);
+  });
+
+  it('and fills no wedge at all', () => {
+    const { champion } = pair(MELEE_WINDUP_MS + 40);
     expect(champion.shapes, 'the swing is still a filled wedge').toBe(0);
     expect(champion.vertices).toBe(0);
   });
@@ -109,9 +142,15 @@ describe('the melee swing says who it hit', () => {
     return { swing, victim, painted: paint(() => swing.draw()) };
   };
 
-  /** Circles painted anywhere near the victim rather than on the attacker. */
+  /**
+   * Anything painted out where the victim is standing, rather than on the
+   * attacker. Arcs and lines, because that is what the crescent is made of —
+   * counted by their first coordinate, which for both is where they start.
+   */
   const marksAt = (x: number) =>
-    spies.circle.mock.calls.filter(call => Math.abs(Number(call[0]) - x) < 30).length;
+    [...spies.arc.mock.calls, ...spies.line.mock.calls].filter(
+      call => Math.abs(Number(call[0]) - x) < 30
+    ).length;
 
   it('marks the body that took it, out where that body is standing', () => {
     const { swing, victim } = landOn(80);

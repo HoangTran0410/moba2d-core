@@ -1,52 +1,51 @@
 /**
- * The one melee swing, drawn once.
+ * The one melee swing, drawn once — and drawn in two places on purpose.
  *
  * A champion's swing and a minion's were two hand-rolled copies of the same
- * picture and had already drifted apart where nobody would look. A camp's claw
- * is deliberately **not** this (`monsterAttacks.ts` explains why): three
- * separate arcs on a 100px body is a legibility decision about bodies that big.
- * This covers the two that were meant to match.
+ * picture and had drifted apart. A camp's claw is deliberately **not** this
+ * (`monsterAttacks.ts` explains why): three separate arcs on a 100px body is a
+ * legibility decision about bodies that big.
  *
- * ## Why it is a blade and not a cone
+ * ## Nothing is painted between the two bodies, or past them
  *
- * It *was* a cone: a filled wedge from the attacker's body out to the full
- * reach, seventy degrees wide. Two things were wrong with that and both were
- * reported. A filled wedge is the shape this game uses for **area** effects —
- * a camp's breath is exactly that — so a basic attack wearing it read as an
- * ability that hits everything inside it. And nothing in the picture said who
- * was actually being hit: the whole drawing lived in the attacker's frame, so
- * a swing at one champion standing in a crowd looked identical to a swing at
- * the crowd.
+ * This shape is the third answer, and the two it replaced were both wrong in
+ * the same direction — they painted **space**, and painted space is what this
+ * game means by an area effect.
  *
- * So the swing is a **crescent** now — a band with a thickness, out at the end
- * of the reach rather than filling it, sweeping outward and closing as it goes.
- * A band has an inside and an outside; a wedge only has an inside, and that is
- * the whole difference between a blade and a spotlight.
+ * The first was a filled wedge from the attacker out to its full reach, which
+ * read as an ability that hits everyone standing in it. The second was a
+ * crescent that swept outward through that same reach: better, but it still
+ * travelled to `reach` regardless of where the victim actually was, so against
+ * anything standing close it swung out *past* the victim and looked like the
+ * damage carried on through to whatever was behind them. Reported exactly that
+ * way, twice.
  *
- * And the victim is marked. `drawMeleeImpact` puts a ring on the body that took
- * it, in world space rather than the attacker's frame, which is the only part
- * of this that can answer "who". It is the half that was missing, not the
- * shape — a prettier cone would still not have said.
+ * So neither half reaches now:
+ *
+ * - **`drawMeleeStrike` stays on the attacker.** A short flick at its own body
+ *   edge — the weapon leaving the hand. It never extends past the attacker's
+ *   own body, so there is no swept volume to misread. `meleeSwingArt.test.ts`
+ *   holds that as a number.
+ * - **`drawMeleeImpact` sits on the victim.** A crescent hugging the near side
+ *   of the body that took it, facing back the way it came. All of the damage's
+ *   art is on the thing that took damage, which is the only arrangement that
+ *   cannot be read as hitting anything else.
+ *
+ * The gap between them is left empty deliberately. A melee attacker is nearly
+ * touching its target anyway — `reach` is surface to surface — and an empty gap
+ * says "these two, and nothing else" better than any stroke drawn across it.
  *
  * **Locals are named for what they mean in the drawing.** `fill`, `stroke`,
  * `line` and `color` are p5 globals in global mode, and a local that shadows
  * one turns the call that closes the block into a call on a number.
  */
 
-/** How wide the crescent opens either side of the aim line, radians. */
-const HALF_ANGLE = 0.5;
-
-/** Thickness of the blade band, as a share of reach. */
-const BLADE_SHARE = 0.2;
-
 /** How long the mark on the victim lives, ms. Short: it is punctuation. */
-export const IMPACT_MS = 160;
+export const IMPACT_MS = 170;
 
 export interface MeleeSwingStyle {
-  /** Half the attacker's body, world units — where the swing starts from. */
+  /** Half the attacker's body, world units. The flick never leaves it. */
   bodyRadius: number;
-  /** Surface-to-surface reach of the swing, world units. */
-  reach: number;
   color: number[];
 }
 
@@ -67,70 +66,78 @@ export function drawMeleeWindup(style: MeleeSwingStyle, charge: number) {
 }
 
 /**
- * The blade: a crescent thrown out past the body, thinning and closing as it
- * travels, with a bright edge on its leading rim.
+ * The release, on the attacker: a flick of the weapon around its own body.
  *
  * Drawn in the attacker's own rotated frame — the caller has already
- * `translate`d to the body and `rotate`d to the aim — so this is the same
- * picture whichever way the swing points.
+ * `translate`d to the body and `rotate`d to the aim — and bounded by
+ * `FLICK_REACH` body radii, which is what stops it being a sweep. It says *who
+ * swung and which way*; it deliberately says nothing about how far.
  */
 export function drawMeleeStrike(style: MeleeSwingStyle, swept: number) {
   const [red, green, blue] = style.color;
   const fade = 1 - swept;
-  // Travels outward rather than filling the reach: what the eye follows is the
-  // edge moving, and a shape that is already everywhere cannot move.
-  const out = style.bodyRadius + style.reach * (0.5 + 0.45 * swept);
-  const band = Math.max(3, style.reach * BLADE_SHARE) * (1 - swept * 0.45);
-  const half = HALF_ANGLE * (1 - swept * 0.3);
+  const out = style.bodyRadius * (0.92 + (FLICK_REACH - 0.92) * swept);
+  const band = Math.max(2.5, style.bodyRadius * 0.26) * (1 - swept * 0.55);
+  const half = FLICK_HALF_ANGLE * (1 - swept * 0.35);
 
   push();
   noFill();
-  strokeCap(SQUARE);
-  stroke(red, green, blue, 215 * fade);
+  strokeCap(ROUND);
+  stroke(red, green, blue, 205 * fade);
   strokeWeight(band);
   arc(0, 0, out * 2, out * 2, -half, half);
 
-  // The leading edge, just outside the band. It is what separates a swing from
-  // a smear: the eye reads the bright rim as the thing that arrived and the
-  // band behind it as where it came from.
-  stroke(255, 255, 255, 210 * fade);
-  strokeWeight(Math.max(1.5, band * 0.26));
-  const rim = out + band * 0.44;
-  arc(0, 0, rim * 2, rim * 2, -half * 0.9, half * 0.9);
+  stroke(255, 255, 255, 190 * fade);
+  strokeWeight(Math.max(1.2, band * 0.3));
+  arc(0, 0, out * 2, out * 2, -half * 0.85, half * 0.85);
   pop();
 }
 
 /**
- * The mark on whoever took it: a ring snapping outward on the victim's own
- * body, with four ticks thrown off it.
+ * The hit, on the victim: a crescent across the near side of its body, facing
+ * the direction it came from, with two sparks thrown off the edge.
  *
- * World space, not the attacker's frame, and that is the point — this is the
- * only part of a basic attack that names a target. Drawn from the swing object
- * rather than from the victim so it survives the attacker being culled, the
- * same reason every reaching effect in this codebase is a `SpellObject`.
+ * World space, not the attacker's frame, and centred on the **victim's** body
+ * rather than reaching towards it. That is the part that answers "who" — the
+ * only part of a basic attack that ever could, and the half that was missing
+ * while the question was being answered with a bigger swing.
+ *
+ * `from` is the angle from the victim back toward its attacker, so the crescent
+ * lands on the side the blow arrived on.
  */
 export function drawMeleeImpact(
   at: { x: number; y: number },
   victimRadius: number,
+  from: number,
   style: MeleeSwingStyle,
   bite: number
 ) {
   const [red, green, blue] = style.color;
   const fade = 1 - bite;
-  const ring = victimRadius * (0.5 + 0.7 * bite);
+  const ring = victimRadius * (1.02 + 0.22 * bite);
+  const half = IMPACT_HALF_ANGLE * (1 - bite * 0.3);
 
   push();
   noFill();
-  stroke(255, 255, 255, 235 * fade);
-  strokeWeight(1 + 2.5 * fade);
-  circle(at.x, at.y, ring * 2);
+  strokeCap(ROUND);
 
-  stroke(red, green, blue, 220 * fade);
-  strokeWeight(1 + 1.5 * fade);
-  for (let tick = 0; tick < 4; tick++) {
-    const along = (Math.PI / 4) * (1 + 2 * tick);
-    const inner = ring * 0.95;
-    const outer = ring * (1.25 + 0.35 * bite);
+  stroke(255, 255, 255, 245 * fade);
+  strokeWeight(1.4 + 3 * fade);
+  arc(at.x, at.y, ring * 2, ring * 2, from - half, from + half);
+
+  const echo = ring * 1.2;
+  stroke(red, green, blue, 200 * fade);
+  strokeWeight(1 + 1.6 * fade);
+  arc(at.x, at.y, echo * 2, echo * 2, from - half * 0.78, from + half * 0.78);
+
+  // Two sparks off the ends of the crescent, thrown outward along the body's
+  // edge. They are what stops a fast exchange reading as one continuous arc:
+  // each hit gets a visible tick of its own.
+  strokeWeight(1 + 1.4 * fade);
+  for (const side of [-1, 1]) {
+    const along = from + half * side;
+    const inner = ring * 1.05;
+    const outer = ring * (1.25 + 0.4 * bite);
     line(
       at.x + Math.cos(along) * inner,
       at.y + Math.sin(along) * inner,
@@ -140,3 +147,18 @@ export function drawMeleeImpact(
   }
   pop();
 }
+
+/**
+ * How far the attacker-side flick may travel, in body radii.
+ *
+ * The number that keeps this from being a sweep again. Anything past the
+ * attacker's own body is space between two units, and painted space in this
+ * game means an area effect — see this file's header.
+ */
+const FLICK_REACH = 1.3;
+
+/** How wide the flick opens either side of the aim line, radians. */
+const FLICK_HALF_ANGLE = 0.62;
+
+/** How far the crescent wraps around the victim's near side, radians. */
+const IMPACT_HALF_ANGLE = 0.95;

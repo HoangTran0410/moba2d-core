@@ -322,6 +322,7 @@ export class BasicAttackSwing extends SpellObject {
   /** Where the victim was standing when it took it. */
   private impactAt: { x: number; y: number } | null = null;
   private impactRadius = 0;
+  private impactFrom = 0;
 
   constructor(owner: AttackableUnit, target: AttackableUnit) {
     super(owner);
@@ -342,6 +343,12 @@ export class BasicAttackSwing extends SpellObject {
         // status effect stuck to the body instead of a hit that happened here.
         this.impactAt = { x: victim.position.x, y: victim.position.y };
         this.impactRadius = victim.stats.size.value / 2;
+        // Back toward the attacker, so the crescent lands on the side the blow
+        // actually arrived on.
+        this.impactFrom = Math.atan2(
+          this.owner.position.y - victim.position.y,
+          this.owner.position.x - victim.position.x
+        );
       }
     }
     if (this.age >= MELEE_SWING_TOTAL_MS) this.toRemove = true;
@@ -372,7 +379,6 @@ export class BasicAttackSwing extends SpellObject {
     }
     const style = {
       bodyRadius: this.owner.stats.size.value / 2,
-      reach: this.reach,
       color: this.color,
     };
 
@@ -398,7 +404,7 @@ export class BasicAttackSwing extends SpellObject {
     // attacker's rotated frame.
     const bite = (this.age - MELEE_WINDUP_MS) / IMPACT_MS;
     if (this.impactAt && bite >= 0 && bite <= 1) {
-      drawMeleeImpact(this.impactAt, this.impactRadius, style, bite);
+      drawMeleeImpact(this.impactAt, this.impactRadius, this.impactFrom, style, bite);
     }
   }
 
