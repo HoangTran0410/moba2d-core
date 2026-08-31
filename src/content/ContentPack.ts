@@ -256,6 +256,42 @@ export interface ChampionEntry {
    * find the D/F shelf without naming a single spell of its own.
    */
   summonerShelf?: boolean;
+  /**
+   * A tail, a cloak, a length of hair — something that streams behind this
+   * champion as it moves and settles when it stops.
+   *
+   * Cosmetic and nothing else: it has no hitbox, no collision and no bearing
+   * on anything the match reads. It is the same chain `render/creature/spine.ts`
+   * builds a segmented monster out of, mounted on a champion's own position,
+   * so a pack states a shape and core owns every number that makes it move.
+   *
+   * Absent means today's picture, unchanged.
+   */
+  trail?: ChampionTrailSpec;
+}
+
+/**
+ * What a champion's trail is, and deliberately **not** a whole `CreatureRigSpec`.
+ *
+ * A camp's rig may replace its sprite and grow it legs; a champion's trail may
+ * do neither. Reusing the larger type would offer packs a `legs` block and a
+ * `body: 'orb'` that core would then have to refuse one at a time, and a field
+ * that exists only to be rejected is worse than no field. These are exactly
+ * the `chain` body's own knobs, and core resolves them through the same
+ * clamping path — see `resolveRig`.
+ */
+export interface ChampionTrailSpec {
+  /**
+   * Half-width at each vertebra, head first, as a multiple of the champion's
+   * body radius. Its length is the vertebra count.
+   */
+  widths: number[];
+  /** Gap between vertebrae, in body radii. Default 0.9. */
+  spacing?: number;
+  /** How far one vertebra may bend from the one ahead, radians. Default 0.45. */
+  bend?: number;
+  color?: [number, number, number];
+  glow?: number;
 }
 
 /**
@@ -979,6 +1015,31 @@ export interface NeutralSlot {
   rotationDeg?: number;
 }
 
+/**
+ * An animal that lives on the map and takes no part in the match.
+ *
+ * The one slot whose contents are declared **in the map** rather than filled
+ * from an installed pack. A `NeutralSlot` names a `role` and waits for a pack
+ * to supply a monster for it, because what fights you is a balance decision
+ * that belongs with the champions; scenery is a decision about *this map's*
+ * river, so the map says what is in it and there is nothing to match up.
+ *
+ * See `game/gameObject/map/Wildlife.ts` for what one becomes. A slot with no
+ * `rig` would be an invisible nothing, so the rig is the one required field.
+ */
+export interface DecorSlot {
+  x: number;
+  y: number;
+  /** How far it drifts from the slot, world units. Absent or 0 stands still. */
+  r?: number;
+  /** Body diameter, world units — every ratio in `rig` resolves against it. */
+  size?: number;
+  /** A multiplier on core's wander rate, not a speed. Absent means 1. */
+  speed?: number;
+  /** The creature itself, the same declaration a camp's `rig` takes. */
+  rig: CreatureRigSpec;
+}
+
 export interface LaneDefinition {
   id: string;
   from: string;
@@ -1016,6 +1077,12 @@ export interface MapGeometry {
     minion: MinionSlot[];
     structure: StructureSlot[];
     neutral: NeutralSlot[];
+    /**
+     * Scenery. **Optional, unlike the four above**, and deliberately so: every
+     * map that existed before this has none, and a required empty array would
+     * mean re-exporting all of them to say nothing.
+     */
+    decor?: DecorSlot[];
   };
   /** Absent on a map with no lanes — no waves, and PUSH falls through. */
   lanes?: LaneDefinition[];
@@ -1161,7 +1228,7 @@ export const MINION_STYLES: readonly MinionStyle[] = Object.freeze(['melee', 'ra
 export const MONSTER_ROAM_LAYERS: readonly ('water' | 'bush')[] = Object.freeze(['water', 'bush']);
 
 /**
- * The three shapes core knows how to draw a camp's swing as. Runtime for the
+ * The four shapes core knows how to draw a camp's swing as. Runtime for the
  * same reason the temperaments are: a pack shipping `attackStyle: 'melee '`
  * would otherwise install cleanly and fall through to the `ranged` branch.
  */
@@ -1169,4 +1236,5 @@ export const MONSTER_ATTACK_STYLES: readonly MonsterAttackStyle[] = Object.freez
   'melee',
   'ranged',
   'breath',
+  'lash',
 ]);

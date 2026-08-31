@@ -335,6 +335,7 @@ export const Renderer = (() => {
       case "structure": return p.faction || "";
       case "minion": return `${p.faction || "?"} · ${p.lane || "?"}`;
       case "neutral": return p.role || "";
+      case "decor": return (p.rig && p.rig.body && p.rig.body.kind) || "orb";
       case "lane": return p.id || "";
       default: return "";
     }
@@ -460,7 +461,7 @@ export const Renderer = (() => {
     ctx.fill();
     ctx.lineWidth = (selected ? 2.4 : 1.6) / s;
     ctx.strokeStyle = hot ? LINE_HI[t.type] : LINE[t.type];
-    if (t.type === "neutral") ctx.setLineDash([10 / s, 7 / s]);
+    if (t.type === "neutral" || t.type === "decor") ctx.setLineDash([10 / s, 7 / s]);
     ctx.stroke();
     ctx.setLineDash([]);
 

@@ -5,8 +5,11 @@ import {
   CLAW_WINDUP_MS,
   DEFAULT_MONSTER_ATTACK_COLOR,
   MONSTER_MELEE_REACH,
+  LASH_IMPACT_MS,
+  LASH_WINDUP_MS,
   MonsterBreath,
   MonsterClaw,
+  MonsterLash,
   MonsterSpit,
 } from '../../../src/game/gameObject/attackableUnits/monsterAttacks';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
@@ -119,6 +122,25 @@ describe('which attack a camp uses', () => {
     expect(spawned(MonsterBreath)).toBeTruthy();
   });
 
+  it('lashes when the pack said so, whatever its reach says', () => {
+    const camp = makeCamp({ attackRange: 220, attackStyle: 'lash', speed: 0 });
+    const champion = engage(camp, 150);
+
+    camp.updateAttack();
+
+    expect(spawned(MonsterLash).target).toBe(champion);
+  });
+
+  /**
+   * The two declared styles stay declared. `lash` sits at a reach a camp would
+   * otherwise spit from, so deriving it — even for a segmented body — would
+   * change what every existing camp does the moment somebody gives it a spine.
+   */
+  it('is never guessed from reach the way melee and ranged are', () => {
+    expect(makeCamp({ attackRange: 40 }).attackStyle).toBe('melee');
+    expect(makeCamp({ attackRange: 400 }).attackStyle).toBe('ranged');
+  });
+
   it('paints in the colour the camp declared, or the old amber', () => {
     const declared = makeCamp({ attackColor: [10, 20, 30] });
     engage(declared, 60);
@@ -171,6 +193,26 @@ describe('when the damage lands', () => {
     expect(champion.stats.health.value, 'the cone struck before it opened').toBe(health);
 
     advance(breath, FRAME_MS * 3);
+    expect(champion.stats.health.value).toBe(health - camp.damage);
+  });
+
+  /**
+   * Deliberately **not** the end of the wind-up, unlike the claw and the cone.
+   * The wind-up is the tail rearing back; the damage belongs at the crack, when
+   * the tip is furthest out. Land it earlier and the camp hurts you before its
+   * tail has left its own body.
+   */
+  it('is the crack of the lash, not the end of its wind-up', () => {
+    const camp = makeCamp({ attackRange: 220, attackStyle: 'lash', speed: 0 });
+    const champion = engage(camp, 150);
+    const health = champion.stats.health.value;
+    camp.updateAttack();
+    const lash = spawned(MonsterLash);
+
+    advance(lash, LASH_WINDUP_MS);
+    expect(champion.stats.health.value, 'the tail struck while still rearing').toBe(health);
+
+    advance(lash, LASH_IMPACT_MS - LASH_WINDUP_MS + FRAME_MS * 2);
     expect(champion.stats.health.value).toBe(health - camp.damage);
   });
 
@@ -247,6 +289,15 @@ describe('the attack objects paint past their own centre', () => {
     camp.updateAttack();
 
     const box = spawned(MonsterBreath).getDisplayBoundingBox();
+    expect(box.w).toBeGreaterThan(camp.attackRange);
+  });
+
+  it('including the tail, which reaches its whole length out', () => {
+    const camp = makeCamp({ attackRange: 220, attackStyle: 'lash', speed: 0 });
+    engage(camp, 150);
+    camp.updateAttack();
+
+    const box = spawned(MonsterLash).getDisplayBoundingBox();
     expect(box.w).toBeGreaterThan(camp.attackRange);
   });
 });

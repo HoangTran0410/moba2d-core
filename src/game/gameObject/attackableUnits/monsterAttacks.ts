@@ -1,6 +1,8 @@
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import SpellObject from '@/game/gameObject/SpellObject';
+import { Chain } from '@/game/render/creature/chain';
+import { drawChain } from '@/game/render/creature/drawCreature';
 import type AttackableUnit from './AttackableUnit';
 
 /**
@@ -14,12 +16,15 @@ import type AttackableUnit from './AttackableUnit';
  * long before (`Minion.launchAttack`: `MinionBolt` and `MinionSwing`, damage
  * resolved on arrival); camps simply never got it.
  *
- * The three styles are the three shapes a camp in this game actually needs:
+ * The four styles are the four shapes a camp in this game actually needs:
  *
  * - `melee` — claws. Wind-up, then a fan of slashes that lands on contact.
  * - `ranged` — a spat projectile that travels and damages on arrival.
  * - `breath` — a cone that opens from the body's mouth to its target, for a
  *   camp a pack wants read as a boss rather than as a big animal.
+ * - `lash` — a tail whipped out to the target and drawn back, for the
+ *   segmented bodies `render/creature/` grew. A worm that fights by flashing
+ *   three claw arcs out of its head is the mismatch this exists to fix.
  *
  * Every one of them resolves damage **exactly once**, at its own strike
  * instant, and re-checks the target (and the attacker) right before it does —
@@ -32,7 +37,7 @@ import type AttackableUnit from './AttackableUnit';
  * carry on top of five behaviour phases, and none of them reads anything off
  * `Monster` that `AttackableUnit` does not already have.
  */
-export type MonsterAttackStyle = 'melee' | 'ranged' | 'breath';
+export type MonsterAttackStyle = 'melee' | 'ranged' | 'breath' | 'lash';
 
 /**
  * Reach at or below which a camp that declared no style swings rather than
@@ -63,6 +68,27 @@ export const BREATH_HALF_ANGLE = 0.42;
 
 /** Half-angle of one claw arc, radians. */
 export const CLAW_ARC_HALF_ANGLE = 0.23;
+
+/** The tail rears back, cracks out, then is drawn in. */
+export const LASH_WINDUP_MS = 150;
+export const LASH_TOTAL_MS = 420;
+
+/**
+ * How much of the post-wind-up life the tip spends travelling out. The rest is
+ * the recovery, which is why a lash telegraphs longer than a claw and why a
+ * pack picks it for something heavy.
+ */
+export const LASH_STRIKE_SHARE = 0.4;
+
+/** When the tip is furthest out, and so when the damage lands. */
+export const LASH_IMPACT_MS =
+  LASH_WINDUP_MS + (LASH_TOTAL_MS - LASH_WINDUP_MS) * LASH_STRIKE_SHARE;
+
+/** Vertebrae in the whip. Enough to curve, few enough to stroke every frame. */
+const LASH_LINKS = 9;
+
+/** How far to one side the tail is coiled during the wind-up, radians. */
+const LASH_COIL = 1.05;
 
 /** Where the three claw arcs sit relative to the aim line, radians. */
 const CLAW_OFFSETS = [-0.36, 0, 0.36] as const;
@@ -375,5 +401,160 @@ export class MonsterBreath extends SpellObject {
 
   getDisplayBoundingBox() {
     return this.squareDisplayBoundingBox((this.reach + this.owner.stats.size.value) * 2);
+  }
+}
+
+/**
+ * A tail whipped out at the target and drawn back in.
+ *
+ * The one style whose shape is not painted from an equation: it is a real
+ * chain, anchored at the camp's mouth and reaching for the target, solved by
+ * `render/creature/chain.ts` frame by frame. That is the point of it — a whip
+ * carries its own slack, so the curve you see on the way out is the curve the
+ * previous frame left behind, and no two swings are the same picture.
+ *
+ * Damage lands at `LASH_IMPACT_MS`, when the tip is furthest out, rather than
+ * at the end of the wind-up like a claw. The wind-up is the tail rearing; the
+ * strike instant is the crack, and putting the damage anywhere else means a
+ * camp that hurts you before its tail has left its own body.
+ */
+export class MonsterLash extends SpellObject {
+  target: AttackableUnit | null;
+  damage = 0;
+  /** Surface-to-surface reach, re-checked at the strike instant. */
+  reach = 90;
+  color: number[] = [...DEFAULT_MONSTER_ATTACK_COLOR];
+  age = 0;
+  struck = false;
+
+  /**
+   * Built on the first drawn frame, not in the constructor: `reach` is set by
+   * the caller after construction and it is what the chain's length is derived
+   * from. A whip built before it would be the default length for every camp.
+   */
+  private whip: Chain | null = null;
+
+  /**
+   * The last direction the tail was aimed. A target that dies or blinks out
+   * mid-swing leaves the animation to finish, and finishing it towards
+   * `{1, 0}` would snap a boss's tail east on the frame its victim died.
+   */
+  private heading = { x: 1, y: 0 };
+
+  constructor(owner: AttackableUnit, target: AttackableUnit) {
+    super(owner);
+    this.target = target;
+  }
+
+  update() {
+    this.age += deltaTime;
+    this.position.set(this.owner.position.x, this.owner.position.y);
+
+    if (!this.struck && this.age >= LASH_IMPACT_MS) {
+      this.struck = true;
+      this.strike();
+    }
+    if (this.age >= LASH_TOTAL_MS) this.toRemove = true;
+  }
+
+  strike(): void {
+    if (!stillLands(this.owner, this.target, this.reach)) return;
+    this.target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
+  }
+
+  draw() {
+    const pos = this.owner.position;
+    if (this.target && !this.target.isDead && !this.target.toRemove) {
+      this.heading = aim(pos, this.target.position);
+    }
+    const heading = this.heading;
+    const bodyRadius = this.owner.stats.size.value / 2;
+
+    const mouthX = pos.x + heading.x * bodyRadius * 0.6;
+    const mouthY = pos.y + heading.y * bodyRadius * 0.6;
+
+    if (!this.whip) {
+      this.whip = new Chain(LASH_LINKS, (bodyRadius * 0.6 + this.reach) / (LASH_LINKS - 1));
+      // Laid out trailing behind the body rather than bunched on the mouth, so
+      // the first frame is a tail at rest and not a chain exploding outwards.
+      this.whip.straighten(
+        mouthX - heading.x * this.whip.length,
+        mouthY - heading.y * this.whip.length,
+        mouthX,
+        mouthY
+      );
+    }
+
+    // Reared back and off to one side. The offset is what makes the strike read
+    // as a swing rather than a stab: a tail that rears straight backwards
+    // arrives along the same line it left on and looks like a piston.
+    const coiled = Math.atan2(-heading.y, -heading.x) + LASH_COIL;
+    const coilOut = bodyRadius * 1.2 + this.reach * 0.25;
+    const coilX = pos.x + Math.cos(coiled) * coilOut;
+    const coilY = pos.y + Math.sin(coiled) * coilOut;
+
+    const hitX = this.target ? this.target.position.x : pos.x + heading.x * this.reach;
+    const hitY = this.target ? this.target.position.y : pos.y + heading.y * this.reach;
+
+    let tipX: number;
+    let tipY: number;
+    let fade: number;
+
+    if (this.age < LASH_WINDUP_MS) {
+      const charge = this.age / LASH_WINDUP_MS;
+      // Ease out: the tail is quickest leaving the body and settles into the
+      // coil, which is what a wind-up looks like when it is about to release.
+      const drawn = 1 - (1 - charge) * (1 - charge);
+      tipX = mouthX + (coilX - mouthX) * drawn;
+      tipY = mouthY + (coilY - mouthY) * drawn;
+      fade = 0.45 + 0.55 * charge;
+    } else {
+      const past = (this.age - LASH_WINDUP_MS) / (LASH_TOTAL_MS - LASH_WINDUP_MS);
+      if (past < LASH_STRIKE_SHARE) {
+        const out = past / LASH_STRIKE_SHARE;
+        // Ease *in* on the way out — squared, so the tip is at its fastest the
+        // instant it arrives. That acceleration is the whole read of a whip;
+        // linear travel looks like a pole being extended.
+        tipX = coilX + (hitX - coilX) * out * out;
+        tipY = coilY + (hitY - coilY) * out * out;
+        fade = 1;
+      } else {
+        const home = (past - LASH_STRIKE_SHARE) / (1 - LASH_STRIKE_SHARE);
+        const drawn = 1 - (1 - home) * (1 - home);
+        tipX = hitX + (mouthX - hitX) * drawn;
+        tipY = hitY + (mouthY - hitY) * drawn;
+        fade = 1 - home;
+      }
+    }
+
+    this.whip.span(tipX, tipY, mouthX, mouthY);
+    drawChain(
+      this.whip,
+      {
+        thickness: Math.max(3, bodyRadius * 0.34),
+        color: this.color,
+        tip: 0.18,
+        glow: 0.5,
+      },
+      235 * fade
+    );
+
+    // The crack: a white flash at the tip either side of the strike instant.
+    // Read off the chain rather than off `tipX`, because a target further away
+    // than the tail is long is one the whip falls short of, and the flash
+    // belongs where the whip actually is.
+    const crack = 1 - Math.min(1, Math.abs(this.age - LASH_IMPACT_MS) / 90);
+    if (crack > 0) {
+      const tip = this.whip.joints[0];
+      push();
+      noStroke();
+      fill(255, 255, 255, 220 * crack * fade);
+      circle(tip.x, tip.y, bodyRadius * 0.5 * crack + 3);
+      pop();
+    }
+  }
+
+  getDisplayBoundingBox() {
+    return this.squareDisplayBoundingBox((this.owner.stats.size.value + this.reach + 40) * 2);
   }
 }

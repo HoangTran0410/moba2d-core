@@ -1,3 +1,4 @@
+import type { Chain } from './chain';
 import type { LegRig } from './legRig';
 import type { Spine } from './spine';
 import type { ResolvedRig } from './creatureSpec';
@@ -51,6 +52,52 @@ export function drawLegs(rig: LegRig, style: { thickness: number; color: number[
   fill(red, green, blue, alpha);
   for (const leg of rig.legs) {
     circle(leg.footX, leg.footY, style.thickness * FOOT_SIZE);
+  }
+  pop();
+}
+
+/**
+ * A chain, stroked from its anchored end to its free one.
+ *
+ * Segment by segment rather than as one curve, for the same reason the legs
+ * are: the taper is the whole picture. A whip of even weight reads as wire, and
+ * a tether of even weight reads as a laser — what says "this end is bolted to
+ * something and that end is loose" is the width falling off along its length.
+ *
+ * `joints[0]` is the free end, so the weight climbs with the index.
+ */
+export function drawChain(
+  chain: Chain,
+  style: { thickness: number; color: number[]; tip?: number; glow?: number },
+  alpha = 255
+) {
+  const joints = chain.joints;
+  if (joints.length < 2) return;
+  const [red, green, blue] = style.color;
+  const tipShare = style.tip ?? 0.25;
+  const glow = style.glow ?? 0;
+
+  const weightAt = (index: number) => {
+    const along = index / (joints.length - 1);
+    return style.thickness * (tipShare + (1 - tipShare) * along);
+  };
+
+  push();
+  noFill();
+  strokeCap(ROUND);
+
+  if (glow > 0) {
+    stroke(red, green, blue, alpha * 0.2 * glow);
+    for (let i = 1; i < joints.length; i++) {
+      strokeWeight(weightAt(i) * (1 + glow * 1.6));
+      line(joints[i - 1].x, joints[i - 1].y, joints[i].x, joints[i].y);
+    }
+  }
+
+  stroke(red, green, blue, alpha);
+  for (let i = 1; i < joints.length; i++) {
+    strokeWeight(weightAt(i));
+    line(joints[i - 1].x, joints[i - 1].y, joints[i].x, joints[i].y);
   }
   pop();
 }

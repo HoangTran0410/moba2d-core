@@ -411,6 +411,13 @@ body {
     justify-content: space-between;
 }
 
+/* Mũi tên của một mục gập được. Quay cùng nhịp với thân đang mở ra hay khép
+   lại (`animateSection` trong `ui.ts`) — lệch nhịp thì đọc ra thành hai chuyển
+   động rời nhau chứ không phải một mục đang mở. */
+.sec-caret {
+    transition: transform .17s ease;
+}
+
 .row {
     display: flex;
     align-items: center;

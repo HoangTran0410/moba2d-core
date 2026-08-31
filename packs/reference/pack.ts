@@ -89,6 +89,10 @@ export const data: ContentPackData = {
       image: 'reference_champ_vera',
       playable: true,
       attack: { damage: 14, attacksPerSecond: 1.1, range: 300 },
+      // A short cloak, so the bundled pack demonstrates `ChampionEntry.trail`
+      // the way it demonstrates everything else core can do. Five vertebrae
+      // tapering to nothing, in the same blue the portrait is drawn in.
+      trail: { widths: [0.5, 0.62, 0.5, 0.34, 0.16], spacing: 0.5, color: [92, 122, 190] },
       spells: ['Vera_Q', 'Vera_W', 'Vera_E', 'Vera_R'],
     },
   ],

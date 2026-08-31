@@ -88,7 +88,7 @@ hoàn tác · `Ctrl+A` chọn tất cả · `Ctrl+D` nhân bản · `Ctrl+S` lư
 
 ## Mô hình đối tượng
 
-Tám loại, chia đúng ba nhóm của `MapGeometry`:
+Chín loại, chia đúng ba nhóm của `MapGeometry`:
 
 | nhóm | loại | hình | thuộc tính riêng |
 |---|---|---|---|
@@ -97,7 +97,24 @@ Tám loại, chia đúng ba nhóm của `MapGeometry`:
 | `slots.structure` | Trụ | điểm | `faction`, `kind: 'turret'` |
 | `slots.minion` | Điểm gom lính | điểm | `faction`, `lane`, `scatter?` |
 | `slots.neutral` | Bãi quái | vòng tròn | `role`, `r`, `rotationDeg?` |
+| `slots.decor` | Sinh vật cảnh | vòng tròn | `r`, `size?`, `speed?`, `rig` |
 | `lanes` | Lane | đường gấp khúc hai chiều | `id` (còn `from`/`to` là dẫn xuất) |
+
+**`slots.decor` là nhóm slot duy nhất được phép vắng mặt.** Mọi map vẽ trước
+khi nó có đều không có khoá này, nên bắt buộc phải có nghĩa là xuất lại tất cả
+map trong mọi pack chỉ để nói rằng không có gì. Map không đặt con nào thì xuất
+ra **y hệt từng byte** như trước.
+
+Nó cũng là slot duy nhất **tự khai nội dung**. Bãi quái chỉ nêu một `role` rồi
+chờ pack nào đó nạp quái vào — con gì đánh nhau với người chơi là chuyện cân
+bằng, thuộc về pack. Còn dưới sông map này có con gì bơi thì là chuyện của
+*chính map này*, nên slot tự mô tả con vật và không có gì phải ghép nối. Con
+vật đó không có máu, không phe, không va chạm, không aggro, không nhắm được,
+không đánh được, và **không có gì của nó đi qua mạng** — đường bơi của nó là
+hàm của tuổi nó, nên hai máy xem cùng một trận thấy cùng một con mà không tốn
+một byte nào. Nó cũng nằm ngoài quadtree của gameplay (`_decorTree`), nên một
+khúc sông thả chục con cá không bắt mọi phép kiểm tra tầm nhìn trong trận phải
+đi ngang qua chúng.
 
 Cấp map có thêm `id` (slug) và danh sách **phe** — đúng `MapSummary`. Đổi
 tên một phe thì mọi `faction`/`from`/`to` đang trỏ vào nó đi theo luôn.
@@ -263,10 +280,14 @@ Chọn một cái trụ thì mục *Ghi đè chỉ số* của nó cho phép tr�
 còn lại — đây mới là thứ làm hai map dựng từ cùng bộ phận chơi khác nhau thật
 sự. Bãi quái cũng vậy, và ở đó còn có hai ô chữ: **Tính khí** (`aggressive` /
 `passive` / `skittish`) để một map cho con cua bình thường hiền lành quay ra
-cắn người, và **Kiểu đánh** (`melee` / `ranged` / `breath`) để đổi hẳn hình
-đòn đánh thường của bãi đó — vuốt cào, phun đạn, hay phun một nón lửa.
+cắn người, và **Kiểu đánh** (`melee` / `ranged` / `breath` / `lash`) để đổi
+hẳn hình đòn đánh thường của bãi đó — vuốt cào, phun đạn, phun một nón lửa,
+hay quật đuôi. `lash` là cái đi cùng thân đốt: một cái đuôi thật, neo ở mõm
+con quái, vung ra tới mục tiêu rồi thu về — con sâu mà đánh bằng ba vệt vuốt
+loè ra từ đầu thì trông sai, và đó là chỗ nó sinh ra để vá.
 
-Để trống ô *Kiểu đánh* thì core tự suy ra từ tầm đánh: tầm ngắn thì cào, tầm
+`lash` và `breath` chỉ chạy khi khai thẳng ra. Để trống ô *Kiểu đánh* thì core
+tự suy ra từ tầm đánh, và chỉ suy ra hai kiểu: tầm ngắn thì cào, tầm
 xa thì phun đạn. Chỉ khai khi câu trả lời tự suy đó sai — trong pack `lol`
 đúng một bãi cần khai, là con rồng.
 
@@ -275,6 +296,33 @@ mới bắt đầu hồi. Mặc định 4000ms. Để 0 là trở lại đúng h
 máu lại sau khoảng một giây, vì hồi máu tính theo *frame* chứ không theo
 giây. Đây là nút quyết định rừng của map bro có gặm dần qua nhiều lượt được
 hay bắt buộc phải dọn một hơi.
+
+### Hình dáng con vật
+
+Mục *Hình dáng con vật* xuất hiện ở **hai** chỗ và là cùng một bộ ô: trong bãi
+quái, và trong sinh vật cảnh. Nó dựng một con vật bằng mã thay vì bằng ảnh —
+số chân, sải chân, chiều gối, rồi kiểu thân (`orb` là một khối tròn, `chain`
+là thân nhiều đốt kiểu sâu/rắn/rết). Chọn `chain` thì hiện thêm **ô sửa cột
+sống**: kéo từng tay nắm để đổi bề rộng từng đốt, `−`/`+` để thêm bớt đốt, và
+ô xem trước bên dưới cho con vật đi thử ngay trong panel.
+
+Hai chỗ khác nhau đúng một điều, và nó nằm ở dữ liệu chứ không ở panel. Bãi
+quái **ghi đè** hình con quái mà pack khai, nên rig của nó nằm trong `stats`
+cùng mọi ghi đè khác — để trống là giữ nguyên hình pack khai. Sinh vật cảnh
+không có pack nào ở dưới để đè lên, nên rig nằm thẳng trên slot và **là** khai
+báo — để trống ô *Thân* thì ra khối tròn, vì con vật cảnh không có ảnh nào để
+lùi về.
+
+Mọi con số trong mục này đều được **kẹp lại, không bao giờ bị từ chối**. Gõ 7
+vào ô số chân thì ra 6 chứ không làm hỏng map — đúng một lần trước đây nó đã
+làm mất nguyên cái map đang chơi thử. Chỉ những *chữ* core không biết mới bị
+từ chối, vì chữ sai thì không đoán ra được ý.
+
+Nút `×` của mục xoá **cả nhánh** rig chứ không xoá từng ô: những thứ như
+`rig.legs.spread` hay `rig.body.glow` không có ô nào trong panel, xoá theo ô
+sẽ để chúng nằm lại và con vật vẫn không về mặc định. Riêng cột sống có nút
+*Cột sống về mặc định* riêng, để "kéo hỏng hình rồi, làm lại" không phải hi
+sinh màu và chân đã chỉnh.
 
 Quái rừng ở tầng map là **hệ số nhân** chứ không phải số tuyệt đối: map không
 biết pack nào sẽ lấp vào slot của nó, nên "×1.5 sát thương" là câu duy nhất

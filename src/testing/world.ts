@@ -260,6 +260,7 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     'textAlign',
     'beginShape',
     'vertex',
+    'curveVertex',
     'endShape',
   ]) {
     spies[name] = vi.fn();

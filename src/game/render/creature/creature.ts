@@ -36,6 +36,20 @@ export class Creature {
     this.legRig?.follow(x, y, dtMs, this.mounts());
   }
 
+  /**
+   * Advance the body and **not** the legs, for a creature that has stopped
+   * driving itself.
+   *
+   * A corpse whose whole rig kept running would keep walking: `LegRig` steps
+   * whenever a foot has fallen far enough behind its hip, and it cannot tell a
+   * body being dragged by a death animation from a body going somewhere. Legs
+   * left un-advanced simply stay planted where they last were, which is what a
+   * dead thing's legs do.
+   */
+  limp(x: number, y: number, dtMs: number): void {
+    this.spine?.follow(x, y, dtMs);
+  }
+
   /** How far this creature paints from the point it is standing on. */
   get paintRadius(): number {
     const body = this.spine?.paintRadius ?? this.legRig?.paintRadius ?? 0;

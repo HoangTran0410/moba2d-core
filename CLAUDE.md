@@ -182,9 +182,10 @@ clear of `src/game/`.
 | `MatchDirector.ts` | every mutation of a *running* match, and the only thing that persists them |
 | `managers/MinionSpawner.ts` | wave clock for both bases; owns the live minion cap |
 | `gameObject/map/Minimap.ts` | screen-space map; tap expands it, tapping the expanded map teleports |
+| `gameObject/map/Wildlife.ts` | scenery a map declares in `slots.decor` — no health, team, collision or aggro, and **nothing over the wire**: its path is a function of its own age. On `isDecoration`'s list, so it never enters the gameplay quadtree |
 
 Objects: `GameObject` → `AttackableUnit` (`Champion`, `AIChampion`, `Minion`,
-`Monster`, `Turret`), plus `Fountain`, `SpellObject` and helpers
+`Monster`, `Turret`), plus `Fountain`, `SpellObject`, `Wildlife` and helpers
 (`ParticleSystem`, `CombatText`, `TrailSystem`). Key enums in `game/enums/`:
 `ActionState`, `StatusFlags`, `SpellState`, `EventType`.
 

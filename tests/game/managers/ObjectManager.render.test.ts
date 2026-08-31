@@ -5,6 +5,7 @@ import Minion from '../../../src/game/gameObject/attackableUnits/Minion';
 import CombatText from '../../../src/game/gameObject/helpers/CombatText';
 import ParticleSystem from '../../../src/game/gameObject/helpers/ParticleSystem';
 import TrailSystem from '../../../src/game/gameObject/helpers/TrailSystem';
+import Wildlife from '../../../src/game/gameObject/map/Wildlife';
 import GameObject from '../../../src/game/gameObject/GameObject';
 import ObjectManager from '../../../src/game/managers/ObjectManager';
 import { Rectangle } from '../../../src/libs/quadtree';
@@ -110,6 +111,36 @@ describe('the decoration index', () => {
       queryByDisplayBoundingBox: true,
     });
     expect(hits).not.toContain(combatText);
+  });
+
+  /**
+   * Scenery, on the same criterion and for a larger reason: an animal a map
+   * put in its river is not a thing anything can target, hit or see, but it
+   * would sit in the gameplay tree for the whole match and be walked past by
+   * every vision check, target scan and area query in it. Nobody adds one
+   * animal, either — a river gets a dozen.
+   */
+  it('routes Wildlife into the decoration tree, not the gameplay one', () => {
+    const manager = new ObjectManager({ mapSize: 1_000, camera } as never);
+    const host = { mapSize: 1_000, camera, objectManager: manager } as any;
+    const animal = new Wildlife({
+      game: host,
+      x: 50,
+      y: 50,
+      roam: 20,
+      size: 40,
+      speed: 1,
+      rig: { body: { kind: 'orb' } },
+    });
+
+    manager.addObject(animal);
+    manager.update();
+
+    const hits = manager.queryObjects({
+      area: new Rectangle({ x: 0, y: 0, w: 100, h: 100 }),
+      queryByDisplayBoundingBox: true,
+    });
+    expect(hits).not.toContain(animal);
   });
 });
 

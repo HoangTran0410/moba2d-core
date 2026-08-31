@@ -104,6 +104,67 @@ describe('validatePack', () => {
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/red/);
   });
 
+  /**
+   * Scenery, and the one slot group core allows to be absent. Every map drawn
+   * before it existed has no `decor` key at all, so requiring one would mean
+   * re-exporting every map in every pack to say nothing.
+   */
+  describe('a map with scenery in it', () => {
+    const withDecor = (decor: unknown) =>
+      validatePack({
+        manifest: goodManifest,
+        maps: [
+          {
+            id: 'arena',
+            name: 'Arena',
+            size: 4000,
+            factions: [{ id: 'blue' }],
+            geometry: {
+              terrain: { wall: [], bush: [], water: [] },
+              slots: { spawn: [], minion: [], structure: [], neutral: [], decor },
+            },
+          },
+        ],
+      });
+
+    it('installs with an animal declared on it', () => {
+      expect(
+        withDecor([
+          { x: 100, y: 100, r: 200, size: 40, rig: { body: { kind: 'chain', widths: [1, 0.6] } } },
+        ]).ok
+      ).toBe(true);
+    });
+
+    it('installs with the key absent, which is every map made before it', () => {
+      expect(withDecor(undefined).ok).toBe(true);
+    });
+
+    it('refuses a slot with no creature on it, which would draw nothing', () => {
+      const result = withDecor([{ x: 100, y: 100, r: 200 }]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.join(' ')).toMatch(/slots\.decor/);
+    });
+
+    /**
+     * The same clamp-or-refuse line every rig takes: a word core does not know
+     * is refused, and a number nobody could have meant is repaired. Typing 7
+     * into a leg count once deleted a whole map — see `creatureSpec.ts`.
+     */
+    it('refuses a body core cannot draw, and accepts a leg count it can repair', () => {
+      const bad = withDecor([{ x: 0, y: 0, rig: { body: { kind: 'blob' } } }]);
+      expect(bad.ok).toBe(false);
+      if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/rig\.body/);
+
+      expect(withDecor([{ x: 0, y: 0, rig: { legs: { count: 7 } } }]).ok).toBe(true);
+    });
+
+    it('refuses a decor group that is not a list at all', () => {
+      const result = withDecor({ x: 100, y: 100 });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.join(' ')).toMatch(/slots\.decor/);
+    });
+  });
+
   it('rejects a lane whose faction has no declared muster point', () => {
     // `MinionSpawner.musterPointFor` used to answer this with `null` and drop
     // the whole wave into the fountain, silently, until the first wave walked

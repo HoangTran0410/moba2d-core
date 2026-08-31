@@ -25,6 +25,7 @@ import {
   type ChampionAttackTuning,
   type ChampionDefenceTuning,
 } from './gameObject/attackableUnits/Champion';
+import type { ChampionTrailSpec } from '@/content/ContentPack';
 import type { ChampionPresetData } from './gameObject/attackableUnits/Champion';
 import type { ChampionLoadout, MatchRules, SlotChoice } from './config/PregameConfig';
 import { SLOT_COUNT } from './config/PregameConfig';
@@ -152,6 +153,8 @@ export interface PlayableChampionKit {
   passive?: string;
   attack: ChampionAttackTuning;
   defence: ChampionDefenceTuning;
+  /** A tail or cloak this champion streams behind it, or none. Cosmetic. */
+  trail?: ChampionTrailSpec;
 }
 
 let playableCache: PlayableChampionKit[] | null = null;
@@ -217,6 +220,7 @@ export const playableKits = (): PlayableChampionKit[] => {
       passive: champion.passive,
       attack: champion.attack ?? DEFAULT_CHAMPION_ATTACK,
       defence: { ...DEFAULT_CHAMPION_DEFENCE, ...champion.defence },
+      trail: champion.trail,
     });
   }
   playableCache = out;
@@ -434,6 +438,15 @@ export interface KitPlan {
   attack: ChampionAttackTuning;
   /** The same row's durability; custom kits use the roster's average — see `averageDefence`. */
   defence: ChampionDefenceTuning;
+  /**
+   * And the same row's cosmetic trail, if it declared one.
+   *
+   * Never averaged the way `defence` is, and never invented for a custom kit:
+   * durability has to be *some* number or the body is unplayable, while a
+   * champion with no tail is a champion with no tail. Averaging a look across
+   * a roster produces a look nobody designed.
+   */
+  trail?: ChampionTrailSpec;
   /** Exactly `SLOT_COUNT` ids, in A/Q/W/E/R/D/F order. */
   spellIds: string[];
   /**
@@ -521,6 +534,7 @@ export const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan =
     avatar: kit.image,
     attack: kit.attack,
     defence: kit.defence,
+    trail: kit.trail,
     passiveId: kit.passive,
     spellIds: [
       // Slot 0 is the internal slot and SpellHotKeys[0] is `A`, so whatever sits
@@ -568,6 +582,8 @@ export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
       // body in the game.
       attack: chosen?.attack ?? DEFAULT_CHAMPION_ATTACK,
       defence: chosen ? { ...DEFAULT_CHAMPION_DEFENCE, ...chosen.defence } : averageDefence(),
+      // No trail, ever, whatever role was picked. A custom kit is not a
+      // champion somebody drew — see `KitPlan.trail`.
       spellIds: slots.map(planSlot),
     };
   }
@@ -584,6 +600,7 @@ export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
     avatar: kit.image,
     attack: kit.attack,
     defence: kit.defence,
+    trail: kit.trail,
     spellIds: [
       BASIC_ATTACK_ID,
       ...kit.spells,
@@ -646,6 +663,7 @@ export const presetFromPlan = (plan: KitPlan): ChampionPresetData & { avatar: st
   avatar: plan.avatar,
   attack: plan.attack,
   defence: plan.defence,
+  trail: plan.trail,
   spells: plan.spellIds.map(classForId),
   // `classForId` has fallbacks for a miss (a stale slot, a catalogue still
   // warming) and answers with core's own basic attack. That is right for a

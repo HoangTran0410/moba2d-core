@@ -7,6 +7,10 @@ import {
 import { packAssetOrPlaceholder } from '@/game/config/packAsset';
 import { CHAMPION_Z_INDEX } from '@/game/managers/ObjectManager';
 import type Spell from '@/game/gameObject/Spell';
+import type { ChampionTrailSpec } from '@/content/ContentPack';
+import { Spine } from '@/game/render/creature/spine';
+import { resolveRig } from '@/game/render/creature/creatureSpec';
+import { drawSpineBody } from '@/game/render/creature/drawCreature';
 import BasicAttackController from '@/game/combat/BasicAttackController';
 import { uuidv4 } from '@/utils/index';
 import { HeldItem, INVENTORY_SIZE, type ItemStatKey } from '@/game/items/Item';
@@ -113,6 +117,8 @@ export const DEFAULT_CHAMPION_DEFENCE: ChampionDefenceTuning = {
 
 export interface ChampionPresetData {
   name?: string;
+  /** A cosmetic tail or cloak, or none. See `ContentPack`'s `ChampionTrailSpec`. */
+  trail?: ChampionTrailSpec;
   /**
    * A pack's own asset key — a plain string, not core's generated `AssetKey`
    * union, because a pack's art is its own to type-check, not core's. See
@@ -431,6 +437,73 @@ export default class Champion extends AttackableUnit {
     this.applyPassive(preset.passive);
     this.applyAttackTuning(preset.attack ?? DEFAULT_CHAMPION_ATTACK);
     this.applyDefenceTuning(preset.defence ?? DEFAULT_CHAMPION_DEFENCE);
+    this.applyTrail(preset.trail);
+  }
+
+  /** The cosmetic tail, when the kit declared one. Render-only, always. */
+  private trail?: Spine;
+  private trailBody?: { color: number[]; glow: number };
+
+  /**
+   * The cosmetic tail, rebuilt from the kit.
+   *
+   * Here rather than in the constructor because `applyPreset` is what a
+   * champion *swap* runs — the loadout editor commits the whole loadout on
+   * every edit — and a trail built once would be the first champion's tail
+   * worn by every one after it.
+   *
+   * Everything is resolved through `resolveRig`, the same path a camp's
+   * segmented body takes, so a trail gets the identical clamping for free: a
+   * width somebody typed as negative, a spine trimmed to one vertebra, a bend
+   * past a right angle. Declared as a chain body here rather than asked for as
+   * one from the pack, because `orb` and `legs` are the two things a champion's
+   * trail may never be.
+   */
+  private applyTrail(spec?: ChampionTrailSpec): void {
+    this.trail = undefined;
+    this.trailBody = undefined;
+    if (!spec) return;
+
+    const radius = this.stats.size.value / 2;
+    const rig = resolveRig({ body: { kind: 'chain', ...spec } }, radius > 0 ? radius : 1);
+    const body = rig?.body;
+    // `resolveRig` answers `orb` for a spine too short to trace a flank around
+    // — clamped, not refused, exactly as a camp's is. A champion has a portrait
+    // already, so the honest reading of that here is no trail at all rather
+    // than a purple ball pasted behind the picture.
+    if (!body || typeof body !== 'object' || body.kind !== 'chain') return;
+    this.trail = new Spine(body.config);
+    this.trailBody = body;
+  }
+
+  /**
+   * The tail, under the portrait.
+   *
+   * Advanced off the render clock in `draw`, like every other rig in this
+   * codebase (`Monster.drawRig` carries the long version of why): the position
+   * `ObjectManager.draw` hands over is the interpolated one, so the tail
+   * follows the picture rather than the tick, and a LAN client whose champions
+   * are snapshot positions with no velocity attached gets a correct tail with
+   * nothing crossing the wire.
+   *
+   * Nothing drives it but the champion's own position. A chain dragged by its
+   * head streams out behind whatever moved it and settles when that stops,
+   * which is the entire behaviour wanted here — a facing to point it along
+   * would be a second source of truth that disagrees with the first every time
+   * a champion is displaced rather than walking.
+   */
+  private drawTrail(): void {
+    if (!this.trail || !this.trailBody || this.isDead) return;
+    this.trail.follow(this.position.x, this.position.y, deltaTime);
+    drawSpineBody(this.trail, this.trailBody, this.animatedValues.alpha);
+  }
+
+  /** Widened to cover the tail, which reaches well past the portrait. */
+  getDisplayBoundingBox() {
+    if (!this.trail) return super.getDisplayBoundingBox();
+    return this.squareDisplayBoundingBox(
+      Math.max(this.animatedValues.size, this.trail.paintRadius * 2)
+    );
   }
 
   /**
@@ -604,6 +677,7 @@ export default class Champion extends AttackableUnit {
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
+    this.drawTrail();
     super.draw(options);
     this.drawAttackOrder();
     this.spells.forEach(spell => spell.drawVfx());

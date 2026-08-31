@@ -36,13 +36,16 @@ export const KIND = {
   structure: { label: "Trụ", color: "#5b8cff", shape: "point", group: "slot" },
   minion: { label: "Điểm gom lính", color: "#f0883e", shape: "point", group: "slot" },
   neutral: { label: "Bãi quái", color: "#c77dff", shape: "circle", group: "slot" },
+  // Sinh vật cảnh: không đánh nhau, không chắn đường, không có mặt trong
+  // quadtree của gameplay. Vòng tròn là *tầm đi lang thang*, không phải bãi.
+  decor: { label: "Sinh vật cảnh", color: "#7ee787", shape: "circle", group: "slot" },
   lane: { label: "Lane", color: "#29d3c4", shape: "line", group: "lane" },
 };
 
 export const TYPES = Object.keys(KIND);
 export const TYPE_INFO = KIND;                       // tên cũ, giữ để khỏi sửa khắp nơi
 export const TERRAIN_KINDS = ["wall", "bush", "water"];
-export const SLOT_KINDS = ["spawn", "structure", "minion", "neutral"];
+export const SLOT_KINDS = ["spawn", "structure", "minion", "neutral", "decor"];
 
 const shapeOf = (t) => KIND[t.type].shape;
 export const isPoly = (t) => KIND[t.type].shape === "poly";
@@ -149,6 +152,16 @@ export function withDefaults(kind, props) {
       if (!p.role) p.role = "camp";
       if (!(p.r > 0)) p.r = 150;
       if (p.rotationDeg != null && !Number.isFinite(p.rotationDeg)) delete p.rotationDeg;
+      break;
+    case "decor":
+      // Mặc định là một con có thân đốt và không có chân: đó là hình mà kiểu
+      // slot này sinh ra để phục vụ, và một slot mới không nên là quả cầu trơn.
+      if (!(p.r > 0)) p.r = 200;
+      if (!(p.size > 0)) p.size = 48;
+      if (!(p.speed > 0)) p.speed = 1;
+      if (!p.rig || typeof p.rig !== "object") {
+        p.rig = { body: { kind: "chain", widths: [0.7, 1, 0.9, 0.7, 0.45, 0.25] } };
+      }
       break;
     case "lane":
       if (!p.id) p.id = "mid";

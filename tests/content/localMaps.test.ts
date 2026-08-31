@@ -102,6 +102,9 @@ function runEditor(tuning?: unknown): EditorRun {
     normalizeTerrain({ type: 'neutral', position: [2000, 1000],
                        props: { role: 'warden', r: 200,
                                 stats: { aggroRange: 800, rig: { legs: { count: 6, bend: 'up' } } } } }),
+    normalizeTerrain({ type: 'decor', position: [2500, 2500],
+                       props: { r: 300, size: 40, speed: 0.6,
+                                rig: { body: { kind: 'chain', widths: [0.8, 1, 0.7] } } } }),
   ];
   Store.publishLocal();
 
@@ -294,6 +297,27 @@ describe('local maps', () => {
     // And a slot that overrides nothing still exports clean — an empty
     // `stats: {}` would reach core's validator as a block saying nothing.
     expect(geometry.slots.structure[1].stats).toBeUndefined();
+  });
+
+  /**
+   * Scenery takes the other route. A camp's rig lives under `stats` because it
+   * *overrides* what a pack declared; a decor slot has no pack underneath it,
+   * so its rig is the declaration and sits on the slot itself. Two shapes, one
+   * inspector — see `rigKey` in `ui.ts`.
+   */
+  it("carries a decor slot's creature, which is the whole slot", () => {
+    const geometry = JSON.parse(published)[0].geometry;
+
+    expect(geometry.slots.decor).toEqual([
+      {
+        x: 2500,
+        y: 2500,
+        r: 300,
+        size: 40,
+        speed: 0.6,
+        rig: { body: { kind: 'chain', widths: [0.8, 1, 0.7] } },
+      },
+    ]);
   });
 
   it('and reads them back, so reopening a map does not wipe them', () => {

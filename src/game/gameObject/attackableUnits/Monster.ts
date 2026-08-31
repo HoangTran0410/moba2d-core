@@ -27,6 +27,7 @@ import {
   MONSTER_MELEE_REACH,
   MonsterBreath,
   MonsterClaw,
+  MonsterLash,
   MonsterSpit,
   type MonsterAttackStyle,
 } from './monsterAttacks';
@@ -41,6 +42,22 @@ export type { MonsterAttackStyle };
  * the class, so nothing here reaches its surface and no contract bump is owed.
  */
 export type { CreatureRigSpec };
+
+/**
+ * How long a camp with a procedural rig takes to go slack and fade, ms.
+ *
+ * Short enough that nobody waits on it before walking away, long enough to
+ * read as the body settling rather than as a dropped frame. Only a camp with a
+ * `rig` is affected: a sprite still blinks out the moment it dies, which is
+ * what every camp did before this.
+ */
+export const DEATH_LIMP_MS = 420;
+
+/** How far round the body the dying head swings, radians. */
+export const DEATH_CURL = 1.8;
+
+/** The radius it swings at, in body radii — enough of a lever to fold a spine. */
+export const DEATH_CURL_RADIUS = 0.7;
 
 /**
  * Something a camp can do besides swing — a ranged spit, a melee slam,
@@ -423,6 +440,20 @@ export default class Monster extends AttackableUnit {
   readonly rig?: ResolvedRig;
   /** The live body and legs, when the rig declared any. */
   private creature?: Creature;
+
+  /**
+   * How long this corpse has been going slack, in rendered ms, or `null` when
+   * there is nothing to draw.
+   *
+   * Render-only state, advanced in `draw` off the render clock like the rig
+   * itself — a corpse that faded on the simulation's step would fade at a
+   * different rate on a phone drawing at 30fps, and none of this is anything a
+   * LAN client has to be told about.
+   */
+  private limpMs: number | null = null;
+
+  /** Where the body was when it died, and which way its head was pointing. */
+  private deathPose: { x: number; y: number; angle: number } | null = null;
   /** `[r, g, b]` for that art. */
   attackColor: number[];
   damage: number;
@@ -850,6 +881,15 @@ export default class Monster extends AttackableUnit {
       return;
     }
 
+    if (this.attackStyle === 'lash') {
+      const lash = new MonsterLash(this, target);
+      lash.damage = this.damage;
+      lash.color = this.attackColor;
+      lash.reach = reach;
+      objects.addObject(lash);
+      return;
+    }
+
     const claw = new MonsterClaw(this, target);
     claw.damage = this.damage;
     claw.color = this.attackColor;
@@ -1089,7 +1129,10 @@ export default class Monster extends AttackableUnit {
   }
 
   draw(options: AttackableUnitRenderOptions = {}) {
-    if (this.isDead) return;
+    if (this.isDead) {
+      this.drawLimp();
+      return;
+    }
     this.drawRig();
     super.draw(options);
     // The swing itself is drawn by the object `launchAttack` spawned, not from
@@ -1128,6 +1171,75 @@ export default class Monster extends AttackableUnit {
     const body = this.rig?.body;
     if (creature.spine && typeof body === 'object' && body.kind === 'chain') {
       drawSpineBody(creature.spine, body, alpha);
+    }
+  }
+
+  /**
+   * Start the corpse going slack. Nothing to do for a camp with no rig: the
+   * base's own bodies still blink out on the frame they die, which is what
+   * every camp did before this and what a sprite has no way to stop doing.
+   */
+  private startLimp(): void {
+    const creature = this.creature;
+    if (!creature) return;
+    this.limpMs = 0;
+    this.deathPose = {
+      x: this.position.x,
+      y: this.position.y,
+      angle: creature.spine?.angles[0] ?? 0,
+    };
+  }
+
+  /**
+   * A corpse going slack: the legs stop where they were, the body curls, and
+   * the whole rig fades out.
+   *
+   * Camps used to vanish on the frame they died — `draw` returned on `isDead`
+   * and that was the entire death animation. On a sprite that reads as the
+   * pickup it is; on a body with eight legs planted on the ground it reads as
+   * a rendering bug, because the thing that was plainly *standing* there is
+   * suddenly not.
+   *
+   * The curl is the whole trick and it costs one number: the spine's head is
+   * walked round the body it died on while nothing drives it forward. A chain
+   * whose head swings and whose tail is only following folds into a C, which is
+   * the shape almost everything with a spine dies in.
+   *
+   * The legs are deliberately not advanced — see `Creature.limp`. Feet stay
+   * planted, the body settles off them, and the picture is a carcass rather
+   * than something still trying to walk.
+   */
+  private drawLimp(): void {
+    const creature = this.creature;
+    const pose = this.deathPose;
+    if (!creature || !pose || this.limpMs === null) return;
+
+    this.limpMs += deltaTime;
+    const gone = this.limpMs / DEATH_LIMP_MS;
+    if (gone >= 1) {
+      this.limpMs = null;
+      return;
+    }
+
+    // Ease out: a body goes slack fastest the instant it stops holding itself
+    // up, and the last of the curl is the tail catching up.
+    const slack = 1 - (1 - gone) * (1 - gone);
+    const swept = pose.angle + DEATH_CURL * slack;
+    const bodyRadius = this.stats.size.value / 2;
+    creature.limp(
+      pose.x + Math.cos(swept) * bodyRadius * DEATH_CURL_RADIUS,
+      pose.y + Math.sin(swept) * bodyRadius * DEATH_CURL_RADIUS,
+      deltaTime
+    );
+
+    const alpha = 255 * (1 - gone);
+    const style = this.rig?.legs;
+    if (creature.legRig && style) drawLegs(creature.legRig, style, alpha);
+    const body = this.rig?.body;
+    if (creature.spine && typeof body === 'object' && body.kind === 'chain') {
+      drawSpineBody(creature.spine, body, alpha);
+    } else if (hasOrbBody(this.rig)) {
+      drawOrbBody(pose.x, pose.y, bodyRadius, this.rig.body, alpha);
     }
   }
 
@@ -1284,6 +1396,7 @@ export default class Monster extends AttackableUnit {
     this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
     this.stopMovement();
+    if (firstDeath) this.startLimp();
 
     // Set after `super.die` rather than instead of it: the body still dies
     // normally — its bounty is paid, its abilities' `onKilled` have run — it
@@ -1308,6 +1421,8 @@ export default class Monster extends AttackableUnit {
     this.targetLock = null;
     this._fleeThreat = null;
     this.phase = Monster.PHASES.IDLE;
+    this.limpMs = null;
+    this.deathPose = null;
     this._attackCooldown = 0;
     this._regenHold = 0;
     this._announcedSpawn = false;

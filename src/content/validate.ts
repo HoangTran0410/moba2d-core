@@ -180,6 +180,7 @@ function checkChampions(pack: Record<string, unknown>, errors: string[]): void {
         }
       }
     }
+    checkChampionTrail(`champions.${entry.id}`, entry.trail, errors);
     if (entry.defence !== undefined) {
       if (!isObject(entry.defence)) {
         errors.push(`champions.${entry.id}.defence: must be an object`);
@@ -680,6 +681,36 @@ function checkSpine(path: string, body: Record<string, unknown>, errors: string[
       errors.push(`${path}.rig.body.${key}: must be a number`);
     }
   }
+}
+
+/**
+ * A champion's cosmetic tail.
+ *
+ * Shape only, and `widths` is the one thing that has to be there: it is the
+ * list that says how many vertebrae there are, so a trail without it is not a
+ * trail that is too short, it is a trail nobody described. Everything numeric
+ * beside it is clamped by `resolveRig` on the way in — the same line every rig
+ * in this file takes, and for the same reason a leg count of 7 must not cost
+ * anybody their map.
+ */
+function checkChampionTrail(path: string, value: unknown, errors: string[]): void {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    errors.push(`${path}.trail: must be an object`);
+    return;
+  }
+  if (!isNumberArray(value.widths)) {
+    errors.push(
+      `${path}.trail.widths: must be a list of numbers, one per vertebra — ` +
+        `it is the list that gives the tail its shape`
+    );
+  }
+  for (const key of ['spacing', 'bend', 'glow'] as const) {
+    if (value[key] !== undefined && !isFiniteNumber(value[key])) {
+      errors.push(`${path}.trail.${key}: must be a number`);
+    }
+  }
+  checkColor(`${path}.trail`, 'color', value.color, errors);
 }
 
 /** `[r, g, b]`, the shape `attackColor` has always taken. Always optional. */
@@ -1304,6 +1335,26 @@ export function checkMapGeometry(
     for (const slot of Array.isArray(slots.neutral) ? slots.neutral : []) {
       if (isObject(slot) && slot.stats !== undefined) {
         checkMonsterSlotStats(`${name}.slots.neutral.stats`, slot.stats, errors);
+      }
+    }
+
+    // Scenery. `decor` is optional, so an absent one is a map that has none —
+    // only a present-but-wrong-shaped one is an error. Its `rig` is checked by
+    // the same function a camp's is: `checkCreatureRig` refuses words core does
+    // not know and leaves every number to be clamped, which is what stops a
+    // cosmetic typo deleting somebody's map.
+    if (slots.decor !== undefined) {
+      if (!Array.isArray(slots.decor)) {
+        errors.push(`${name}.slots.decor: must be an array`);
+      } else {
+        for (const slot of slots.decor) {
+          if (!isObject(slot)) continue;
+          if (!isObject(slot.rig)) {
+            errors.push(`${name}.slots.decor: rig is required — a slot with none draws nothing`);
+            continue;
+          }
+          checkCreatureRig(`${name}.slots.decor`, slot.rig, errors);
+        }
       }
     }
 
