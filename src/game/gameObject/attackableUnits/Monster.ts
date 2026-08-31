@@ -346,14 +346,44 @@ export {
 } from '@/game/config/tuningDefaults';
 
 /**
- * How far a fleeing body tries to get in one order, longest first.
+ * The longest hop a retreat ever takes, whatever room the body has.
  *
- * Three lengths rather than one because the first is a *preference*, not a
- * requirement: a body cornered against the end of its roam region has no
- * 420px hop that stays inside it, and should still take the 130px one rather
- * than stand still.
+ * A ceiling, not a distance: what a body actually tries is this or its own
+ * roam, whichever is smaller — see `MONSTER_FLEE_SHARES`.
  */
-export const MONSTER_FLEE_STEPS = [420, 260, 130] as const;
+export const MONSTER_FLEE_REACH = 420;
+
+/**
+ * How far a fleeing body tries to get in one order, longest first, **as a
+ * share of the room it has**.
+ *
+ * Three lengths rather than one because the first is a preference, not a
+ * requirement: a body cornered against the end of its roam region has no full
+ * hop that stays inside it, and should still take a short one rather than
+ * stand still.
+ *
+ * They were three fixed pixel lengths — `[420, 260, 130]` — and that is the
+ * bug this shape exists to fix. `roamContains` measures a plain camp's roam as
+ * a circle of `camp.r` about the body's own home, so **every** candidate for a
+ * camp drawn at `r: 100` fell outside it, all three lengths in all seven
+ * directions; `fleePoint` fell through to its "go home" fallback, and home is
+ * where a body standing on its own spot already is. Reported as skittish camps
+ * standing still and doing nothing. Measured: `r: 300` retreated 108 units,
+ * `r: 150` retreated 82, `r: 100` and `r: 60` retreated **0**.
+ *
+ * The shares are the old ladder's own ratios, so a camp with room to spare
+ * behaves exactly as it did.
+ */
+export const MONSTER_FLEE_SHARES = [1, 0.62, 0.31] as const;
+
+/**
+ * How much of its roam a body will put between itself and a threat in one hop.
+ *
+ * Under 1 on purpose: a hop of exactly `camp.r` lands on the boundary, which
+ * `roamContains` is entitled to answer either way, and a retreat that depends
+ * on which side of `<=` a float lands is a retreat that works on some camps.
+ */
+const FLEE_ROOM_SHARE = 0.9;
 
 /** How long a wandering body rests at the end of one leg before picking the
  *  next. Long enough that the walk reads as ambling rather than as patrolling. */
@@ -1102,7 +1132,16 @@ export default class Monster extends AttackableUnit {
     away.normalize();
 
     const radius = this.stats.size.value / 2;
-    for (const distance of MONSTER_FLEE_STEPS) {
+    // A terrain roam is a river or a bush, and its shape is the terrain's own
+    // business — `roamContains` asks the map, `camp.r` says nothing about it.
+    // Only a plain circular camp bounds the hop by its own radius.
+    const room =
+      this.roam.kind === 'terrain'
+        ? MONSTER_FLEE_REACH
+        : Math.min(MONSTER_FLEE_REACH, this.camp.r * FLEE_ROOM_SHARE);
+
+    for (const share of MONSTER_FLEE_SHARES) {
+      const distance = room * share;
       for (const turn of MONSTER_FLEE_FAN) {
         const direction = away.copy().rotate(turn);
         const x = this.position.x + direction.x * distance;

@@ -6,6 +6,7 @@ import {
   DEFAULT_MONSTER_ATTACK_COLOR,
   MONSTER_MELEE_REACH,
   LASH_IMPACT_MS,
+  LASH_TOTAL_MS,
   LASH_WINDUP_MS,
   MonsterBreath,
   MonsterClaw,
@@ -273,6 +274,70 @@ describe('when the damage lands', () => {
     // respawned somewhere else by the time it arrives.
     expect(champion.stats.health.value).toBe(health);
     expect(spit.toRemove).toBe(true);
+  });
+});
+
+/**
+ * Reported: "nhanh quá, chưa kịp thấy thì roi đã biến mất rồi."
+ *
+ * The first version reached full extension in 108ms with the travel eased as
+ * `out * out`, so most of the distance was covered in the last two frames, and
+ * then retracted immediately. A whip is fast and should look it — but the
+ * frames worth reading are the ones where it is *out*, not the ones where it
+ * is moving, so the animation now stops there for a beat.
+ */
+describe('the lash can actually be seen', () => {
+  const swing = (): { target: Champion; lash: MonsterLash } => {
+    const camp = makeCamp({ attackRange: 220, attackStyle: 'lash', speed: 0 });
+    const target = engage(camp, 150);
+    camp.updateAttack();
+    return { target, lash: spawned(MonsterLash) };
+  };
+
+  /**
+   * The gap between the whip's tip and the body it was swung at, per rendered
+   * frame — which is the thing a player is watching, and not the same as the
+   * tip the animation asked for: a target further away than the tail is long is
+   * one the whip falls short of.
+   */
+  const swingTrace = (target: Champion, lash: MonsterLash): number[] => {
+    const gaps: number[] = [];
+    while (!lash.toRemove && gaps.length < 200) {
+      lash.update();
+      lash.draw();
+      const tip = lash.whip?.joints[0];
+      if (tip) gaps.push(Math.hypot(tip.x - target.position.x, tip.y - target.position.y));
+    }
+    return gaps;
+  };
+
+  /** Near enough to be on it, in world units. */
+  const ON_TARGET = 5;
+
+  /**
+   * Eighty milliseconds is a number, not `LASH_HOLD_MS * something`, and that
+   * is the point. Deriving the bar from the constant under test made this pass
+   * against the reported behaviour: setting the hold to zero moved the bar to
+   * zero with it, and one frame of contact cleared it. Measured: the reported
+   * version put the tip inside `ON_TARGET` for exactly **one** frame; this one
+   * does it for seven.
+   */
+  const READABLE_MS = 80;
+
+  it('holds the tail on its target instead of snapping straight back', () => {
+    const { target, lash } = swing();
+    const held = swingTrace(target, lash).filter(gap => gap < ON_TARGET).length * FRAME_MS;
+
+    expect(held, 'the whip touched and left in the same breath').toBeGreaterThanOrEqual(
+      READABLE_MS
+    );
+  });
+
+  it('and lasts as long as it says it does', () => {
+    const { target, lash } = swing();
+    expect(swingTrace(target, lash).length * FRAME_MS).toBeGreaterThanOrEqual(
+      LASH_TOTAL_MS * 0.9
+    );
   });
 });
 

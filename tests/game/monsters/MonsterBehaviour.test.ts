@@ -115,6 +115,57 @@ describe('temperament', () => {
     expect(camp.targetLock).toBeNull();
   });
 
+  /**
+   * Reported: skittish camps "đứng im ko đánh gì" — they stand there.
+   *
+   * `FLEE` was reached correctly; the retreat had nowhere to go. `fleePoint`
+   * tried three fixed hops of 420, 260 and 130 units and kept only those still
+   * inside `roamContains`, which for a plain camp is a circle of `camp.r` about
+   * the body's own home. Every candidate for a pit under ~130 units failed, all
+   * three lengths in all seven directions, and the fallback is *go home* — where
+   * a body standing on its own spot already is. Measured before the fix:
+   * `r: 300` retreated 108 units, `r: 150` 82, `r: 100` and `r: 60` **zero**.
+   *
+   * A small pit is the common case in a hand-drawn map, so this was most camps
+   * anyone would actually mark skittish.
+   */
+  it('skittish gets away even from a pit too small for a full hop', () => {
+    for (const radius of [100, 60, 40]) {
+      const camp = makeCamp({ temperament: 'skittish', camp: { x: CAMP.x, y: CAMP.y, r: radius } });
+      const champion = championAt(-40);
+      indexObjects(game, [camp, champion]);
+      const from = { x: camp.position.x, y: camp.position.y };
+
+      camp.takeDamage(5, champion);
+      for (let frame = 0; frame < 120; frame++) camp.update();
+
+      expect(camp.phase, `r=${radius}`).toBe(Monster.PHASES.FLEE);
+      expect(
+        gap(camp.position, from),
+        `a skittish camp in an r=${radius} pit never moved`
+      ).toBeGreaterThan(15);
+    }
+  });
+
+  it('and still runs further when it has the room', () => {
+    // The shares are the old ladder's own ratios, so a camp with space behaves
+    // as it did — this is the half that would break if the fix had simply made
+    // every retreat short.
+    const roomy = makeCamp({ temperament: 'skittish', camp: { x: CAMP.x, y: CAMP.y, r: 300 } });
+    const cramped = makeCamp({ temperament: 'skittish', camp: { x: CAMP.x, y: CAMP.y, r: 100 } });
+    const champion = championAt(-40);
+
+    const ran = (camp: Monster) => {
+      indexObjects(game, [camp, champion]);
+      const from = { x: camp.position.x, y: camp.position.y };
+      camp.takeDamage(5, champion);
+      for (let frame = 0; frame < 120; frame++) camp.update();
+      return gap(camp.position, from);
+    };
+
+    expect(ran(roomy)).toBeGreaterThan(ran(cramped));
+  });
+
   it('skittish lets a champion walk right up to it', () => {
     // **This assertion is the reverse of what it used to be.** `skittish`
     // ran a proximity scan from IDLE and bolted from anyone inside

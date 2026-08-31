@@ -103,6 +103,87 @@ export function drawChain(
 }
 
 /**
+ * A chain drawn as one tapering ribbon: a whip, a tail, a length of leather.
+ *
+ * `drawChain` above strokes it segment by segment, which is right for a tether
+ * and wrong for a whip. A stroke can only change weight *between* segments, so
+ * every joint is a step in the taper with a round cap sitting on it — the
+ * thing reads as a string of beads, and the joints are exactly what the eye
+ * picks out. Reported that way: the segments show, and it does not look like
+ * leather.
+ *
+ * So this builds the silhouette instead. Each joint contributes one point per
+ * flank at its own half-width, and the width falls to **nothing** at the tip,
+ * so the two flanks meet there in a point rather than a cap. The normal at a
+ * joint is a central difference — the direction from the joint behind it to
+ * the one ahead — because using each segment's own direction kinks the edge at
+ * every vertex, which is the same bead problem one layer down.
+ *
+ * `curveVertex` then runs a Catmull-Rom through the ring, closed by repeating
+ * a control point at each end, exactly as `drawSpineBody` does.
+ */
+export function drawWhip(
+  chain: Chain,
+  style: { thickness: number; color: number[]; glow?: number },
+  alpha = 255
+) {
+  const joints = chain.joints;
+  const last = joints.length - 1;
+  if (last < 1) return;
+  const [red, green, blue] = style.color;
+  const glow = style.glow ?? 0;
+
+  /** Nothing at the tip, `thickness` across at the root it is swung from. */
+  const halfAt = (index: number) => (style.thickness * 0.5 * index) / last;
+
+  const flankAt = (index: number, side: 1 | -1) => {
+    const ahead = joints[Math.max(0, index - 1)];
+    const behind = joints[Math.min(last, index + 1)];
+    const runX = ahead.x - behind.x;
+    const runY = ahead.y - behind.y;
+    const run = Math.hypot(runX, runY) || 1;
+    const half = halfAt(index) * side;
+    return {
+      x: joints[index].x + (-runY / run) * half,
+      y: joints[index].y + (runX / run) * half,
+    };
+  };
+
+  const ring: { x: number; y: number }[] = [];
+  for (let i = 0; i <= last; i++) ring.push(flankAt(i, 1));
+  for (let i = last; i >= 0; i--) ring.push(flankAt(i, -1));
+
+  push();
+
+  // A soft halo down the centreline, so a fast swing is still findable on a
+  // dark map. Stroked rather than a second ring: it wants to be blurry, and a
+  // wider outline would just be a second visible edge.
+  if (glow > 0) {
+    noFill();
+    strokeCap(ROUND);
+    stroke(red, green, blue, alpha * 0.18 * glow);
+    for (let i = 1; i <= last; i++) {
+      strokeWeight(halfAt(i) * 2 * (1 + glow * 1.8) + 2);
+      line(joints[i - 1].x, joints[i - 1].y, joints[i].x, joints[i].y);
+    }
+  }
+
+  fill(red, green, blue, alpha);
+  // Darker than the fill and thin, the same rim `drawSpineBody` takes and for
+  // the same reason: a bright even outline on a dark map reads as a polygon
+  // somebody stroked, not as an edge.
+  stroke(red * 0.4, green * 0.4, blue * 0.4, alpha);
+  strokeWeight(1);
+  beginShape();
+  curveVertex(ring[ring.length - 1].x, ring[ring.length - 1].y);
+  for (const point of ring) curveVertex(point.x, point.y);
+  curveVertex(ring[0].x, ring[0].y);
+  curveVertex(ring[1].x, ring[1].y);
+  endShape(CLOSE);
+  pop();
+}
+
+/**
  * A body drawn from code, for a creature that has no sprite.
  *
  * Deliberately not a flat disc: the halo and the lighter core are what stop it

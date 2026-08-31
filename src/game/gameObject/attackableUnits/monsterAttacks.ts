@@ -2,7 +2,7 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import SpellObject from '@/game/gameObject/SpellObject';
 import { Chain } from '@/game/render/creature/chain';
-import { drawChain } from '@/game/render/creature/drawCreature';
+import { drawWhip } from '@/game/render/creature/drawCreature';
 import type AttackableUnit from './AttackableUnit';
 
 /**
@@ -69,23 +69,38 @@ export const BREATH_HALF_ANGLE = 0.42;
 /** Half-angle of one claw arc, radians. */
 export const CLAW_ARC_HALF_ANGLE = 0.23;
 
-/** The tail rears back, cracks out, then is drawn in. */
-export const LASH_WINDUP_MS = 150;
-export const LASH_TOTAL_MS = 420;
-
 /**
- * How much of the post-wind-up life the tip spends travelling out. The rest is
- * the recovery, which is why a lash telegraphs longer than a claw and why a
- * pack picks it for something heavy.
+ * The tail rears back, cracks out, **holds**, then is drawn in.
+ *
+ * Four phases and not three, and the hold is the one that was missing. The
+ * first version reached full extension in 108ms with the travel eased so hard
+ * that almost all of it happened in the last two frames, and then immediately
+ * retracted — reported as the whip being gone before it could be seen. A whip
+ * *is* fast, and that is exactly why the picture has to stop somewhere: the
+ * frames worth looking at are the ones where it is out, not the ones where it
+ * is travelling. Legibility outranks looking good (`CLAUDE.md`).
  */
-export const LASH_STRIKE_SHARE = 0.4;
+export const LASH_WINDUP_MS = 190;
+/** The tip travelling from the coil to the target. */
+export const LASH_REACH_MS = 150;
+/** Held out at full extension — the frames a player actually reads. */
+export const LASH_HOLD_MS = 120;
+export const LASH_TOTAL_MS = 680;
 
 /** When the tip is furthest out, and so when the damage lands. */
-export const LASH_IMPACT_MS =
-  LASH_WINDUP_MS + (LASH_TOTAL_MS - LASH_WINDUP_MS) * LASH_STRIKE_SHARE;
+export const LASH_IMPACT_MS = LASH_WINDUP_MS + LASH_REACH_MS;
 
-/** Vertebrae in the whip. Enough to curve, few enough to stroke every frame. */
-const LASH_LINKS = 9;
+/** When it starts coming home. The rest of `LASH_TOTAL_MS` is the recovery. */
+export const LASH_RECOVER_MS = LASH_IMPACT_MS + LASH_HOLD_MS;
+
+/**
+ * Vertebrae in the whip.
+ *
+ * Fifteen rather than nine because the silhouette is traced through them: the
+ * ribbon is only as smooth as the centreline it is built on, and a coarse
+ * chain shows its own corners however it is painted.
+ */
+const LASH_LINKS = 15;
 
 /** How far to one side the tail is coiled during the wind-up, radians. */
 const LASH_COIL = 1.05;
@@ -431,8 +446,12 @@ export class MonsterLash extends SpellObject {
    * Built on the first drawn frame, not in the constructor: `reach` is set by
    * the caller after construction and it is what the chain's length is derived
    * from. A whip built before it would be the default length for every camp.
+   *
+   * Public because its joints are where the whip actually is, which is not the
+   * same as where it was aimed — a target further away than the tail is long is
+   * one the whip falls short of.
    */
-  private whip: Chain | null = null;
+  whip: Chain | null = null;
 
   /**
    * The last direction the tail was aimed. A target that dies or blinks out
@@ -508,34 +527,35 @@ export class MonsterLash extends SpellObject {
       tipX = mouthX + (coilX - mouthX) * drawn;
       tipY = mouthY + (coilY - mouthY) * drawn;
       fade = 0.45 + 0.55 * charge;
+    } else if (this.age < LASH_IMPACT_MS) {
+      const out = (this.age - LASH_WINDUP_MS) / LASH_REACH_MS;
+      // Accelerating, but no longer squared. A whip's tip really is fastest as
+      // it arrives, and `out * out` said so honestly — it also put five of the
+      // nine frames of travel inside the first quarter of the distance, which
+      // is a swing nobody can follow. `^1.6` keeps the crack and leaves the
+      // tail somewhere the eye can track on the way.
+      const cracked = Math.pow(out, 1.6);
+      tipX = coilX + (hitX - coilX) * cracked;
+      tipY = coilY + (hitY - coilY) * cracked;
+      fade = 1;
+    } else if (this.age < LASH_RECOVER_MS) {
+      // Held. The chain is still settling under it, so this is not a frozen
+      // frame — the whip rings out where it landed.
+      tipX = hitX;
+      tipY = hitY;
+      fade = 1;
     } else {
-      const past = (this.age - LASH_WINDUP_MS) / (LASH_TOTAL_MS - LASH_WINDUP_MS);
-      if (past < LASH_STRIKE_SHARE) {
-        const out = past / LASH_STRIKE_SHARE;
-        // Ease *in* on the way out — squared, so the tip is at its fastest the
-        // instant it arrives. That acceleration is the whole read of a whip;
-        // linear travel looks like a pole being extended.
-        tipX = coilX + (hitX - coilX) * out * out;
-        tipY = coilY + (hitY - coilY) * out * out;
-        fade = 1;
-      } else {
-        const home = (past - LASH_STRIKE_SHARE) / (1 - LASH_STRIKE_SHARE);
-        const drawn = 1 - (1 - home) * (1 - home);
-        tipX = hitX + (mouthX - hitX) * drawn;
-        tipY = hitY + (mouthY - hitY) * drawn;
-        fade = 1 - home;
-      }
+      const home = (this.age - LASH_RECOVER_MS) / (LASH_TOTAL_MS - LASH_RECOVER_MS);
+      const drawn = 1 - (1 - home) * (1 - home);
+      tipX = hitX + (mouthX - hitX) * drawn;
+      tipY = hitY + (mouthY - hitY) * drawn;
+      fade = 1 - home;
     }
 
     this.whip.span(tipX, tipY, mouthX, mouthY);
-    drawChain(
+    drawWhip(
       this.whip,
-      {
-        thickness: Math.max(3, bodyRadius * 0.34),
-        color: this.color,
-        tip: 0.18,
-        glow: 0.5,
-      },
+      { thickness: Math.max(4, bodyRadius * 0.38), color: this.color, glow: 0.55 },
       235 * fade
     );
 
