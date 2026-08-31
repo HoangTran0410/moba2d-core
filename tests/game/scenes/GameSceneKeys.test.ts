@@ -4,6 +4,7 @@ import Game from '../../../src/game/Game';
 import InGameHUD from '../../../src/game/hud/InGameHUD';
 import GameScene from '../../../src/scenes/GameScene';
 import { createHudInteractions } from '../../../src/game/hud/hudInteractions';
+import { HotKeys } from '../../../src/game/constants';
 
 /**
  * Escape, which used to end the match outright.
@@ -185,7 +186,7 @@ const gameScene = () => {
   const hud = createHudInteractions(hudGame);
   // `Game.escape()` is exactly this one line, and it is the line under test at
   // the scene level: Escape now reaches the HUD instead of the scene manager.
-  const game = { escape: () => hud.escape(), keyPressed: vi.fn() };
+  const game = { escape: () => hud.escape(), keyPressed: vi.fn(), keyReleased: vi.fn() };
   const scene = new GameScene(sceneManager as never);
   scene.game = game as never;
   return { scene, sceneManager, hud, game };
@@ -222,6 +223,73 @@ describe('GameScene.keyPressed — Escape', () => {
     scene.keyPressed({ keyCode: 32 } as KeyboardEvent);
     expect(game.keyPressed).toHaveBeenCalledWith(32, false);
     expect(sceneManager.showScene).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Typing into the HUD.
+ *
+ * p5 binds `keydown` on `window` rather than on the canvas, so every letter
+ * typed into a text field in the HUD arrives here as well. Reported against
+ * the shop's own search box: looking for an item toggled the shop shut on the
+ * `p`, and the loadout editor's champion search fired abilities the same way.
+ *
+ * `LoadoutEditorModal` had guarded its *name* input with `@keydown.stop` for
+ * exactly this reason — a fix that has to be remembered once per input, and
+ * was not remembered by either search box added after it. So the guard lives
+ * at the one place every key passes through instead, and a new input cannot
+ * reintroduce this by forgetting anything.
+ */
+describe('GameScene.keyPressed — a text field has the keyboard', () => {
+  const typed = (keyCode: number, target: Record<string, unknown>) =>
+    ({ keyCode, target }) as unknown as KeyboardEvent;
+
+  it('does not toggle the shop while the player types into a search box', () => {
+    const { scene, game } = gameScene();
+    scene.keyPressed(typed(HotKeys.P, { tagName: 'INPUT' }));
+    expect(game.keyPressed).not.toHaveBeenCalled();
+  });
+
+  it('holds back the cast keys and the camera key too, not just the shop', () => {
+    const { scene, game } = gameScene();
+    scene.keyPressed(typed(HotKeys.Q, { tagName: 'TEXTAREA' }));
+    scene.keyPressed(typed(32, { tagName: 'SELECT' }));
+    expect(game.keyPressed).not.toHaveBeenCalled();
+  });
+
+  it('recognises a contenteditable, which has no tag name of its own', () => {
+    const { scene, game } = gameScene();
+    scene.keyPressed(typed(HotKeys.P, { tagName: 'DIV', isContentEditable: true }));
+    expect(game.keyPressed).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Escape is deliberately above the guard: a player who has typed into the
+   * shop's search box and wants out of the shop presses Escape, and swallowing
+   * it would leave the panel standing with no keyboard way to close it.
+   */
+  it('still lets Escape out of the field', () => {
+    const { scene, hud } = gameScene();
+    scene.keyPressed(typed(27, { tagName: 'INPUT' }));
+    expect(hud.showSpellsPicker).toBe(true);
+  });
+
+  /**
+   * The release path is *not* guarded, and that is the point: a key held down
+   * before focus moved has to be allowed to lift, or the spell it started
+   * charging is stranded. `SpellInputController.keyUp` ignores a code it never
+   * saw go down, so letting one through costs nothing.
+   */
+  it('leaves the release path alone', () => {
+    const { scene, game } = gameScene();
+    scene.keyReleased(typed(HotKeys.Q, { tagName: 'INPUT' }));
+    expect(game.keyReleased).toHaveBeenCalledWith(HotKeys.Q);
+  });
+
+  it('and a key pressed with the canvas focused still reaches the game', () => {
+    const { scene, game } = gameScene();
+    scene.keyPressed(typed(HotKeys.P, { tagName: 'CANVAS' }));
+    expect(game.keyPressed).toHaveBeenCalledWith(HotKeys.P, false);
   });
 });
 

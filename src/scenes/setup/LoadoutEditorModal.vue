@@ -340,13 +340,19 @@ const diceDisabled = computed(() =>
  *     something in it once trimmed, and the call is wrapped anyway — a
  *     library write is not worth an unhandled error in the console.
  *   - **Keystrokes belong to the game.** p5 listens for `keydown` on `window`
- *     and `GameScene.keyPressed` turns A/Q/W/E/R/D/F into casts and Escape
- *     into "leave the match". Typing a champion's name into an unguarded input
- *     mid-match would fire four abilities, and one Escape would drop the
- *     player to the menu. `@keydown.stop` (plus keyup/keypress, which p5 also
- *     listens for) keeps the letters in the field. The setup screen never
- *     needed this — there is no `GameScene` under it — but the editor is
- *     shared, so the guard lives with the input rather than with the caller.
+ *     and `GameScene.keyPressed` turns A/Q/W/E/R/D/F into casts. Typing a
+ *     champion's name into an unguarded input mid-match fired four abilities.
+ *     `@keydown.stop` (plus keyup/keypress, which p5 also listens for) keeps
+ *     the letters in the field.
+ *
+ *     Per-input stopping is no longer what makes this safe, and it should not
+ *     be: it has to be remembered once per input, and the champion search box
+ *     below — added later — did not remember it, nor did the shop's. The real
+ *     guard is now `DomUtils.isTypingKeyEvent` in `GameScene.keyPressed`,
+ *     which holds every binding back whenever a text field has the keyboard.
+ *     This stays because it is also what keeps Escape here: the modal's own
+ *     capture-phase `onGlobalKey` closes the innermost layer, and Escape is
+ *     deliberately let through the scene's guard.
  */
 const savedKits = ref<SavedKit[]>(loadSavedKits());
 const naming = ref(false);

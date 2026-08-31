@@ -556,6 +556,13 @@ export default class GameScene extends Scene {
       this.game?.escape();
       return;
     }
+    // Everything below this line is a game binding, and a game binding must not
+    // fire while the player is typing into the HUD — p5 listens on `window`, so
+    // the shop's search box was toggling the shop shut on every `p`. Escape is
+    // deliberately above it: a field the keyboard cannot be got out of is worse
+    // than the bug. `DomUtils.isTypingKeyEvent` carries the rest of the story;
+    // `GameSceneKeys.test.ts` holds both halves.
+    if (DomUtils.isTypingKeyEvent(event)) return;
     this.game?.keyPressed(pressedKeyCode, event?.repeat ?? false);
   }
 
