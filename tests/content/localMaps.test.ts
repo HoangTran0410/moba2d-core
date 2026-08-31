@@ -23,17 +23,21 @@ installEditorVendorGlobals();
  * The seam between the map editor and the game, tested from both sides at
  * once.
  *
- * The editor at `public/map-editor/` is plain browser JavaScript — no modules, no
- * build, globals talking to globals — so nothing in core can import it and no
- * type checker will ever compare the two halves. What holds them together is
- * one `localStorage` key and the shape of what goes in it, and the failure
- * mode if that drifts is silent: the editor happily publishes, core validates,
- * core drops it, and the player finds their map missing from the picker with a
- * console line nobody reads.
+ * The editor is `src/mapEditor/*.ts` — TypeScript, typechecked with the rest of
+ * core, imported directly by the lines above. That is new: it used to be
+ * unbundled globals under `public/map-editor/js/`, where nothing in core could
+ * import it and no type checker ever compared the two halves.
  *
- * So this test runs the *real* editor code (in a `vm`, with the browser
- * globals it expects stubbed out) and feeds what it actually wrote into the
- * *real* installer. A rename on either side fails here.
+ * The type checker still cannot see the seam this file is about, because the
+ * seam is not a function call. The editor ships as its own *document*, and what
+ * crosses between the two is one `localStorage` key and the shape of what goes
+ * in it. The failure mode when that drifts is silent: the editor happily
+ * publishes, core validates, core drops it, and the player finds their map
+ * missing from the picker with a console line nobody reads.
+ *
+ * So this test drives the *real* editor code — with the browser globals it
+ * expects stubbed out — and feeds what it actually wrote into the *real*
+ * installer. A rename on either side fails here.
  */
 
 
@@ -96,7 +100,8 @@ function runEditor(tuning?: unknown): EditorRun {
                        props: { faction: 'amber', kind: 'turret', stats: { health: 900, attackRange: 700 } } }),
     normalizeTerrain({ type: 'structure', position: [3100, 3100], props: { faction: 'jade', kind: 'turret' } }),
     normalizeTerrain({ type: 'neutral', position: [2000, 1000],
-                       props: { role: 'warden', r: 200, stats: { aggroRange: 800 } } }),
+                       props: { role: 'warden', r: 200,
+                                stats: { aggroRange: 800, rig: { legs: { count: 6, bend: 'up' } } } } }),
   ];
   Store.publishLocal();
 
@@ -279,7 +284,13 @@ describe('local maps', () => {
     const geometry = JSON.parse(published)[0].geometry;
 
     expect(geometry.slots.structure[0].stats).toEqual({ health: 900, attackRange: 700 });
-    expect(geometry.slots.neutral[0].stats).toEqual({ aggroRange: 800 });
+    // Nested, not just a flat number: the inspector's creature rig writes
+    // `stats.rig.legs.count`, and an exporter that copied only the keys it
+    // knew about would flatten the shape away without failing anything else.
+    expect(geometry.slots.neutral[0].stats).toEqual({
+      aggroRange: 800,
+      rig: { legs: { count: 6, bend: 'up' } },
+    });
     // And a slot that overrides nothing still exports clean — an empty
     // `stats: {}` would reach core's validator as a block saying nothing.
     expect(geometry.slots.structure[1].stats).toBeUndefined();

@@ -475,6 +475,81 @@ describe('validatePack', () => {
     }
   });
 
+  it('accepts a creature rig, legs and a body drawn from code', () => {
+    const result = validatePack(
+      behaviouralWolves({
+        rig: {
+          body: { kind: 'orb', color: [140, 90, 255], glow: 0.6 },
+          legs: { count: 6, reach: 1.6, bend: 'up' },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  /**
+   * Numbers are clamped, not refused — and this is a bug report, not a
+   * preference.
+   *
+   * Typing 7 into the editor's leg count made the whole map vanish: the slot
+   * validated false, `localMaps.keepValid` dropped the map with a
+   * `console.warn` nobody sees, it left the picker, and the playtest the player
+   * had just started fell back to the menu. From their seat the game stopped
+   * working because they typed an odd number into a cosmetic field.
+   *
+   * `resolveRig` already clamps every one of these, so refusing was a second
+   * and far harsher answer to a question already answered. The line now: a
+   * **number** out of range has one obvious repair, so take it; a **word** or a
+   * shape core does not know has none, so refuse it.
+   */
+  it('clamps an odd leg count instead of dropping the map that holds it', () => {
+    expect(validatePack(behaviouralWolves({ rig: { legs: { count: 7 } } })).ok).toBe(true);
+  });
+
+  it('clamps a leg count far past what a body can carry', () => {
+    expect(validatePack(behaviouralWolves({ rig: { legs: { count: 40 } } })).ok).toBe(true);
+    expect(validatePack(behaviouralWolves({ rig: { legs: { count: 0 } } })).ok).toBe(true);
+  });
+
+  it('clamps a nonsense reach rather than refusing the pack', () => {
+    expect(validatePack(behaviouralWolves({ rig: { legs: { count: 6, reach: -1 } } })).ok).toBe(
+      true
+    );
+  });
+
+  /** A number is still a number: a string cannot be clamped into one. */
+  it('still rejects a leg count that is not a number at all', () => {
+    const result = validatePack(behaviouralWolves({ rig: { legs: { count: 'six' } } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/rig\.legs\.count/);
+  });
+
+  it('rejects a bend core does not know rather than silently using the other one', () => {
+    const result = validatePack(
+      behaviouralWolves({ rig: { legs: { count: 4, bend: 'sideways' } } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toMatch(/rig\.legs\.bend/);
+      expect(result.errors.join(' ')).toMatch(/up, down/);
+    }
+  });
+
+  /**
+   * A body with no colour named takes core's default, the way an undeclared
+   * `attackColor` does. What is refused is a colour that is not one — two
+   * entries reach `fill(r, g, b, a)` as a greyscale call.
+   */
+  it('accepts a procedural body with no colour, and rejects a malformed one', () => {
+    expect(validatePack(behaviouralWolves({ rig: { body: { kind: 'orb' } } })).ok).toBe(true);
+
+    const bad = validatePack(
+      behaviouralWolves({ rig: { body: { kind: 'orb', color: [140, 90] } } })
+    );
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/rig\.body\.color/);
+  });
+
   it('rejects an attack colour that is not three numbers', () => {
     // A two-entry array reaches `fill(r, g, b, a)` as `fill(255, 138,
     // undefined, alpha)`, which p5 reads as a greyscale call — the camp's art
@@ -839,6 +914,37 @@ describe('validatePack', () => {
     const bad = validatePack(mapWith({ geometry: geometryWith({ attackStyle: 'breth' }) }));
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/attackStyle/);
+  });
+
+  it('accepts a neutral slot overriding the rig, and rejects a broken one', () => {
+    const geometryWith = (stats: Record<string, unknown>) => ({
+      terrain: { wall: [], bush: [], water: [] },
+      slots: {
+        spawn: [],
+        minion: [],
+        structure: [],
+        neutral: [{ role: 'dragon', x: 1, y: 1, r: 10, stats }],
+      },
+    });
+
+    expect(
+      validatePack(mapWith({ geometry: geometryWith({ rig: { legs: { count: 8 } } }) })).ok
+    ).toBe(true);
+
+    // The reported bug, at the level it was reported: a map slot with an odd
+    // count must still install. It is the editor that produces these, and a
+    // number typed into a cosmetic field cannot be allowed to delete a map.
+    expect(
+      validatePack(mapWith({ geometry: geometryWith({ rig: { legs: { count: 5 } } }) })).ok
+    ).toBe(true);
+
+    // As with `attackStyle`: without `rig` pulled out of the destructure this
+    // reads as an unknown *number* key and the message names the wrong problem.
+    const bad = validatePack(
+      mapWith({ geometry: geometryWith({ rig: { legs: { bend: 'sideways' } } }) })
+    );
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/rig\.legs\.bend/);
   });
 
   it('rejects a spells entry that is not a class', () => {

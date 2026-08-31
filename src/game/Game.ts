@@ -75,6 +75,7 @@ import type Spell from './gameObject/Spell';
 import type { CastContext, Vec2 } from './spell/runtime/types';
 import { isNetClient, netClientBoot } from './net/netRole';
 import type { NetGameHooks } from './net/hooks';
+import { MAP_BACKGROUND_GREY } from './render/palette';
 
 /**
  * How far ahead of the champion the joystick plants its destination, as frames
@@ -742,7 +743,7 @@ export default class Game {
    */
   draw(alpha = 1) {
     if (this.paused) return;
-    background(30);
+    background(MAP_BACKGROUND_GREY);
 
     // Substitute the interpolated camera around the *whole* body: the minimap
     // (below, outside makeDraw) paints the camera box and has to move with the

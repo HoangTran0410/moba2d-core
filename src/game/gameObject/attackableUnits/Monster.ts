@@ -9,6 +9,10 @@ import {
   MONSTER_REGEN_DELAY_MS,
 } from '@/game/config/tuningDefaults';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
+import { LegRig } from '@/game/render/creature/legRig';
+import { resolveRig } from '@/game/render/creature/creatureSpec';
+import type { CreatureRigSpec, ResolvedRig } from '@/game/render/creature/creatureSpec';
+import { drawLegs, drawOrbBody, hasProceduralBody } from '@/game/render/creature/drawCreature';
 import AttackableUnit from './AttackableUnit';
 import type { AttackableUnitRenderOptions } from './AttackableUnit';
 import type { AttackableUnitOptions, UnitDeathData } from './AttackableUnit';
@@ -23,6 +27,15 @@ import {
 } from './monsterAttacks';
 
 export type { MonsterAttackStyle };
+/**
+ * Re-exported beside `MonsterAttackStyle` and for the same reason: a pack
+ * declares one of these on a camp, so `ContentPack.ts` needs the name, and this
+ * is the module that gives it meaning.
+ *
+ * A `export type` only — `ContentApi` takes `Monster` as a default import of
+ * the class, so nothing here reaches its surface and no contract bump is owed.
+ */
+export type { CreatureRigSpec };
 
 /**
  * Something a camp can do besides swing — a ranged spit, a melee slam,
@@ -156,6 +169,15 @@ export interface MonsterPresetData {
   attackStyle?: MonsterAttackStyle;
   /** `[r, g, b]` for this camp's attack art. Defaults to the old flash amber. */
   attackColor?: number[];
+  /**
+   * Legs that walk, and optionally a body drawn from code instead of a sprite.
+   * Absent means today's picture, unchanged — see `render/creature/`.
+   *
+   * Note the name beside it: `hasLegs` is whether this body can *walk at all*,
+   * a navigation fact, and has nothing to do with whether legs are drawn. A
+   * body with `hasLegs: false` and a rig is a thing that sits and waves them.
+   */
+  rig?: CreatureRigSpec;
   /**
    * External forces do not move this body. Defaults to `speed === 0`.
    *
@@ -392,6 +414,10 @@ export default class Monster extends AttackableUnit {
   attackInterval: number;
   /** How this camp's swing is drawn, and how its damage travels. */
   attackStyle: MonsterAttackStyle;
+  /** What this camp's pack asked its body to look like. See `render/creature/`. */
+  readonly rig?: ResolvedRig;
+  /** The live legs, when the rig declared any. */
+  private legRig?: LegRig;
   /** `[r, g, b]` for that art. */
   attackColor: number[];
   damage: number;
@@ -482,6 +508,10 @@ export default class Monster extends AttackableUnit {
     this.attackStyle =
       preset.attackStyle ?? (preset.attackRange <= MONSTER_MELEE_REACH ? 'melee' : 'ranged');
     this.attackColor = preset.attackColor ?? [...DEFAULT_MONSTER_ATTACK_COLOR];
+    // Resolved against the declared size rather than `animatedValues`, which is
+    // an animation and would resize the legs as the body spawns in.
+    this.rig = resolveRig(preset.rig, preset.size / 2);
+    if (this.rig?.legs) this.legRig = new LegRig(this.rig.legs.config);
     this.temperament = preset.temperament ?? 'aggressive';
     this.roam = preset.roam ?? { kind: 'camp' };
     this.ephemeral = preset.ephemeral ?? false;
@@ -1055,11 +1085,57 @@ export default class Monster extends AttackableUnit {
 
   draw(options: AttackableUnitRenderOptions = {}) {
     if (this.isDead) return;
+    this.drawRig();
     super.draw(options);
     // The swing itself is drawn by the object `launchAttack` spawned, not from
     // here: an effect that reaches past its own body has to outlive the frame
     // and survive its caster being culled (`CLAUDE.md`, rendering traps). The
     // 180ms stroke that used to live here is what "hits like Bluetooth" meant.
+  }
+
+  /**
+   * The legs, under the body.
+   *
+   * Advanced here rather than in `update` on purpose. `ObjectManager.draw` has
+   * already swapped `position` for the interpolated one, so the rig follows the
+   * *picture* — which is why a LAN client, whose camps are snapshot positions
+   * with no velocity attached, gets correct legs with nothing crossing the
+   * wire. `deltaTime` is the render delta here, which is the clock the rig
+   * wants; the simulation's own step would make the legs stutter on a phone
+   * drawing at 30fps.
+   *
+   * A culled camp simply is not drawn, so its rig is not advanced — and the
+   * frame it comes back on arrives with a `deltaTime` far past `RIG_SNAP_MS`,
+   * which is exactly the case `LegRig.follow` replants for instead of walking
+   * six legs across the gap at once.
+   */
+  private drawRig() {
+    const rig = this.legRig;
+    const style = this.rig?.legs;
+    if (!rig || !style) return;
+    rig.follow(this.position.x, this.position.y, deltaTime);
+    drawLegs(rig, style, this.animatedValues.alpha);
+  }
+
+  /**
+   * A body drawn from code, for a camp whose pack shipped no art for it. The
+   * ring and the death shade around it stay the base's — see
+   * `AttackableUnit.drawBody`.
+   */
+  protected drawBody(x: number, y: number, size: number, alpha: number) {
+    if (!hasProceduralBody(this.rig)) return super.drawBody(x, y, size, alpha);
+    drawOrbBody(x, y, size / 2, this.rig.body, alpha);
+  }
+
+  /**
+   * Widened to cover the legs. The base box is the sprite's, and a foot planted
+   * a whole leg outside it is culled away at the edge of the screen.
+   */
+  getDisplayBoundingBox() {
+    if (!this.legRig) return super.getDisplayBoundingBox();
+    return this.squareDisplayBoundingBox(
+      Math.max(this.animatedValues.size, this.legRig.paintRadius * 2)
+    );
   }
 
   drawDir() {

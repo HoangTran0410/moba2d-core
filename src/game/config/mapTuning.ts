@@ -361,6 +361,10 @@ export function resolveMonsterPreset(
     aggroRange: optional(own.aggroRange, base.aggroRange, map.aggroRangeMult),
     temperament: own.temperament ?? base.temperament,
     attackStyle: own.attackStyle ?? base.attackStyle,
+    // Whole-object, not merged field by field: a map that restates a rig is
+    // describing a different creature, and half of one body's legs on another
+    // body's torso is not a thing anyone asked for.
+    rig: own.rig ?? base.rig,
     // The three leash/reset timers, each falling through the full stack:
     // slot, then map, then whatever the *pack* declared for this body, then
     // core's own default. The pack layer used to be missing here — a boss

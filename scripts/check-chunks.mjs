@@ -83,6 +83,16 @@ const RULES = [
       'every spell chunk the moment `game-*.js` re-hashes, even when the spell itself did not change',
   },
   {
+    chunk: 'editor',
+    forbidden: /^(game|pregame)-/,
+    why:
+      'the map editor is its own document and has always stood alone (`shared-*.js`, 153KB). It ' +
+      'reaches into core on purpose — `TUNING_SCHEMA`, and the creature rig its inspector ' +
+      'previews — and every one of those modules has to be pinned to `shared`, because an ' +
+      'unpinned one lands wherever its other importer lives and makes opening the editor ' +
+      'download the whole match. The rig did exactly that in the build that added it',
+  },
+  {
     chunk: 'PacksScene',
     forbidden: /^game-/,
     why:

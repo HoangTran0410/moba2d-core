@@ -299,6 +299,32 @@ export default defineConfig({
            * chunk is for.
            */
           if (id.includes('src/game/items/itemStats')) return 'shared';
+
+          /**
+           * The procedural creature rig, and the two render constants it and
+           * the world are drawn against.
+           *
+           * Read from a third place, not just two: `Monster` walks a rig
+           * (`game`), and the **map editor's inspector preview** builds the
+           * same rig from the same numbers so a mapper sees the real walk
+           * rather than a mock (`editor`). `legRig.ts` and `legIk.ts` are pure
+           * — no p5, no game state, enforced by `creatureSeam.test.ts` — which
+           * is what makes that possible and what makes them safe here.
+           *
+           * Measured, and the reason `check-chunks.mjs` now has an `editor`
+           * rule: left to land where their importers do, `editor-*.js` gained
+           * static edges to **both** `game-*.js` and `pregame-*.js`, so opening
+           * the map editor downloaded the whole match engine. Baseline was
+           * `shared-*.js` alone at 153KB.
+           *
+           * `drawCreature.ts` is deliberately *not* here — it is the p5 half,
+           * reached only from `game`, and the editor paints the same joints
+           * with Canvas2D of its own.
+           */
+          if (/src\/game\/render\/(Interpolation|palette)\.ts$/.test(id)) return 'shared';
+          if (/src\/game\/render\/creature\/(legIk|legRig|creatureSpec)\.ts$/.test(id)) {
+            return 'shared';
+          }
           /**
            * And the icons those keys wear. `statIcons.ts` is one string table
            * whose only import is a `type`, which is erased before Rollup sees

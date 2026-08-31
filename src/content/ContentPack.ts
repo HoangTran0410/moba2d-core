@@ -1,5 +1,6 @@
 import type { ContentApi } from './ContentApi';
 import type {
+  CreatureRigSpec,
   MonsterAbility,
   MonsterAttackStyle,
   MonsterRoam,
@@ -375,6 +376,16 @@ export interface MonsterBody {
    * used, so an undeclared body looks like it always did, only legible.
    */
   attackColor?: number[];
+  /**
+   * Legs that plant on the ground and step, and optionally a body drawn from
+   * code instead of a sprite — so a pack can ship a creature it has no art for.
+   *
+   * Absent means today's picture, unchanged. Nothing here is ever *derived*
+   * from another field the way `attackStyle` is from `attackRange`: growing
+   * legs on a camp that never asked for them would rewrite the look of every
+   * pack at once. See `game/render/creature/creatureSpec.ts` for the fields.
+   */
+  rig?: CreatureRigSpec;
   /**
    * How this body answers a champion. Absent means `'aggressive'` — every
    * camp written before this field existed, unchanged.
@@ -841,6 +852,14 @@ export interface MonsterSlotStats extends MonsterScale {
    * cannot disagree with the map's own geometry.
    */
   attackStyle?: MonsterAttackStyle;
+  /**
+   * Lets one map give a camp a different body and a different number of legs.
+   *
+   * Overridable — unlike `roam`, which is not — because it is cosmetic and a
+   * leg count cannot contradict where the map put the water. A map that wants
+   * its wolves to be spiders is a map making a choice, not a broken camp.
+   */
+  rig?: CreatureRigSpec;
 }
 
 /**

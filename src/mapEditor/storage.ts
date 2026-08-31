@@ -85,6 +85,9 @@ export const Store = (() => {
     if (typeof p.showDummy === "boolean") E.showDummy = p.showDummy;
     if (typeof p.showVertexIndex === "boolean") E.showVertexIndex = p.showVertexIndex;
     if (typeof p.inspectorOpen === "boolean") E.inspectorOpen = p.inspectorOpen;
+    if (Array.isArray(p.openSections)) {
+      E.openSections = p.openSections.filter((n) => typeof n === "string");
+    }
     if (["auto", "zoom", "pan"].includes(p.wheelMode)) E.wheelMode = p.wheelMode;
     if (typeof p.zoomSpeed === "number" && p.zoomSpeed > 0) {
       E.zoomSpeed = Math.min(Math.max(p.zoomSpeed, 0.25), 4);
@@ -97,6 +100,7 @@ export const Store = (() => {
         showGrid: E.showGrid, snap: E.snap, gridSize: E.gridSize,
         showMinimap: E.showMinimap, showDummy: E.showDummy,
         showVertexIndex: E.showVertexIndex, inspectorOpen: E.inspectorOpen,
+        openSections: E.openSections,
         wheelMode: E.wheelMode, zoomSpeed: E.zoomSpeed,
       }));
     } catch (e) { /* hết chỗ thì thôi, không chặn người dùng */ }

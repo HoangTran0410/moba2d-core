@@ -592,6 +592,76 @@ function checkAttackStyle(path: string, value: unknown, errors: string[]): void 
   }
 }
 
+/**
+ * A creature rig — legs, and optionally a body drawn instead of a sprite.
+ *
+ * Checked rather than trusted for the same reason the vocabularies above are:
+ * a bad rig does not throw, it draws something wrong on every frame of the
+ * match. An odd `count` limps, a negative `reach` turns the legs inside out,
+ * and a `bend` core does not know silently becomes the one it does.
+ *
+ * Named per field, because "invalid rig" on a pack with nine camps is not an
+ * error message, it is a search.
+ */
+function checkCreatureRig(path: string, value: unknown, errors: string[]): void {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    errors.push(`${path}.rig: must be an object`);
+    return;
+  }
+
+  const { body, legs } = value;
+
+  if (body !== undefined && body !== 'avatar') {
+    if (!isObject(body) || body.kind !== 'orb') {
+      errors.push(`${path}.rig.body: must be 'avatar' or { kind: 'orb', … }`);
+    } else {
+      checkColor(`${path}.rig.body`, 'color', body.color, errors);
+      if (body.glow !== undefined && !isFiniteNumber(body.glow)) {
+        errors.push(`${path}.rig.body.glow: must be a finite number`);
+      }
+    }
+  }
+
+  if (legs === undefined) return;
+  if (!isObject(legs)) {
+    errors.push(`${path}.rig.legs: must be an object`);
+    return;
+  }
+
+  // Type only, never range. Every number in a rig is clamped by `resolveRig`
+  // (odd counts down to a pair, a nonsense reach back to the default), and
+  // refusing one instead used to take the whole map down with it: a `7` typed
+  // into the editor's leg count failed here, `localMaps.keepValid` dropped the
+  // map, and the playtest the player had just started fell back to the menu.
+  //
+  // A number out of range has one obvious repair, so it is taken. A word core
+  // does not know has none, so it is still refused — see `bend` below.
+  for (const key of ['count', 'reach', 'step', 'spread', 'thickness'] as const) {
+    const own = legs[key];
+    if (own === undefined) continue;
+    if (!isFiniteNumber(own)) {
+      errors.push(`${path}.rig.legs.${key}: must be a number`);
+    }
+  }
+
+  if (legs.bend !== undefined && legs.bend !== 'up' && legs.bend !== 'down') {
+    errors.push(
+      `${path}.rig.legs.bend: unknown ${JSON.stringify(legs.bend)}; core provides up, down`
+    );
+  }
+
+  checkColor(`${path}.rig.legs`, 'color', legs.color, errors);
+}
+
+/** `[r, g, b]`, the shape `attackColor` has always taken. Always optional. */
+function checkColor(path: string, key: string, value: unknown, errors: string[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length !== 3 || !value.every(isFiniteNumber)) {
+    errors.push(`${path}.${key}: must be [r, g, b]`);
+  }
+}
+
 function checkMonsterBehaviour(
   path: string,
   value: Record<string, unknown>,
@@ -614,6 +684,7 @@ function checkMonsterBehaviour(
   }
 
   checkAttackStyle(path, value.attackStyle, errors);
+  checkCreatureRig(path, value.rig, errors);
 
   for (const key of ['chaseMargin', 'giveUpDelayMs', 'regenDelayMs', 'wanderSpeed'] as const) {
     if (value[key] !== undefined && !isFiniteNumber(value[key])) {
@@ -795,7 +866,7 @@ function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): 
     errors.push(`${path}: must be an object`);
     return;
   }
-  const { temperament, attackStyle, ...numbers } = value;
+  const { temperament, attackStyle, rig, ...numbers } = value;
   if (
     temperament !== undefined &&
     !MONSTER_TEMPERAMENTS.includes(temperament as MonsterTemperament)
@@ -806,6 +877,7 @@ function checkMonsterSlotStats(path: string, value: unknown, errors: string[]): 
     );
   }
   checkAttackStyle(path, attackStyle, errors);
+  checkCreatureRig(path, rig, errors);
   checkNumberBag(path, numbers, MONSTER_SLOT_NUMBER_KEYS, errors);
 }
 

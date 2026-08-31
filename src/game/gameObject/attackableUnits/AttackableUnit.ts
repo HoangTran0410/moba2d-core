@@ -403,16 +403,7 @@ export default class AttackableUnit extends GameObject {
     noStroke();
     fill(240, alpha);
 
-    // Avatars arrive in two shapes: pre-cut circles and raw square portraits from
-    // the wiki importer. Clipping here makes every avatar round, so new art does
-    // not have to be cut to a circle before it can be used.
-    drawingContext.save();
-    drawingContext.globalAlpha = alpha / 255;
-    drawingContext.beginPath();
-    drawingContext.arc(pos.x, pos.y, size / 2, 0, TWO_PI);
-    drawingContext.clip();
-    image(AssetManager.renderable(this.avatar), pos.x, pos.y, size, size);
-    drawingContext.restore();
+    this.drawBody(pos.x, pos.y, size, alpha);
 
     stroke(this.isAllied ? [0, 255, 0, alpha] : [255, 0, 0, alpha]);
     strokeWeight(2);
@@ -425,6 +416,28 @@ export default class AttackableUnit extends GameObject {
       circle(pos.x, pos.y, size);
     }
     pop();
+  }
+
+  /**
+   * This unit's own picture, inside the ring and the dead overlay that
+   * `drawAvatar` paints around it.
+   *
+   * Its own method so a subclass can replace the *picture* without also
+   * inheriting a copy of the team ring, the death shade and the `push`/`pop`
+   * that hold them — `Monster` draws a procedural body here when its pack
+   * declared one instead of a sprite.
+   */
+  protected drawBody(x: number, y: number, size: number, alpha: number) {
+    // Avatars arrive in two shapes: pre-cut circles and raw square portraits from
+    // the wiki importer. Clipping here makes every avatar round, so new art does
+    // not have to be cut to a circle before it can be used.
+    drawingContext.save();
+    drawingContext.globalAlpha = alpha / 255;
+    drawingContext.beginPath();
+    drawingContext.arc(x, y, size / 2, 0, TWO_PI);
+    drawingContext.clip();
+    image(AssetManager.renderable(this.avatar), x, y, size, size);
+    drawingContext.restore();
   }
 
   drawDir() {

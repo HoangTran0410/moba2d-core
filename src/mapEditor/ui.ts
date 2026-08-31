@@ -9,6 +9,13 @@
 import { Cmd } from './commands';
 import { Geom } from './geom';
 import { TUNING_SCHEMA } from '@/game/config/tuningSchema';
+// Imported from core, not copied into the editor. `legRig.ts` and
+// `creatureSpec.ts` are pure — no p5, no game state, no unit — which is what
+// `creatureSeam.test.ts` exists to keep true, and what lets the same walk the
+// player sees in a match run inside this inspector.
+import { LegRig } from '@/game/render/creature/legRig';
+import { resolveRig } from '@/game/render/creature/creatureSpec';
+import { MAP_BACKGROUND_GREY } from '@/game/render/palette';
 import { requestRender } from './frame';
 import { Cam, E, KIND, SLOT_KINDS, Sel, TERRAIN_KINDS, circleR, commit, countByType, factionColor, hasVerts, isLine, laneIds, newId } from './state';
 import { Store } from './storage';
@@ -459,12 +466,14 @@ export const UI = (() => {
   <div id="pane-rules" class="hidden">
     <div class="sec">
       <div class="sec-title">Luật chơi của map <span id="tuning-count" class="mono"></span></div>
-      <p class="muted" style="margin:0 0 8px">
-        Chỉ số riêng của map này. Ô trống = dùng mặc định của core — số mờ trong
-        ô chính là mặc định đó.
-      </p>
-      <div id="tuning-summary" class="muted" style="margin:0 0 10px"></div>
-      <div id="tuning-groups"></div>
+      <div class="sec-body">
+        <p class="muted" style="margin:0 0 8px">
+          Chỉ số riêng của map này. Ô trống = dùng mặc định của core — số mờ trong
+          ô chính là mặc định đó.
+        </p>
+        <div id="tuning-summary" class="muted" style="margin:0 0 10px"></div>
+        <div id="tuning-groups"></div>
+      </div>
     </div>
   </div>
 
@@ -481,30 +490,35 @@ export const UI = (() => {
       <span class="mono" id="obj-center-off" style="color:var(--tx-3);font-size:11px"></span>
     </button>
     <div id="obj-props"></div>
-    <div id="obj-shape">
-      <div class="row" id="obj-rot-row" style="margin-top:8px">
-        <label>Xoay</label>
-        <div class="field"><input class="inp" id="obj-rot" type="number" step="15" value="90"><span class="unit">°</span></div>
-        <button class="btn" id="obj-rot-ccw" title="Xoay ngược chiều kim đồng hồ">↺</button>
-        <button class="btn" id="obj-rot-cw" title="Xoay theo chiều kim đồng hồ">↻</button>
+
+    <div class="sec-title" data-sec="shape" style="margin-top:12px">Biến hình &amp; thứ tự</div>
+    <div class="sec-body">
+      <div id="obj-shape">
+        <div class="row" id="obj-rot-row" style="margin-top:8px">
+          <label>Xoay</label>
+          <div class="field"><input class="inp" id="obj-rot" type="number" step="15" value="90"><span class="unit">°</span></div>
+          <button class="btn" id="obj-rot-ccw" title="Xoay ngược chiều kim đồng hồ">↺</button>
+          <button class="btn" id="obj-rot-cw" title="Xoay theo chiều kim đồng hồ">↻</button>
+        </div>
+        <div class="row" id="obj-flip-row">
+          <label>Lật</label>
+          <button class="btn" id="obj-flip-h" style="flex:1">${ico("flip-h", "ico ico-sm")} Ngang</button>
+          <button class="btn" id="obj-flip-v" style="flex:1">${ico("flip-v", "ico ico-sm")} Dọc</button>
+        </div>
+        <div class="row" id="obj-scale-row">
+          <label>Co giãn</label>
+          <div class="field"><input class="inp" id="obj-scale" type="number" step="5" value="110"><span class="unit">%</span></div>
+          <button class="btn" id="obj-scale-down" title="Thu nhỏ">−</button>
+          <button class="btn" id="obj-scale-up" title="Phóng to">+</button>
+        </div>
       </div>
-      <div class="row" id="obj-flip-row">
-        <label>Lật</label>
-        <button class="btn" id="obj-flip-h" style="flex:1">${ico("flip-h", "ico ico-sm")} Ngang</button>
-        <button class="btn" id="obj-flip-v" style="flex:1">${ico("flip-v", "ico ico-sm")} Dọc</button>
-      </div>
-      <div class="row" id="obj-scale-row">
-        <label>Co giãn</label>
-        <div class="field"><input class="inp" id="obj-scale" type="number" step="5" value="110"><span class="unit">%</span></div>
-        <button class="btn" id="obj-scale-down" title="Thu nhỏ">−</button>
-        <button class="btn" id="obj-scale-up" title="Phóng to">+</button>
+      <div class="grid2" style="margin-top:8px">
+        <button class="btn" id="obj-front">${ico("front", "ico ico-sm")} Lên trước</button>
+        <button class="btn" id="obj-back">${ico("back", "ico ico-sm")} Ra sau</button>
       </div>
     </div>
+
     <div class="grid2" style="margin-top:8px">
-      <button class="btn" id="obj-front">${ico("front", "ico ico-sm")} Lên trước</button>
-      <button class="btn" id="obj-back">${ico("back", "ico ico-sm")} Ra sau</button>
-    </div>
-    <div class="grid2" style="margin-top:6px">
       <button class="btn" id="obj-dup">${ico("copy", "ico ico-sm")} Nhân bản</button>
       <button class="btn danger" id="obj-del">${ico("trash", "ico ico-sm")} Xoá</button>
     </div>
@@ -512,58 +526,72 @@ export const UI = (() => {
   </div>
 
   <div class="sec">
-    <div class="sec-title">Lớp hiển thị</div>
-    <div id="layer-toggles"></div>
+    <div class="sec-title" data-sec="layers">Lớp hiển thị</div>
+    <div class="sec-body"><div id="layer-toggles"></div></div>
   </div>
 
   <div class="sec">
-    <div class="sec-title">Map <span class="muted" style="text-transform:none;letter-spacing:0">moba2d</span></div>
-    <div class="row"><label>Tên</label><div class="field"><input class="inp" id="map-name" type="text" style="font-family:var(--font)"></div></div>
-    <div class="row"><label>Map id</label><div class="field"><input class="inp" id="map-id" type="text" placeholder="proving-grounds"></div></div>
-    <div class="row">
-      <label>Kích thước</label>
-      <div class="field tagged"><span class="tag">W</span><input class="inp" id="map-w" type="number" min="100" step="100"></div>
-      <div class="field tagged"><span class="tag">H</span><input class="inp" id="map-h" type="number" min="100" step="100"></div>
+    <div class="sec-title" data-sec="grid">Lưới &amp; hút điểm</div>
+    <div class="sec-body">
+      <button class="toggle" id="tg-grid"><span>Hiện lưới</span><span class="sw"></span></button>
+      <button class="toggle" id="tg-snap"><span>Hút vào lưới</span><span class="sw"></span></button>
+      <div class="row" style="margin-top:7px">
+        <label>Bước lưới</label>
+        <div class="field"><input class="inp" id="grid-size" type="number" min="1" step="10"><span class="unit">px</span></div>
+      </div>
+      <button class="toggle" id="tg-vidx"><span>Số thứ tự đỉnh</span><span class="sw"></span></button>
+      <button class="toggle" id="tg-dummy"><span>Hiện tướng mẫu (60px)</span><span class="sw"></span></button>
     </div>
-    <button class="btn block" id="map-resize" style="margin:0 0 7px">
-      ${ico("scale", "ico ico-sm")} Đổi kích thước &amp; scale nội dung…
-    </button>
-    <p class="muted hidden" id="map-square-warn" style="margin:0 0 7px">
-      MapSummary.size chỉ có một số — map moba2d là hình vuông.
-      <a href="#" id="map-make-square" style="color:var(--accent)">Làm vuông</a>
-    </p>
-    <div class="sec-title" style="margin:12px 0 8px">Phe <span id="faction-count" class="mono"></span></div>
-    <div id="faction-list"></div>
-    <button class="btn block" id="faction-add" style="margin-top:6px">${ico("plus", "ico ico-sm")} Thêm phe</button>
-    <div class="sec-title" style="margin:12px 0 8px">Ảnh nền</div>
-    <button class="toggle" id="tg-bg"><span>Hiện ảnh nền</span><span class="sw"></span></button>
-    <div class="row" style="margin-top:7px">
-      <select class="inp" id="bg-select">
-        <option value="">— không —</option>
-        <option value="full-minimap.png">Minimap LMHT</option>
-        <option value="full.jpg">Map thật</option>
-        <option value="full-2d-hextech.png">Map 2D hextech</option>
-        <option value="full-2d.png">Map 2D</option>
-      </select>
-    </div>
-    <button class="btn block" id="bg-upload" style="margin-top:6px">${ico("image", "ico ico-sm")} Tải ảnh của bạn…</button>
   </div>
 
   <div class="sec">
-    <div class="sec-title">Lưới &amp; hút điểm</div>
-    <button class="toggle" id="tg-grid"><span>Hiện lưới</span><span class="sw"></span></button>
-    <button class="toggle" id="tg-snap"><span>Hút vào lưới</span><span class="sw"></span></button>
-    <div class="row" style="margin-top:7px">
-      <label>Bước lưới</label>
-      <div class="field"><input class="inp" id="grid-size" type="number" min="1" step="10"><span class="unit">px</span></div>
+    <div class="sec-title" data-sec="map">Map <span class="muted" style="text-transform:none;letter-spacing:0">moba2d</span></div>
+    <div class="sec-body">
+      <div class="row"><label>Tên</label><div class="field"><input class="inp" id="map-name" type="text" style="font-family:var(--font)"></div></div>
+      <div class="row"><label>Map id</label><div class="field"><input class="inp" id="map-id" type="text" placeholder="proving-grounds"></div></div>
+      <div class="row">
+        <label>Kích thước</label>
+        <div class="field tagged"><span class="tag">W</span><input class="inp" id="map-w" type="number" min="100" step="100"></div>
+        <div class="field tagged"><span class="tag">H</span><input class="inp" id="map-h" type="number" min="100" step="100"></div>
+      </div>
+      <button class="btn block" id="map-resize" style="margin:0 0 7px">
+        ${ico("scale", "ico ico-sm")} Đổi kích thước &amp; scale nội dung…
+      </button>
+      <p class="muted hidden" id="map-square-warn" style="margin:0 0 7px">
+        MapSummary.size chỉ có một số — map moba2d là hình vuông.
+        <a href="#" id="map-make-square" style="color:var(--accent)">Làm vuông</a>
+      </p>
     </div>
-    <button class="toggle" id="tg-vidx"><span>Số thứ tự đỉnh</span><span class="sw"></span></button>
-    <button class="toggle" id="tg-dummy"><span>Hiện tướng mẫu (60px)</span><span class="sw"></span></button>
   </div>
 
   <div class="sec">
-    <div class="sec-title">Kiểm tra</div>
-    <div id="check-box" class="muted">—</div>
+    <div class="sec-title" data-sec="factions">Phe <span id="faction-count" class="mono"></span></div>
+    <div class="sec-body">
+      <div id="faction-list"></div>
+      <button class="btn block" id="faction-add" style="margin-top:6px">${ico("plus", "ico ico-sm")} Thêm phe</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title" data-sec="bg">Ảnh nền</div>
+    <div class="sec-body">
+      <button class="toggle" id="tg-bg"><span>Hiện ảnh nền</span><span class="sw"></span></button>
+      <div class="row" style="margin-top:7px">
+        <select class="inp" id="bg-select">
+          <option value="">— không —</option>
+          <option value="full-minimap.png">Minimap LMHT</option>
+          <option value="full.jpg">Map thật</option>
+          <option value="full-2d-hextech.png">Map 2D hextech</option>
+          <option value="full-2d.png">Map 2D</option>
+        </select>
+      </div>
+      <button class="btn block" id="bg-upload" style="margin-top:6px">${ico("image", "ico ico-sm")} Tải ảnh của bạn…</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title" data-sec="check">Kiểm tra</div>
+    <div class="sec-body"><div id="check-box" class="muted">—</div></div>
   </div>
   </div>`;
 
@@ -572,7 +600,7 @@ export const UI = (() => {
     spawn: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
-      { group: "Ghi đè chỉ số cho bệ đá này", groupKey: "fountain" },
+      { sec: "fountain-stats", group: "Ghi đè chỉ số cho bệ đá này", groupKey: "fountain" },
       { key: "stats.healPercent", label: "Hồi máu", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.manaPercent", label: "Hồi mana", kind: "number", unit: "×", min: 0, ph: "0.12" },
       { key: "stats.tickInterval", label: "Nhịp hồi", kind: "number", unit: "ms", min: 0, ph: "500" },
@@ -581,7 +609,7 @@ export const UI = (() => {
     structure: [
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "kind", label: "Kiểu", kind: "static", value: "turret" },
-      { group: "Ghi đè chỉ số cho trụ này", groupKey: "turrets" },
+      { sec: "turret-stats", group: "Ghi đè chỉ số cho trụ này", groupKey: "turrets" },
       { key: "stats.health", label: "Máu", kind: "number", unit: "hp", min: 0, ph: "400" },
       { key: "stats.damage", label: "Sát thương", kind: "number", unit: "dmg", min: 0, ph: "12" },
       { key: "stats.attackRange", label: "Tầm bắn", kind: "number", unit: "px", min: 0, ph: "430" },
@@ -592,7 +620,7 @@ export const UI = (() => {
       { key: "faction", label: "Phe", kind: "faction" },
       { key: "lane", label: "Lane", kind: "lane" },
       { key: "scatter", label: "Tản ra", kind: "number", unit: "px", min: 0, hint: "để trống = không tản" },
-      { group: "Ghi đè đội hình cho điểm này", groupKey: "minions" },
+      { sec: "minion-stats", group: "Ghi đè đội hình cho điểm này", groupKey: "minions" },
       {
         key: "stats.composition", label: "Đội hình", kind: "list",
         ph: "melee, melee, ranged",
@@ -603,7 +631,7 @@ export const UI = (() => {
       { key: "role", label: "Role", kind: "text", placeholder: "warden" },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
       { key: "rotationDeg", label: "Xoay camp", kind: "number", unit: "°", hint: "xoay bố cục quái bên trong" },
-      { group: "Ghi đè chỉ số cho bãi này", groupKey: "monsters" },
+      { sec: "monster-stats", group: "Ghi đè chỉ số cho bãi này", groupKey: "monsters" },
       { key: "stats.healthMult", label: "Máu", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.damageMult", label: "Sát thương", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.aggroRange", label: "Tầm phát hiện", kind: "number", unit: "px", min: 0, hint: "số tuyệt đối, không phải hệ số" },
@@ -619,6 +647,33 @@ export const UI = (() => {
         options: ["", "melee", "ranged", "breath"],
         hint: "melee = vuốt, ranged = phun đạn, breath = phun lửa hình nón",
       },
+      // Không có `groupKey`: hình dáng con vật không phải thứ chỉnh cho cả
+      // map được, nên nhóm này không có nút "đổi cho tất cả". Nó ghi đè khai
+      // báo của pack cho đúng bãi này thôi.
+      { sec: "monster-rig", group: "Hình dáng con vật" },
+      {
+        key: "stats.rig.legs.count", label: "Số chân", kind: "number", min: 0,
+        ph: "không mọc chân",
+        hint: "chẵn, 2–12. Để trống = giữ nguyên hình pack khai.",
+      },
+      {
+        key: "stats.rig.legs.reach", label: "Sải chân", kind: "number", unit: "×bk", min: 0, ph: "1.6",
+        hint: "tính theo bán kính thân, nên một con to và một con nhỏ dùng chung được số này",
+      },
+      {
+        key: "stats.rig.legs.bend", label: "Chiều gối", kind: "choice",
+        options: ["", "up", "down"],
+        hint: "up = gối vểnh ra ngoài như nhện, down = gối gập vào như thú",
+      },
+      { key: "stats.rig.legs.thickness", label: "Dày chân", kind: "number", unit: "px", min: 0, ph: "theo cỡ thân" },
+      { key: "stats.rig.legs.color", label: "Màu chân", kind: "color" },
+      {
+        key: "stats.rig.body.kind", label: "Thân", kind: "choice",
+        options: ["", "orb"],
+        hint: "để trống = dùng ảnh của quái; orb = vẽ bằng code, không cần ảnh",
+      },
+      { key: "stats.rig.body.color", label: "Màu thân", kind: "color" },
+      { kind: "rigPreview" },
     ],
     // Lane KHÔNG có ô "từ phe / tới phe": engine không đọc hai field đó
     // (setActiveLanes chỉ lấy id + waypoints), và giá trị của chúng bị ràng
@@ -771,6 +826,9 @@ export const UI = (() => {
     });
     g("bg-upload").onclick = () => Cmd.run("view.bgUpload");
 
+    // Sau cùng, khi mọi id đã được nhặt: gập panel lại thành các mục.
+    wireSections(body);
+
     syncAll();
   }
 
@@ -778,29 +836,344 @@ export const UI = (() => {
 
   let propsKey = "";
 
+  /* --------------------- xem trước con vật --------------------- */
+
+  const hexToRgb = (hex) => {
+    const n = parseInt(String(hex).replace("#", ""), 16);
+    return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : "";
+  };
+
+  const rgbToHex = (rgb) =>
+    "#" + rgb
+      .map((c) => Math.max(0, Math.min(255, Math.round(Number(c) || 0))).toString(16).padStart(2, "0"))
+      .join("");
+
+  /**
+   * Bán kính thân dùng để xem trước.
+   *
+   * Một con số cố định, không phải `size` thật của bãi quái: mọi thứ trong rig
+   * đều là **tỉ lệ theo bán kính thân**, nên xem ở cỡ nào cũng ra đúng hình —
+   * và một con quái to bằng nửa ô xem trước thì chẳng thấy chân đâu.
+   */
+  const PREVIEW_RADIUS = 13;
+  const PREVIEW_ORBIT = 34;
+  /** Radian mỗi frame 16ms. Đủ nhanh để thấy chân bước, đủ chậm để nhìn kịp. */
+  const PREVIEW_TURN = 0.05;
+
+  const Preview = { canvas: null, raf: 0, last: 0, key: "", rig: null, legs: null, angle: 0 };
+
+  /**
+   * `render.ts` cố ý **không** có vòng lặp 60fps — "máy đứng yên = 0% CPU" là
+   * nguyên tắc của cả file đó, và một cái editor làm nóng điện thoại khi không
+   * ai chạm vào là thứ nó tồn tại để tránh.
+   *
+   * Nên ô xem trước chạy rAF **của riêng nó**, bắt đầu khi dựng ra và dừng hẳn
+   * ngay khi bảng thuộc tính bị dựng lại hoặc canvas rời khỏi DOM. Canvas map
+   * chính không hề biết chuyện này xảy ra.
+   */
+  function stopRigPreview() {
+    if (Preview.raf) cancelAnimationFrame(Preview.raf);
+    Preview.raf = 0;
+    Preview.canvas = null;
+    Preview.legs = null;
+    Preview.key = "";
+  }
+
+  function startRigPreview(canvas) {
+    Preview.canvas = canvas;
+    Preview.last = 0;
+    Preview.angle = 0;
+    Preview.key = "";
+    if (Preview.raf) cancelAnimationFrame(Preview.raf);
+    Preview.raf = requestAnimationFrame(stepRigPreview);
+  }
+
+  /** Mở lại một mục đã gập: nếu trong đó có ô xem trước thì cho nó chạy lại. */
+  function resumeRigPreview(body) {
+    const canvas = body.querySelector("[data-rig-preview]");
+    if (canvas) startRigPreview(canvas);
+  }
+
+  function buildRigPreview(collapsed) {
+    const box = el("div", { style: "margin-top:9px" });
+    box.appendChild(el("p", { class: "muted", style: "margin:0 0 4px" },
+      "Đi thử theo đúng số đang gõ ở trên."));
+    // Nền đúng bằng nền map trong trận (`Game.draw` -> `background(30)`), chứ
+    // không phải màu của bảng bên cạnh: cả điểm của ô này là thấy trước con vật
+    // sẽ trông thế nào ở chỗ nó thật sự đứng. Một nền khác màu đã từng cho một
+    // bộ chân "nhìn rõ" ở đây mà tàng hình trong trận.
+    const floor = `rgb(${MAP_BACKGROUND_GREY},${MAP_BACKGROUND_GREY},${MAP_BACKGROUND_GREY})`;
+    const canvas = el("canvas", {
+      width: 480, height: 240,
+      style: `width:100%;height:auto;border-radius:8px;background:${floor};display:block`,
+    });
+    canvas.setAttribute("data-rig-preview", "");
+    box.appendChild(canvas);
+    // Mục đang gập thì không chạy vòng lặp nào cả — cùng lý do `render.ts`
+    // không có vòng lặp 60fps: thứ không ai nhìn thì không được đốt CPU.
+    if (!collapsed) startRigPreview(canvas);
+    return box;
+  }
+
+  /** Dựng lại rig chỉ khi số thực sự đổi, không phải mỗi frame. */
+  function syncPreviewRig() {
+    const spec = readDeep((Sel.one || E.selection[0] || {}).props || {}, "stats.rig");
+    const resolved = spec ? resolveRig(spec, PREVIEW_RADIUS) : undefined;
+    const key = JSON.stringify(resolved || null);
+    if (key === Preview.key) return;
+    Preview.key = key;
+    Preview.rig = resolved || null;
+    Preview.legs = resolved && resolved.legs ? new LegRig(resolved.legs.config) : null;
+  }
+
+  function stepRigPreview(now) {
+    const canvas = Preview.canvas;
+    if (!canvas || !canvas.isConnected) return stopRigPreview();
+
+    const dt = Preview.last ? Math.min(64, now - Preview.last) : 16;
+    Preview.last = now;
+    syncPreviewRig();
+    Preview.angle += (dt / 16) * PREVIEW_TURN;
+
+    const ctx = canvas.getContext("2d");
+    // Không có ngữ cảnh 2D thì dừng hẳn, đừng ném lỗi mỗi frame: `getContext`
+    // trả null trong jsdom và trong vài chế độ tiết kiệm của trình duyệt, mà
+    // một ngoại lệ trong callback rAF thì không ai bắt.
+    if (!ctx) return stopRigPreview();
+    // Vẽ ở nửa độ phân giải khung nền, tức là ảnh nét gấp đôi trên màn hình
+    // retina mà toạ độ vẫn là số người đọc được.
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    const w = canvas.width / 2;
+    const h = canvas.height / 2;
+    ctx.clearRect(0, 0, w, h);
+
+    const bx = w / 2 + Math.cos(Preview.angle) * PREVIEW_ORBIT;
+    const by = h / 2 + Math.sin(Preview.angle) * PREVIEW_ORBIT * 0.6;
+
+    ctx.strokeStyle = "rgba(255,255,255,.06)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2, PREVIEW_ORBIT, PREVIEW_ORBIT * 0.6, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (Preview.legs) {
+      Preview.legs.follow(bx, by, dt);
+      paintPreviewLegs(ctx, Preview.legs, Preview.rig.legs);
+    }
+    paintPreviewBody(ctx, bx, by);
+
+    Preview.raf = requestAnimationFrame(stepRigPreview);
+  }
+
+  /**
+   * Cùng hình học với `drawCreature.ts` trong game, khác đúng mỗi lệnh vẽ —
+   * bên kia là p5, bên này là Canvas2D. Chỗ khó (IK, nhịp bước) chỉ có một bản,
+   * nằm ở `legRig.ts`.
+   */
+  function paintPreviewLegs(ctx, rig, style) {
+    const rgb = `rgb(${style.color[0]},${style.color[1]},${style.color[2]})`;
+    ctx.strokeStyle = rgb;
+    ctx.fillStyle = rgb;
+    ctx.lineCap = "round";
+    for (const leg of rig.legs) {
+      const hip = rig.hipOf(leg);
+      const knee = rig.kneeOf(leg);
+      ctx.lineWidth = style.thickness;
+      ctx.beginPath();
+      ctx.moveTo(hip.x, hip.y);
+      ctx.lineTo(knee.x, knee.y);
+      ctx.stroke();
+      ctx.lineWidth = style.thickness * 0.72;
+      ctx.beginPath();
+      ctx.moveTo(knee.x, knee.y);
+      ctx.lineTo(leg.footX, leg.footY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(leg.footX, leg.footY, style.thickness * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function paintPreviewBody(ctx, x, y) {
+    const body = Preview.rig && Preview.rig.body;
+    if (body && body !== "avatar") {
+      const rgb = `rgb(${body.color[0]},${body.color[1]},${body.color[2]})`;
+      if (body.glow > 0) {
+        ctx.fillStyle = `rgba(${body.color[0]},${body.color[1]},${body.color[2]},${0.22 * body.glow})`;
+        ctx.beginPath();
+        ctx.arc(x, y, PREVIEW_RADIUS * (1 + body.glow * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = rgb;
+      ctx.beginPath();
+      ctx.arc(x, y, PREVIEW_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    // Chỗ của ảnh quái, vẽ bằng nét đứt: editor không nạp asset của pack, và
+    // một cái đĩa xám đặc sẽ đọc thành "thân màu xám" chứ không phải "chỗ này
+    // là ảnh".
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = "rgba(255,255,255,.45)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, PREVIEW_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * Mục nào đang gập, giữ theo tên.
+   *
+   * Ở ngoài `buildProps` vì bảng thuộc tính bị dựng lại mỗi lần đổi loại đối
+   * tượng đang chọn — trạng thái để bên trong thì cứ chọn sang thứ khác rồi
+   * quay lại là mọi mục bung ra hết.
+   */
+  /**
+   * Mục nào đang mở, sống trong `E.openSections` nên nó đi qua `savePrefs` và
+   * còn nguyên sau khi tải lại trang — cùng đường với lưới, hút điểm và bảng
+   * thuộc tính đóng/mở.
+   *
+   * **Mặc định là gập hết.** Panel này dài vì phần lớn nội dung của nó là thứ
+   * đặt một lần rồi quên; ai cần cái gì thì mở cái đó, và lần sau vào vẫn thấy
+   * đúng như mình để lại.
+   */
+  const isOpen = (name) => E.openSections.includes(name);
+
+  function setSectionOpen(name, open) {
+    const rest = E.openSections.filter((n) => n !== name);
+    E.openSections = open ? [...rest, name] : rest;
+    Store.savePrefs();
+  }
+
+  /**
+   * Biến mọi cặp `.sec-title[data-sec]` + `.sec-body` thành một mục gập được.
+   *
+   * Chạy một lần trên panel dựng sẵn, không đụng vào node nào — chỉ thêm mũi
+   * tên, gắn sự kiện và ẩn phần thân. `buildInspector` giữ tham chiếu tới hàng
+   * chục id bên trong các phần thân đó, nên chuyển hay nhân bản node là hỏng;
+   * ở nguyên chỗ cũ thì mọi tham chiếu vẫn đúng.
+   *
+   * Cặp title/body là markup tường minh chứ không phải đoán theo "tới tiêu đề
+   * kế tiếp": trong khối Đối tượng, hai nút Nhân bản/Xoá nằm *sau* mục Biến
+   * hình mà phải luôn hiện, và không luật đoán nào nói được điều đó.
+   */
+  function wireSections(root) {
+    root.querySelectorAll("[data-sec]").forEach((title) => {
+      const name = title.dataset.sec;
+      const body = title.nextElementSibling;
+      if (!body || !body.classList.contains("sec-body")) return;
+
+      const collapsed = !isOpen(name);
+
+      title.style.cursor = "pointer";
+      title.style.display = "flex";
+      title.style.alignItems = "center";
+      title.style.gap = "6px";
+      // `.sec-title` mang sẵn `justify-content: space-between`, hợp lý khi tiêu
+      // đề chỉ có [chữ][đếm]. Thêm mũi tên vào là thành [mũi tên][chữ][đếm] —
+      // và space-between đẩy chữ ra *giữa*, lệch hẳn so với mọi field bên dưới.
+      // Căn trái, rồi đẩy riêng cái đuôi (số phe, chữ "moba2d") sang phải bằng
+      // margin tự động, nên vẫn thẳng mép như cũ.
+      title.style.justifyContent = "flex-start";
+      const tail = title.lastElementChild;
+      if (tail) tail.style.marginLeft = "auto";
+      title.insertAdjacentHTML("afterbegin", ico("chevron-down", "ico ico-sm"));
+      title.querySelector("svg").style.transform = collapsed ? "rotate(-90deg)" : "";
+      body.style.display = collapsed ? "none" : "";
+      title.addEventListener("click", () => toggleSection(name, title, body));
+    });
+  }
+
+  function toggleSection(name, head, body) {
+    const collapsed = isOpen(name);
+    setSectionOpen(name, !collapsed);
+    body.style.display = collapsed ? "none" : "";
+    head.querySelector("svg").style.transform = collapsed ? "rotate(-90deg)" : "";
+    if (collapsed) {
+      if (Preview.canvas && body.contains(Preview.canvas)) stopRigPreview();
+    } else {
+      resumeRigPreview(body);
+    }
+  }
+
+  /**
+   * Một mục gập được: cái đầu bấm được, phần thân chứa mọi field tới mục sau.
+   *
+   * Panel này từng đổ thẳng mọi field ra một cột — toạ độ, rồi năm ô ghi đè chỉ
+   * số, rồi bảy ô hình dáng cộng ô xem trước. Trên điện thoại nằm ngang thì
+   * phần trên cùng, thứ người ta dùng nhiều nhất, bị đẩy khuất.
+   */
+  function openSection(f) {
+    // Khoá bền, không phải dòng chữ hiển thị: đổi nhãn một mục thì không được
+    // làm mất trạng thái đã lưu của nó.
+    const name = f.sec;
+    const collapsed = !isOpen(name);
+
+    const head = el("button", {
+      class: "btn block",
+      style: "display:flex;align-items:center;gap:6px;justify-content:flex-start;" +
+             "margin:12px 0 2px;background:none;border:0;padding:2px 0;cursor:pointer;width:100%",
+    });
+    head.innerHTML =
+      ico("chevron-down", "ico ico-sm") +
+      `<span class="sec-title" style="margin:0">${esc(f.group)}</span>` +
+      `<span class="muted" data-section-count style="margin-left:auto;font-size:10.5px"></span>`;
+    head.querySelector("svg").style.transform = collapsed ? "rotate(-90deg)" : "";
+
+    const body = el("div", { style: collapsed ? "display:none" : "" });
+    head.addEventListener("click", () => toggleSection(name, head, body));
+
+    R.objProps.appendChild(head);
+    R.objProps.appendChild(body);
+    return { head, body };
+  }
+
   function buildProps(kind) {
+    stopRigPreview();
     R.objProps.innerHTML = "";
     const fields = PROP_FIELDS[kind];
     if (!fields) return;
+
+    // Mọi field trước mục đầu tiên nằm thẳng trong panel — toạ độ và phe thì
+    // luôn phải thấy. Từ mục đầu tiên trở đi, field rơi vào thân của mục đang
+    // mở gần nhất.
+    let target = R.objProps;
+    // Khoá của mục đang mở, gom lại trong lúc chạy chứ không liệt kê tay ở
+    // bảng field. Liệt kê tay chính là thứ đã làm rơi sạch `stats` của slot ở
+    // ba chỗ khác nhau và không chỗ nào báo gì.
+    let head = null;
+    let keys = [];
+    const flush = () => { if (head) head.setAttribute("data-section-keys", JSON.stringify(keys)); };
 
     for (const f of fields) {
       // Một dải ngăn cách, không phải một ô: mấy field bên dưới nó ghi đè chỉ
       // số của core, khác hẳn về ý nghĩa với toạ độ và phe ở trên.
       if (f.group) {
-        R.objProps.appendChild(el("div", {
-          class: "sec-title", style: "margin:12px 0 2px", text: f.group,
-        }));
-        R.objProps.appendChild(el("p", { class: "muted", style: "margin:0 0 2px" },
+        flush();
+        const section = openSection(f);
+        head = section.head;
+        keys = [];
+        target = section.body;
+        if (!f.groupKey) continue;
+        target.appendChild(el("p", { class: "muted", style: "margin:0 0 2px" },
           "Chỉ riêng cái này. Để trống = theo chỉ số của map, rồi tới của core."));
         // The link is what keeps the two halves from reading as two features.
         // Someone editing one turret is exactly the person who might mean
         // "every turret", and this is the only place they will think of it.
-        R.objProps.appendChild(el("button", {
+        target.appendChild(el("button", {
           class: "btn block", style: "margin:4px 0 2px",
           onclick: () => openRules(f.groupKey),
         }, `${ico("settings", "ico ico-sm")} Đổi cho tất cả ở tab Luật chơi…`));
         continue;
       }
+
+      if (f.kind === "rigPreview") {
+        target.appendChild(buildRigPreview(target.style.display === "none"));
+        continue;
+      }
+
+      if (f.key) keys.push(f.key);
 
       const row = el("div", { class: "row", style: "margin-top:7px" });
       row.appendChild(el("label", { text: f.label, title: f.hint || f.label }));
@@ -813,6 +1186,8 @@ export const UI = (() => {
         input.innerHTML = f.options
           .map((o) => `<option value="${esc(o)}">${esc(o || "— mặc định —")}</option>`)
           .join("");
+      } else if (f.kind === "color") {
+        input = el("input", { class: "inp", type: "color", style: "padding:2px;height:26px" });
       } else if (f.kind === "static") {
         input = el("input", { class: "inp", type: "text", value: f.value, disabled: "" });
       } else {
@@ -833,6 +1208,9 @@ export const UI = (() => {
         const send = () => {
           let v = input.value;
           if (f.kind === "number") v = v === "" ? "" : Number(v);
+          // Core reads colours as `[r, g, b]` everywhere (`attackColor` set the
+          // shape); `<input type="color">` only speaks hex.
+          if (f.kind === "color") v = hexToRgb(v);
           // Mảng rỗng ("[]") là một khai báo thật — điểm này không ra con lính
           // nào — nên nó phải phân biệt được với ô để trống, vốn nghĩa là
           // "theo đội hình chung". Xem `MinionSlot.stats.composition`.
@@ -852,8 +1230,9 @@ export const UI = (() => {
       field.appendChild(input);
       if (f.unit) field.appendChild(el("span", { class: "unit", text: f.unit }));
       row.appendChild(field);
-      R.objProps.appendChild(row);
+      target.appendChild(row);
     }
+    flush();
 
     if (kind === "lane") {
       const row = el("div", { class: "row", style: "margin-top:7px" });
@@ -894,6 +1273,10 @@ export const UI = (() => {
       if (key.includes(".")) {
         if (document.activeElement === input) return;
         const v = readDeep(src, key);
+        if (pkind === "color") {
+          input.value = Array.isArray(v) ? rgbToHex(v) : "#808080";
+          return;
+        }
         // `String([])` là chuỗi rỗng, tức là một đội hình rỗng đã khai báo sẽ
         // hiện y hệt ô chưa khai gì — hai trạng thái khác hẳn nhau. `[]` là
         // cách nó tự nói ra, và `send` ở trên đọc lại đúng chuỗi đó.
@@ -914,6 +1297,17 @@ export const UI = (() => {
       }
       if (document.activeElement === input) return;
       input.value = src[key] == null ? "" : src[key];
+    });
+
+    // Một mục gập phải tự nói ra là bên trong nó có gì, không thì người ta
+    // phải mở từng mục mới biết mình đã đặt gì cho bãi này.
+    R.objProps.querySelectorAll("[data-section-keys]").forEach((head) => {
+      let set = 0;
+      for (const key of JSON.parse(head.dataset.sectionKeys)) {
+        const v = key.includes(".") ? readDeep(src, key) : src[key];
+        if (v != null && v !== "") set++;
+      }
+      head.querySelector("[data-section-count]").textContent = set ? `${set} đang đặt` : "";
     });
 
     if (kind === "lane") {

@@ -231,6 +231,15 @@ export const E = {
   wheelMode: "auto",        // auto | zoom | pan
   zoomSpeed: 1,             // hệ số nhân độ nhạy zoom của con lăn/touchpad
   inspectorOpen: true,
+  /**
+   * Tên các mục trong bảng thuộc tính đang **mở**.
+   *
+   * Lưu danh sách mở chứ không phải danh sách gập, vì mặc định là gập hết:
+   * chưa có gì lưu = mảng rỗng = đóng tất, và một mục mới thêm sau này cũng
+   * đóng sẵn mà không phải sửa gì. Danh sách gập thì ngược lại — mục mới sẽ
+   * bung ra chỉ vì chưa ai từng đóng nó.
+   */
+  openSections: [] as string[],
 };
 
 /* ============================== camera ================================= */
