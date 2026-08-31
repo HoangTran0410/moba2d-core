@@ -3,7 +3,7 @@
  * ships, so that the editor's file is the source of truth for a map rather
  * than merely the place it was drawn.
  *
- * `public/map-editor/` is core's, and so is the shape it writes. This is the
+ * `src/mapEditor/` is core's, and so is the shape it writes. This is the
  * other end of that: the rules about which of an export's fields may reach a
  * player are facts about *core's format*, and they belong beside the format
  * rather than in whichever pack discovered them. `@moba2d/content-riot`

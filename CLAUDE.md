@@ -441,12 +441,16 @@ one.** None is visible from the file you are editing.
   is hand-authored.
 - `tools/shape-maker/` is a standalone p5 app for polygon point arrays (`a` add,
   `d` delete, `e` export, `i` import).
-- **The map editor is not in `tools/`** — it is `public/map-editor/`, plain HTML
-  and globals with no bundler, so nothing in `src/` can import it and no type
-  checker compares the two halves. **Two `localStorage` keys are the whole
-  contract**: `moba2d-local-maps-v1` out to the game,
-  `moba2d-pack-maps-v1` in. `tests/content/localMaps.test.ts` and
-  `editorCatalog.test.ts` hold them by running the real editor in a `vm`. **The
+- **The map editor is not in `tools/`** — it is `src/mapEditor/*.ts`, a second
+  Vite entry (`map-editor/index.html`) shipped as its own document. It is
+  typechecked with the rest of `src/` and **can import core** (`ui.ts` takes
+  `TUNING_SCHEMA` from `@/game/config/tuningSchema`) — import rather than copy
+  a constant into it. Only `css/`, the tracing images and two classic-script
+  libs stayed under `public/map-editor/`. Being a separate *document* is what
+  still limits it at runtime: **two `localStorage` keys are the whole
+  contract**, `moba2d-local-maps-v1` out to the game, `moba2d-pack-maps-v1` in.
+  `tests/content/localMaps.test.ts` and `editorCatalog.test.ts` hold them by
+  importing the real editor. **The
   editor owns the map screen**, and **Chơi thử opens a new tab** — its undo
   history is memory-only. `docs/MAP_EDITOR.md` is the guide.
 - **A pack's build tooling is core's, invoked by name — never copied.** Ten

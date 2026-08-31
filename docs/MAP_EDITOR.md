@@ -417,19 +417,29 @@ Ba quy tắc, và cả ba là chuyện đúng/sai chứ không phải tuỳ ch�
 
 ## Cấu trúc mã
 
-Không dùng framework, không build step — chỉ là các file `.js` thường nạp
-theo thứ tự:
+Không dùng framework. Trước đây là các file `.js` thường nạp theo thứ tự;
+giờ là TypeScript trong `src/mapEditor/`, build bằng Vite qua entry thứ hai
+`map-editor/index.html`, và được typecheck chung với phần còn lại của `src/`
+— tức là **import thẳng được module của core** (`ui.ts` đang lấy
+`TUNING_SCHEMA` từ `@/game/config/tuningSchema`), thay vì chép hằng số sang.
 
 | file | việc |
 |---|---|
-| `js/geom.js` | toán hình học: point-in-polygon, AABB, xoay/co giãn, cắt lồi |
-| `js/state.js` | bảng loại đối tượng, trạng thái, camera, vùng chọn, hit-test, undo/redo |
-| `js/storage.js` | localStorage nhiều map, đọc/ghi file, export/import, kiểm tra |
-| `js/render.js` | vẽ bằng Canvas2D, vẽ theo yêu cầu |
-| `js/ui.js` | thanh công cụ, bảng thuộc tính, hộp thoại, toast |
-| `js/commands.js` | sổ đăng ký lệnh (nút + phím tắt + menu dùng chung) |
-| `js/input.js` | pointer/bàn phím/cử chỉ chạm |
-| `js/main.js` | khởi động |
+| `src/mapEditor/geom.ts` | toán hình học: point-in-polygon, AABB, xoay/co giãn, cắt lồi |
+| `src/mapEditor/state.ts` | bảng loại đối tượng, trạng thái, camera, vùng chọn, hit-test, undo/redo |
+| `src/mapEditor/storage.ts` | localStorage nhiều map, đọc/ghi file, export/import, kiểm tra |
+| `src/mapEditor/render.ts` | vẽ bằng Canvas2D, vẽ theo yêu cầu |
+| `src/mapEditor/ui.ts` | thanh công cụ, bảng thuộc tính, hộp thoại, toast |
+| `src/mapEditor/commands.ts` | sổ đăng ký lệnh (nút + phím tắt + menu dùng chung) |
+| `src/mapEditor/input.ts` | pointer/bàn phím/cử chỉ chạm |
+| `src/mapEditor/mapRules.ts` | bộ luật kiểm tra map trước khi xuất |
+| `src/mapEditor/frame.ts` | gom lời gọi vẽ lại thành một frame |
+| `src/mapEditor/vendor.d.ts` | khai kiểu cho hai lib nạp bằng `<script>` |
+| `src/mapEditor/main.ts` | khởi động |
+
+Phần tĩnh vẫn nằm ở `public/map-editor/`: `css/style.css`, ảnh nền để can
+map trong `asset/`, và hai lib trong `lib/` — cố ý để ngoài module graph vì
+chúng phải chạy được offline, không cần build.
 
 Thư viện ngoài duy nhất còn lại là `lib/decomp.min.js` (5KB) để cắt polygon
 lõm thành các mảnh lồi cho game. Bản trước dùng p5.js + SAT.js +

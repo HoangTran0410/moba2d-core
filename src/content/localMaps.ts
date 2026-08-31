@@ -3,7 +3,7 @@ import type { PackRegistry } from './PackRegistry';
 import { validatePackData } from './validate';
 
 /**
- * Maps the player drew themselves, in the editor at `public/map-editor/`.
+ * Maps the player drew themselves, in the editor at `src/mapEditor/`.
  *
  * ## Why a pack, and why this one is different
  *

@@ -7,9 +7,10 @@ import { loadPregameConfig, savePregameConfig } from '@/game/config/PregameConfi
  *
  * ## Why a URL param and not a call
  *
- * The editor at `public/map-editor/` is a separate document — plain HTML and
- * globals, no bundler, nothing importable from here — so the two halves can
- * only talk through things a browser shares between documents on one origin.
+ * The editor at `src/mapEditor/` ships as a separate *document* — its own Vite
+ * entry, its own page — so even though it is now ordinary TypeScript in this
+ * same repository, the two halves can still only talk through what a browser
+ * shares between documents on one origin.
  * The map itself goes through `localStorage` (`content/localMaps.ts`); this
  * param is the much smaller second question, "and start it now", which has no
  * business being persistent state. A navigation carries it exactly as far as

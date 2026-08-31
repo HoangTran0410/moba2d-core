@@ -3,7 +3,7 @@
  * `moba2d-generate-maps` — turns a pack's map-editor exports into the
  * minified geometry it ships and the polygon-free meta its picker reads.
  *
- * The rules it enforces are about *core's* format — `public/map-editor/`
+ * The rules it enforces are about *core's* format — `src/mapEditor/`
  * writes it, and `src/content/activeMap.ts` is what stopped covering for the
  * fields that must not survive the trip — so the generator lives here and
  * every pack invokes the one copy, exactly as `moba2d-generate-assets` and
