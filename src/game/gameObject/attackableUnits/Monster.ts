@@ -114,8 +114,6 @@ export interface MonsterAbility {
  * - `aggressive` — the default, and what every camp written before this was:
  *   it fights whatever damaged it (`takeDamage` → `aggroOn`), chases inside
  *   its leash and walks home. Absent means this, so no existing camp moves.
- * - `passive` — never fights. `aggroOn` is a no-op and a hit does not wake
- *   the pack, so it can be killed and does nothing about it.
  * - `skittish` — never fights *and* runs. Damage puts it in `FLEE`, through
  *   the same `aggroOn` seam a fight starts at. It used to bolt from anything
  *   that came inside `aggroRange` too; that made the one camp using it
@@ -123,12 +121,19 @@ export interface MonsterAbility {
  *   question `updateFlee` asks — is the thing I am running from still near
  *   enough to keep running from.
  *
- * Deliberately three named values rather than a pair of booleans
- * (`canFight`, `flees`): the fourth combination — "runs away but also
- * swings" — is not a camp anyone has asked for, and a type that cannot
- * express it is one fewer state to reason about in `update`.
+ * There was a third, `passive` — "never fights, does not run either" — and it
+ * is gone. **No camp in this engine initiates**: `updateIdle` has no proximity
+ * scan, so even an `aggressive` camp waits to be hit and a champion can walk
+ * straight through a pit untouched. That left `passive`'s only difference being
+ * that it did not *retaliate*, which is not a temperament, it is a punching
+ * bag — and it played as one: a camp that stands there taking hits reads as
+ * broken, which is how it was reported.
+ *
+ * Named values rather than a pair of booleans (`canFight`, `flees`): the
+ * combination "runs away but also swings" is not a camp anyone has asked for,
+ * and a type that cannot express it is one fewer state to reason about.
  */
-export type MonsterTemperament = 'aggressive' | 'passive' | 'skittish';
+export type MonsterTemperament = 'aggressive' | 'skittish';
 
 /**
  * Where a body may wander — the region `isOutsideCamp` leashes against and
@@ -988,8 +993,8 @@ export default class Monster extends AttackableUnit {
    * The one gate temperament needs.
    *
    * Every path into a fight goes through here — `takeDamage` for the body
-   * that was hit, `alertCamp` for its packmates — so `passive` and `skittish`
-   * are enforced once, at the seam, rather than at each caller. That is the
+   * that was hit, `alertCamp` for its packmates — so `skittish` is enforced
+   * once, at the seam, rather than at each caller. That is the
    * same reasoning `BotBrain.mayFight` rests on, and for the same reason:
    * a rule spread over three call sites is a rule with a hole in it.
    *
@@ -1011,7 +1016,6 @@ export default class Monster extends AttackableUnit {
   aggroOn(unit?: AttackableUnit) {
     if (!unit || unit === this) return;
     if (!(unit instanceof Champion)) return;
-    if (this.temperament === 'passive') return;
     if (this.temperament === 'skittish') {
       this.fleeFrom(unit);
       return;

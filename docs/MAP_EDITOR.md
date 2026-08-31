@@ -262,7 +262,7 @@ Ba tầng, tầng trong thắng: **core → cấu hình map → ghi đè trên t
 Chọn một cái trụ thì mục *Ghi đè chỉ số* của nó cho phép trụ đó khác mọi trụ
 còn lại — đây mới là thứ làm hai map dựng từ cùng bộ phận chơi khác nhau thật
 sự. Bãi quái cũng vậy, và ở đó còn có hai ô chữ: **Tính khí** (`aggressive` /
-`passive` / `skittish`) để một map cho con cua bình thường hiền lành quay ra
+`skittish`) để một map cho con cua bình thường hiền lành quay ra
 cắn người, và **Kiểu đánh** (`melee` / `ranged` / `breath` / `lash`) để đổi
 hẳn hình đòn đánh thường của bãi đó — vuốt cào, phun đạn, phun một nón lửa,
 hay quật đuôi. `lash` là cái đi cùng thân đốt: một cái đuôi thật, neo ở mõm

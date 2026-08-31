@@ -74,33 +74,23 @@ describe('temperament', () => {
     expect(camp.targetLock).toBe(champion);
   });
 
-  it('passive takes the hit and does nothing about it', () => {
-    const camp = makeCamp({ temperament: 'passive' });
-    const champion = championAt(60);
-    indexObjects(game, [camp, champion]);
-
-    camp.takeDamage(5, champion);
-
-    expect(camp.phase).toBe(Monster.PHASES.IDLE);
-    expect(camp.targetLock).toBeNull();
-    // The damage still landed — passive is "will not fight", not "immune".
-    expect(camp.stats.health.value).toBeLessThan(camp.stats.maxHealth.value);
-  });
-
-  it('passive does not join a packmate that was hit either', () => {
-    // `alertCamp` reaches its mates through `aggroOn`, which is the one gate
-    // temperament is enforced at. If the gate were at `takeDamage` instead,
-    // this body — never touched itself — would still wake up.
+  /**
+   * `alertCamp` reaches a body's packmates through `aggroOn`, which is the one
+   * gate temperament is enforced at — so a `skittish` mate runs rather than
+   * piling in. If the gate lived at `takeDamage` instead, this body, never
+   * touched itself, would answer with a swing.
+   */
+  it('a skittish packmate runs from a fight it was never in', () => {
     const shared = { ...CAMP };
-    const hit = makeCamp({ temperament: 'passive', camp: shared });
-    const mate = makeCamp({ temperament: 'passive', camp: shared });
+    const hit = makeCamp({ temperament: 'skittish', camp: shared });
+    const mate = makeCamp({ temperament: 'skittish', camp: shared });
     mate.position.set(CAMP.x + 40, CAMP.y + 40);
     const champion = championAt(60);
     indexObjects(game, [hit, mate, champion]);
 
     hit.takeDamage(5, champion);
 
-    expect(mate.phase).toBe(Monster.PHASES.IDLE);
+    expect(mate.phase).toBe(Monster.PHASES.FLEE);
     expect(mate.targetLock).toBeNull();
   });
 

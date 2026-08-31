@@ -640,7 +640,7 @@ export const UI = (() => {
       { key: "stats.reviveTime", label: "Hồi sinh", kind: "number", unit: "ms", min: 0 },
       {
         key: "stats.temperament", label: "Tính khí", kind: "choice",
-        options: ["", "aggressive", "passive", "skittish"],
+        options: ["", "aggressive", "skittish"],
         hint: "để trống = theo pack khai",
       },
       {

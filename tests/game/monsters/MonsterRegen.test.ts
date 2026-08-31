@@ -5,7 +5,13 @@ import Monster, {
   MONSTER_REGEN_DELAY_MS,
 } from '../../../src/game/gameObject/attackableUnits/Monster';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
-import { createGame, indexObjects, stubGameGlobals, TEST_AVATAR_KEY, type TestGame } from '../fixtures';
+import {
+  createGame,
+  indexObjects,
+  stubGameGlobals,
+  TEST_AVATAR_KEY,
+  type TestGame,
+} from '../fixtures';
 
 /**
  * How fast a camp forgets a fight — two bugs that only look like one.
@@ -57,19 +63,25 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('a camp that was just hurt', () => {
   /**
-   * `passive`, so the camp stays in IDLE — the phase that *does* regen.
+   * hurt by **nobody**, so the camp stays in IDLE — the phase that *does* regen.
    *
-   * An aggressive camp answers a hit by entering ATTACK, where the rate is
-   * already zero, so every case below would pass whether or not the hold
-   * existed: the test would be asserting on state the code under test never
-   * produced. Isolating the phase is what makes these about the hold.
+   * A camp that answers a hit enters ATTACK, where the rate is already zero, so
+   * every case below would pass whether or not the hold existed: the test would
+   * be asserting on state the code under test never produced. Isolating the
+   * phase is what makes these about the hold.
+   *
+   * Damage with no attacker rather than a `passive` temperament, which is gone:
+   * `aggroOn` wakes a camp for a **champion** and nothing else, so anything
+   * else landing damage — a turret, a burn with no owner — leaves it idle. That
+   * is a rule the seam already enforces rather than a flag invented to test
+   * around.
    */
-  const hurtCamp = () => makeCamp({ temperament: 'passive' });
+  const hurtCamp = () => makeCamp();
   it('heals nothing at all while the hold is running', () => {
     const camp = hurtCamp();
     const raider = new Champion({ game, teamId: 'other' });
     indexObjects(game, [camp, raider]);
-    camp.takeDamage(200, raider);
+    camp.takeDamage(200);
     const hurt = camp.stats.health.value;
 
     run(camp, framesFor(MONSTER_REGEN_DELAY_MS - 200));
@@ -81,7 +93,7 @@ describe('a camp that was just hurt', () => {
     const camp = hurtCamp();
     const raider = new Champion({ game, teamId: 'other' });
     indexObjects(game, [camp, raider]);
-    camp.takeDamage(200, raider);
+    camp.takeDamage(200);
     const hurt = camp.stats.health.value;
 
     run(camp, framesFor(MONSTER_REGEN_DELAY_MS) + 20);
@@ -96,9 +108,9 @@ describe('a camp that was just hurt', () => {
     const raider = new Champion({ game, teamId: 'other' });
     indexObjects(game, [camp, raider]);
 
-    camp.takeDamage(200, raider);
+    camp.takeDamage(200);
     run(camp, framesFor(MONSTER_REGEN_DELAY_MS - 400));
-    camp.takeDamage(50, raider);
+    camp.takeDamage(50);
     const hurt = camp.stats.health.value;
     run(camp, framesFor(MONSTER_REGEN_DELAY_MS - 400));
 
@@ -106,10 +118,10 @@ describe('a camp that was just hurt', () => {
   });
 
   it('lets a map turn the hold off and have the old behaviour back', () => {
-    const camp = makeCamp({ regenDelayMs: 0, temperament: 'passive' });
+    const camp = makeCamp({ regenDelayMs: 0 });
     const raider = new Champion({ game, teamId: 'other' });
     indexObjects(game, [camp, raider]);
-    camp.takeDamage(200, raider);
+    camp.takeDamage(200);
     const hurt = camp.stats.health.value;
 
     run(camp, 30);
@@ -194,7 +206,7 @@ describe('how fast a camp puts its bar back', () => {
   };
 
   it('takes the seconds the constant says, not a fixed number of frames', () => {
-    const camp = makeCamp({ temperament: 'passive' });
+    const camp = makeCamp();
     const raider = new Champion({ game, teamId: 'other' });
     indexObjects(game, [camp, raider]);
     camp.takeDamage(camp.stats.maxHealth.value - 1, raider);
@@ -212,7 +224,7 @@ describe('how fast a camp puts its bar back', () => {
   it('heals the same amount per second whatever the frame rate is', () => {
     // Nothing about a jungle camp should be faster on a better monitor.
     const heal = (frameMs: number) => {
-      const camp = makeCamp({ temperament: 'passive' });
+      const camp = makeCamp();
       const raider = new Champion({ game, teamId: 'other' });
       indexObjects(game, [camp, raider]);
       camp.takeDamage(camp.stats.maxHealth.value - 1, raider);

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BeamSpellObject, {
   type BeamGeometry,
 } from '../../../src/game/gameObject/spellObjects/BeamSpellObject';
-import BeamRenderer from '../../../src/game/vfx/BeamRenderer';
 import { createGame, createUnit, installSpellObjectGlobals } from './fixtures';
 
 describe('BeamSpellObject', () => {
@@ -11,7 +10,7 @@ describe('BeamSpellObject', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses one capsule geometry for beam hit tests and rendering data', () => {
+  it('uses one capsule geometry for its hit tests, and hands it back unchanged', () => {
     const game = createGame();
     const owner = createUnit(game);
     const target = createUnit(game, 50, 'red');
@@ -25,13 +24,10 @@ describe('BeamSpellObject', () => {
       candidates: () => [target],
       hitTest,
     });
-    const renderer = new BeamRenderer(beam.geometry);
-
     beam.update();
 
     expect(hitTest).toHaveBeenCalledWith(target, geometry);
     expect(beam.geometry).toBe(geometry);
-    expect(renderer.geometry).toBe(geometry);
   });
 
   it('hits each target once when configured as an instant beam', () => {

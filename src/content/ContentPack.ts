@@ -1183,7 +1183,6 @@ export const STRUCTURE_KINDS: readonly StructureKind[] = Object.freeze(['turret'
  */
 export const MONSTER_TEMPERAMENTS: readonly MonsterTemperament[] = Object.freeze([
   'aggressive',
-  'passive',
   'skittish',
 ]);
 
