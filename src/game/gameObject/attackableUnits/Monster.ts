@@ -9,10 +9,15 @@ import {
   MONSTER_REGEN_DELAY_MS,
 } from '@/game/config/tuningDefaults';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
-import { LegRig } from '@/game/render/creature/legRig';
+import { Creature } from '@/game/render/creature/creature';
 import { resolveRig } from '@/game/render/creature/creatureSpec';
 import type { CreatureRigSpec, ResolvedRig } from '@/game/render/creature/creatureSpec';
-import { drawLegs, drawOrbBody, hasProceduralBody } from '@/game/render/creature/drawCreature';
+import {
+  drawLegs,
+  drawOrbBody,
+  drawSpineBody,
+  hasOrbBody,
+} from '@/game/render/creature/drawCreature';
 import AttackableUnit from './AttackableUnit';
 import type { AttackableUnitRenderOptions } from './AttackableUnit';
 import type { AttackableUnitOptions, UnitDeathData } from './AttackableUnit';
@@ -416,8 +421,8 @@ export default class Monster extends AttackableUnit {
   attackStyle: MonsterAttackStyle;
   /** What this camp's pack asked its body to look like. See `render/creature/`. */
   readonly rig?: ResolvedRig;
-  /** The live legs, when the rig declared any. */
-  private legRig?: LegRig;
+  /** The live body and legs, when the rig declared any. */
+  private creature?: Creature;
   /** `[r, g, b]` for that art. */
   attackColor: number[];
   damage: number;
@@ -511,7 +516,7 @@ export default class Monster extends AttackableUnit {
     // Resolved against the declared size rather than `animatedValues`, which is
     // an animation and would resize the legs as the body spawns in.
     this.rig = resolveRig(preset.rig, preset.size / 2);
-    if (this.rig?.legs) this.legRig = new LegRig(this.rig.legs.config);
+    if (this.rig) this.creature = new Creature(this.rig);
     this.temperament = preset.temperament ?? 'aggressive';
     this.roam = preset.roam ?? { kind: 'camp' };
     this.ephemeral = preset.ephemeral ?? false;
@@ -1110,11 +1115,20 @@ export default class Monster extends AttackableUnit {
    * six legs across the gap at once.
    */
   private drawRig() {
-    const rig = this.legRig;
+    const creature = this.creature;
+    if (!creature) return;
+    // Advanced whether or not there are legs to paint: a segmented body with no
+    // legs still has a spine to resolve, and `drawBody` below reads it.
+    creature.follow(this.position.x, this.position.y, deltaTime);
+    const alpha = this.animatedValues.alpha;
     const style = this.rig?.legs;
-    if (!rig || !style) return;
-    rig.follow(this.position.x, this.position.y, deltaTime);
-    drawLegs(rig, style, this.animatedValues.alpha);
+    // Legs first, then the body over them: a leg should come out from *under*
+    // the body, not be pasted on top of it.
+    if (creature.legRig && style) drawLegs(creature.legRig, style, alpha);
+    const body = this.rig?.body;
+    if (creature.spine && typeof body === 'object' && body.kind === 'chain') {
+      drawSpineBody(creature.spine, body, alpha);
+    }
   }
 
   /**
@@ -1122,8 +1136,12 @@ export default class Monster extends AttackableUnit {
    * ring and the death shade around it stay the base's — see
    * `AttackableUnit.drawBody`.
    */
+  /**
+   * Only an `orb` stands in for the sprite. A segmented body is painted in
+   * `drawRig` *under* the avatar, so the camp keeps its own portrait as a head.
+   */
   protected drawBody(x: number, y: number, size: number, alpha: number) {
-    if (!hasProceduralBody(this.rig)) return super.drawBody(x, y, size, alpha);
+    if (!hasOrbBody(this.rig)) return super.drawBody(x, y, size, alpha);
     drawOrbBody(x, y, size / 2, this.rig.body, alpha);
   }
 
@@ -1132,9 +1150,9 @@ export default class Monster extends AttackableUnit {
    * a whole leg outside it is culled away at the edge of the screen.
    */
   getDisplayBoundingBox() {
-    if (!this.legRig) return super.getDisplayBoundingBox();
+    if (!this.creature) return super.getDisplayBoundingBox();
     return this.squareDisplayBoundingBox(
-      Math.max(this.animatedValues.size, this.legRig.paintRadius * 2)
+      Math.max(this.animatedValues.size, this.creature.paintRadius * 2)
     );
   }
 

@@ -550,6 +550,40 @@ describe('validatePack', () => {
     if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/rig\.body\.color/);
   });
 
+  it('accepts a segmented body and the joints its legs hang off', () => {
+    const result = validatePack(
+      behaviouralWolves({
+        rig: {
+          body: { kind: 'chain', widths: [0.9, 1, 0.8, 0.6, 0.4], spacing: 0.9, bend: 0.45 },
+          legs: { count: 4, on: [1, 3] },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a body kind core cannot draw', () => {
+    const result = validatePack(behaviouralWolves({ rig: { body: { kind: 'blob' } } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/rig\.body/);
+  });
+
+  /**
+   * The widths array is the shape of the creature, so a pack that means to
+   * declare one and gets the type wrong should hear about it. The *length* is
+   * clamped, like every other number here — a spine trimmed to one vertebra
+   * falls back to a plain body rather than dropping the pack.
+   */
+  it('rejects widths that are not a list of numbers, and clamps a short one', () => {
+    const bad = validatePack(behaviouralWolves({ rig: { body: { kind: 'chain', widths: 5 } } }));
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join(' ')).toMatch(/rig\.body\.widths/);
+
+    expect(
+      validatePack(behaviouralWolves({ rig: { body: { kind: 'chain', widths: [1] } } })).ok
+    ).toBe(true);
+  });
+
   it('rejects an attack colour that is not three numbers', () => {
     // A two-entry array reaches `fill(r, g, b, a)` as `fill(255, 138,
     // undefined, alpha)`, which p5 reads as a greyscale call — the camp's art

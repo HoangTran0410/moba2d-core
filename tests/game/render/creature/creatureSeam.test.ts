@@ -14,7 +14,12 @@ import { describe, expect, it } from 'vitest';
  * `import` line, and the two places it breaks are the two places no vitest run
  * ever executes.
  */
-const PURE = ['src/game/render/creature/legRig.ts', 'src/game/render/creature/legIk.ts'];
+const PURE = [
+  'src/game/render/creature/legRig.ts',
+  'src/game/render/creature/legIk.ts',
+  'src/game/render/creature/spine.ts',
+  'src/game/render/creature/creature.ts',
+];
 
 /**
  * p5 globals that would type-check fine and throw in the editor.

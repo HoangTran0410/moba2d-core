@@ -1,4 +1,5 @@
 import type { LegRigConfig } from './legRig';
+import type { SpineConfig } from './spine';
 
 /**
  * What a pack writes to give a creature legs, and what core turns it into.
@@ -17,7 +18,30 @@ export type CreatureBodySpec =
   /** Today's circular sprite, drawn over the legs. */
   | 'avatar'
   /** No sprite at all: a body drawn from code, for a creature that has no art. */
-  | { kind: 'orb'; color?: [number, number, number]; glow?: number };
+  | { kind: 'orb'; color?: [number, number, number]; glow?: number }
+  /**
+   * A chain of vertebrae with an outline traced around it — a worm, a snake, a
+   * centipede, a lizard. See `spine.ts` for how it moves.
+   */
+  | {
+      kind: 'chain';
+      /**
+       * Half-width at each vertebra, head first, **as a multiple of the body's
+       * radius**. Its length is the vertebra count.
+       *
+       * This one array is what tells the shapes apart: `[1, 1, 1, 1]` is a
+       * worm, `[0.6, 1, 0.9, 0.6, 0.3]` is a fish, and a long gentle taper is a
+       * snake. It is a list rather than a count-and-taper because a taper can
+       * only ever make a cone.
+       */
+      widths: number[];
+      /** Gap between vertebrae, as a multiple of body radius. Default 0.9. */
+      spacing?: number;
+      /** How far one vertebra may bend from the one ahead, radians. Default 0.45. */
+      bend?: number;
+      color?: [number, number, number];
+      glow?: number;
+    };
 
 export interface CreatureLegsSpec {
   /** Even, 2..12. Legs are mounted in mirrored pairs. */
@@ -41,6 +65,14 @@ export interface CreatureLegsSpec {
   color?: [number, number, number];
   /** Radians the pairs fan across, front to back. Default 1.6. */
   spread?: number;
+  /**
+   * On a segmented body, which vertebra each pair hangs off — one index per
+   * pair, head first. Absent means core spreads them down the spine.
+   *
+   * Ignored by a body that is one circle, which has only the one place to
+   * hang anything.
+   */
+  on?: number[];
 }
 
 export interface CreatureRigSpec {
@@ -51,11 +83,16 @@ export interface CreatureRigSpec {
 }
 
 export interface ResolvedRig {
-  body: 'avatar' | { kind: 'orb'; color: [number, number, number]; glow: number };
+  body:
+    | 'avatar'
+    | { kind: 'orb'; color: [number, number, number]; glow: number }
+    | { kind: 'chain'; config: SpineConfig; color: [number, number, number]; glow: number };
   legs?: {
     config: LegRigConfig;
     thickness: number;
     color: [number, number, number];
+    /** One vertebra index per pair. Empty when the body is one circle. */
+    on: number[];
   };
 }
 
@@ -67,6 +104,21 @@ export const RIG_DEFAULTS = {
   stepMs: 140,
   /** In trigger-widths — see `LegRigConfig.lead` for why it is not a duration. */
   lead: 1,
+  /** Gap between vertebrae, in body radii. */
+  spacing: 0.9,
+  /**
+   * Radians a vertebra may bend from the one ahead.
+   *
+   * Loose enough to look boneless, tight enough that a hard turn cannot drag
+   * the tail through the head — the failure `spine.test.ts` measures as two
+   * joints landing on the same point.
+   *
+   * **`spineBend`, not `bend`.** `bend` in this table is the *leg's* knee
+   * direction and its default is the string `'up'`; a spine that took it got
+   * `'up'` radians, every vertebra resolved to `NaN`, and the creature vanished
+   * without an error. Two different meanings cannot share one key here.
+   */
+  spineBend: 0.45,
   bend: 'up',
   glow: 0,
   /**
@@ -124,6 +176,12 @@ const evenCount = (count: number): number => {
 /** Beyond this many body radii a leg is not a leg, it is a tentacle on a stick. */
 const MAX_REACH_RATIO = 8;
 
+/** A spine of one vertebra is a circle with extra steps and no flank to trace. */
+const MIN_VERTEBRAE = 2;
+
+/** Past a right angle per joint a body can tie itself in a knot. */
+const MAX_BEND = Math.PI / 2;
+
 /**
  * A step trigger past one whole `reach` puts the foot further from its hip than
  * the leg is long every single stride, so `clampToReach` would drag constantly.
@@ -144,23 +202,29 @@ export function resolveRig(
   if (!spec) return undefined;
 
   const body = spec.body ?? 'avatar';
-  const legs = spec.legs;
+  /**
+   * Legs exist only when a count was actually declared.
+   *
+   * Reported as a camp with a segmented body and no legs growing two anyway:
+   * a legs block that has lost its count — cleared in the inspector, or left
+   * behind by a colour picked once — used to fall through `Number(undefined) ||
+   * MIN_LEGS` and come out as a pair. "Nothing declared" means no legs, not the
+   * fewest a creature could have; and `count: 0` is somebody saying so out
+   * loud, which is not the same as asking for the minimum either.
+   */
+  const declared = Number(spec.legs?.count);
+  const legs = spec.legs && Number.isFinite(declared) && declared >= 1 ? spec.legs : undefined;
 
   // An empty declaration is a pack that opened the door and walked away.
   // Building an avatar-bodied, legless rig for it would cost a call a frame to
   // draw exactly what `AttackableUnit` already draws.
   if (!legs && body === 'avatar') return undefined;
 
-  const resolved: ResolvedRig = {
-    body:
-      body === 'avatar'
-        ? 'avatar'
-        : {
-            kind: 'orb',
-            color: body.color ?? RIG_DEFAULTS.bodyColor,
-            glow: body.glow ?? RIG_DEFAULTS.glow,
-          },
-  };
+  const resolved: ResolvedRig = { body: resolveBody(body, bodyRadius) };
+
+  const spine = typeof resolved.body === 'object' && resolved.body.kind === 'chain'
+    ? resolved.body.config
+    : null;
 
   if (legs) {
     // A non-positive reach falls back to the default rather than to some tiny
@@ -185,8 +249,57 @@ export function resolveRig(
       // A leg thicker than the body it hangs off is a blob, not a creature.
       thickness: clamp(legs.thickness, 0.5, bodyRadius, Math.max(1.5, bodyRadius * 0.12)),
       color: legs.color ?? RIG_DEFAULTS.color,
+      on: spine ? mountJoints(legs.on, evenCount(legs.count) / 2, spine.widths.length) : [],
     };
   }
 
   return resolved;
+}
+
+function resolveBody(body: CreatureBodySpec, bodyRadius: number): ResolvedRig['body'] {
+  if (body === 'avatar') return 'avatar';
+
+  const color = body.color ?? RIG_DEFAULTS.bodyColor;
+  const glow = body.glow ?? RIG_DEFAULTS.glow;
+  if (body.kind !== 'chain') return { kind: 'orb', color, glow };
+
+  const widths = (Array.isArray(body.widths) ? body.widths : [])
+    // A vertebra may taper to nothing — that is a tail coming to a point — but
+    // never past it, which turns the outline inside out.
+    .map(width => (Number.isFinite(width) ? Math.max(0, width) * bodyRadius : 0));
+
+  // Clamped to the body core already knows how to draw rather than refused: a
+  // spine somebody trimmed too far should look wrong, not delete their map.
+  if (widths.length < MIN_VERTEBRAE) return { kind: 'orb', color, glow };
+
+  return {
+    kind: 'chain',
+    config: {
+      widths,
+      spacing: clamp(body.spacing, 0.1, 4, RIG_DEFAULTS.spacing) * bodyRadius,
+      bend: clamp(body.bend, 0.02, MAX_BEND, RIG_DEFAULTS.spineBend),
+    },
+    color,
+    glow,
+  };
+}
+
+/**
+ * Which vertebra each pair of legs hangs off.
+ *
+ * Absent, they are spread down the spine and deliberately kept off both ends:
+ * a leg on the head reads as an antenna and one on the tail tip as a sting.
+ */
+function mountJoints(declared: number[] | undefined, pairs: number, joints: number): number[] {
+  const held = (index: number) => Math.min(joints - 1, Math.max(0, Math.round(index)));
+  const on: number[] = [];
+  for (let pair = 0; pair < pairs; pair++) {
+    const own = declared?.[pair];
+    on.push(
+      own !== undefined && Number.isFinite(own)
+        ? held(own)
+        : held(((pair + 1) * (joints - 1)) / (pairs + 1))
+    );
+  }
+  return on;
 }

@@ -205,6 +205,84 @@ and `palette` are pinned to `shared` — the chunk that exists for exactly this,
 small pure modules read from both sides of a boundary. `drawCreature.ts` is
 deliberately not among them: it is the p5 half, reached only from `game`.
 
+## 5e. A body that is a chain, not a circle
+
+Follows argonaut's *A simple procedural animation technique*
+(github.com/argonautcode/animal-proc-anim), which is where the shape of this
+comes from: a head the creature drags around, and behind it a chain where each
+joint is held at a fixed distance from the one ahead **and may not bend past a
+limit** relative to it.
+
+```ts
+rig: {
+  body: { kind: 'chain', widths: [0.9, 1, 0.9, 0.75, 0.6, 0.45, 0.3] },
+  legs: { count: 4, on: [1, 4] },
+}
+```
+
+Three things carry the whole feature:
+
+- **`widths` is the creature.** One half-width per vertebra, in body radii —
+  `[1, 1, 1, 1]` is a worm, `[0.6, 1, 0.9, 0.6, 0.3]` is a fish, a long gentle
+  taper is a snake. A list rather than a `count` plus a `taper`, because a taper
+  can only ever make a cone.
+- **The angle constraint is not optional.** Without it a hard turn drags the
+  tail straight through the head; `spine.test.ts` measures the failure as two
+  non-adjacent joints landing on the *same point*, and that test was rewritten
+  once because the first version passed with the constraint removed.
+- **The body is an outline, not its circles.** `spine.outline()` returns a ring
+  — down one flank at each vertebra's own width, round the tail, up the other
+  flank, three points round the snout. p5 runs a Catmull-Rom through it with
+  `curveVertex`; the editor, which has no such call, joins the same points with
+  quadratics through their midpoints. Same shape, two APIs, one set of points.
+
+`LegRig` gained a **mount** per leg — a frame `{x, y, angle, radius}`. A single
+circle gives every leg the same one; a chain gives each pair the frame of the
+vertebra it hangs off, which is the entire difference between a spider and a
+centipede. `Creature` owns spine and rig together and resolves the spine first,
+because legs mounted on last frame's vertebrae read as loosely attached.
+
+**A chain is additive; only an `orb` replaces the sprite.** `orb` means "this
+creature has no art, draw it a body", so standing in for the portrait is its
+whole job. A chain is a body the camp's own portrait sits on the head of, drawn
+in `drawRig` under the avatar — legs first, then the body over them, so a leg
+comes out from *under* the shape rather than being pasted on top. Reported the
+other way round: picking a segmented body silently hid the monster behind a
+default-coloured blob.
+
+**Legs need a declared `count`, and nothing else counts as asking for them.** A
+legs block that lost its count — cleared in the inspector, or left behind by a
+colour picked once — used to fall through `Number(undefined) || MIN_LEGS` and
+come out as a pair, so a camp set to a chain body with no legs grew two anyway.
+`count: 0` is somebody saying "none" out loud and is honoured as such.
+
+**The rim is darker than the fill, not lighter.** A bright even outline on a map
+this dark reads as exactly what it is, a stroked polygon. Darker is the shadow a
+body casts along its own silhouette, which is what stops the shape looking like
+a debug draw.
+
+One trap worth stating: `RIG_DEFAULTS.bend` is the *leg's* knee direction and
+its value is the string `'up'`. A spine that reached for it got `'up'` radians,
+every vertebra resolved to `NaN`, and the creature vanished with no error. The
+spine's own default is `spineBend`.
+
+## 5f. The spine editor
+
+`widths` typed as a comma list is unusable, so the inspector draws the body
+straight, head to the right, with a draggable handle on each vertebra's top
+flank, plus **− Bớt đốt / + Thêm đốt**.
+
+It is built out of the real `Spine` and the same `paintOutline` the walking
+preview uses, so what is dragged is what ships. Two details that are not
+incidental:
+
+- **A drag commits on release, not per frame.** `Cmd.run("shape.prop")` pushes
+  an undo step; committing per pointermove would cost thirty Ctrl+Z to undo one
+  adjustment. A local draft carries the shape while the pointer is down, and the
+  walking preview reads that draft too, so both views move together.
+- **Width clamps at 0, never below.** Zero is a tail that comes to a point;
+  negative turns the outline inside out.
+
 ## 6. Testing
 
 Node env, no canvas — which is the whole reason for the split in §2.
@@ -218,8 +296,14 @@ Node env, no canvas — which is the whole reason for the split in §2.
   its target.
 - `creatureSpec`: `rig` absent → no rig built; defaults resolve as documented;
   and the default leg colour clears the map floor by 90 luma — see §5b.
-- `validate`: `bend: 'sideways'` and a two-entry colour fail **naming the
-  field**; `count: 7`, `count: 40` and `reach: -1` **install** — see §5c.
+- `spine`: every link holds its spacing however the head is thrashed; no joint
+  bends past the limit; a thrashed head never folds two non-adjacent joints onto
+  each other; a teleport straightens rather than whips; the outline is symmetric
+  about a straight spine at each vertebra's own width.
+- `creature`: each pair hangs off the vertebra it was given and not off the
+  head; the front pair leads the back pair.
+- `validate`: `bend: 'sideways'`, an unknown `body.kind` and widths that are not
+  a list of numbers fail **naming the field**; `count: 7`, `count: 40` and `reach: -1` **install** — see §5c.
 - **Seam scan**: `legRig.ts` and `legIk.ts` import neither p5 nor anything
   under `src/game/gameObject/`. This is what keeps them usable from the
   editor, and it is the kind of rule a source scan closes permanently.

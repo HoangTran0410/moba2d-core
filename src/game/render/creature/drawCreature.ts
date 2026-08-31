@@ -1,4 +1,5 @@
 import type { LegRig } from './legRig';
+import type { Spine } from './spine';
 import type { ResolvedRig } from './creatureSpec';
 
 /**
@@ -85,8 +86,66 @@ export function drawOrbBody(
   pop();
 }
 
-/** Whether this rig replaces the sprite rather than sitting under it. */
-export const hasProceduralBody = (
+/**
+ * A segmented body: one closed outline traced around the whole spine.
+ *
+ * Drawn as an outline rather than as its circles, and that is the difference
+ * between a creature and a string of beads. Each vertebra contributes one point
+ * per flank at its own half-width, the snout rounds the front off and the tail
+ * comes to a point, and `curveVertex` runs a Catmull-Rom through the lot — so
+ * the body reads as one skin over a skeleton, which is what it is.
+ *
+ * The ring is closed by repeating control points at both ends: a Catmull-Rom
+ * segment needs a point either side of it, so without them the shape opens up
+ * with a straight chord across the neck.
+ */
+export function drawSpineBody(
+  spine: Spine,
+  body: { color: number[]; glow: number },
+  alpha = 255
+) {
+  const ring = spine.outline();
+  if (ring.length < 3) return;
+  const [red, green, blue] = body.color;
+
+  push();
+  if (body.glow > 0) {
+    noStroke();
+    fill(red, green, blue, alpha * 0.16 * body.glow);
+    for (let i = 0; i < spine.joints.length; i++) {
+      const joint = spine.joints[i];
+      circle(joint.x, joint.y, spine.widthAt(i) * 2 * (1 + body.glow * 0.7));
+    }
+  }
+
+  fill(red, green, blue, alpha);
+  // A rim **darker** than the fill, and thin.
+  //
+  // It was lighter, and on a map this dark a bright even outline reads as
+  // exactly what it is — a polygon somebody stroked — rather than as an edge.
+  // Darker is the shadow a body casts along its own silhouette, which is what
+  // the eye expects and what stops the shape looking like a debug draw.
+  stroke(red * 0.45, green * 0.45, blue * 0.45, alpha);
+  strokeWeight(1);
+  beginShape();
+  curveVertex(ring[ring.length - 1].x, ring[ring.length - 1].y);
+  for (const point of ring) curveVertex(point.x, point.y);
+  curveVertex(ring[0].x, ring[0].y);
+  curveVertex(ring[1].x, ring[1].y);
+  endShape(CLOSE);
+  pop();
+}
+
+/**
+ * Whether this rig replaces the sprite, rather than being drawn under it.
+ *
+ * Only `orb` does. `orb` means "this creature has no art, draw it a body", so
+ * standing in for the sprite is its whole job — while a **chain is additive**,
+ * like the legs: it is a body the camp's own portrait sits on the head of.
+ * Reported the other way round, as picking a segmented body silently hiding the
+ * monster's avatar behind a default-coloured blob.
+ */
+export const hasOrbBody = (
   rig: ResolvedRig | undefined
 ): rig is ResolvedRig & { body: { kind: 'orb'; color: number[]; glow: number } } =>
-  rig !== undefined && rig.body !== 'avatar';
+  rig !== undefined && typeof rig.body === 'object' && rig.body.kind === 'orb';

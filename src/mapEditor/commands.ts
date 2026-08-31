@@ -227,6 +227,30 @@ export const Cmd = (() => {
     }
   }
 
+  /**
+   * Xoá sạch một nhóm ghi đè, trong **một** bước undo.
+   *
+   * Từng ô một thì vừa mệt vừa không sạch: những khoá mà inspector không hiện —
+   * `rig.legs.spread`, `rig.body.glow`, thứ một pack hay một map viết tay để
+   * lại — vẫn nằm nguyên đó. Nên nhận cả `stats.rig` để xoá nguyên nhánh.
+   *
+   * Một `commit()` cho cả mẻ, chứ không phải một lần cho mỗi khoá: xoá bảy ô mà
+   * tốn bảy lần Ctrl+Z thì không ai gọi đó là undo.
+   */
+  function clearProps(keys) {
+    if (!hasSel() || !Array.isArray(keys) || !keys.length) return;
+    for (const t of E.selection) {
+      if (!t.props) continue;
+      for (const key of keys) {
+        if (key.includes(".")) setDeep(t.props, key, "");
+        else delete t.props[key];
+      }
+      t.props = withDefaults(t.type, t.props);
+      refreshTerrain(t);
+    }
+    commit();
+  }
+
   function setProp(key, value) {
     if (!hasSel()) return;
     for (const t of E.selection) {
@@ -764,6 +788,7 @@ export const Cmd = (() => {
   });
   def("shape.type", { label: "Đổi loại", icon: "check", run: setType });
   def("shape.prop", { label: "Đổi thuộc tính", icon: "settings", run: (a) => setProp(a[0], a[1]) });
+  def("shape.propClear", { label: "Xoá nhóm ghi đè", icon: "x", run: (a) => clearProps(a[0]) });
   def("map.tuning", { label: "Đổi cấu hình map", icon: "settings", run: (a) => setTuning(a[0], a[1]) });
 
   /**

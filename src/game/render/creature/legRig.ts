@@ -53,7 +53,26 @@ export interface LegRigConfig {
   bodyRadius: number;
 }
 
+/**
+ * Where one leg hangs off the body.
+ *
+ * A single-circle body gives every leg the same frame — one centre, one
+ * heading, one radius. A segmented body gives each pair the frame of the
+ * vertebra it is mounted on, which is the whole difference between a spider and
+ * a centipede, and the only thing the rig needs to know about either.
+ */
+export interface Mount {
+  x: number;
+  y: number;
+  /** Forward direction at this point on the body. */
+  angle: number;
+  /** Half-width of the body here — where the leg starts. */
+  radius: number;
+}
+
 export interface Leg {
+  /** Its own position in `legs`, so a mount can be found without a search. */
+  readonly index: number;
   /** Mounting angle in body space, before `facing` is added. */
   readonly hipAngle: number;
   /** Which alternating set this leg belongs to. */
@@ -159,6 +178,8 @@ export class LegRig {
   private vx = 0;
   private vy = 0;
   private started = false;
+  /** This frame's mounts, one per leg, or `null` for a single-circle body. */
+  private mounts: Mount[] | null = null;
   /**
    * Which group currently holds the floor.
    *
@@ -188,6 +209,7 @@ export class LegRig {
       const offset = along * config.spread;
       for (const side of [1, -1] as const) {
         this.legs.push({
+          index: this.legs.length,
           hipAngle: side * (Math.PI / 2 + offset),
           // Diagonals move together: the pair index and the side both flip it,
           // so no two neighbours on one flank share a group.
@@ -237,7 +259,11 @@ export class LegRig {
    * threshold, and a camp idling in its clearing would twitch every leg for the
    * whole match.
    */
-  follow(x: number, y: number, dtMs: number): void {
+  follow(x: number, y: number, dtMs: number, mounts?: Mount[]): void {
+    // Before the snap check, because `replant` places feet against the mounts
+    // too — a segmented body replanted against one shared frame puts every
+    // foot at the head.
+    this.mounts = mounts ?? null;
     const jumped = Math.hypot(x - this.x, y - this.y) > RENDER_SNAP_PX;
     if (!this.started || jumped || !(dtMs > 0) || dtMs > RIG_SNAP_MS) {
       this.replant(x, y);
@@ -341,12 +367,28 @@ export class LegRig {
     return Math.max(MIN_STEP_MS, Math.min(this.config.stepMs, distance / (speed * SWING_SPEED_RATIO)));
   }
 
+  /**
+   * This leg's frame: the vertebra it hangs off, or the one body circle when
+   * there is only one.
+   */
+  private frameOf(leg: Leg): Mount {
+    return (
+      this.mounts?.[leg.index] ?? {
+        x: this.x,
+        y: this.y,
+        angle: this.facing,
+        radius: this.config.bodyRadius,
+      }
+    );
+  }
+
   /** Where this leg's hip sits in the world. */
   hipOf(leg: Leg): Joint {
-    const angle = leg.hipAngle + this.facing;
+    const frame = this.frameOf(leg);
+    const angle = leg.hipAngle + frame.angle;
     return {
-      x: this.x + Math.cos(angle) * this.config.bodyRadius,
-      y: this.y + Math.sin(angle) * this.config.bodyRadius,
+      x: frame.x + Math.cos(angle) * frame.radius,
+      y: frame.y + Math.sin(angle) * frame.radius,
     };
   }
 
@@ -363,11 +405,10 @@ export class LegRig {
    * the trigger compares to, so every foot would chase its own threshold.
    */
   private restOf(leg: Leg): Joint {
-    const angle = leg.hipAngle + this.facing;
-    return {
-      x: this.x + Math.cos(angle) * this.span,
-      y: this.y + Math.sin(angle) * this.span,
-    };
+    const frame = this.frameOf(leg);
+    const angle = leg.hipAngle + frame.angle;
+    const out = frame.radius + this.config.reach;
+    return { x: frame.x + Math.cos(angle) * out, y: frame.y + Math.sin(angle) * out };
   }
 
   /** Where a foot that steps *now* should land: rest, plus the lead. */

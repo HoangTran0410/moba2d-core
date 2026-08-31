@@ -88,6 +88,124 @@ describe('resolveRig — legs', () => {
   });
 });
 
+describe('resolveRig — a segmented body', () => {
+  const chain = (over: Record<string, unknown> = {}) =>
+    resolveRig({ body: { kind: 'chain', widths: [1, 0.8, 0.6, 0.4], ...over } }, RADIUS);
+
+  it('turns every width into world units against the body', () => {
+    const body = chain()?.body as { kind: 'chain'; config: { widths: number[] } };
+
+    expect(body.kind).toBe('chain');
+    expect(body.config.widths).toEqual([20, 16, 12, 8]);
+  });
+
+  it('spaces the vertebrae against the body too, so one spec reads at any size', () => {
+    const small = resolveRig({ body: { kind: 'chain', widths: [1, 0.5] } }, 10);
+    const big = resolveRig({ body: { kind: 'chain', widths: [1, 0.5] } }, 40);
+
+    expect((small?.body as { config: { spacing: number } }).config.spacing).toBeCloseTo(9, 6);
+    expect((big?.body as { config: { spacing: number } }).config.spacing).toBeCloseTo(36, 6);
+  });
+
+  /**
+   * A spine of one vertebra is a circle with extra steps, and the outline code
+   * has no flank to trace. Clamped to the body it already knows how to draw
+   * rather than refused — see the note on clamping in `creatureSpec.ts`.
+   */
+  it('falls back to a plain body when there are not enough vertebrae', () => {
+    expect(resolveRig({ body: { kind: 'chain', widths: [1] } }, RADIUS)?.body).toMatchObject({
+      kind: 'orb',
+    });
+  });
+
+  it('lets a tail taper to a point but never inside out', () => {
+    const body = chain({ widths: [1, 0.5, 0, -3] })?.body as { config: { widths: number[] } };
+
+    expect(body.config.widths).toEqual([20, 10, 0, 0]);
+  });
+
+  it('holds the bend limit inside what a joint can do', () => {
+    expect((chain({ bend: 99 })?.body as { config: { bend: number } }).config.bend).toBeLessThanOrEqual(
+      Math.PI / 2
+    );
+    expect((chain({ bend: -1 })?.body as { config: { bend: number } }).config.bend).toBeGreaterThan(0);
+  });
+});
+
+describe('resolveRig — where legs mount on a spine', () => {
+  const withLegs = (legs: Record<string, unknown>) =>
+    resolveRig(
+      { body: { kind: 'chain', widths: [1, 0.9, 0.8, 0.7, 0.6, 0.4] }, legs: { count: 4, ...legs } },
+      RADIUS
+    );
+
+  it('spreads the pairs down the spine when the pack names no joints', () => {
+    const on = withLegs({})?.legs?.on ?? [];
+
+    expect(on).toHaveLength(2);
+    expect(on[0]).toBeLessThan(on[1]);
+    // Never the head or the tail tip: a leg on either reads as an antenna.
+    for (const joint of on) {
+      expect(joint).toBeGreaterThan(0);
+      expect(joint).toBeLessThan(5);
+    }
+  });
+
+  it('takes the joints the pack named', () => {
+    expect(withLegs({ on: [1, 4] })?.legs?.on).toEqual([1, 4]);
+  });
+
+  it('holds a named joint inside the spine it actually has', () => {
+    expect(withLegs({ on: [-2, 99] })?.legs?.on).toEqual([0, 5]);
+  });
+
+  it('gives a pair with no joint named one of its own', () => {
+    // Three pairs, two joints named: the third still has to hang somewhere.
+    const on = resolveRig(
+      {
+        body: { kind: 'chain', widths: [1, 0.9, 0.8, 0.7, 0.6, 0.4] },
+        legs: { count: 6, on: [1, 3] },
+      },
+      RADIUS
+    )?.legs?.on;
+
+    expect(on).toHaveLength(3);
+  });
+});
+
+describe('resolveRig — legs nobody asked for', () => {
+  /**
+   * Reported: a camp set to a segmented body and *no* legs grew two anyway.
+   *
+   * `count` is the one field a legs block cannot do without, and a block that
+   * has lost it — cleared in the inspector, or left behind by a colour picked
+   * once and undone — used to fall through `Number(undefined) || MIN_LEGS` and
+   * come out as a pair. "Nothing declared" has to mean no legs, not the fewest
+   * legs a creature could have.
+   */
+  it('builds no legs when the count is gone', () => {
+    const leftovers = { legs: { color: [1, 2, 3] } } as unknown as Parameters<typeof resolveRig>[0];
+
+    expect(resolveRig(leftovers, RADIUS)).toBeUndefined();
+  });
+
+  it('builds no legs for a chain body whose legs block says nothing', () => {
+    const rig = resolveRig(
+      { body: { kind: 'chain', widths: [1, 0.8, 0.6] }, legs: {} } as unknown as Parameters<
+        typeof resolveRig
+      >[0],
+      RADIUS
+    );
+
+    expect(rig?.body).toMatchObject({ kind: 'chain' });
+    expect(rig?.legs).toBeUndefined();
+  });
+
+  it('still builds legs when the count is there', () => {
+    expect(resolveRig({ legs: { count: 4 } }, RADIUS)?.legs?.config.count).toBe(4);
+  });
+});
+
 describe('resolveRig — body', () => {
   it('keeps a procedural body with no legs', () => {
     const rig = resolveRig({ body: { kind: 'orb', color: [140, 90, 255] } }, RADIUS);

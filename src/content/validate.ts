@@ -613,13 +613,14 @@ function checkCreatureRig(path: string, value: unknown, errors: string[]): void 
   const { body, legs } = value;
 
   if (body !== undefined && body !== 'avatar') {
-    if (!isObject(body) || body.kind !== 'orb') {
-      errors.push(`${path}.rig.body: must be 'avatar' or { kind: 'orb', … }`);
+    if (!isObject(body) || (body.kind !== 'orb' && body.kind !== 'chain')) {
+      errors.push(`${path}.rig.body: must be 'avatar', { kind: 'orb' } or { kind: 'chain' }`);
     } else {
       checkColor(`${path}.rig.body`, 'color', body.color, errors);
       if (body.glow !== undefined && !isFiniteNumber(body.glow)) {
         errors.push(`${path}.rig.body.glow: must be a finite number`);
       }
+      if (body.kind === 'chain') checkSpine(path, body, errors);
     }
   }
 
@@ -652,6 +653,33 @@ function checkCreatureRig(path: string, value: unknown, errors: string[]): void 
   }
 
   checkColor(`${path}.rig.legs`, 'color', legs.color, errors);
+
+  if (legs.on !== undefined && !isNumberArray(legs.on)) {
+    errors.push(`${path}.rig.legs.on: must be a list of vertebra numbers`);
+  }
+}
+
+const isNumberArray = (value: unknown): boolean =>
+  Array.isArray(value) && value.every(isFiniteNumber);
+
+/**
+ * A segmented body. Shape is checked, range is not — `resolveRig` clamps a
+ * spine that is too short, a width that went negative and a bend past a right
+ * angle, for the same reason it clamps a leg count: a number nobody can draw
+ * must not cost somebody their map.
+ */
+function checkSpine(path: string, body: Record<string, unknown>, errors: string[]): void {
+  if (!isNumberArray(body.widths)) {
+    errors.push(
+      `${path}.rig.body.widths: must be a list of numbers, one per vertebra — ` +
+        `it is the list that gives the body its shape`
+    );
+  }
+  for (const key of ['spacing', 'bend'] as const) {
+    if (body[key] !== undefined && !isFiniteNumber(body[key])) {
+      errors.push(`${path}.rig.body.${key}: must be a number`);
+    }
+  }
 }
 
 /** `[r, g, b]`, the shape `attackColor` has always taken. Always optional. */

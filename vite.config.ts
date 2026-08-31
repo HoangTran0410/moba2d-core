@@ -322,7 +322,9 @@ export default defineConfig({
            * with Canvas2D of its own.
            */
           if (/src\/game\/render\/(Interpolation|palette)\.ts$/.test(id)) return 'shared';
-          if (/src\/game\/render\/creature\/(legIk|legRig|creatureSpec)\.ts$/.test(id)) {
+          if (
+            /src\/game\/render\/creature\/(legIk|legRig|spine|creatureSpec|creature)\.ts$/.test(id)
+          ) {
             return 'shared';
           }
           /**

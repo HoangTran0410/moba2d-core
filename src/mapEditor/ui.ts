@@ -13,8 +13,9 @@ import { TUNING_SCHEMA } from '@/game/config/tuningSchema';
 // `creatureSpec.ts` are pure — no p5, no game state, no unit — which is what
 // `creatureSeam.test.ts` exists to keep true, and what lets the same walk the
 // player sees in a match run inside this inspector.
-import { LegRig } from '@/game/render/creature/legRig';
-import { resolveRig } from '@/game/render/creature/creatureSpec';
+import { Creature } from '@/game/render/creature/creature';
+import { Spine } from '@/game/render/creature/spine';
+import { RIG_DEFAULTS, resolveRig } from '@/game/render/creature/creatureSpec';
 import { MAP_BACKGROUND_GREY } from '@/game/render/palette';
 import { requestRender } from './frame';
 import { Cam, E, KIND, SLOT_KINDS, Sel, TERRAIN_KINDS, circleR, commit, countByType, factionColor, hasVerts, isLine, laneIds, newId } from './state';
@@ -650,7 +651,11 @@ export const UI = (() => {
       // Không có `groupKey`: hình dáng con vật không phải thứ chỉnh cho cả
       // map được, nên nhóm này không có nút "đổi cho tất cả". Nó ghi đè khai
       // báo của pack cho đúng bãi này thôi.
-      { sec: "monster-rig", group: "Hình dáng con vật" },
+      // Xoá cả nhánh `stats.rig`, không phải từng ô: `rig.legs.spread`,
+      // `rig.body.glow` và mọi thứ một pack hay một map viết tay để lại đều
+      // không có ô nào trong inspector, nên xoá theo ô sẽ để chúng nằm lại và
+      // con vật vẫn không về mặc định.
+      { sec: "monster-rig", group: "Hình dáng con vật", clear: ["stats.rig"] },
       {
         key: "stats.rig.legs.count", label: "Số chân", kind: "number", min: 0,
         ph: "không mọc chân",
@@ -666,13 +671,23 @@ export const UI = (() => {
         hint: "up = gối vểnh ra ngoài như nhện, down = gối gập vào như thú",
       },
       { key: "stats.rig.legs.thickness", label: "Dày chân", kind: "number", unit: "px", min: 0, ph: "theo cỡ thân" },
-      { key: "stats.rig.legs.color", label: "Màu chân", kind: "color" },
+      { key: "stats.rig.legs.color", label: "Màu chân", kind: "color", def: RIG_DEFAULTS.color },
       {
         key: "stats.rig.body.kind", label: "Thân", kind: "choice",
-        options: ["", "orb"],
-        hint: "để trống = dùng ảnh của quái; orb = vẽ bằng code, không cần ảnh",
+        options: ["", "orb", "chain"],
+        hint: "để trống = ảnh của quái; orb = một khối tròn; chain = thân nhiều đốt (sâu, rắn, rết)",
       },
-      { key: "stats.rig.body.color", label: "Màu thân", kind: "color" },
+      { key: "stats.rig.body.color", label: "Màu thân", kind: "color", def: RIG_DEFAULTS.bodyColor },
+      { kind: "spineEditor" },
+      { key: "stats.rig.body.spacing", label: "Cách đốt", kind: "number", unit: "×bk", min: 0, ph: "0.9" },
+      {
+        key: "stats.rig.body.bend", label: "Độ mềm", kind: "number", unit: "rad", min: 0, ph: "0.45",
+        hint: "mỗi đốt bẻ được tối đa bấy nhiêu so với đốt trước — nhỏ thì cứng như rết, lớn thì mềm như rắn",
+      },
+      {
+        key: "stats.rig.legs.on", label: "Chân ở đốt", kind: "numlist", ph: "tự rải đều",
+        hint: "số thứ tự đốt cho từng cặp chân, cách nhau bằng dấu phẩy — đốt đầu là 0",
+      },
       { kind: "rigPreview" },
     ],
     // Lane KHÔNG có ô "từ phe / tới phe": engine không đọc hai field đó
@@ -836,6 +851,191 @@ export const UI = (() => {
 
   let propsKey = "";
 
+  /* ---------------------- sửa cột sống ------------------------- */
+
+  /** Pixel cho mỗi "bán kính thân" — mọi số trong rig đều là tỉ lệ theo nó. */
+  const SPINE_SCALE = 22;
+  /** Bắt được tay nắm trong khoảng này (px logic). */
+  const SPINE_GRAB = 11;
+  /** Cột sống mặc định khi bật thân đốt lần đầu: một con thằn lằn. */
+  const DEFAULT_WIDTHS = [0.9, 1, 0.9, 0.75, 0.6, 0.45, 0.3];
+  const MAX_VERTEBRAE = 24;
+
+  const SpineEd = { box: null, canvas: null, draft: null, drag: -1 };
+
+  const propsOf = () => (Sel.one || E.selection[0] || {}).props || {};
+
+  /**
+   * Bề rộng từng đốt đang hiệu lực: bản nháp nếu đang kéo, rồi tới thứ slot đã
+   * khai, rồi tới bộ mặc định.
+   */
+  function spineWidths() {
+    if (SpineEd.draft) return SpineEd.draft;
+    const own = readDeep(propsOf(), "stats.rig.body.widths");
+    return Array.isArray(own) && own.length ? own.map(Number) : DEFAULT_WIDTHS.slice();
+  }
+
+  /**
+   * Ghi khi **thả tay**, không phải mỗi lần chuột nhúc nhích.
+   *
+   * `Cmd.run("shape.prop")` đẩy một bước vào lịch sử undo; ghi theo từng frame
+   * kéo thì một lần chỉnh đốt tốn ba chục lần Ctrl+Z mới lùi hết. Trong lúc kéo
+   * thì bản nháp lo phần nhìn — cả ô này lẫn ô xem trước đều đọc nó.
+   */
+  function commitSpine(widths) {
+    SpineEd.draft = null;
+    Cmd.run("shape.prop", [
+      "stats.rig.body.widths",
+      widths.map((w) => Math.round(w * 100) / 100),
+    ]);
+  }
+
+  /** Cột sống duỗi thẳng, đầu bên phải — dùng đúng hình học của bản game. */
+  function spineLayout() {
+    const widths = spineWidths();
+    const spacing = Number(readDeep(propsOf(), "stats.rig.body.spacing")) || 0.9;
+    const spine = new Spine({
+      widths: widths.map((w) => Math.max(0, w) * SPINE_SCALE),
+      spacing: spacing * SPINE_SCALE,
+      bend: 0.45,
+    });
+    const canvas = SpineEd.canvas;
+    const height = canvas ? canvas.height / 2 : 110;
+    const width = canvas ? canvas.width / 2 : 240;
+    spine.replant(width - 26, height / 2);
+    return { spine, widths };
+  }
+
+  function paintSpineEditor() {
+    const canvas = SpineEd.canvas;
+    if (!canvas || !canvas.isConnected) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    const w = canvas.width / 2;
+    const h = canvas.height / 2;
+    ctx.clearRect(0, 0, w, h);
+
+    const { spine, widths } = spineLayout();
+    const colour = readDeep(propsOf(), "stats.rig.body.color");
+    const body = { color: Array.isArray(colour) ? colour : [150, 110, 255], glow: 0 };
+
+    // Trục thân, để thấy tay nắm đang cách tâm bao xa.
+    ctx.strokeStyle = "rgba(255,255,255,.12)";
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(6, h / 2);
+    ctx.lineTo(w - 6, h / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    paintOutline(ctx, spine, body);
+
+    for (let i = 0; i < widths.length; i++) {
+      const grip = spine.edge(i, -Math.PI / 2);
+      ctx.beginPath();
+      ctx.arc(grip.x, grip.y, SpineEd.drag === i ? 6 : 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = SpineEd.drag === i ? "#ffd479" : "#e6e6e6";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.5)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  /** Toạ độ logic trong canvas, đã bù cho việc vẽ ở gấp đôi độ phân giải. */
+  function spinePoint(e) {
+    const canvas = SpineEd.canvas;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * (canvas.width / 2),
+      y: ((e.clientY - rect.top) / rect.height) * (canvas.height / 2),
+    };
+  }
+
+  function buildSpineEditor() {
+    const box = el("div", { style: "margin-top:9px" });
+    box.appendChild(el("p", { class: "muted", style: "margin:0 0 4px" },
+      "Kéo tay nắm để đổi bề ngang từng đốt. Đầu ở bên phải."));
+
+    const canvas = el("canvas", {
+      width: 480, height: 220,
+      style: "width:100%;height:auto;border-radius:8px;background:#0e1218;display:block;touch-action:none",
+    });
+    box.appendChild(canvas);
+
+    const row = el("div", { class: "grid2", style: "margin-top:6px" });
+    row.appendChild(el("button", { class: "btn", onclick: () => {
+      const widths = spineWidths();
+      if (widths.length <= 2) return toast("Cần ít nhất 2 đốt", "warn");
+      commitSpine(widths.slice(0, -1));
+    } }, "− Bớt đốt"));
+    row.appendChild(el("button", { class: "btn", onclick: () => {
+      const widths = spineWidths();
+      if (widths.length >= MAX_VERTEBRAE) return toast(`Tối đa ${MAX_VERTEBRAE} đốt`, "warn");
+      commitSpine([...widths, Math.max(0.05, widths[widths.length - 1] * 0.8)]);
+    } }, "+ Thêm đốt"));
+    box.appendChild(row);
+
+    // Chỉ trả riêng cột sống về mặc định.
+    //
+    // Nút × của cả mục thì xoá `stats.rig` — mất luôn chân và màu đã chỉnh —
+    // nên "kéo hỏng hình rồi, làm lại từ đầu" mà phải hi sinh mọi thứ khác là
+    // một lựa chọn không ai muốn phải cân nhắc.
+    const reset = el("button", {
+      class: "btn block", style: "margin-top:6px",
+      title: "Bỏ hình cột sống đã vẽ, quay về bộ đốt mặc định",
+      onclick: () => { SpineEd.draft = null; Cmd.run("shape.prop", ["stats.rig.body.widths", ""]); },
+    }, `${ico("undo", "ico ico-sm")} Cột sống về mặc định`);
+    reset.dataset.spineReset = "";
+    box.appendChild(reset);
+
+    SpineEd.box = box;
+    SpineEd.canvas = canvas;
+    SpineEd.draft = null;
+    SpineEd.drag = -1;
+
+    canvas.addEventListener("pointerdown", (e) => {
+      const { spine, widths } = spineLayout();
+      const at = spinePoint(e);
+      let best = -1;
+      let near = SPINE_GRAB;
+      for (let i = 0; i < widths.length; i++) {
+        const grip = spine.edge(i, -Math.PI / 2);
+        const away = Math.hypot(grip.x - at.x, grip.y - at.y);
+        if (away < near) { near = away; best = i; }
+      }
+      if (best < 0) return;
+      SpineEd.drag = best;
+      SpineEd.draft = widths.slice();
+      canvas.setPointerCapture(e.pointerId);
+      paintSpineEditor();
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (SpineEd.drag < 0 || !SpineEd.draft) return;
+      const at = spinePoint(e);
+      const centre = canvas.height / 4;
+      // Kéo lên là dày ra. Chặn dưới ở 0 chứ không âm: 0 là cái đuôi nhọn hoắt,
+      // số âm thì đường bao lộn từ trong ra ngoài.
+      SpineEd.draft[SpineEd.drag] = Math.min(2.5, Math.max(0, (centre - at.y) / SPINE_SCALE));
+      paintSpineEditor();
+    });
+
+    const release = () => {
+      if (SpineEd.drag < 0) return;
+      SpineEd.drag = -1;
+      if (SpineEd.draft) commitSpine(SpineEd.draft);
+      paintSpineEditor();
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+
+    paintSpineEditor();
+    return box;
+  }
+
   /* --------------------- xem trước con vật --------------------- */
 
   const hexToRgb = (hex) => {
@@ -860,7 +1060,7 @@ export const UI = (() => {
   /** Radian mỗi frame 16ms. Đủ nhanh để thấy chân bước, đủ chậm để nhìn kịp. */
   const PREVIEW_TURN = 0.05;
 
-  const Preview = { canvas: null, raf: 0, last: 0, key: "", rig: null, legs: null, angle: 0 };
+  const Preview = { canvas: null, raf: 0, last: 0, key: "", rig: null, creature: null, angle: 0 };
 
   /**
    * `render.ts` cố ý **không** có vòng lặp 60fps — "máy đứng yên = 0% CPU" là
@@ -875,7 +1075,7 @@ export const UI = (() => {
     if (Preview.raf) cancelAnimationFrame(Preview.raf);
     Preview.raf = 0;
     Preview.canvas = null;
-    Preview.legs = null;
+    Preview.creature = null;
     Preview.key = "";
   }
 
@@ -915,15 +1115,29 @@ export const UI = (() => {
     return box;
   }
 
+  /**
+   * Rig đang được mô tả trong inspector, có tính cả cột sống đang kéo dở.
+   *
+   * Trong lúc kéo tay nắm thì đọc bản nháp của spine editor chứ không đọc props
+   * — props chỉ được ghi khi thả tay, và một ô xem trước chỉ nhúc nhích sau khi
+   * thả thì không giúp gì cho việc chỉnh hình.
+   */
+  function previewSpec() {
+    const spec = readDeep((Sel.one || E.selection[0] || {}).props || {}, "stats.rig");
+    if (!SpineEd.draft) return spec;
+    const body = { ...(spec && spec.body), kind: "chain", widths: SpineEd.draft };
+    return { ...spec, body };
+  }
+
   /** Dựng lại rig chỉ khi số thực sự đổi, không phải mỗi frame. */
   function syncPreviewRig() {
-    const spec = readDeep((Sel.one || E.selection[0] || {}).props || {}, "stats.rig");
+    const spec = previewSpec();
     const resolved = spec ? resolveRig(spec, PREVIEW_RADIUS) : undefined;
     const key = JSON.stringify(resolved || null);
     if (key === Preview.key) return;
     Preview.key = key;
     Preview.rig = resolved || null;
-    Preview.legs = resolved && resolved.legs ? new LegRig(resolved.legs.config) : null;
+    Preview.creature = resolved ? new Creature(resolved) : null;
   }
 
   function stepRigPreview(now) {
@@ -956,10 +1170,16 @@ export const UI = (() => {
     ctx.ellipse(w / 2, h / 2, PREVIEW_ORBIT, PREVIEW_ORBIT * 0.6, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    if (Preview.legs) {
-      Preview.legs.follow(bx, by, dt);
-      paintPreviewLegs(ctx, Preview.legs, Preview.rig.legs);
+    const creature = Preview.creature;
+    if (creature) creature.follow(bx, by, dt);
+    // Chân trước, thân sau: chân phải chui ra từ *dưới* thân, không dán lên
+    // trên. Cùng thứ tự với `Monster.drawRig`.
+    if (creature && creature.legRig && Preview.rig.legs) {
+      paintPreviewLegs(ctx, creature.legRig, Preview.rig.legs);
     }
+    if (creature && creature.spine) paintOutline(ctx, creature.spine, Preview.rig.body);
+    // Thân đốt là thứ vẽ *thêm* — ảnh quái vẫn nằm trên đầu nó trong trận, nên
+    // ô xem trước vẫn vẽ chỗ của ảnh.
     paintPreviewBody(ctx, bx, by);
 
     Preview.raf = requestAnimationFrame(stepRigPreview);
@@ -994,9 +1214,40 @@ export const UI = (() => {
     }
   }
 
+  /**
+   * Đường bao thân đốt, vẽ bằng Canvas2D.
+   *
+   * Cùng bộ điểm mà bản game vẽ bằng `curveVertex` của p5 — `spine.outline()`
+   * trả điểm, mỗi bên tự nối theo cách của mình. Canvas2D không có Catmull-Rom
+   * nên nối bằng đường bậc hai qua trung điểm: cùng một hình mềm, không phải
+   * cùng một API.
+   */
+  function paintOutline(ctx, spine, body) {
+    const ring = spine.outline();
+    if (ring.length < 3) return;
+    const rgb = (a) => `rgba(${body.color[0]},${body.color[1]},${body.color[2]},${a})`;
+
+    ctx.beginPath();
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    let from = mid(ring[ring.length - 1], ring[0]);
+    ctx.moveTo(from.x, from.y);
+    for (let i = 0; i < ring.length; i++) {
+      const next = mid(ring[i], ring[(i + 1) % ring.length]);
+      ctx.quadraticCurveTo(ring[i].x, ring[i].y, next.x, next.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = rgb(1);
+    ctx.fill();
+    ctx.strokeStyle = `rgb(${Math.round(body.color[0] * 0.45)},${Math.round(body.color[1] * 0.45)},${Math.round(body.color[2] * 0.45)})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   function paintPreviewBody(ctx, x, y) {
     const body = Preview.rig && Preview.rig.body;
-    if (body && body !== "avatar") {
+    // Chỉ `orb` mới thay chỗ của ảnh quái. Thân đốt vẽ thêm ở dưới, ảnh vẫn
+    // nằm trên đầu nó — nên ở đây vẫn phải vẽ chỗ của ảnh.
+    if (body && body !== "avatar" && body.kind === "orb") {
       const rgb = `rgb(${body.color[0]},${body.color[1]},${body.color[2]})`;
       if (body.glow > 0) {
         ctx.fillStyle = `rgba(${body.color[0]},${body.color[1]},${body.color[2]},${0.22 * body.glow})`;
@@ -1110,16 +1361,36 @@ export const UI = (() => {
     const name = f.sec;
     const collapsed = !isOpen(name);
 
-    const head = el("button", {
-      class: "btn block",
-      style: "display:flex;align-items:center;gap:6px;justify-content:flex-start;" +
-             "margin:12px 0 2px;background:none;border:0;padding:2px 0;cursor:pointer;width:100%",
+    // Một `div`, không phải `button`: nút Xoá nhóm nằm *bên trong* cái đầu này,
+    // và button lồng trong button là HTML không hợp lệ.
+    const head = el("div", {
+      style: "display:flex;align-items:center;gap:6px;margin:12px 0 2px;cursor:pointer",
     });
     head.innerHTML =
       ico("chevron-down", "ico ico-sm") +
       `<span class="sec-title" style="margin:0">${esc(f.group)}</span>` +
       `<span class="muted" data-section-count style="margin-left:auto;font-size:10.5px"></span>`;
     head.querySelector("svg").style.transform = collapsed ? "rotate(-90deg)" : "";
+
+    /**
+     * Xoá cả nhóm về mặc định.
+     *
+     * Nằm trên đầu mục chứ không dưới đáy thân, nên nó vẫn bấm được khi mục
+     * đang gập — chỗ duy nhất nhìn thấy "3 đang đặt" cũng chính là chỗ nên có
+     * cách bỏ ba cái đó đi. `stopPropagation` để bấm nó không gập mục lại.
+     */
+    const clear = el("button", {
+      class: "btn", title: "Xoá hết ghi đè trong mục này, về mặc định",
+      style: "padding:1px 5px",
+      onclick: (e) => {
+        e.stopPropagation();
+        const keys = JSON.parse(clear.dataset.clearKeys || "[]");
+        Cmd.run("shape.propClear", [keys]);
+      },
+    }, ico("x", "ico ico-sm"));
+    clear.dataset.sectionClear = "";
+    if (f.clear) clear.dataset.clearKeys = JSON.stringify(f.clear);
+    head.appendChild(clear);
 
     const body = el("div", { style: collapsed ? "display:none" : "" });
     head.addEventListener("click", () => toggleSection(name, head, body));
@@ -1131,6 +1402,10 @@ export const UI = (() => {
 
   function buildProps(kind) {
     stopRigPreview();
+    SpineEd.box = null;
+    SpineEd.canvas = null;
+    SpineEd.draft = null;
+    SpineEd.drag = -1;
     R.objProps.innerHTML = "";
     const fields = PROP_FIELDS[kind];
     if (!fields) return;
@@ -1144,7 +1419,14 @@ export const UI = (() => {
     // ba chỗ khác nhau và không chỗ nào báo gì.
     let head = null;
     let keys = [];
-    const flush = () => { if (head) head.setAttribute("data-section-keys", JSON.stringify(keys)); };
+    const flush = () => {
+      if (!head) return;
+      head.setAttribute("data-section-keys", JSON.stringify(keys));
+      // Nhóm nào khai sẵn nhánh cần xoá thì giữ nguyên; còn lại thì xoá đúng
+      // những ô nó đang hiện.
+      const clear = head.querySelector("[data-section-clear]");
+      if (clear && !clear.dataset.clearKeys) clear.dataset.clearKeys = JSON.stringify(keys);
+    };
 
     for (const f of fields) {
       // Một dải ngăn cách, không phải một ô: mấy field bên dưới nó ghi đè chỉ
@@ -1173,6 +1455,11 @@ export const UI = (() => {
         continue;
       }
 
+      if (f.kind === "spineEditor") {
+        target.appendChild(buildSpineEditor());
+        continue;
+      }
+
       if (f.key) keys.push(f.key);
 
       const row = el("div", { class: "row", style: "margin-top:7px" });
@@ -1188,6 +1475,9 @@ export const UI = (() => {
           .join("");
       } else if (f.kind === "color") {
         input = el("input", { class: "inp", type: "color", style: "padding:2px;height:26px" });
+        // Mặc định của core đi kèm element: `fillProps` duyệt DOM chứ không
+        // duyệt bảng field, nên nó không với tới descriptor được.
+        if (f.def) input.dataset.defColor = rgbToHex(f.def);
       } else if (f.kind === "static") {
         input = el("input", { class: "inp", type: "text", value: f.value, disabled: "" });
       } else {
@@ -1199,7 +1489,9 @@ export const UI = (() => {
           placeholder: f.placeholder || f.ph || "",
           min: f.min,
         });
-        if (f.kind === "text" || f.kind === "list") input.style.fontFamily = "var(--font)";
+        if (f.kind === "text" || f.kind === "list" || f.kind === "numlist") {
+          input.style.fontFamily = "var(--font)";
+        }
       }
       input.dataset.prop = f.key;
       input.dataset.pkind = f.kind;
@@ -1214,6 +1506,12 @@ export const UI = (() => {
           // Mảng rỗng ("[]") là một khai báo thật — điểm này không ra con lính
           // nào — nên nó phải phân biệt được với ô để trống, vốn nghĩa là
           // "theo đội hình chung". Xem `MinionSlot.stats.composition`.
+          // Số thứ tự đốt, không phải tên: "1, 3" phải ra [1, 3] chứ không
+          // phải ["1", "3"] — core đọc nó làm chỉ số mảng.
+          if (f.kind === "numlist") {
+            const parts = v.split(",").map((x) => Number(x.trim())).filter((n) => Number.isFinite(n));
+            v = v.trim() === "" ? "" : parts;
+          }
           if (f.kind === "list") {
             const trimmed = v.trim();
             v = trimmed === "" ? ""
@@ -1230,6 +1528,19 @@ export const UI = (() => {
       field.appendChild(input);
       if (f.unit) field.appendChild(el("span", { class: "unit", text: f.unit }));
       row.appendChild(field);
+
+      // Ô màu là field duy nhất không tự xoá được. Số và chữ thì bỏ trống là
+      // về mặc định, ô chọn có mục "— mặc định —", còn `<input type="color">`
+      // thì *luôn* có một giá trị — chọn nhầm một cái là kẹt luôn với nó.
+      if (f.kind === "color") {
+        const clear = el("button", {
+          class: "btn", title: "Bỏ ghi đè, dùng lại màu mặc định của core",
+          onclick: () => Cmd.run("shape.prop", [f.key, ""]),
+        }, ico("x", "ico ico-sm"));
+        clear.dataset.clear = f.key;
+        row.appendChild(clear);
+      }
+
       target.appendChild(row);
     }
     flush();
@@ -1274,7 +1585,16 @@ export const UI = (() => {
         if (document.activeElement === input) return;
         const v = readDeep(src, key);
         if (pkind === "color") {
-          input.value = Array.isArray(v) ? rgbToHex(v) : "#808080";
+          const set = Array.isArray(v);
+          // Chưa đặt thì hiện đúng màu core sẽ dùng, không phải một màu xám bâng
+          // quơ: người ta cần thấy trước cái mình đang được cho, và một ô xám
+          // không phân biệt được "chưa đặt" với "đặt màu xám".
+          input.value = set ? rgbToHex(v) : input.dataset.defColor || "#808080";
+          const clear = R.objProps.querySelector(`[data-clear="${key}"]`);
+          if (clear) {
+            clear.disabled = !set;
+            clear.style.opacity = set ? "" : ".35";
+          }
           return;
         }
         // `String([])` là chuỗi rỗng, tức là một đội hình rỗng đã khai báo sẽ
@@ -1299,6 +1619,20 @@ export const UI = (() => {
       input.value = src[key] == null ? "" : src[key];
     });
 
+    // Bộ sửa cột sống chỉ có nghĩa với thân nhiều đốt. Ẩn/hiện ở đây chứ không
+    // ở `buildProps`: kiểu thân đổi được mà không dựng lại cả bảng.
+    if (SpineEd.box) {
+      const chain = readDeep(src, "stats.rig.body.kind") === "chain";
+      SpineEd.box.style.display = chain ? "" : "none";
+      const reset = SpineEd.box.querySelector("[data-spine-reset]");
+      if (reset) {
+        const own = Array.isArray(readDeep(src, "stats.rig.body.widths"));
+        reset.disabled = !own;
+        reset.style.opacity = own ? "" : ".3";
+      }
+      if (chain) paintSpineEditor();
+    }
+
     // Một mục gập phải tự nói ra là bên trong nó có gì, không thì người ta
     // phải mở từng mục mới biết mình đã đặt gì cho bãi này.
     R.objProps.querySelectorAll("[data-section-keys]").forEach((head) => {
@@ -1308,6 +1642,11 @@ export const UI = (() => {
         if (v != null && v !== "") set++;
       }
       head.querySelector("[data-section-count]").textContent = set ? `${set} đang đặt` : "";
+      const clear = head.querySelector("[data-section-clear]");
+      if (clear) {
+        clear.disabled = !set;
+        clear.style.opacity = set ? "" : ".3";
+      }
     });
 
     if (kind === "lane") {
@@ -1752,15 +2091,35 @@ export const UI = (() => {
       const touched = Object.keys(body).length;
       const open = tuningOpen.has(group.key);
 
-      const head = el("button", {
-        class: "btn block", style: "margin-top:6px;text-align:left",
+      // `div`, không phải `button`: nút Về mặc định nằm bên trong nó, và
+      // button lồng button là HTML không hợp lệ. Giống hệt các mục trong
+      // inspector.
+      const head = el("div", {
+        class: "btn block",
+        style: "margin-top:6px;text-align:left;display:flex;align-items:center;gap:6px;cursor:pointer",
         onclick: () => {
           if (open) tuningOpen.delete(group.key); else tuningOpen.add(group.key);
           syncTuning();
         },
-      }, `<span style="display:inline-block;transition:transform .12s${open ? "" : ";transform:rotate(-90deg)"}">` +
-         `${ico("chevron-down", "ico ico-sm")}</span> ${esc(group.label)}` +
-         (touched ? ` <span class="mono" style="color:var(--accent)">${touched}</span>` : ""));
+      });
+      head.innerHTML =
+        `<span style="display:inline-block;transition:transform .12s${open ? "" : ";transform:rotate(-90deg)"}">` +
+        `${ico("chevron-down", "ico ico-sm")}</span><span>${esc(group.label)}</span>` +
+        (touched ? `<span class="mono" style="color:var(--accent);margin-left:auto">${touched}</span>` : "");
+      if (touched) {
+        // Trên đầu nhóm, không phải dưới đáy thân: chỗ duy nhất nhìn thấy "7 ô
+        // đã đặt" cũng phải là chỗ bỏ được bảy ô đó — nếu không thì phải mở
+        // nhóm ra mới reset được nó.
+        head.appendChild(el("button", {
+          class: "btn", style: "padding:1px 5px;margin-left:6px",
+          title: `Bỏ ${touched} ghi đè của nhóm này, quay về mặc định của core`,
+          onclick: (e) => {
+            e.stopPropagation();
+            Cmd.run("map.tuningResetGroup", [group.key]);
+            syncTuning();
+          },
+        }, ico("undo", "ico ico-sm")));
+      }
       R.tuning.appendChild(head);
       if (!open) continue;
 
@@ -1774,13 +2133,6 @@ export const UI = (() => {
         box.appendChild(tuningRow(f.label, f.hint, `${group.key}.${f.key}`, readDeep(body, f.key), f.unit, f.ph));
       }
       if (group.minions) box.appendChild(minionTypesBox(body));
-      if (touched) {
-        box.appendChild(el("button", {
-          class: "btn block", style: "margin-top:8px",
-          title: "Bỏ mọi ghi đè của nhóm này, quay về mặc định của core",
-          onclick: () => { Cmd.run("map.tuningResetGroup", [group.key]); syncTuning(); },
-        }, `${ico("undo", "ico ico-sm")} Về mặc định (${touched} ô)`));
-      }
       R.tuning.appendChild(box);
     }
   }
