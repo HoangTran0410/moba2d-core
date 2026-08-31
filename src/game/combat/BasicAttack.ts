@@ -1,7 +1,7 @@
 import EventType from '@/game/enums/EventType';
 import { applyOnHitEffects } from '@/game/combat/OnHit';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
-import { IMPACT_MS, drawMeleeImpact, drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
+import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
@@ -313,16 +313,6 @@ export class BasicAttackSwing extends SpellObject {
   color: number[] = [255, 220, 160];
   age = 0;
   struck = false;
-  /**
-   * Whether the strike actually connected. Only a landed swing marks a victim
-   * — a mark on a body that took nothing is the picture lying about the
-   * damage, which is the one thing a hit indicator may never do.
-   */
-  landed = false;
-  /** Where the victim was standing when it took it. */
-  private impactAt: { x: number; y: number } | null = null;
-  private impactRadius = 0;
-  private impactFrom = 0;
 
   constructor(owner: AttackableUnit, target: AttackableUnit) {
     super(owner);
@@ -335,21 +325,7 @@ export class BasicAttackSwing extends SpellObject {
 
     if (!this.struck && this.age >= MELEE_WINDUP_MS) {
       this.struck = true;
-      this.landed = this.strike();
-      const victim = this.target;
-      if (this.landed && victim) {
-        // Latched at the instant it connected rather than read while drawing:
-        // the victim keeps walking, and a mark that follows it reads as a
-        // status effect stuck to the body instead of a hit that happened here.
-        this.impactAt = { x: victim.position.x, y: victim.position.y };
-        this.impactRadius = victim.stats.size.value / 2;
-        // Back toward the attacker, so the crescent lands on the side the blow
-        // actually arrived on.
-        this.impactFrom = Math.atan2(
-          this.owner.position.y - victim.position.y,
-          this.owner.position.x - victim.position.x
-        );
-      }
+      this.strike();
     }
     if (this.age >= MELEE_SWING_TOTAL_MS) this.toRemove = true;
   }
@@ -379,6 +355,7 @@ export class BasicAttackSwing extends SpellObject {
     }
     const style = {
       bodyRadius: this.owner.stats.size.value / 2,
+      reach: this.reach,
       color: this.color,
     };
 
@@ -399,21 +376,16 @@ export class BasicAttackSwing extends SpellObject {
       );
     }
     pop();
-
-    // Outside the `push` above: the mark belongs to the world, not to the
-    // attacker's rotated frame.
-    const bite = (this.age - MELEE_WINDUP_MS) / IMPACT_MS;
-    if (this.impactAt && bite >= 0 && bite <= 1) {
-      drawMeleeImpact(this.impactAt, this.impactRadius, this.impactFrom, style, bite);
-    }
   }
 
   /**
-   * Wide enough for the blade *and* the mark on the victim, which sits a whole
-   * reach away. `SpellObject`'s default derives a zero-area box from
-   * `visionRadius`, so without this the entire swing is culled the moment the
-   * attacker's centre leaves the screen — which for a melee fight at the edge
-   * of the view is most of it. See `docs/TRAPS.md`, rendering.
+   * Wide enough for the fan, which opens out to a whole reach past the body.
+   *
+   * `SpellObject`'s default derives a zero-area box from `visionRadius`, so
+   * without this the entire swing is culled the moment the attacker's centre
+   * leaves the screen — which for a melee fight at the edge of the view is most
+   * of it. Pre-existing and unrelated to how the swing is drawn; the minion's
+   * swing had one all along. See `docs/TRAPS.md`, rendering.
    */
   getDisplayBoundingBox() {
     return this.squareDisplayBoundingBox(

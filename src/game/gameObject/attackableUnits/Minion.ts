@@ -1,12 +1,7 @@
 import { Circle } from '@/libs/quadtree';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import { stillInReach } from '@/game/combat/BasicAttack';
-import {
-  IMPACT_MS,
-  drawMeleeImpact,
-  drawMeleeStrike,
-  drawMeleeWindup,
-} from '@/game/vfx/MeleeSwing';
+import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
 import { MINION_BOUNTY } from '@/game/economy/Wallet';
@@ -913,10 +908,6 @@ export class MinionSwing extends SpellObject {
   color: number[] = [255, 220, 160];
   age = 0;
   struck = false;
-  /** Where the victim was standing when it connected, or null for a whiff. */
-  private impactAt: { x: number; y: number } | null = null;
-  private impactRadius = 0;
-  private impactFrom = 0;
 
   constructor(owner: AttackableUnit, target: AttackableUnit) {
     super(owner);
@@ -929,36 +920,21 @@ export class MinionSwing extends SpellObject {
 
     if (!this.struck && this.age >= MELEE_WINDUP_MS) {
       this.struck = true;
-      const victim = this.strike();
-      if (victim) {
-        // Latched where it connected rather than read while drawing: the victim
-        // keeps walking, and a mark that follows it reads as something stuck to
-        // the body rather than a hit that happened here.
-        this.impactAt = { x: victim.position.x, y: victim.position.y };
-        this.impactRadius = victim.stats.size.value / 2;
-        // Back toward the attacker, so the crescent lands on the side the blow
-        // actually arrived on.
-        this.impactFrom = Math.atan2(
-          this.owner.position.y - victim.position.y,
-          this.owner.position.x - victim.position.x
-        );
-      }
+      this.strike();
     }
     if (this.age >= MELEE_SWING_TOTAL_MS) this.toRemove = true;
   }
 
-  /** The body it landed on, or `null` for a whiff — the caller marks the hit. */
-  strike(): AttackableUnit | null {
+  strike(): void {
     const target = this.target;
     if (!target || target.isDead || target.toRemove || !target.targetable || this.owner.isDead) {
-      return null;
+      return;
     }
     // The target may have drifted during the wind-up — but not by walking. See
     // `stillInReach`: a swing that a target can stroll out of is a swing that
     // never lands on anything retreating, which is most of a lane fight.
-    if (!stillInReach(this.owner, target, this.reach, MELEE_WINDUP_MS)) return null;
+    if (!stillInReach(this.owner, target, this.reach, MELEE_WINDUP_MS)) return;
     target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
-    return target;
   }
 
   draw() {
@@ -978,6 +954,7 @@ export class MinionSwing extends SpellObject {
     const angle = Math.atan2(dirY, dirX);
     const style = {
       bodyRadius: this.owner.stats.size.value / 2,
+      reach: this.reach,
       color: this.color,
     };
 
@@ -995,17 +972,9 @@ export class MinionSwing extends SpellObject {
     }
 
     pop();
-
-    // Outside the `push`: the mark belongs to the world, not to the swing's
-    // rotated frame.
-    const bite = (this.age - MELEE_WINDUP_MS) / IMPACT_MS;
-    if (this.impactAt && bite >= 0 && bite <= 1) {
-      drawMeleeImpact(this.impactAt, this.impactRadius, this.impactFrom, style, bite);
-    }
   }
 
   getDisplayBoundingBox() {
-    // Wide enough for the mark on the victim too, which sits a whole reach out.
-    return this.squareDisplayBoundingBox((this.reach + 60) * 2);
+    return this.squareDisplayBoundingBox((this.reach + 20) * 2);
   }
 }
