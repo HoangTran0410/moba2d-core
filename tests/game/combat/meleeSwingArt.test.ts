@@ -125,6 +125,54 @@ describe('the melee swing paints no space between the two bodies', () => {
   });
 });
 
+/**
+ * The other half of the rule, and the reason it needs its own test.
+ *
+ * Bounding the reach fixed "it looks like an area effect" and immediately
+ * caused "đm giờ khó thấy quá" — the swing became a thin scratch nobody could
+ * find on a `background(30)` map. The two are not in tension and it matters
+ * that the code says so: **weight is free, reach is not.** A stroke can be as
+ * heavy and as bright as it likes without ever suggesting it hit anything else;
+ * only extent does that.
+ *
+ * So the ceiling above has a floor down here, and a change that thins either
+ * effect back into invisibility has to argue with this.
+ */
+describe('the melee swing is bold enough to see', () => {
+  const heaviestStroke = () =>
+    Math.max(0, ...spies.strokeWeight.mock.calls.map(call => Number(call[0])));
+
+  it('strokes the flick thick relative to the body that threw it', () => {
+    const attacker = new Champion({ game, teamId: 'blue' });
+    const victim = new Champion({ game, teamId: 'red' });
+    victim.position.set(80, 0);
+    const swing = new BasicAttackSwing(attacker, victim);
+    swing.reach = 90;
+    swing.age = MELEE_WINDUP_MS + 10;
+
+    paint(() => swing.draw());
+
+    expect(heaviestStroke()).toBeGreaterThanOrEqual((attacker.stats.size.value / 2) * 0.3);
+  });
+
+  it('and the mark on the victim thicker still', () => {
+    const attacker = new Champion({ game, teamId: 'blue' });
+    const victim = new Champion({ game, teamId: 'red' });
+    victim.position.set(80, 0);
+    const swing = new BasicAttackSwing(attacker, victim);
+    swing.reach = 90;
+    swing.damage = 5;
+
+    vi.stubGlobal('deltaTime', MELEE_WINDUP_MS);
+    swing.update();
+    vi.stubGlobal('deltaTime', 16);
+    paint(() => swing.draw());
+
+    expect(swing.landed).toBe(true);
+    expect(heaviestStroke()).toBeGreaterThanOrEqual((victim.stats.size.value / 2) * 0.3);
+  });
+});
+
 describe('the melee swing says who it hit', () => {
   const landOn = (victimX: number) => {
     const attacker = new Champion({ game, teamId: 'blue' });

@@ -40,8 +40,18 @@
  * one turns the call that closes the block into a call on a number.
  */
 
-/** How long the mark on the victim lives, ms. Short: it is punctuation. */
-export const IMPACT_MS = 170;
+/**
+ * How long the mark on the victim lives, ms.
+ *
+ * It was 170 and that was too short to find on a dark map — ten frames of a
+ * thin stroke. The mark **holds** at full brightness for `IMPACT_HOLD` of that
+ * before it starts fading, so what a player actually gets is a beat of solid
+ * white rather than something already dimming by the time the eye arrives.
+ */
+export const IMPACT_MS = 230;
+
+/** Share of `IMPACT_MS` spent at full brightness before the fade begins. */
+const IMPACT_HOLD = 0.38;
 
 export interface MeleeSwingStyle {
   /** Half the attacker's body, world units. The flick never leaves it. */
@@ -58,10 +68,15 @@ export interface MeleeSwingStyle {
  */
 export function drawMeleeWindup(style: MeleeSwingStyle, charge: number) {
   const [red, green, blue] = style.color;
+  // Sized off the body rather than in absolute pixels: a fixed 6-15px dot is
+  // invisible on a champion and comical on a boss.
+  const gathered = style.bodyRadius * (0.34 + 0.3 * charge);
   push();
   noStroke();
-  fill(red, green, blue, 60 + 120 * charge);
-  circle(-style.bodyRadius * 0.55, 0, 6 + 9 * charge);
+  fill(red, green, blue, 70 + 150 * charge);
+  circle(-style.bodyRadius * 0.55, 0, gathered * 2);
+  fill(255, 255, 255, 120 * charge);
+  circle(-style.bodyRadius * 0.55, 0, gathered * 0.9);
   pop();
 }
 
@@ -75,21 +90,24 @@ export function drawMeleeWindup(style: MeleeSwingStyle, charge: number) {
  */
 export function drawMeleeStrike(style: MeleeSwingStyle, swept: number) {
   const [red, green, blue] = style.color;
-  const fade = 1 - swept;
-  const out = style.bodyRadius * (0.92 + (FLICK_REACH - 0.92) * swept);
-  const band = Math.max(2.5, style.bodyRadius * 0.26) * (1 - swept * 0.55);
-  const half = FLICK_HALF_ANGLE * (1 - swept * 0.35);
+  const fade = 1 - swept * swept;
+  const out = style.bodyRadius * (0.9 + (FLICK_REACH - 0.9) * swept);
+  const band = Math.max(4, style.bodyRadius * 0.42) * (1 - swept * 0.4);
+  const half = FLICK_HALF_ANGLE * (1 - swept * 0.3);
 
   push();
   noFill();
   strokeCap(ROUND);
-  stroke(red, green, blue, 205 * fade);
+  stroke(red, green, blue, 245 * fade);
   strokeWeight(band);
   arc(0, 0, out * 2, out * 2, -half, half);
 
-  stroke(255, 255, 255, 190 * fade);
-  strokeWeight(Math.max(1.2, band * 0.3));
-  arc(0, 0, out * 2, out * 2, -half * 0.85, half * 0.85);
+  // A white core down the middle of the band. On a `background(30)` map,
+  // contrast is what carries a fast effect, and there is no rule against being
+  // bright — only against being *wide*. Weight costs nothing in reach.
+  stroke(255, 255, 255, 230 * fade);
+  strokeWeight(Math.max(1.6, band * 0.34));
+  arc(0, 0, out * 2, out * 2, -half * 0.86, half * 0.86);
   pop();
 }
 
@@ -113,31 +131,39 @@ export function drawMeleeImpact(
   bite: number
 ) {
   const [red, green, blue] = style.color;
-  const fade = 1 - bite;
-  const ring = victimRadius * (1.02 + 0.22 * bite);
-  const half = IMPACT_HALF_ANGLE * (1 - bite * 0.3);
+  // Full brightness for the first beat, then out. A mark that starts fading on
+  // frame one has already half gone by the time anyone looks at it.
+  const fade = 1 - Math.max(0, (bite - IMPACT_HOLD) / (1 - IMPACT_HOLD));
+  const ring = victimRadius * (1.0 + 0.24 * bite);
+  const half = IMPACT_HALF_ANGLE * (1 - bite * 0.22);
+  // Scaled off the victim rather than fixed: this is a cap on a body, so it has
+  // to be thick relative to the body it is capping. A 3px stroke on a 55-unit
+  // champion is a scratch nobody sees.
+  const band = Math.max(3.5, victimRadius * 0.34) * (1 - bite * 0.3);
 
   push();
   noFill();
   strokeCap(ROUND);
 
-  stroke(255, 255, 255, 245 * fade);
-  strokeWeight(1.4 + 3 * fade);
+  // The camp's or attacker's colour underneath, wider, so the white core has
+  // an edge to sit on and the hit still reads at a glance on a pale body.
+  stroke(red, green, blue, 235 * fade);
+  strokeWeight(band);
   arc(at.x, at.y, ring * 2, ring * 2, from - half, from + half);
 
-  const echo = ring * 1.2;
-  stroke(red, green, blue, 200 * fade);
-  strokeWeight(1 + 1.6 * fade);
-  arc(at.x, at.y, echo * 2, echo * 2, from - half * 0.78, from + half * 0.78);
+  stroke(255, 255, 255, 250 * fade);
+  strokeWeight(band * 0.45);
+  arc(at.x, at.y, ring * 2, ring * 2, from - half * 0.9, from + half * 0.9);
 
-  // Two sparks off the ends of the crescent, thrown outward along the body's
-  // edge. They are what stops a fast exchange reading as one continuous arc:
-  // each hit gets a visible tick of its own.
-  strokeWeight(1 + 1.4 * fade);
-  for (const side of [-1, 1]) {
+  // Three sparks thrown off the crescent — the ends and the centre. They are
+  // what stops a fast exchange reading as one continuous glow: every hit gets
+  // a tick of its own that arrives and leaves.
+  stroke(255, 255, 255, 235 * fade);
+  strokeWeight(Math.max(2, band * 0.3));
+  for (const side of [-1, 0, 1]) {
     const along = from + half * side;
-    const inner = ring * 1.05;
-    const outer = ring * (1.25 + 0.4 * bite);
+    const inner = ring * 1.02;
+    const outer = ring * (1.3 + 0.55 * bite);
     line(
       at.x + Math.cos(along) * inner,
       at.y + Math.sin(along) * inner,
@@ -154,6 +180,11 @@ export function drawMeleeImpact(
  * The number that keeps this from being a sweep again. Anything past the
  * attacker's own body is space between two units, and painted space in this
  * game means an area effect — see this file's header.
+ *
+ * It bounds the arc's *radius*; half a stroke band sits outside that, so the
+ * true painted edge is nearer 1.5 radii. Still nowhere near the victim, and
+ * that is the point of separating the two numbers: **weight is free, reach is
+ * not.** Everything in this file got bolder without this moving.
  */
 const FLICK_REACH = 1.3;
 
