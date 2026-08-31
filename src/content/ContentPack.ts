@@ -1015,31 +1015,6 @@ export interface NeutralSlot {
   rotationDeg?: number;
 }
 
-/**
- * An animal that lives on the map and takes no part in the match.
- *
- * The one slot whose contents are declared **in the map** rather than filled
- * from an installed pack. A `NeutralSlot` names a `role` and waits for a pack
- * to supply a monster for it, because what fights you is a balance decision
- * that belongs with the champions; scenery is a decision about *this map's*
- * river, so the map says what is in it and there is nothing to match up.
- *
- * See `game/gameObject/map/Wildlife.ts` for what one becomes. A slot with no
- * `rig` would be an invisible nothing, so the rig is the one required field.
- */
-export interface DecorSlot {
-  x: number;
-  y: number;
-  /** How far it drifts from the slot, world units. Absent or 0 stands still. */
-  r?: number;
-  /** Body diameter, world units — every ratio in `rig` resolves against it. */
-  size?: number;
-  /** A multiplier on core's wander rate, not a speed. Absent means 1. */
-  speed?: number;
-  /** The creature itself, the same declaration a camp's `rig` takes. */
-  rig: CreatureRigSpec;
-}
-
 export interface LaneDefinition {
   id: string;
   from: string;
@@ -1077,12 +1052,6 @@ export interface MapGeometry {
     minion: MinionSlot[];
     structure: StructureSlot[];
     neutral: NeutralSlot[];
-    /**
-     * Scenery. **Optional, unlike the four above**, and deliberately so: every
-     * map that existed before this has none, and a required empty array would
-     * mean re-exporting all of them to say nothing.
-     */
-    decor?: DecorSlot[];
   };
   /** Absent on a map with no lanes — no waves, and PUSH falls through. */
   lanes?: LaneDefinition[];

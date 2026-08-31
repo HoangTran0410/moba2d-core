@@ -1338,26 +1338,6 @@ export function checkMapGeometry(
       }
     }
 
-    // Scenery. `decor` is optional, so an absent one is a map that has none —
-    // only a present-but-wrong-shaped one is an error. Its `rig` is checked by
-    // the same function a camp's is: `checkCreatureRig` refuses words core does
-    // not know and leaves every number to be clamped, which is what stops a
-    // cosmetic typo deleting somebody's map.
-    if (slots.decor !== undefined) {
-      if (!Array.isArray(slots.decor)) {
-        errors.push(`${name}.slots.decor: must be an array`);
-      } else {
-        for (const slot of slots.decor) {
-          if (!isObject(slot)) continue;
-          if (!isObject(slot.rig)) {
-            errors.push(`${name}.slots.decor: rig is required — a slot with none draws nothing`);
-            continue;
-          }
-          checkCreatureRig(`${name}.slots.decor`, slot.rig, errors);
-        }
-      }
-    }
-
     for (const group of ['spawn', 'minion'] as const) {
       const groupSlots = Array.isArray(slots[group]) ? slots[group] : [];
       for (const slot of groupSlots) {

@@ -7,11 +7,14 @@ import { E, KIND, TYPES, normalizeTerrain, pickTerrain } from '@/mapEditor/state
  *
  * `E.visible` gates three separate things — `pickTerrain` (click), `pickInRect`
  * (marquee) and both of `render.ts`'s draw loops — and it gated them through a
- * hand-written object literal listing eight of the nine kinds. `decor` shipped
- * without its line, and `undefined` is falsy, so a decor slot was invisible and
- * unclickable from the first frame. It read as the editor *deleting* it: the
- * one circle a user saw was the selection overlay, and clicking anywhere else
- * dropped the selection and with it the only thing still being drawn.
+ * hand-written object literal. A kind once shipped without its line, and
+ * `undefined` is falsy, so that object was invisible and unclickable from the
+ * first frame. It read as the editor *deleting* it: the one circle the user saw
+ * was the selection overlay, and clicking anywhere else dropped the selection
+ * and with it the only thing still being drawn.
+ *
+ * (The kind in question — a decor slot — has since been removed for reasons of
+ * its own. The hole it fell through has not been, which is what this is for.)
  *
  * The literal is derived from `KIND` now. This holds that, because the next
  * kind will be added by somebody who has never read this file.

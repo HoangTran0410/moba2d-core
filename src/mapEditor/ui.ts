@@ -596,60 +596,6 @@ export const UI = (() => {
   </div>
   </div>`;
 
-  /**
-   * Nhóm "hình dáng con vật", dùng chung cho **bãi quái** và **sinh vật cảnh**.
-   *
-   * Một hàm chứ không phải hai bản chép tay, vì hai chỗ này khác nhau đúng một
-   * thứ: bãi quái ghi đè con quái của pack nên rig nằm trong `stats`, sinh vật
-   * cảnh tự khai nên rig nằm thẳng trên slot. Mười hai ô còn lại là y hệt, và
-   * hai bản chép tay thì lần sau thêm một ô sẽ chỉ thêm vào một bên — đúng
-   * kiểu lỗi mà cả `withStats` lẫn `rigKey` đã phải đi vá.
-   *
-   * Không có `groupKey`: hình dáng con vật không phải thứ chỉnh cho cả map
-   * được, nên nhóm này không có nút "đổi cho tất cả".
-   *
-   * Nút xoá của mục xoá **cả nhánh** rig, không phải từng ô: `rig.legs.spread`,
-   * `rig.body.glow` và mọi thứ một pack hay một map viết tay để lại đều không
-   * có ô nào trong inspector, nên xoá theo ô sẽ để chúng nằm lại và con vật
-   * vẫn không về mặc định.
-   */
-  const rigFields = (prefix, sec, text) => [
-    { sec, group: "Hình dáng con vật", clear: [prefix] },
-    {
-      key: `${prefix}.legs.count`, label: "Số chân", kind: "number", min: 0,
-      ph: "không mọc chân",
-      hint: text.legsHint,
-    },
-    {
-      key: `${prefix}.legs.reach`, label: "Sải chân", kind: "number", unit: "×bk", min: 0, ph: "1.6",
-      hint: "tính theo bán kính thân, nên một con to và một con nhỏ dùng chung được số này",
-    },
-    {
-      key: `${prefix}.legs.bend`, label: "Chiều gối", kind: "choice",
-      options: ["", "up", "down"],
-      hint: "up = gối vểnh ra ngoài như nhện, down = gối gập vào như thú",
-    },
-    { key: `${prefix}.legs.thickness`, label: "Dày chân", kind: "number", unit: "px", min: 0, ph: "theo cỡ thân" },
-    { key: `${prefix}.legs.color`, label: "Màu chân", kind: "color", def: RIG_DEFAULTS.color },
-    {
-      key: `${prefix}.body.kind`, label: "Thân", kind: "choice",
-      options: ["", "orb", "chain"],
-      hint: text.bodyHint,
-    },
-    { key: `${prefix}.body.color`, label: "Màu thân", kind: "color", def: RIG_DEFAULTS.bodyColor },
-    { kind: "spineEditor" },
-    { key: `${prefix}.body.spacing`, label: "Cách đốt", kind: "number", unit: "×bk", min: 0, ph: "0.9" },
-    {
-      key: `${prefix}.body.bend`, label: "Độ mềm", kind: "number", unit: "rad", min: 0, ph: "0.45",
-      hint: "mỗi đốt bẻ được tối đa bấy nhiêu so với đốt trước — nhỏ thì cứng như rết, lớn thì mềm như rắn",
-    },
-    {
-      key: `${prefix}.legs.on`, label: "Chân ở đốt", kind: "numlist", ph: "tự rải đều",
-      hint: "số thứ tự đốt cho từng cặp chân, cách nhau bằng dấu phẩy — đốt đầu là 0",
-    },
-    { kind: "rigPreview" },
-  ];
-
   /** Các field thuộc tính của từng loại — bám đúng schema của moba2d. */
   const PROP_FIELDS = {
     spawn: [
@@ -702,31 +648,47 @@ export const UI = (() => {
         options: ["", "melee", "ranged", "breath", "lash"],
         hint: "melee = vuốt, ranged = phun đạn, breath = phun lửa hình nón, lash = quật đuôi",
       },
-      ...rigFields("stats.rig", "monster-rig", {
-        bodyHint:
-          "để trống = ảnh của quái; orb = một khối tròn; chain = thân nhiều đốt (sâu, rắn, rết)",
-        legsHint: "chẵn, 2–12. Để trống = giữ nguyên hình pack khai.",
-      }),
-    ],
-    // Sinh vật cảnh: không có `stats`, vì không có gì để ghi đè lên. Cả slot
-    // này *là* khai báo con vật, nên `rig` nằm thẳng trên nó — xem `rigKey`.
-    decor: [
+      // Không có `groupKey`: hình dáng con vật không phải thứ chỉnh cho cả
+      // map được, nên nhóm này không có nút "đổi cho tất cả". Nó ghi đè khai
+      // báo của pack cho đúng bãi này thôi.
+      // Xoá cả nhánh `stats.rig`, không phải từng ô: `rig.legs.spread`,
+      // `rig.body.glow` và mọi thứ một pack hay một map viết tay để lại đều
+      // không có ô nào trong inspector, nên xoá theo ô sẽ để chúng nằm lại và
+      // con vật vẫn không về mặc định.
+      { sec: "monster-rig", group: "Hình dáng con vật", clear: ["stats.rig"] },
       {
-        key: "r", label: "Tầm lượn", kind: "number", unit: "px", min: 0,
-        hint: "bán kính vùng nó đi lang thang quanh điểm này. 0 = đứng yên.",
+        key: "stats.rig.legs.count", label: "Số chân", kind: "number", min: 0,
+        ph: "không mọc chân",
+        hint: "chẵn, 2–12. Để trống = giữ nguyên hình pack khai.",
       },
       {
-        key: "size", label: "Cỡ thân", kind: "number", unit: "px", min: 1, ph: "48",
-        hint: "đường kính thân — mọi tỉ lệ trong phần hình dáng quy về số này",
+        key: "stats.rig.legs.reach", label: "Sải chân", kind: "number", unit: "×bk", min: 0, ph: "1.6",
+        hint: "tính theo bán kính thân, nên một con to và một con nhỏ dùng chung được số này",
       },
       {
-        key: "speed", label: "Nhịp lượn", kind: "number", unit: "×", min: 0, ph: "1",
-        hint: "hệ số, không phải tốc độ. Cảnh vật đi nhanh bằng trận đánh thì tranh mắt với trận đánh.",
+        key: "stats.rig.legs.bend", label: "Chiều gối", kind: "choice",
+        options: ["", "up", "down"],
+        hint: "up = gối vểnh ra ngoài như nhện, down = gối gập vào như thú",
       },
-      ...rigFields("rig", "decor-rig", {
-        bodyHint: "orb = một khối tròn; chain = thân nhiều đốt (sâu, rắn, lươn). Sinh vật cảnh không có ảnh, nên để trống cũng ra khối tròn.",
-        legsHint: "chẵn, 2–12. Để trống = không mọc chân.",
-      }),
+      { key: "stats.rig.legs.thickness", label: "Dày chân", kind: "number", unit: "px", min: 0, ph: "theo cỡ thân" },
+      { key: "stats.rig.legs.color", label: "Màu chân", kind: "color", def: RIG_DEFAULTS.color },
+      {
+        key: "stats.rig.body.kind", label: "Thân", kind: "choice",
+        options: ["", "orb", "chain"],
+        hint: "để trống = ảnh của quái; orb = một khối tròn; chain = thân nhiều đốt (sâu, rắn, rết)",
+      },
+      { key: "stats.rig.body.color", label: "Màu thân", kind: "color", def: RIG_DEFAULTS.bodyColor },
+      { kind: "spineEditor" },
+      { key: "stats.rig.body.spacing", label: "Cách đốt", kind: "number", unit: "×bk", min: 0, ph: "0.9" },
+      {
+        key: "stats.rig.body.bend", label: "Độ mềm", kind: "number", unit: "rad", min: 0, ph: "0.45",
+        hint: "mỗi đốt bẻ được tối đa bấy nhiêu so với đốt trước — nhỏ thì cứng như rết, lớn thì mềm như rắn",
+      },
+      {
+        key: "stats.rig.legs.on", label: "Chân ở đốt", kind: "numlist", ph: "tự rải đều",
+        hint: "số thứ tự đốt cho từng cặp chân, cách nhau bằng dấu phẩy — đốt đầu là 0",
+      },
+      { kind: "rigPreview" },
     ],
     // Lane KHÔNG có ô "từ phe / tới phe": engine không đọc hai field đó
     // (setActiveLanes chỉ lấy id + waypoints), và giá trị của chúng bị ràng
@@ -904,27 +866,12 @@ export const UI = (() => {
   const propsOf = () => (Sel.one || E.selection[0] || {}).props || {};
 
   /**
-   * Nhánh chứa `rig` của đối tượng đang chọn.
-   *
-   * Bãi quái *ghi đè* hình dáng con quái mà pack khai, nên rig của nó nằm
-   * trong `stats` cùng mọi ghi đè khác của slot. Sinh vật cảnh không ghi đè gì
-   * cả — nó **là** khai báo, không có pack nào ở dưới để đè lên, nên rig nằm
-   * thẳng trên slot. Một đường dẫn cứng ở đây thì ô cột sống và ô xem trước sẽ
-   * luôn đọc nhầm đúng một trong hai loại, và im lặng: `readDeep` của một
-   * đường dẫn không có thật trả về `undefined` chứ không báo gì.
-   */
-  const rigRoot = (type?: string) =>
-    (type ?? (Sel.one || E.selection[0] || {}).type) === "decor" ? "rig" : "stats.rig";
-  const rigKey = (suffix?: string, type?: string) =>
-    suffix ? `${rigRoot(type)}.${suffix}` : rigRoot(type);
-
-  /**
    * Bề rộng từng đốt đang hiệu lực: bản nháp nếu đang kéo, rồi tới thứ slot đã
    * khai, rồi tới bộ mặc định.
    */
   function spineWidths() {
     if (SpineEd.draft) return SpineEd.draft;
-    const own = readDeep(propsOf(), rigKey("body.widths"));
+    const own = readDeep(propsOf(), "stats.rig.body.widths");
     return Array.isArray(own) && own.length ? own.map(Number) : DEFAULT_WIDTHS.slice();
   }
 
@@ -938,7 +885,7 @@ export const UI = (() => {
   function commitSpine(widths) {
     SpineEd.draft = null;
     Cmd.run("shape.prop", [
-      rigKey("body.widths"),
+      "stats.rig.body.widths",
       widths.map((w) => Math.round(w * 100) / 100),
     ]);
   }
@@ -946,7 +893,7 @@ export const UI = (() => {
   /** Cột sống duỗi thẳng, đầu bên phải — dùng đúng hình học của bản game. */
   function spineLayout() {
     const widths = spineWidths();
-    const spacing = Number(readDeep(propsOf(), rigKey("body.spacing"))) || 0.9;
+    const spacing = Number(readDeep(propsOf(), "stats.rig.body.spacing")) || 0.9;
     const spine = new Spine({
       widths: widths.map((w) => Math.max(0, w) * SPINE_SCALE),
       spacing: spacing * SPINE_SCALE,
@@ -970,7 +917,7 @@ export const UI = (() => {
     ctx.clearRect(0, 0, w, h);
 
     const { spine, widths } = spineLayout();
-    const colour = readDeep(propsOf(), rigKey("body.color"));
+    const colour = readDeep(propsOf(), "stats.rig.body.color");
     const body = { color: Array.isArray(colour) ? colour : [150, 110, 255], glow: 0 };
 
     // Trục thân, để thấy tay nắm đang cách tâm bao xa.
@@ -1039,7 +986,7 @@ export const UI = (() => {
     const reset = el("button", {
       class: "btn block", style: "margin-top:6px",
       title: "Bỏ hình cột sống đã vẽ, quay về bộ đốt mặc định",
-      onclick: () => { SpineEd.draft = null; Cmd.run("shape.prop", [rigKey("body.widths"), ""]); },
+      onclick: () => { SpineEd.draft = null; Cmd.run("shape.prop", ["stats.rig.body.widths", ""]); },
     }, `${ico("undo", "ico ico-sm")} Cột sống về mặc định`);
     reset.dataset.spineReset = "";
     box.appendChild(reset);
@@ -1176,7 +1123,7 @@ export const UI = (() => {
    * thả thì không giúp gì cho việc chỉnh hình.
    */
   function previewSpec() {
-    const spec = readDeep((Sel.one || E.selection[0] || {}).props || {}, rigKey());
+    const spec = readDeep((Sel.one || E.selection[0] || {}).props || {}, "stats.rig");
     if (!SpineEd.draft) return spec;
     const body = { ...(spec && spec.body), kind: "chain", widths: SpineEd.draft };
     return { ...spec, body };
@@ -1738,11 +1685,11 @@ export const UI = (() => {
     // Bộ sửa cột sống chỉ có nghĩa với thân nhiều đốt. Ẩn/hiện ở đây chứ không
     // ở `buildProps`: kiểu thân đổi được mà không dựng lại cả bảng.
     if (SpineEd.box) {
-      const chain = readDeep(src, rigKey("body.kind")) === "chain";
+      const chain = readDeep(src, "stats.rig.body.kind") === "chain";
       SpineEd.box.style.display = chain ? "" : "none";
       const reset = SpineEd.box.querySelector("[data-spine-reset]");
       if (reset) {
-        const own = Array.isArray(readDeep(src, rigKey("body.widths")));
+        const own = Array.isArray(readDeep(src, "stats.rig.body.widths"));
         reset.disabled = !own;
         reset.style.opacity = own ? "" : ".3";
       }
@@ -2869,7 +2816,7 @@ export const UI = (() => {
           const n = TERRAIN_KINDS.reduce((a, k) => a + g.terrain[k].length, 0);
           meta.textContent =
             `${sum.id} · ${sum.size}×${sum.size} · ${sum.factions.map((f) => f.id).join(", ")} — ` +
-            `${n} mảnh lồi, ${g.slots.spawn.length + g.slots.structure.length + g.slots.minion.length + g.slots.neutral.length + (g.slots.decor?.length ?? 0)} slot, ` +
+            `${n} mảnh lồi, ${g.slots.spawn.length + g.slots.structure.length + g.slots.minion.length + g.slots.neutral.length} slot, ` +
             `${(g.lanes || []).length} lane · ${ta.value.length.toLocaleString("vi-VN")} ký tự`;
         };
 

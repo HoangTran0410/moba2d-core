@@ -5,7 +5,7 @@
    trong trình duyệt và mọi file đã export vẫn mở được bình thường.
    ========================================================================= */
 
-import type { DecorSlot, MapGeometry, MapSummary, MapTuning } from '@/content/ContentPack';
+import type { MapGeometry, MapSummary, MapTuning } from '@/content/ContentPack';
 import { Geom } from './geom';
 import { MapRules } from './mapRules';
 import { requestRender } from './frame';
@@ -543,19 +543,6 @@ export const Store = (() => {
       if (s.rotationDeg) p.rotationDeg = +s.rotationDeg;
       marker("neutral", s, keepStats(s, p));
     }
-    // `decor` là optional trong `MapGeometry` — map cũ không có khoá này, và
-    // đọc một map như vậy phải ra đúng số slot như trước, không phải một mảng
-    // rỗng đẻ thêm khoá lúc lưu lại.
-    for (const s of (slots.decor || [])) {
-      const p: Record<string, any> = { r: +s.r || 0 };
-      if (s.size != null) p.size = +s.size;
-      if (s.speed != null) p.speed = +s.speed;
-      // Cả nhánh `rig` đi nguyên khối, không liệt kê từng ô: mọi thứ một pack
-      // hay một map viết tay khai mà inspector chưa có ô cho nó — `rig.legs.on`,
-      // `rig.body.glow` — mở ra lưu lại là mất sạch nếu chép theo tên field.
-      if (s.rig && typeof s.rig === "object") p.rig = s.rig;
-      marker("decor", s, p);
-    }
     return out;
   }
 
@@ -812,7 +799,7 @@ export const Store = (() => {
     // `MapGeometry`.
     const g: MapGeometry & { authoring?: any } = {
       terrain: { wall: [], bush: [], water: [] },
-      slots: { spawn: [], minion: [], structure: [], neutral: [], decor: [] },
+      slots: { spawn: [], minion: [], structure: [], neutral: [] },
       lanes: [],
     };
 
@@ -862,27 +849,11 @@ export const Store = (() => {
           g.slots.neutral.push(withStats(p, n));
           break;
         }
-        case "decor": {
-          const d: DecorSlot = {
-            x: px,
-            y: py,
-            r: R(circleR(t)),
-            rig: p.rig && typeof p.rig === "object" ? p.rig : {},
-          };
-          if (p.size > 0) d.size = R(p.size);
-          if (p.speed >= 0 && p.speed !== 1) d.speed = Number(p.speed);
-          g.slots.decor!.push(d);
-          break;
-        }
       }
     }
 
     // "Absent on a map with no lanes" — bỏ hẳn field thay vì để mảng rỗng.
     if (!g.lanes.length) delete g.lanes;
-    // Y hệt cho `decor`, và đây mới là chỗ quan trọng: map vẽ trước khi có
-    // tính năng này phải xuất ra *đúng từng byte* như cũ, nếu không mở lên lưu
-    // lại là mọi map trong repo cùng đổi.
-    if (!g.slots.decor!.length) delete g.slots.decor;
     return g;
   }
 
@@ -1009,8 +980,7 @@ export const ${name}Geometry: MapGeometry = {
     spawn: ${fmtObjList(g.slots.spawn, "    ", ["faction", "x", "y", "r", "stats"])}
     minion: ${fmtObjList(g.slots.minion, "    ", ["faction", "lane", "x", "y", "scatter", "stats"])}
     structure: ${fmtObjList(g.slots.structure, "    ", ["faction", "kind", "x", "y", "stats"])}
-    neutral: ${fmtObjList(g.slots.neutral, "    ", ["role", "x", "y", "r", "rotationDeg", "stats"])}${g.slots.decor ? `
-    decor: ${fmtObjList(g.slots.decor, "    ", ["x", "y", "r", "size", "speed", "rig"])}` : ""}
+    neutral: ${fmtObjList(g.slots.neutral, "    ", ["role", "x", "y", "r", "rotationDeg", "stats"])}
   },${g.lanes ? `
   lanes: [
 ${g.lanes.map((l) => `    {

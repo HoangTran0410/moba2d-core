@@ -36,16 +36,13 @@ export const KIND = {
   structure: { label: "Trụ", color: "#5b8cff", shape: "point", group: "slot" },
   minion: { label: "Điểm gom lính", color: "#f0883e", shape: "point", group: "slot" },
   neutral: { label: "Bãi quái", color: "#c77dff", shape: "circle", group: "slot" },
-  // Sinh vật cảnh: không đánh nhau, không chắn đường, không có mặt trong
-  // quadtree của gameplay. Vòng tròn là *tầm đi lang thang*, không phải bãi.
-  decor: { label: "Sinh vật cảnh", color: "#7ee787", shape: "circle", group: "slot" },
   lane: { label: "Lane", color: "#29d3c4", shape: "line", group: "lane" },
 };
 
 export const TYPES = Object.keys(KIND);
 export const TYPE_INFO = KIND;                       // tên cũ, giữ để khỏi sửa khắp nơi
 export const TERRAIN_KINDS = ["wall", "bush", "water"];
-export const SLOT_KINDS = ["spawn", "structure", "minion", "neutral", "decor"];
+export const SLOT_KINDS = ["spawn", "structure", "minion", "neutral"];
 
 const shapeOf = (t) => KIND[t.type].shape;
 export const isPoly = (t) => KIND[t.type].shape === "poly";
@@ -153,16 +150,6 @@ export function withDefaults(kind, props) {
       if (!(p.r > 0)) p.r = 150;
       if (p.rotationDeg != null && !Number.isFinite(p.rotationDeg)) delete p.rotationDeg;
       break;
-    case "decor":
-      // Mặc định là một con có thân đốt và không có chân: đó là hình mà kiểu
-      // slot này sinh ra để phục vụ, và một slot mới không nên là quả cầu trơn.
-      if (!(p.r > 0)) p.r = 200;
-      if (!(p.size > 0)) p.size = 48;
-      if (!(p.speed > 0)) p.speed = 1;
-      if (!p.rig || typeof p.rig !== "object") {
-        p.rig = { body: { kind: "chain", widths: [0.7, 1, 0.9, 0.7, 0.45, 0.25] } };
-      }
-      break;
     case "lane":
       if (!p.id) p.id = "mid";
       if (!p.from) p.from = factionAt(0);
@@ -239,10 +226,11 @@ export const E = {
    * Gõ tay thì thêm một loại mới là quên một dòng, và cái quên đó im lặng theo
    * kiểu tệ nhất có thể: `undefined` là falsy, nên `pickTerrain` và
    * `pickInRect` bỏ qua đối tượng — không bấm vào được, không quét chọn được —
-   * và `render.ts` cũng bỏ qua nốt. Đúng cái đã xảy ra với `decor` ngày
-   * 2026-09-01: người dùng thêm một con, thấy một vòng tròn (lớp phủ của vùng
-   * chọn, thứ duy nhất còn vẽ), bấm ra chỗ khác là "nó mất luôn". Không có gì
-   * bị xoá cả — nó vô hình và không bắt được chuột kể từ frame đầu tiên.
+   * và `render.ts` cũng bỏ qua nốt. Đã xảy ra đúng một lần, 2026-09-01, với
+   * một loại slot sau đó bị gỡ vì lý do khác: người dùng thêm một cái, thấy
+   * một vòng tròn (lớp phủ của vùng chọn — thứ duy nhất còn vẽ), bấm ra chỗ
+   * khác là "nó mất luôn". Không có gì bị xoá cả; nó vô hình và không bắt được
+   * chuột kể từ frame đầu tiên.
    */
   visible: Object.fromEntries(TYPES.map((kind) => [kind, true])),
   snap: false,

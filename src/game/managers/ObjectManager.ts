@@ -4,7 +4,6 @@ import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import CombatText from '@/game/gameObject/helpers/CombatText';
 import { Circle, Quadtree, Rectangle } from '@/libs/quadtree';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
-import Wildlife from '@/game/gameObject/map/Wildlife';
 import ParticleSystem from '@/game/gameObject/helpers/ParticleSystem';
 import GameObject from '@/game/gameObject/GameObject';
 import UnitCollisionSystem from './UnitCollisionSystem';
@@ -107,20 +106,16 @@ const Z_INDEX_MAP = new Map<Function, number>([
   [SpellObject, SPELL_EFFECT_Z_INDEX],
   [AttackableUnit, UNIT_Z_INDEX],
   [CombatText, COMBAT_TEXT_Z_INDEX],
-  // Registered here rather than as an instance `zIndex` so `Wildlife` needs no
-  // import back out of this file: scenery belongs under everything that plays.
-  [Wildlife, GROUND_Z_INDEX],
 ]);
 /**
  * What an unregistered, un-overridden class falls back to. Deliberately no
  * longer 99: the whole point of this file is that "unlisted" must not mean
  * "wins every layer someone deliberately chose." In practice nothing real
  * should ever reach this — `AttackableUnit`, `SpellObject`, `TrailSystem`,
- * `ParticleSystem`, `Fountain` and `Wildlife` are the only direct `GameObject`
- * subclasses in the game, and `classLayerOf` below finds one of the first four
- * for every concrete class by walking up to it; `Fountain` always sets its own
- * instance `zIndex` and so never reaches class resolution at all, and
- * `Wildlife` is in the table above.
+ * `ParticleSystem` and `Fountain` are the only direct `GameObject` subclasses
+ * in the game, and `classLayerOf` below finds one of the first four for every
+ * concrete class by walking up to it; `Fountain` always sets its own
+ * instance `zIndex` and so never reaches class resolution at all.
  */
 const DEFAULT_Z_INDEX = UNIT_Z_INDEX;
 export const MOBILE_PARTICLE_DRAW_BUDGET = 800;
@@ -194,15 +189,7 @@ function zIndexOf(o: GameObject): number {
  * every vision check, target scan and AOE query that had to walk past it.
  */
 function isDecoration(o: GameObject): boolean {
-  return (
-    o instanceof ParticleSystem ||
-    o instanceof TrailSystem ||
-    o instanceof CombatText ||
-    // Scenery, and the reason it is here rather than in the gameplay tree: an
-    // animal nothing can target, hit or see still costs every vision check and
-    // area query in the match a walk past it. See `Wildlife`.
-    o instanceof Wildlife
-  );
+  return o instanceof ParticleSystem || o instanceof TrailSystem || o instanceof CombatText;
 }
 
 export interface QueryOptions {

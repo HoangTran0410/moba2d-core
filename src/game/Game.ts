@@ -1,6 +1,5 @@
 import type {
   ActiveMap,
-  DecorSlot,
   MapTuning,
   NeutralSlot,
   SpawnSlot,
@@ -17,7 +16,6 @@ import { teamBodyColor } from './gameObject/attackableUnits/Minion';
 import Camera, { zoomFactorPreference } from './gameObject/map/Camera';
 import FogOfWar from './gameObject/map/FogOfWar';
 import TerrainMap from './gameObject/map/TerrainMap';
-import Wildlife, { DEFAULT_DECOR_SIZE } from './gameObject/map/Wildlife';
 import Minimap, { hitTest, type MinimapBlip, type MinimapHost } from './gameObject/map/Minimap';
 import Fountain from './gameObject/structures/Fountain';
 import Turret from './gameObject/structures/Turret';
@@ -543,7 +541,6 @@ export default class Game {
     // `ObjectManager.update()` and only swept by the second, i.e. one frame of
     // camps a player who switched the jungle off never asked to see.
     if (pregameConfig.world.jungle) this.spawnJungle();
-    this.spawnWildlife(map.slots.decor);
     this.spawnTurrets(map.slots.structure, map.factions, map.tuning);
     // the spawner reads teams off the fountains, so it comes after them
     this.minionSpawner = new MinionSpawner(this);
@@ -632,35 +629,6 @@ export default class Game {
         this.monsters.push(body);
         this.objectManager.addObject(body);
       }
-    }
-  }
-
-  /**
-   * Scenery: one animal per `slots.decor` entry, and nothing else.
-   *
-   * Deliberately **not** behind `pregameConfig.world.jungle` the way the camps
-   * above it are. That switch turns off a thing you fight and farm; the river
-   * having something living in it is not a game mode, it is what the map looks
-   * like, and a player who turned the jungle off did not ask for an emptier
-   * world.
-   *
-   * A map with no `decor` key at all — which is every map that existed before
-   * the field — spawns nothing and pays one `undefined` check for it.
-   *
-   * @param decorSlots The active map's `slots.decor`, if it declared any.
-   */
-  spawnWildlife(decorSlots?: DecorSlot[]) {
-    for (const slot of decorSlots ?? []) {
-      const animal = new Wildlife({
-        game: this,
-        x: slot.x,
-        y: slot.y,
-        roam: Number.isFinite(slot.r as number) ? Math.max(0, slot.r as number) : 0,
-        size: Number.isFinite(slot.size as number) ? Math.max(1, slot.size as number) : DEFAULT_DECOR_SIZE,
-        speed: Number.isFinite(slot.speed as number) ? Math.max(0, slot.speed as number) : 1,
-        rig: slot.rig,
-      });
-      this.objectManager.addObject(animal);
     }
   }
 
