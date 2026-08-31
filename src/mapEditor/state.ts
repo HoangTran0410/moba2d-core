@@ -233,7 +233,18 @@ export const E = {
    * sau `CHECK_FOCUS_MS` (`render.js`), nên không có gì phải dọn.
    */
   checkFocus: null,
-  visible: { wall: true, bush: true, water: true, spawn: true, structure: true, minion: true, neutral: true, lane: true },
+  /**
+   * Lớp nào đang hiện. **Sinh ra từ `KIND`**, không gõ tay.
+   *
+   * Gõ tay thì thêm một loại mới là quên một dòng, và cái quên đó im lặng theo
+   * kiểu tệ nhất có thể: `undefined` là falsy, nên `pickTerrain` và
+   * `pickInRect` bỏ qua đối tượng — không bấm vào được, không quét chọn được —
+   * và `render.ts` cũng bỏ qua nốt. Đúng cái đã xảy ra với `decor` ngày
+   * 2026-09-01: người dùng thêm một con, thấy một vòng tròn (lớp phủ của vùng
+   * chọn, thứ duy nhất còn vẽ), bấm ra chỗ khác là "nó mất luôn". Không có gì
+   * bị xoá cả — nó vô hình và không bắt được chuột kể từ frame đầu tiên.
+   */
+  visible: Object.fromEntries(TYPES.map((kind) => [kind, true])),
   snap: false,
   gridSize: 50,
 
