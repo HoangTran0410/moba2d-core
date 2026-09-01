@@ -1207,6 +1207,9 @@ export default class Game {
       mapSize: () => this.mapSize,
       wallPolygons: () => this.terrainMap.wallPolygons(),
       blips: () => this.minimapBlips(),
+      // `null` is the practice panel's reveal cheat — no veil at all — and
+      // matches the one override `minimapBlips` above already honours.
+      visionCircles: () => (this.director.revealMap ? null : this.fogOfWar.visionCircles()),
       playerPosition: () => this.player.position,
       cameraBox: () => this.camera.getBoundingBox(),
     };

@@ -4,6 +4,7 @@ import {
   MINIMAP_LIVE_INTERVAL_MS,
   liveLayerIsStale,
   type MinimapHost,
+  type VisionCircle,
 } from '../../../src/game/gameObject/map/Minimap';
 
 /**
@@ -28,6 +29,9 @@ const fakeGraphics = () => {
     (...__args: unknown[]) => {
       calls[name] = (calls[name] ?? 0) + 1;
     };
+  // The fog punches its holes with the same `circle` the dots are drawn with,
+  // so the two are counted apart by what mode the buffer is in.
+  let erasing = false;
   return {
     calls,
     CLOSE: 'close',
@@ -44,14 +48,25 @@ const fakeGraphics = () => {
     stroke: count('stroke'),
     strokeWeight: count('strokeWeight'),
     rect: count('rect'),
-    circle: count('circle'),
+    erase: (...__args: unknown[]) => {
+      erasing = true;
+      count('erase')();
+    },
+    noErase: () => {
+      erasing = false;
+      count('noErase')();
+    },
+    circle: (...__args: unknown[]) => count(erasing ? 'litCircle' : 'circle')(),
     beginShape: count('beginShape'),
     vertex: count('vertex'),
     endShape: count('endShape'),
   };
 };
 
-const hostWith = (blipCount: number) => {
+const hostWith = (
+  blipCount: number,
+  vision: readonly VisionCircle[] | null = [{ x: 3200, y: 3200, r: 600 }]
+) => {
   let blipCalls = 0;
   const blips = Array.from({ length: blipCount }, (_unused, i) => ({
     x: i * 10,
@@ -67,6 +82,7 @@ const hostWith = (blipCount: number) => {
       blipCalls++;
       return blips;
     },
+    visionCircles: () => vision,
     playerPosition: () => ({ x: 100, y: 100 }),
     cameraBox: () => ({ x: 0, y: 0, w: 800, h: 600 }),
   };
@@ -186,5 +202,91 @@ describe('Minimap.draw', () => {
     minimap.draw();
 
     expect(blipCalls()).toBe(2);
+  });
+});
+
+/**
+ * **The minimap's fog.**
+ *
+ * The dots were already fog-correct — `Game.minimapBlips` consults
+ * `visibleToPlayerTeam` — but the ground under them was not, so an empty
+ * jungle read as an empty jungle rather than as an unwatched one, which is
+ * most of what a minimap is for.
+ *
+ * It rides the moving layer rather than the wall layer under it, for the
+ * reason the layers are split in the first place: walls do not move and vision
+ * does, so the veil is repainted on the 20Hz beat and the static trace is
+ * still built once per size.
+ */
+describe('the fog on the minimap', () => {
+  let graphics: ReturnType<typeof fakeGraphics>[];
+  let now: number;
+
+  beforeEach(() => {
+    graphics = [];
+    now = 10_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('createGraphics', () => {
+      const g = fakeGraphics();
+      graphics.push(g);
+      return g;
+    });
+    vi.stubGlobal('image', () => {});
+    for (const name of [
+      'push',
+      'pop',
+      'imageMode',
+      'rectMode',
+      'noFill',
+      'stroke',
+      'strokeWeight',
+      'rect',
+    ]) {
+      vi.stubGlobal(name, () => {});
+    }
+    vi.stubGlobal('CORNER', 'corner');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** The moving layer is the second buffer built — the wall layer is first. */
+  const live = () => graphics[1];
+
+  it('punches one hole per lit disc, and closes the erase afterwards', () => {
+    const { host } = hostWith(0, [
+      { x: 1_000, y: 1_000, r: 600 },
+      { x: 3_200, y: 3_200, r: 300 },
+      { x: 5_000, y: 900, r: 450 },
+    ]);
+    new Minimap(host).draw();
+
+    expect(live().calls.erase).toBe(1);
+    expect(live().calls.litCircle).toBe(3);
+    // Or every dot after it would be erased too — the player's own dot is
+    // painted last, and it is the one dot that is never allowed to vanish.
+    expect(live().calls.noErase).toBe(1);
+  });
+
+  it('veils a map the team is not looking at, with no holes at all', () => {
+    const { host } = hostWith(0, []);
+    new Minimap(host).draw();
+
+    // The veil is still painted — that is the whole point of seeing nothing —
+    // but nothing is erased out of it.
+    expect(live().calls.rect).toBe(2); // the veil, and the camera box
+    expect(live().calls.erase).toBeUndefined();
+  });
+
+  it('paints no veil at all under the reveal cheat', () => {
+    const { host } = hostWith(0, null);
+    new Minimap(host).draw();
+
+    // `null` is "this map has no fog", which is not the same answer as "the
+    // team can see nothing" — one is a clear map, the other a black one.
+    expect(live().calls.rect).toBe(1); // the camera box alone
+    expect(live().calls.erase).toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EXPANDED_FRACTION,
   MINIMAP_MARGIN,
+  MINIMAP_MIN_SIZE,
   MINIMAP_SIZE,
   Minimap,
   hitTest,
@@ -60,12 +61,34 @@ const makeMinimap = (width: number, height: number) =>
   });
 
 describe('minimap rect', () => {
-  it('collapses into the top-left corner at the fixed size', () => {
+  /**
+   * The collapsed map used to be 150 pixels on everything, which is a seventh
+   * of a laptop's short side and a quarter of a phone's: the same rectangle
+   * reads as a HUD element on one and as a window over the corner of the fight
+   * on the other. It is a share of the screen now, railed at both ends.
+   */
+  it('collapses into the top-left corner at the full size on a laptop', () => {
     expect(makeMinimap(1280, 720).rect).toEqual({
       x: MINIMAP_MARGIN,
       y: MINIMAP_MARGIN,
       size: MINIMAP_SIZE,
     });
+  });
+
+  it('never grows past that, however large the screen', () => {
+    expect(makeMinimap(3840, 2160).rect.size).toBe(MINIMAP_SIZE);
+  });
+
+  it('shrinks on a phone held sideways, and stops at the floor', () => {
+    const phone = makeMinimap(844, 390).rect;
+    expect(phone.size).toBeLessThan(MINIMAP_SIZE);
+    expect(phone.size).toBe(MINIMAP_MIN_SIZE);
+  });
+
+  it('lands between the two on the screens in between', () => {
+    const size = makeMinimap(1024, 600).rect.size;
+    expect(size).toBeGreaterThan(MINIMAP_MIN_SIZE);
+    expect(size).toBeLessThan(MINIMAP_SIZE);
   });
 
   it('expands to a fraction of the shorter side, centred', () => {

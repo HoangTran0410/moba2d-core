@@ -132,6 +132,9 @@ interface SightCacheEntry {
   obstacleSignature: string;
 }
 
+/** One lit disc for the minimap. Structurally `Minimap`'s own `VisionCircle`. */
+export type MinimapVisionCircle = { x: number; y: number; r: number };
+
 type SightResult = {
   object: any;
   sightPoly: { x: number; y: number }[];
@@ -164,6 +167,9 @@ export default class FogOfWar {
     revision: number;
     result: SightResult[];
   };
+
+  /** See `visionCircles()`. Rebuilt by every sight pass, read by the minimap. */
+  private mapVisionCircles: MinimapVisionCircle[] = [];
 
   constructor(game: any) {
     this.game = game;
@@ -265,6 +271,17 @@ export default class FogOfWar {
 
     const allSightPoly: SightResult[] = [];
     const visiblePlayers: any[] = [];
+    /**
+     * Every allied lit disc on the map, champions included — the minimap's
+     * copy of the fog. Built here rather than by a second walk of its own: this
+     * pass already holds the ally list, and it is the only thing on the frame
+     * that knows what a revealer's radius currently is.
+     *
+     * Deliberately *not* `allSightPoly`: that is narrowed to the camera, and a
+     * map whose whole point is showing the other side of the map cannot be
+     * drawn from a list of what is on screen.
+     */
+    const mapVision: MinimapVisionCircle[] = [];
     /** Every allied granted circle on the map — what `visibleToPlayerTeam` is computed from. */
     const revealCircles: RevealCircle[] = [];
     // Widened: this answer now stands for more than one tick. See
@@ -282,6 +299,9 @@ export default class FogOfWar {
 
     allyObjects.forEach((obj: any) => {
       const radius = fogRevealOf(obj);
+      if (radius > 0) {
+        mapVision.push({ x: obj.position.x, y: obj.position.y, r: radius });
+      }
       if (obj.visionRadius > 0) {
         // Player and allied champions: the real, wall-aware sight polygon. Run
         // for all of them rather than the on-camera ones — a team fields at most
@@ -418,10 +438,25 @@ export default class FogOfWar {
       });
     }
 
+    this.mapVisionCircles = mapVision;
+
     if (typeof revision === 'number') {
       this.lastSightCalculation = { revision, result: allSightPoly };
     }
     return allSightPoly;
+  }
+
+  /**
+   * What the player's team lights up, over the whole map — the minimap's fog.
+   *
+   * Held from the last `calculateSight`, which is the pass that already
+   * decided it: a second walk would be a second answer, and two answers to
+   * "what can we see" is exactly the drift `visibleToPlayerTeam` exists to
+   * avoid. Empty until the first pass has run, which is one frame in which the
+   * minimap is fully fogged — `Game.draw` runs the fog before the minimap.
+   */
+  visionCircles(): readonly MinimapVisionCircle[] {
+    return this.mapVisionCircles;
   }
 
   /**

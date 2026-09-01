@@ -26,11 +26,49 @@ export interface Point {
   y: number;
 }
 
-/** Collapsed edge length in screen pixels, and its inset from the corner. */
+/** One lit disc: a champion's sight, a minion's, a turret's, a ward's. */
+export interface VisionCircle {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/**
+ * The collapsed map's edge length in screen pixels: the size it reaches on a
+ * screen with room for it, and the size everything else is measured against.
+ */
 export const MINIMAP_SIZE = 150;
 export const MINIMAP_MARGIN = 12;
+
+/**
+ * …and the floor under it. Below about this the dots stop being separable
+ * from each other, which is the only thing the collapsed map is for.
+ */
+export const MINIMAP_MIN_SIZE = 96;
+
+/**
+ * Collapsed edge length as a share of the viewport's shorter side, clamped
+ * into the two constants above.
+ *
+ * A fixed 150 is a quarter of a phone's short side and a seventh of a laptop's:
+ * the same rectangle reads as a HUD element on one and as a window covering
+ * the corner of the fight on the other ("trên mobile minimap hơi to"). The
+ * fraction is picked so a 720p laptop and anything larger still lands on the
+ * full 150 — this shrinks the map on small screens and changes nothing on the
+ * screens nobody complained about — and a phone lands on the floor.
+ */
+export const COLLAPSED_FRACTION = 0.21;
+
 /** Expanded edge length, as a fraction of the viewport's shorter side. */
 export const EXPANDED_FRACTION = 0.8;
+
+/** What the collapsed map measures, for a viewport. Pure. */
+export const collapsedMinimapSize = (viewport: MinimapViewport): number => {
+  const shorter = Math.min(viewport.width, viewport.height);
+  return Math.round(
+    Math.max(MINIMAP_MIN_SIZE, Math.min(MINIMAP_SIZE, shorter * COLLAPSED_FRACTION))
+  );
+};
 
 /**
  * One transform, parameterised by the rect: the expanded and collapsed maps
@@ -60,7 +98,9 @@ export const hitTest = (point: Point, rect: MinimapRect): boolean =>
  * tall phone and a wide desktop both get a square that fits.
  */
 export const minimapRect = (expanded: boolean, viewport: MinimapViewport): MinimapRect => {
-  if (!expanded) return { x: MINIMAP_MARGIN, y: MINIMAP_MARGIN, size: MINIMAP_SIZE };
+  if (!expanded) {
+    return { x: MINIMAP_MARGIN, y: MINIMAP_MARGIN, size: collapsedMinimapSize(viewport) };
+  }
   const size = Math.min(viewport.width, viewport.height) * EXPANDED_FRACTION;
   return { x: (viewport.width - size) / 2, y: (viewport.height - size) / 2, size };
 };
@@ -82,6 +122,12 @@ export interface MinimapHost {
   wallPolygons(): Point[][];
   /** Everything worth a dot this frame, fog already applied. See `MinimapBlip`. */
   blips(): readonly MinimapBlip[];
+  /**
+   * What the player's team lights up, in world space and over the WHOLE map —
+   * not the camera's share of it. `null` means "no fog on this map", which is
+   * the practice panel's reveal cheat and nothing else. See `MinimapVision`.
+   */
+  visionCircles(): readonly VisionCircle[] | null;
   /** Where the player is, always drawn — you can always see yourself. */
   playerPosition(): Point;
   /** `Camera.getBoundingBox()`: the one element that answers "where am I looking". */
@@ -115,6 +161,31 @@ export const PLAYER_COLOR = [255, 236, 140] as const;
 const CAMERA_BOX_COLOR = [235, 240, 250, 190] as const;
 
 /**
+ * The veil over everything the team cannot currently see.
+ *
+ * The minimap showed terrain and dots and nothing about *vision*, so a player
+ * reading it could not tell a quiet lane from one nobody is looking at —
+ * which is most of what a minimap is for. The dots were already fog-correct
+ * (`Game.minimapBlips` consults `visibleToPlayerTeam`); what was missing was
+ * the ground under them, so an empty jungle read as an empty jungle rather
+ * than as an unwatched one.
+ *
+ * Dark and translucent rather than opaque: League's minimap keeps the terrain
+ * legible under its fog, and so does this — you always know the *shape* of the
+ * map, only never who is standing on it.
+ */
+const FOG_COLOR = [8, 10, 16, 168] as const;
+
+/**
+ * The smallest lit disc, in minimap pixels.
+ *
+ * A revealer with a small radius scales down to nothing on a 96px map, and a
+ * lit area you cannot see is the same as no vision at all — the dot would be
+ * standing in its own fog.
+ */
+const FOG_MIN_LIT_PX = 4;
+
+/**
  * Dot diameters in minimap pixels at the collapsed size, by kind.
  *
  * Deliberately not derived from `stats.size`: a dot is an icon, not a scale
@@ -131,6 +202,13 @@ const BLIP_DIAMETER: Record<BlipKind | 'player', number> = {
 };
 /** Past this the expanded map's icons would be blobs of their own. */
 const BLIP_SCALE_MAX = 2.2;
+/**
+ * …and the floor, which the collapsed map needs now that it shrinks. Scaling
+ * the icons all the way down with a 96px map would take a unit dot to 2.2px:
+ * the map would be smaller *and* less readable, which is not the trade the
+ * smaller map was for.
+ */
+const BLIP_SCALE_MIN = 0.85;
 
 /**
  * How often the moving layer — dots, camera box, player — is repainted.
@@ -187,6 +265,7 @@ export class Minimap {
    * with it every geometry method below — needs no canvas.
    */
   private collapsedBuffer: any = null;
+  private collapsedBufferSize = 0;
   private expandedBuffer: any = null;
   private expandedBufferSize = 0;
   /** The restore generation these buffers were painted under — see `bufferFor`. */
@@ -247,11 +326,14 @@ export class Minimap {
     if (width === this.viewportWidth && height === this.viewportHeight) return;
     this.viewportWidth = width;
     this.viewportHeight = height;
-    // The expanded buffer is sized off the viewport, so it is now the wrong
-    // pixel size. Dropped rather than resized: rebuilding is one trace of a
-    // static layer, and it happens on the next frame that needs it.
+    // Both wall layers are sized off the viewport now — the collapsed one too,
+    // since `collapsedMinimapSize` reads it — so both are the wrong pixel size.
+    // Dropped rather than resized: rebuilding is one trace of a static layer,
+    // and it happens on the next frame that needs it.
     removeGraphics(this.expandedBuffer);
     this.expandedBuffer = null;
+    removeGraphics(this.collapsedBuffer);
+    this.collapsedBuffer = null;
     removeGraphics(this.liveBuffer);
     this.liveBuffer = null;
   }
@@ -321,10 +403,16 @@ export class Minimap {
   private paintLiveLayer(graphics: any, size: number): void {
     const local: MinimapRect = { x: 0, y: 0, size };
     const mapSize = this.host.mapSize();
-    const dotScale = Math.min(BLIP_SCALE_MAX, size / MINIMAP_SIZE);
+    const dotScale = Math.min(BLIP_SCALE_MAX, Math.max(BLIP_SCALE_MIN, size / MINIMAP_SIZE));
 
     graphics.clear();
     graphics.rectMode(graphics.CORNER);
+
+    // Under everything: what the team cannot see. Painted into this layer
+    // rather than the wall layer under it because vision moves and walls do
+    // not — the veil is repainted on the moving layer's own 20Hz beat, and the
+    // static trace it sits over is still built once per size.
+    this.paintFog(graphics, local, mapSize, size);
 
     // The view rectangle first, so no dot is hidden under its outline.
     const box = this.host.cameraBox();
@@ -362,6 +450,41 @@ export class Minimap {
     graphics.circle(player.x, player.y, playerDiameter);
   }
 
+  /**
+   * The fog: one veil over the whole map, with a hole punched for every lit
+   * disc.
+   *
+   * **Circles, not the fog's own polygons.** `FogOfWar` casts wall-aware
+   * visibility polygons, and they are the right picture on a 1280-pixel canvas
+   * and the wrong one here twice over: they are only cast for revealers *near
+   * the camera* (so an ally holding vision across the map would light nothing
+   * on a map whose whole point is showing the other side of the map), and a
+   * wall's shadow is well under one pixel wide at this scale. A disc per
+   * revealer is what the polygons look like from here.
+   *
+   * `erase` rather than a second buffer and a mask blit: p5 gives the same
+   * destination-out composite the fog overlay itself uses, on a buffer that is
+   * repainted five times a second at most.
+   */
+  private paintFog(graphics: any, local: MinimapRect, mapSize: number, size: number): void {
+    const circles = this.host.visionCircles();
+    // `null` is the reveal cheat: no veil at all, not a veil with no holes.
+    if (circles === null) return;
+
+    graphics.noStroke();
+    graphics.fill(FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2], FOG_COLOR[3]);
+    graphics.rect(0, 0, size, size);
+    if (circles.length === 0) return;
+
+    const scale = size / mapSize;
+    graphics.erase();
+    for (const lit of circles) {
+      const at = worldToMinimap(lit, local, mapSize);
+      graphics.circle(at.x, at.y, Math.max(FOG_MIN_LIT_PX, lit.r * 2 * scale));
+    }
+    graphics.noErase();
+  }
+
   private bufferFor(size: number): any {
     // A background purge blanks these pre-rendered layers along with every
     // image (`AssetManager`'s probe note): the manager repaints what it
@@ -374,11 +497,16 @@ export class Minimap {
       this.collapsedBuffer = null;
       this.expandedBuffer = null;
     }
+
+    const pixels = Math.max(1, Math.round(size));
     if (!this.expanded) {
-      if (!this.collapsedBuffer) this.collapsedBuffer = this.buildBuffer(MINIMAP_SIZE);
+      if (!this.collapsedBuffer || this.collapsedBufferSize !== pixels) {
+        removeGraphics(this.collapsedBuffer);
+        this.collapsedBuffer = this.buildBuffer(pixels);
+        this.collapsedBufferSize = pixels;
+      }
       return this.collapsedBuffer;
     }
-    const pixels = Math.max(1, Math.round(size));
     if (!this.expandedBuffer || this.expandedBufferSize !== pixels) {
       removeGraphics(this.expandedBuffer);
       this.expandedBuffer = this.buildBuffer(pixels);
