@@ -38,12 +38,6 @@ export const SHOP_RING_FADE = 1.9;
 const SHOP_RING_ALPHA = 190;
 const SHOP_RING_SEGMENTS = 40;
 
-interface Mote {
-  angle: number;
-  radius: number;
-  rise: number;
-  life: number;
-}
 
 /**
  * Bệ Đá Cổ — the spawn platform. Allied champions standing inside get a slice
@@ -78,9 +72,6 @@ export default class Fountain extends GameObject {
   shopRadius: number;
 
   _tickCooldown = 0;
-  _pulse = 0;
-  _motes: Mote[] = [];
-  _moteCooldown = 0;
 
   constructor({ game, preset }: { game: GameObjectRuntimeContext; preset: FountainPresetData }) {
     super({
@@ -102,9 +93,6 @@ export default class Fountain extends GameObject {
   }
 
   update() {
-    this._pulse += deltaTime * 0.0022;
-    this.updateMotes();
-
     this._tickCooldown -= deltaTime;
     if (this._tickCooldown > 0) return;
     this._tickCooldown = this.tickInterval;
@@ -140,98 +128,46 @@ export default class Fountain extends GameObject {
     });
   }
 
-  updateMotes() {
-    this._moteCooldown -= deltaTime;
-    if (this._moteCooldown <= 0 && this._motes.length < 26) {
-      this._moteCooldown = 90;
-      this._motes.push({
-        angle: random(TWO_PI),
-        radius: random(this.radius * 0.2, this.radius * 0.95),
-        rise: 0,
-        life: 1,
-      });
-    }
 
-    let i = 0;
-    while (i < this._motes.length) {
-      const m = this._motes[i];
-      m.rise += deltaTime * 0.045;
-      m.angle += deltaTime * 0.0004;
-      m.life -= deltaTime * 0.0009;
-      if (m.life <= 0) this._motes.splice(i, 1);
-      else i++;
-    }
-  }
-
+  /**
+   * A platform, drawn as a platform.
+   *
+   * This used to be four translucent discs (the widest at the full healing
+   * diameter), a stroked ring, eight separate `arc()` paths turning one way, a
+   * six-sided sigil turning the other, and up to twenty-six rising motes — and
+   * it profiled as the most expensive single body on a crowded board, 0.40ms of
+   * a 6.0ms frame, for two objects that stand still and cannot be attacked.
+   *
+   * What it costs is **fill**: baking the whole thing into buffers was tried and
+   * measured identical (0.396ms against 0.398ms), because a blit fills the same
+   * pixels the discs did. So the art itself is the thing that had to change.
+   *
+   * The outermost disc was the expensive one *and* the only one carrying
+   * information — its edge is where the healing reaches. Drawn as a rim instead
+   * of a disc it says the same thing more plainly, at the cost of a stroke
+   * rather than the largest fill on the map: about a third of the fill area
+   * this had before, and no per-frame animation state at all.
+   */
   draw() {
     const { x, y } = this.position;
     const r = this.radius;
-    const breathe = 1 + Math.sin(this._pulse) * 0.03;
-
-    // What the platform costs is fill, not shape: four translucent discs the
-    // width of the base, alpha-blended over each other every frame. Tracing
-    // them is nothing — baking the whole thing into buffers was tried and
-    // measured *identical*, because the blit fills the same pixels — so the
-    // only thing that makes it cheaper is drawing fewer of them. The outermost
-    // is the widest and the faintest at alpha 26, and it is the one nobody
-    // looks at while their machine is dropping frames.
-    const stressed = this.game?.renderStressed === true;
 
     push();
+
+    // The pad you stand on.
     noStroke();
-
-    // outer glow
-    if (!stressed) {
-      fill(70, 190, 235, 26);
-      circle(x, y, r * 2 * breathe);
-    }
-    fill(70, 190, 235, 34);
-    circle(x, y, r * 1.7);
-
-    // platform
     fill(22, 44, 60, 235);
     circle(x, y, r * 1.5);
     fill(30, 62, 82, 235);
     circle(x, y, r * 1.32);
 
-    // rune ring
-    push();
-    translate(x, y);
-    rotate(this._pulse * 0.35);
+    // The rim: exactly where the restoring stops, which is the one fact a
+    // player walking home needs from this object.
     noFill();
-    stroke(120, 230, 255, 170);
-    strokeWeight(4);
-    circle(0, 0, r * 1.05);
+    stroke(120, 230, 255, 150);
     strokeWeight(3);
-    for (let i = 0; i < 8; i++) {
-      const a0 = (TWO_PI / 8) * i;
-      arc(0, 0, r * 1.32, r * 1.32, a0, a0 + 0.28);
-    }
-    pop();
+    circle(x, y, r * 2);
 
-    // centre sigil
-    push();
-    translate(x, y);
-    rotate(-this._pulse * 0.6);
-    stroke(180, 245, 255, 210);
-    strokeWeight(5);
-    noFill();
-    beginShape();
-    for (let i = 0; i < 6; i++) {
-      const a = (TWO_PI / 6) * i;
-      vertex(cos(a) * r * 0.3, sin(a) * r * 0.3);
-    }
-    endShape(CLOSE);
-    pop();
-
-    // rising motes — decoration, and the second thing to go
-    noStroke();
-    for (const m of stressed ? [] : this._motes) {
-      const mx = x + cos(m.angle) * m.radius;
-      const my = y + sin(m.angle) * m.radius - m.rise;
-      fill(150, 240, 255, 200 * m.life);
-      circle(mx, my, 6 * m.life + 2);
-    }
     pop();
 
     this.drawShopReach();

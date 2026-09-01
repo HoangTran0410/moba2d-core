@@ -351,7 +351,8 @@ one.** None is visible from the file you are editing.
   19% hit rate that way. `FogOfWar.performance.test.ts`.
 - **Baking static art into a buffer does not make a translucent disc cheaper** —
   the blit fills the same pixels, and a supersampled buffer is *slower*. When
-  fill is the cost, draw fewer or smaller pixels.
+  fill is the cost the fix is the art, not the code: the fountain's widest disc
+  became a rim, which is cheaper *and* says where the healing stops.
 - **Quote no render number that was not measured interleaved** —
   `tests/e2e/measure-frame-cost.mjs`, `measure-sim-clock.mjs`.
 
