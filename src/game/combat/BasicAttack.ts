@@ -245,6 +245,18 @@ export class BasicAttackBolt extends MissileSpellObject {
     this.armTotalMs = ms;
   }
 
+  /**
+   * How far through the nock this bolt is: 0 as it is drawn, 1 as it leaves.
+   *
+   * `protected` rather than private state read inline, because a subclass draws
+   * a different shot from the same nock — `MinionBolt` paints a caster's
+   * gathering orb and a cart's shell — and reproducing this expression is how
+   * two bolts end up charging at different rates from the same timer.
+   */
+  protected nockCharge(): number {
+    return this.armTotalMs > 0 ? 1 - Math.max(0, this.armMs) / this.armTotalMs : 1;
+  }
+
   onBeforeMove(): void {
     if (this.armMs > 0) {
       this.armMs -= deltaTime;
@@ -279,8 +291,7 @@ export class BasicAttackBolt extends MissileSpellObject {
     const pos = this.position;
     const [r, g, b] = this.color;
     const nocked = this.armMs > 0;
-    const charge =
-      this.armTotalMs > 0 ? 1 - Math.max(0, this.armMs) / this.armTotalMs : 1;
+    const charge = this.nockCharge();
     push();
     noStroke();
     if (nocked) {

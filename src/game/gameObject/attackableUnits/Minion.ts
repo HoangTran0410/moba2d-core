@@ -1,6 +1,6 @@
 import { Circle } from '@/libs/quadtree';
 import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
-import { stillInReach } from '@/game/combat/BasicAttack';
+import { BasicAttackBolt, stillInReach } from '@/game/combat/BasicAttack';
 import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { dist, distSq, withinRadius } from '@/utils/math.utils';
@@ -10,6 +10,7 @@ import TeamId from '@/game/enums/TeamId';
 import type { LaneWaypoint } from '@/game/lanes';
 import { MINION_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
+import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import SpellObject from '@/game/gameObject/SpellObject';
 import AttackableUnit from './AttackableUnit';
 import type {
@@ -113,6 +114,25 @@ export const MELEE_WINDUP_MS = 130;
 /** Total ms a melee swing's visual lives, wind-up through fade. */
 export const MELEE_SWING_TOTAL_MS = 300;
 
+/**
+ * A ranged minion's wind-up: this share of its own beat, up to this ceiling.
+ *
+ * Its own numbers rather than the champion controller's, for the same reason
+ * `MELEE_WINDUP_MS` above is 130 where `BasicAttack.ts`'s is 180 — a wave is
+ * forty bodies swinging at once, and a beat long enough to read on one
+ * champion is a wave that looks permanently mid-animation. The share matters
+ * more than the cap: a cannon's slow beat earns a long, heavy wind-up, and a
+ * caster's quick one stays quick.
+ */
+export const RANGED_WINDUP_FRACTION = 0.25;
+export const RANGED_WINDUP_MAX_MS = 240;
+
+/** ms the cart's muzzle flash lives after the shell leaves. */
+export const CANNON_FLASH_MS = 110;
+
+/** ms a soldier's blade spends driving through after the wind-up resolves. */
+export const MELEE_FOLLOW_THROUGH_MS = 120;
+
 const TEAM_COLORS: Record<string, { body: number[]; trim: number[]; bar: number[] }> = {
   [TeamId.BLUE]: { body: [64, 142, 232], trim: [16, 44, 82], bar: [96, 186, 255] },
   [TeamId.RED]: { body: [226, 84, 68], trim: [86, 22, 18], bar: [255, 126, 106] },
@@ -214,6 +234,24 @@ export default class Minion extends AttackableUnit {
 
   /** ms left before the next swing. */
   _attackCooldown = 0;
+  /**
+   * ms left of this minion's wind-up — the beat between committing to a swing
+   * and the swing landing, which every champion has had and no minion did.
+   *
+   * Damage already resolved late (`MinionSwing` waits `MELEE_WINDUP_MS`, and a
+   * bolt has to fly), but the *body* did not know: a minion snapped from
+   * standing to having attacked, with the swing object as the only sign. The
+   * timer is here so the art can lean into the swing the way a champion's does,
+   * and so the two ranged styles stop looking identical.
+   */
+  _windupMs = 0;
+  /**
+   * ms left of the beat *after* the swing — a blade following through, a
+   * barrel still flashing. Armed at launch as `windup + RECOVER_MS` rather
+   * than when the wind-up ends, because `update` is the only thing that counts
+   * either of them down and nothing fires on the boundary between them.
+   */
+  _recoverMs = 0;
   /** ms left before the next aggro scan, jittered so a wave does not scan in lockstep. */
   _scanCooldown: number;
   /** Last angle `aimAngle` had an answer for. See there. */
@@ -270,6 +308,8 @@ export default class Minion extends AttackableUnit {
     if (this.isDead) return;
 
     if (this._attackCooldown > 0) this._attackCooldown -= deltaTime;
+    if (this._windupMs > 0) this._windupMs -= deltaTime;
+    if (this._recoverMs > 0) this._recoverMs -= deltaTime;
 
     this._scanCooldown -= deltaTime;
     if (this._scanCooldown <= 0) {
@@ -431,21 +471,51 @@ export default class Minion extends AttackableUnit {
    * actually applies, so a target that dies or leaves takes nothing phantom.
    */
   launchAttack(target: AttackableUnit, reach: number): void {
+    this._windupMs = this.windupFor();
+
     if (this.style !== 'melee') {
       const bolt = new MinionBolt(this);
+      bolt.style = this.style;
       bolt.target = target;
       bolt.damage = this.damage;
       bolt.color = this.colors.bar;
       bolt.position.set(this.position.x, this.position.y);
       bolt.destination.set(target.position.x, target.position.y);
+      // Nocked for the wind-up, exactly as `BasicAttackController` nocks a
+      // champion's: it rides the body and brightens, and flies on the beat.
+      bolt.arm(this._windupMs);
       this.game.objectManager.addObject(bolt);
+      // The cart answers its own shot with a flash at the barrel.
+      if (this.style === 'cannon') this._recoverMs = this._windupMs + CANNON_FLASH_MS;
     } else {
+      this._recoverMs = this._windupMs + MELEE_FOLLOW_THROUGH_MS;
       const swing = new MinionSwing(this, target);
       swing.damage = this.damage;
       swing.reach = reach;
       swing.color = this.colors.bar;
       this.game.objectManager.addObject(swing);
     }
+  }
+
+  /**
+   * How long this minion's wind-up is.
+   *
+   * Melee reads `MELEE_WINDUP_MS`, which is the same number `MinionSwing`
+   * resolves its damage on — a body that wound up on a different clock from
+   * the swing it spawned would be art that lies. Ranged is a share of this
+   * minion's own beat, so a cannon's slow shot winds up visibly longer than a
+   * caster's.
+   */
+  windupFor(): number {
+    if (this.style === 'melee') return MELEE_WINDUP_MS;
+    return Math.min(RANGED_WINDUP_MAX_MS, this.attackInterval * RANGED_WINDUP_FRACTION);
+  }
+
+  /** 0 at the start of the wind-up, 1 at the moment it resolves. */
+  windupCharge(): number {
+    const total = this.windupFor();
+    if (total <= 0 || this._windupMs <= 0) return 0;
+    return constrain(1 - this._windupMs / total, 0, 1);
   }
 
   /**
@@ -714,9 +784,23 @@ export default class Minion extends AttackableUnit {
     circle(0, 0, size);
 
     // blade — a bright wedge past the front, the one thing that says which way
-    // this is facing
+    // this is facing, and the one thing that moves when it swings.
+    //
+    // The wind-up hauls it back and the release drives it through: the same
+    // shape, slid along the facing axis by `windupReach`. A rotation would read
+    // better still and cannot be had here — the whole body is already drawn in
+    // a frame rotated to `aimAngle`, so turning the blade turns it away from
+    // what it is swinging at.
+    const reach = this.windupReach(size);
     fill(238, 242, 250, 235);
-    triangle(size * 0.34, -size * 0.11, size * 0.34, size * 0.11, size * 0.82, 0);
+    triangle(
+      size * 0.34 + reach,
+      -size * 0.11,
+      size * 0.34 + reach,
+      size * 0.11,
+      size * 0.82 + reach,
+      0
+    );
 
     // shield boss, offset off the axis so the blade is not drawn through it
     fill(trim[0], trim[1], trim[2], 245);
@@ -749,10 +833,30 @@ export default class Minion extends AttackableUnit {
     line(size * 0.06, size * 0.1, orbX, orbY);
     noStroke();
 
-    fill(255, 235, 190, 110);
-    circle(orbX, orbY, size * 0.44 * breath);
+    // The orb swells through the wind-up and drops back the moment the bolt
+    // leaves — which is what makes a caster read as *casting* rather than as
+    // standing beside a bolt that appeared.
+    const gather = this.windupCharge();
+    fill(255, 235, 190, 110 + 90 * gather);
+    circle(orbX, orbY, size * 0.44 * breath * (1 + 0.5 * gather));
     fill(255, 255, 255, 235);
-    circle(orbX, orbY, size * 0.2);
+    circle(orbX, orbY, size * (0.2 + 0.16 * gather));
+  }
+
+  /**
+   * How far the blade is slid along the facing axis this frame.
+   *
+   * Negative through the wind-up (hauled back), positive on the follow-through,
+   * zero at rest. `MinionSwing` owns the *damage* and its own arc; this is the
+   * body that throws it, which is the half that was missing — damage already
+   * resolved late while the soldier snapped from standing to having attacked.
+   */
+  private windupReach(size: number): number {
+    if (this._windupMs > 0) return -size * 0.3 * this.windupCharge();
+    if (this._recoverMs <= 0) return 0;
+    // Driving through, then easing back: `_recoverMs` runs from
+    // MELEE_FOLLOW_THROUGH_MS down to zero once the wind-up has cleared.
+    return size * 0.26 * constrain(this._recoverMs / MELEE_FOLLOW_THROUGH_MS, 0, 1);
   }
 
   /**
@@ -802,8 +906,33 @@ export default class Minion extends AttackableUnit {
     fill(255, 255, 255, 55);
     ellipse(-size * 0.1, -size * 0.16, size * 0.52, size * 0.24);
 
+    // The muzzle: banked while the shell is being loaded, then blown out.
+    //
+    // A cart used to fire with no sign it had — the shell simply appeared and
+    // left, which for the one body in a wave worth three times the gold is the
+    // wrong body to have the least to look at. The charge is the same
+    // `windupCharge` the caster's orb swells on; the flash is `_recoverMs`
+    // running out afterwards.
+    const charge = this.windupCharge();
+    const flash = this._windupMs > 0 ? 0 : constrain(this._recoverMs / CANNON_FLASH_MS, 0, 1);
+
+    if (flash > 0) {
+      // A short cone off the barrel, brightest at the lip.
+      fill(255, 236, 190, 210 * flash);
+      triangle(
+        muzzle,
+        -size * 0.2 * flash,
+        muzzle,
+        size * 0.2 * flash,
+        muzzle + size * 0.62 * flash,
+        0
+      );
+      fill(255, 255, 255, 230 * flash);
+      circle(muzzle + size * 0.12 * flash, 0, size * 0.3 * flash);
+    }
+
     fill(255, 214, 128, 240);
-    circle(muzzle, 0, size * 0.2);
+    circle(muzzle, 0, size * (0.2 + 0.22 * charge + 0.3 * flash));
   }
 
   /** Lights a cheap circle for the player team; minions carry no combat sight. */
@@ -854,28 +983,38 @@ export default class Minion extends AttackableUnit {
  * No trail, no particle system — up to two dozen of these can be in flight at
  * once during a big wave fight.
  */
-export class MinionBolt extends MissileSpellObject {
-  speed = RANGED_BOLT_SPEED;
+/**
+ * A ranged minion's shot, nocked for the body's wind-up and then flying.
+ *
+ * Extends the champion's bolt rather than `MissileSpellObject` directly, for
+ * one thing it has and this did not: `arm(ms)`, which keeps the shot riding
+ * the attacker while the wind-up runs and releases it on the beat. Writing a
+ * second copy of that was the alternative, and the two would have drifted.
+ *
+ * What it does **not** inherit is `onArrive`. A champion's bolt lands through
+ * `landBasicAttack` — crit, on-hit, lifesteal, the whole shelf — and a minion's
+ * has never gone through any of it. That difference is deliberate and is the
+ * reason this class still exists at all.
+ */
+export class MinionBolt extends BasicAttackBolt {
   size = 14;
-  maxHitCount = 0;
-  removeOnArrive = true;
-  damage = 0;
-  target: AttackableUnit | null = null;
-  color: number[] = [255, 235, 190];
   /**
-   * Chases until it lands or its target is gone; gives up only on a target
-   * outrunning it. Was `_life = 2000`, a silent 840px range cap. See
-   * `MissileSpellObject.stalledChaseMs`.
+   * Which body fired it, so the shell and the orb do not look the same.
+   *
+   * The two ranged styles were one object in two colours: a caster's bolt and
+   * a cannon's shell were the same circle, which is exactly backwards for the
+   * one body in a wave a player most needs to pick out.
    */
-  stalledChaseMs = STALLED_CHASE_MS;
+  style: MinionStyle = 'ranged';
 
-  onBeforeMove() {
-    if (this.target && !this.target.isDead && !this.target.toRemove) {
-      this.destination.set(this.target.position.x, this.target.position.y);
-    }
-  }
+  /**
+   * No trail on a caster. Forty of them in a lane is forty trail systems, and
+   * the shot is short enough that nobody reads one; the cart's shell keeps its
+   * own, being one body per wave and the one worth watching.
+   */
+  trailSystem: TrailSystem | null = null;
 
-  onArrive() {
+  onArrive(): void {
     const target = this.target;
     if (target && !target.isDead && !target.toRemove && target.targetable && !this.owner.isDead) {
       target.takeDamage(this.damage, this.owner, 'PHYSICAL', BASIC_ATTACK_SOURCE);
@@ -884,12 +1023,36 @@ export class MinionBolt extends MissileSpellObject {
 
   draw() {
     const pos = this.position;
+    const [r, g, b] = this.color;
+    const nocked = this.armMs > 0;
+    const charge = this.nockCharge();
+
     push();
     noStroke();
-    fill(this.color[0], this.color[1], this.color[2], 90);
-    circle(pos.x, pos.y, this.size * 1.8);
-    fill(255, 255, 255, 220);
-    circle(pos.x, pos.y, this.size * 0.55);
+
+    if (this.style === 'cannon') {
+      // A shell: dark, solid, and clearly heavier than the caster's light.
+      const grown = this.size * (nocked ? 0.5 + 0.7 * charge : 1.25);
+      fill(r, g, b, nocked ? 60 + 90 * charge : 120);
+      circle(pos.x, pos.y, grown * 1.7);
+      fill(38, 34, 30, nocked ? 120 + 120 * charge : 245);
+      circle(pos.x, pos.y, grown);
+      // The lit fuse, which is the whole reason a shell reads as a shell.
+      fill(255, 190, 90, nocked ? 140 + 110 * charge : 220);
+      circle(pos.x, pos.y - grown * 0.42, grown * 0.34);
+    } else if (nocked) {
+      // Gathering in the caster's hand: small and dim to full and bright.
+      fill(r, g, b, 40 + 60 * charge);
+      circle(pos.x, pos.y, this.size * (0.7 + 1.2 * charge));
+      fill(255, 255, 255, 90 + 140 * charge);
+      circle(pos.x, pos.y, this.size * (0.2 + 0.4 * charge));
+    } else {
+      fill(r, g, b, 90);
+      circle(pos.x, pos.y, this.size * 1.8);
+      fill(255, 255, 255, 220);
+      circle(pos.x, pos.y, this.size * 0.55);
+    }
+
     pop();
   }
 }
