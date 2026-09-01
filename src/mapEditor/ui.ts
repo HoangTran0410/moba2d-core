@@ -638,6 +638,16 @@ export const UI = (() => {
         key: "role", label: "Role", kind: "text", placeholder: "warden",
         hint: "tên do pack đặt — bãi quái (`fills`) hoặc vật thể (`slotObjects`, ví dụ `relic`)",
       },
+      // Cái duy nhất trên điểm trung lập mà *map* nói chứ không phải pack, và
+      // cũng là cách duy nhất để nói "chỗ này không bao giờ là bãi quái".
+      // Editor không đọc được pack, nên nếu không có ô này thì mọi điểm đều
+      // phải vẽ như bãi quái — kèm vòng tầm đuổi dựng từ mặc định của quái —
+      // kể cả điểm đặt cục hồi máu.
+      {
+        key: "kind", label: "Loại điểm", kind: "choice",
+        options: ["", "object"],
+        hint: "để trống = bãi quái; object = vật thể pack đặt (`slotObjects`), ví dụ cục hồi máu",
+      },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
       { key: "rotationDeg", label: "Xoay camp", kind: "number", unit: "°", hint: "xoay bố cục quái bên trong" },
       // Cả nhóm dưới đây chỉ tới được một *bãi quái*. Một role mà pack trả lời

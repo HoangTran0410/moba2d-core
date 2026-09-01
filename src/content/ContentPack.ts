@@ -987,9 +987,34 @@ export interface StructureSlot {
   stats?: TurretStats;
 }
 
+/**
+ * What a neutral point is *for*, as the map that drew it says.
+ *
+ * `slots.neutral` meant one thing for as long as it existed — a jungle camp —
+ * and `slotObjects` widened it: the same named point may now hold a relic, an
+ * altar, a shrine. Which of the two a point is cannot be read off the slot,
+ * because `role` is the pack's vocabulary and the map editor is its own
+ * document with no pack installed in it — so it drew every relic as a camp,
+ * complete with an aggro ring and a leash ring it invented out of a camp's
+ * defaults.
+ *
+ * So the map says. Absent means `'camp'`, which is what every map drawn before
+ * this meant, and it is only the *lookup order* that changes: see
+ * `preset.ts`'s `neutralSlotFill`.
+ *
+ * The same shape `StructureSlot.kind` already has, one slot group over.
+ */
+export type NeutralKind = 'camp' | 'object';
+
 export interface NeutralSlot {
   /** A free string a monster's `fills` matches. Core never interprets it. */
   role: string;
+  /**
+   * What this point holds. See `NeutralKind` — absent is `'camp'`, and a map
+   * that says `'object'` is saying "never a camp here, whatever the packs
+   * installed happen to answer with".
+   */
+  kind?: NeutralKind;
   x: number;
   y: number;
   r: number;
@@ -1255,9 +1280,9 @@ export interface ContentPackCode {
    * which is how a pack conditions on the slot's own `stats` without core
    * learning what any of them mean.
    *
-   * **A role is filled once.** A role a factory claims does not also resolve
-   * to a camp: `Game.spawnJungle` asks here first, so a pack that declares
-   * both for one role has said something contradictory and the object wins.
+   * **A point is filled once, and the map breaks the tie.** A slot whose
+   * `kind` is `'object'` is never a camp; one that says nothing is a camp
+   * first and falls back to here. See `preset.ts`'s `neutralSlotFill`.
    *
    * Silently ignored by a core too old to know the field, like every other
    * optional half of this interface — the slot simply stays empty. A pack
@@ -1291,6 +1316,13 @@ export const STRUCTURE_KINDS: readonly StructureKind[] = Object.freeze(['turret'
  * so a pack shipping `temperament: 'agressive'` would otherwise install
  * cleanly and produce a camp that quietly never fights.
  */
+/**
+ * Beside `STRUCTURE_KINDS` and for the identical reason: the type is erased at
+ * runtime, so a map shipping `kind: 'obect'` would otherwise validate cleanly
+ * and be drawn — and filled — as a camp.
+ */
+export const NEUTRAL_KINDS: readonly NeutralKind[] = Object.freeze(['camp', 'object']);
+
 export const MONSTER_TEMPERAMENTS: readonly MonsterTemperament[] = Object.freeze([
   'aggressive',
   'skittish',

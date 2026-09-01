@@ -96,7 +96,7 @@ Tám loại, chia đúng ba nhóm của `MapGeometry`:
 | `slots.spawn` | Điểm hồi sinh | vòng tròn | `faction`, `r` |
 | `slots.structure` | Trụ | điểm | `faction`, `kind: 'turret'` |
 | `slots.minion` | Điểm gom lính | điểm | `faction`, `lane`, `scatter?` |
-| `slots.neutral` | Điểm trung lập | vòng tròn | `role`, `r`, `rotationDeg?` |
+| `slots.neutral` | Điểm trung lập | vòng tròn | `role`, `kind?`, `r`, `rotationDeg?` |
 | `lanes` | Lane | đường gấp khúc hai chiều | `id` (còn `from`/`to` là dẫn xuất) |
 
 `slots.neutral` là **điểm trung lập**, không phải "bãi quái" — và đó không
@@ -104,10 +104,23 @@ phải chuyện chữ nghĩa. Core không bao giờ diễn giải `role`; pack q
 cái gì đứng ở đó, và nó có hai đường trả lời: `fills` của một bãi quái, hoặc
 `slotObjects` cho một thứ không phải thân để đánh (pack lol trả lời `relic`
 bằng cục hồi máu). Ô *Role* vì thế là ô chữ tự do — editor là một document
-riêng và không thấy được pack nào đang cài. Hệ quả cần nhớ: nhóm *Ghi đè chỉ
-số cho bãi quái này* chỉ tới được một bãi quái, còn một role do `slotObjects`
-trả lời thì không đọc `slot.stats` chút nào, nên điền vào đó là im lặng không
-có tác dụng gì.
+riêng và không thấy được pack nào đang cài.
+
+Vì editor không thấy pack, nó cũng không tự biết một điểm là bãi quái hay là
+vật thể — nên **map nói**, bằng ô *Loại điểm* (`kind`). Để trống là bãi quái,
+đúng nghĩa mà mọi map vẽ trước đây vẫn mang; chọn `object` là "chỗ này không
+bao giờ là bãi quái". Nó không phải ghi chú trang trí: một điểm `object` được
+vẽ viền liền thay vì nét đứt, không có vòng *tầm phát hiện* / *tầm đuổi* và
+không có kim xoay bố cục — ba thứ dựng từ mặc định của **quái**, tức là ba con
+số bịa ra cho một điểm không có con quái nào.
+
+Thứ tự tra cũng theo nó, và chỉ *thứ tự* thôi: `object` thì chỉ tìm trong
+`slotObjects`; để trống thì tìm bãi quái trước rồi mới tới `slotObjects`. Nên
+quên chọn `kind` chỉ làm điểm bị vẽ sai, không bao giờ làm vật thể biến mất.
+
+Hệ quả cuối cần nhớ: nhóm *Ghi đè chỉ số cho bãi quái này* chỉ tới được một bãi
+quái, còn một role do `slotObjects` trả lời thì không đọc `slot.stats` chút
+nào, nên điền vào đó là im lặng không có tác dụng gì.
 
 Cấp map có thêm `id` (slug) và danh sách **phe** — đúng `MapSummary`. Đổi
 tên một phe thì mọi `faction`/`from`/`to` đang trỏ vào nó đi theo luôn.

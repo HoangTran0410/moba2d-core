@@ -458,9 +458,14 @@ export const Renderer = (() => {
     ctx.arc(0, 0, r, 0, Geom.TAU);
     ctx.fillStyle = hot ? FILL_HI[t.type] : FILL[t.type];
     ctx.fill();
+    // Nét đứt là *bãi quái*: cái vòng "quái đứng đâu đó quanh đây". Một điểm
+    // giữ vật thể (`kind: 'object'`) thì đường viền liền — thứ đứng ở đó đứng
+    // đúng một chỗ, và vẽ nó y hệt bãi quái là chỗ mà cục hồi máu bị nhìn
+    // nhầm thành một bãi quái.
+    const isCamp = t.type === "neutral" && (!t.props || t.props.kind !== "object");
     ctx.lineWidth = (selected ? 2.4 : 1.6) / s;
     ctx.strokeStyle = hot ? LINE_HI[t.type] : LINE[t.type];
-    if (t.type === "neutral") ctx.setLineDash([10 / s, 7 / s]);
+    if (isCamp) ctx.setLineDash([10 / s, 7 / s]);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -483,7 +488,10 @@ export const Renderer = (() => {
     // không đọc được pack — vẽ một con số bịa ra còn tệ hơn không vẽ gì.
     // Tầm đuổi thì luôn vẽ được: `max(r, aggroRange) + chaseMargin` là công
     // thức của `Monster.chaseLeashRange`, và cả hai vế đều có mặc định.
-    if (t.type === "neutral") {
+    // Chỉ bãi quái mới có hai tầm này. Một điểm giữ vật thể không đuổi ai cả,
+    // và vẽ cho nó một vòng "tầm đuổi" dựng từ mặc định của quái là đúng cái
+    // lỗi mà đoạn ngay dưới đây từ chối làm với tầm phát hiện.
+    if (isCamp) {
       const aggro = slotNumber(t, "aggroRange", "monsters", 0);
       const margin = slotNumber(t, "chaseMargin", "monsters", CORE_DEFAULTS.chaseMargin);
       const leash = Math.max(r, aggro) + margin;
@@ -516,8 +524,9 @@ export const Renderer = (() => {
       }
     }
 
-    // Bãi quái có thể xoay bố cục quái bên trong — vẽ kim chỉ hướng.
-    if (t.type === "neutral" && t.props && t.props.rotationDeg) {
+    // Bãi quái có thể xoay bố cục quái bên trong — vẽ kim chỉ hướng. Vật thể
+    // không có bố cục bên trong để mà xoay.
+    if (isCamp && t.props && t.props.rotationDeg) {
       const a = (t.props.rotationDeg * Math.PI) / 180 - Math.PI / 2;
       ctx.beginPath();
       ctx.moveTo(0, 0);

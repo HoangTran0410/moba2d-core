@@ -3,6 +3,7 @@ import {
   MONSTER_ATTACK_STYLES,
   MONSTER_ROAM_LAYERS,
   MONSTER_TEMPERAMENTS,
+  NEUTRAL_KINDS,
   STRUCTURE_KINDS,
   type ContentPack,
   type ContentPackCode,
@@ -10,6 +11,7 @@ import {
   type MinionStyle,
   type MonsterAttackStyle,
   type MonsterTemperament,
+  type NeutralKind,
   type StructureKind,
 } from './ContentPack';
 
@@ -1408,8 +1410,18 @@ export function checkMapGeometry(
     }
 
     for (const slot of Array.isArray(slots.neutral) ? slots.neutral : []) {
-      if (isObject(slot) && slot.stats !== undefined) {
+      if (!isObject(slot)) continue;
+      if (slot.stats !== undefined) {
         checkMonsterSlotStats(`${name}.slots.neutral.stats`, slot.stats, errors);
+      }
+      // Erased at runtime, so a misspelled kind would install cleanly and be
+      // drawn — and filled — as a camp, which is the one thing a map writing
+      // this field is trying to say it is not.
+      if (slot.kind !== undefined && !NEUTRAL_KINDS.includes(slot.kind as NeutralKind)) {
+        errors.push(
+          `${name}.slots.neutral.kind: unknown ${JSON.stringify(slot.kind)}; ` +
+            `core provides ${NEUTRAL_KINDS.join(', ')}`
+        );
       }
     }
 

@@ -540,6 +540,9 @@ export const Store = (() => {
     }
     for (const s of (slots.neutral || [])) {
       const p: Record<string, any> = { role: s.role, r: +s.r || 150 };
+      // Absent means 'camp' on both sides, so a map drawn before this field
+      // existed reads back identical to what it was.
+      if (s.kind === "object") p.kind = "object";
       if (s.rotationDeg) p.rotationDeg = +s.rotationDeg;
       marker("neutral", s, keepStats(s, p));
     }
@@ -845,6 +848,7 @@ export const Store = (() => {
         }
         case "neutral": {
           const n: Record<string, any> = { role: p.role || "", x: px, y: py, r: R(circleR(t)) };
+          if (p.kind === "object") n.kind = "object";
           if (p.rotationDeg) n.rotationDeg = Number(p.rotationDeg);
           g.slots.neutral.push(withStats(p, n));
           break;

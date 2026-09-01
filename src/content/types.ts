@@ -117,6 +117,7 @@ export type {
   MonsterSlotStats,
   MonsterTemperament,
   MonsterTuning,
+  NeutralKind,
   NeutralSlot,
   PackManifest,
   SlotObjectFactory,

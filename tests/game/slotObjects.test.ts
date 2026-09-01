@@ -95,18 +95,51 @@ describe('what fills a neutral slot', () => {
   });
 
   /**
-   * A role is filled once. A pack that declares both for one role has said
-   * something contradictory, and the object is the ruling — stated here rather
-   * than left to whichever lookup `Game` happened to run first.
+   * **The map breaks the tie.** A role a camp and an object both answer is a
+   * contradiction somebody has to settle, and the map that drew the point is
+   * the one that knows what it drew — a point drawn for a relic says so, and a
+   * point that says nothing means what every map drawn before `slotObjects`
+   * meant.
    */
-  it('gives the object the slot when a camp claims the same role', () => {
-    contentRegistry().install(
-      pack('both', {
-        slotObjects: { shrine: () => marker as never },
-        monsters: { shrine: camp('shrine') } as never,
-      })
-    );
+  describe('when a camp and an object both answer the role', () => {
+    beforeEach(() => {
+      contentRegistry().install(
+        pack('both', {
+          slotObjects: { shrine: () => marker as never },
+          monsters: { shrine: camp('shrine') } as never,
+        })
+      );
+    });
 
-    expect(neutralSlotFill(slot('shrine'))?.kind).toBe('object');
+    it('is the camp for a point that says nothing', () => {
+      expect(neutralSlotFill(slot('shrine'))?.kind).toBe('camp');
+    });
+
+    it('is the object for a point the map drew as one', () => {
+      expect(neutralSlotFill({ ...slot('shrine'), kind: 'object' })?.kind).toBe('object');
+    });
+  });
+
+  /**
+   * And the fallback that keeps a forgotten `kind` from being a quiet failure.
+   * A map author who drew a relic point and never touched the new field still
+   * gets the relic, because no camp answered the role — `kind` chooses the
+   * *order*, not whether the object exists.
+   */
+  it('still fills a point that says nothing when only an object answers', () => {
+    contentRegistry().install(pack('relics', { slotObjects: { relic: () => marker as never } }));
+
+    expect(neutralSlotFill(slot('relic'))?.kind).toBe('object');
+  });
+
+  /**
+   * The other direction, and the reason `kind` is load-bearing rather than a
+   * note for the editor: a point drawn as an object is never a camp, whatever
+   * the packs installed happen to answer with.
+   */
+  it('leaves an object point empty rather than standing a camp on it', () => {
+    contentRegistry().install(pack('jungle', { monsters: { wolves: camp('wolves') } as never }));
+
+    expect(neutralSlotFill({ ...slot('wolves'), kind: 'object' })).toBeNull();
   });
 });

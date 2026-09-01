@@ -147,6 +147,9 @@ export function withDefaults(kind, props) {
       break;
     case "neutral":
       if (!p.role) p.role = "camp";
+      // 'camp' is the default and is never written down — a point drawn before
+      // this field existed and a point drawn now must export identically.
+      if (p.kind !== "object") delete p.kind;
       if (!(p.r > 0)) p.r = 150;
       if (p.rotationDeg != null && !Number.isFinite(p.rotationDeg)) delete p.rotationDeg;
       break;

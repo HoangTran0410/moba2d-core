@@ -719,9 +719,17 @@ export const monsterFillingSlot = (slot: NeutralSlot): QualifiedMonster | null =
  * are named points on the ground, and a relic somebody walks over is as much
  * a thing that stands on one as a pack of wolves is.
  *
- * **A role is filled once, and an object outranks a camp.** A pack declaring
- * both for one role has said something contradictory, and this is the ruling —
- * stated here rather than inside `Game.spawnJungle`'s loop, because that loop
+ * **A point is filled once, and the map is what breaks the tie.** A role a
+ * camp and an object both answer is a contradiction somebody has to settle,
+ * and the map that drew the point is the one that knows what it drew: a
+ * `kind: 'object'` point is never a camp, and a point that says nothing is a
+ * camp first — which is what every map drawn before `slotObjects` meant.
+ *
+ * The order is the *only* thing `kind` chooses. A point that says nothing and
+ * no camp answers still gets its object, so a forgotten `kind` costs a slot
+ * drawn wrong in the editor and never a relic that fails to appear.
+ *
+ * Stated here rather than inside `Game.spawnJungle`'s loop because that loop
  * cannot be tested: nothing in this codebase constructs a real `Game` (see
  * `tests/game/fixtures.ts`), which is exactly why `fountainsFromSlots` and
  * `turretsFromSlots` are pure functions beside it too.
@@ -733,9 +741,16 @@ export type NeutralSlotFill =
 
 export const neutralSlotFill = (slot: NeutralSlot): NeutralSlotFill => {
   const build = contentRegistry().slotObjectFor(slot.role);
-  if (build) return { kind: 'object', build };
+  // The map's own word, and the only way to say "never a camp here" — which is
+  // what a point drawn for a relic needs, and what the editor draws it as.
+  if (slot.kind === 'object') return build ? { kind: 'object', build } : null;
+
   const monster = monsterFillingSlot(slot);
-  return monster ? { kind: 'camp', monster } : null;
+  if (monster) return { kind: 'camp', monster };
+  // The fallback that keeps a forgotten `kind` from being a quiet failure: a
+  // map that drew a relic point and said nothing still gets its relic, because
+  // no camp answered the role. Only the *order* is what `kind` chooses.
+  return build ? { kind: 'object', build } : null;
 };
 
 /**
