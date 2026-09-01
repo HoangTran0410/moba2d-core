@@ -672,6 +672,9 @@ export default class Monster extends AttackableUnit {
     else if (this.phase === Monster.PHASES.FLEE) this.updateFlee();
   }
 
+  /** `displacementRevision` as it read when this camp was last home. */
+  private _settledRevision = 0;
+
   updateIdle() {
     this._scanCooldown -= deltaTime;
     if (this._scanCooldown > 0) return;
@@ -685,7 +688,24 @@ export default class Monster extends AttackableUnit {
     // other tens of pixels off their own points forever, and walking home over
     // that would leave the three wolves shuffling and never idle enough to
     // aggro again.
-    if (this.isOutsideCamp()) {
+    // Two ways home, and they answer different questions.
+    //
+    // `isOutsideCamp()` is *where it ended up*: past the leash circle, it walks
+    // back. That test alone was the bug — the pits this engine's maps ship are
+    // 200 and 250 wide and a knockback throws about 260, so a body shoved from
+    // anywhere but the exact centre lands **inside its own circle**, answers
+    // false here, and a camp with no `wanderSpeed` (most of them) stands where
+    // it was dumped for the rest of the match: pushed out of the pit, no state
+    // change, no walk back, still not aggroed. Reported from a real match after
+    // a knockback ultimate went off in a jungle camp.
+    //
+    // `wasShoved()` is *what happened to it*: something else moved this body,
+    // so it goes back to its point rather than to the nearest edge of the
+    // circle. Bodies jostling in a shared pit never mark a displacement — that
+    // is `UnitCollisionSystem`, not `markDisplaced` — which is what keeps the
+    // three wolves from shuffling home for ever, the regression this check
+    // used to be written around.
+    if (this.isOutsideCamp() || this.wasShoved()) {
       this.goBackToCamp();
       return;
     }
@@ -773,6 +793,29 @@ export default class Monster extends AttackableUnit {
    */
   isOutsideCamp(): boolean {
     return !this.roamContains(this.position.x, this.position.y);
+  }
+
+  /**
+   * Has something moved this body since it last settled?
+   *
+   * `AttackableUnit.displacementRevision` counts every displacement anything
+   * inflicts — a dash somebody else aimed at it, a hook, a teleport — and
+   * `_settledRevision` is what that counter read the last time this camp was
+   * standing on its own point. They disagree exactly when a shove has not been
+   * walked off yet.
+   *
+   * A counter rather than a boolean because a second shove during the walk
+   * home must not be lost: the camp is already heading back, the flag is
+   * already true, and a boolean cleared on arrival would be cleared by an
+   * arrival that never happened.
+   */
+  wasShoved(): boolean {
+    return this.displacementRevision !== this._settledRevision;
+  }
+
+  /** Called where the camp is genuinely home, or genuinely busy. */
+  private settleDisplacement(): void {
+    this._settledRevision = this.displacementRevision;
   }
 
   /**
@@ -978,6 +1021,10 @@ export default class Monster extends AttackableUnit {
     if (withinRadius(this.position, this.home, home)) {
       this.phase = Monster.PHASES.IDLE;
       this.stopMovement();
+      // Home is the one place a shove is genuinely worked off. Doing it here
+      // rather than on the way means a camp shoved *again* mid-walk keeps
+      // walking rather than settling for wherever the second shove left it.
+      this.settleDisplacement();
       return;
     }
 
@@ -1023,6 +1070,11 @@ export default class Monster extends AttackableUnit {
     this.targetLock = unit;
     this.phase = Monster.PHASES.ATTACK;
     this._giveUpTimer = this.giveUpDelayMs;
+    // A fight settles the shove too: a camp knocked back *while chasing* is
+    // being kited, not stranded, and the leash that decides when that chase
+    // ends is `updateAttack`'s own. Without this, a knockback would be a free
+    // way to reset any camp mid-fight.
+    this.settleDisplacement();
   }
 
   goBackToCamp() {
