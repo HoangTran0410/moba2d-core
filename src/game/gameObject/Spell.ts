@@ -435,6 +435,24 @@ export default class Spell {
     return false;
   }
 
+  /**
+   * The spell is going dormant but is coming back — a form swap.
+   *
+   * `deactivate()` minus `resetCoolDown()`, and that subtraction is the whole
+   * point. A stance is a toggle, so zeroing the cooldown on the way out hands
+   * the player a free reset: cast Q, transform, transform back, cast Q again.
+   * `tests/game/attackableUnits/ChampionStance.test.ts` pins it.
+   *
+   * Cancels the in-flight cast because a channel cannot keep running while its
+   * caster no longer has the spell in a slot, and disposes the VFX because the
+   * dormant spell is no longer in the `spells[]` array that `drawVfx` walks —
+   * anything it left on screen would hang there until the form ended.
+   */
+  suspend(): void {
+    this.runtime.cancel('STANCE_SWAP');
+    this.spellVfx?.dispose();
+  }
+
   deactivate(): void {
     this.runtime.cancel('SCENE_EXIT');
     this.resetCoolDown();

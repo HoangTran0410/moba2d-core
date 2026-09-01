@@ -764,6 +764,70 @@ export default class Champion extends AttackableUnit {
     this.spells[index] = spell;
   }
 
+  /**
+   * The form this champion is in, or null in its base one. A pack's own id.
+   */
+  stance: string | null = null;
+
+  /**
+   * The slots `enterStance` displaced, held so `exitStance` can hand back the
+   * *instances* rather than build lookalikes.
+   *
+   * Holding instances is not an optimisation. Everything a spell remembers
+   * between casts — a running cooldown, a stack count, an active phase —
+   * lives on the instance and nowhere else, which is the same fact
+   * `applyPreset` already keeps a slot's instance for.
+   */
+  private baseStanceSpells: Spell[] | null = null;
+
+  /**
+   * Swap the front of the kit for another, keeping both alive.
+   *
+   * `spells` fills slots 0..n-1; anything past it is untouched, which is what
+   * leaves the ultimate that triggered the form in place to end it.
+   *
+   * **Not `replaceSpell`.** That seam retires a spell for good — it calls
+   * `onRemoved()`, whose sweep takes every buff naming the spell as its
+   * `sourceSpell`, and `deactivate()`, which zeroes the cooldown. A form that
+   * came back through it would come back stripped and fully rested. Here the
+   * outgoing spells are only `suspend()`ed: they leave `spells[]`, so
+   * `update()` and `drawVfx()` stop walking them, and that is the entirety of
+   * what "dormant" has to mean.
+   *
+   * Entering while another stance stands exits that one first. `exitStance`
+   * remembers exactly one base kit, so stacking would strand the middle one
+   * with nothing able to reach it again. Re-entering the standing stance is a
+   * no-op rather than a refresh — a duration is the caller's to track, and
+   * silently rebuilding the kit under it would reset every cooldown in the
+   * form, which is the same exploit one level up.
+   */
+  enterStance(id: string, spells: Spell[]): void {
+    if (this.stance === id) return;
+    if (this.stance !== null) this.exitStance();
+
+    const displaced: Spell[] = [];
+    for (let index = 0; index < spells.length; index++) {
+      const standing = this.spells[index];
+      displaced.push(standing);
+      standing?.suspend();
+      this.spells[index] = spells[index];
+    }
+    this.baseStanceSpells = displaced;
+    this.stance = id;
+  }
+
+  /** Back to the kit `enterStance` displaced. A no-op in the base form. */
+  exitStance(): void {
+    const base = this.baseStanceSpells;
+    if (!base) return;
+    for (let index = 0; index < base.length; index++) {
+      this.spells[index]?.suspend();
+      this.spells[index] = base[index];
+    }
+    this.baseStanceSpells = null;
+    this.stance = null;
+  }
+
   private removeSpell(spell?: Spell) {
     spell?.deactivate();
     spell?.onRemoved?.();

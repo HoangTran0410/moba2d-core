@@ -27,6 +27,12 @@ export type CancelReason =
    * itself (`Recall`), and one that does not never sees it.
    */
   | 'DAMAGE_TAKEN'
+  /**
+   * The caster changed form and this spell is going dormant. Distinct from
+   * `SCENE_EXIT`, which means the spell is gone: a suspended spell is coming
+   * back, keeping its cooldown and its buffs — see `Spell.suspend`.
+   */
+  | 'STANCE_SWAP'
   | 'SCENE_EXIT';
 
 export interface Vec2 {
