@@ -856,6 +856,76 @@ export default class Champion extends AttackableUnit {
     this.basicAttack.order(attacker);
   }
 
+  /**
+   * The row of buff icons over a champion's bar.
+   *
+   * A method rather than two copies because the compact bar draws it too. It
+   * used not to: compact dropped the icons along with the score, the ticks and
+   * the status text, and the report that followed was exactly that —
+   * *"thanh máu rút gọn thì ko xem đc rõ buffs"*. Score and ticks are things a
+   * player can do without for a few seconds; which buffs are on a body is the
+   * information they are making decisions from.
+   *
+   * One icon per *kind* with a stack count, not one per instance: one stacking
+   * spell can hold hundreds of `StatAmp` stacks, which used to draw hundreds of
+   * icons straight off the side of the screen. `buff.stacks` rather than one
+   * per array entry — a `countedStacks` buff is a single instance carrying its
+   * whole count, and every other buff leaves `.stacks` at `Buff`'s default of
+   * 1, so summing it is the old per-instance count for them and the real count
+   * for a counted one.
+   *
+   * `buff.draw()` belongs to `AttackableUnit.drawBuffs()`; calling it here too
+   * drew every buff twice, and inside this block's `tint()`.
+   */
+  private drawBuffIcons(x: number, y: number, k: number, alpha: number): void {
+    const buffCounts = new Map<BuffStackId, { image: AssetHandle; count: number }>();
+    for (const buff of this.buffs) {
+      if (!buff.image) continue;
+      if (buff.hudVisible === false) continue;
+      const key = buff.stackId;
+      const row = buffCounts.get(key);
+      if (row) row.count += buff.stacks;
+      else buffCounts.set(key, { image: buff.image, count: buff.stacks });
+    }
+    if (buffCounts.size === 0) return;
+
+    push();
+    if (alpha < 255) tint(255, alpha);
+    let cursor = x;
+    for (const { image: buffImage, count } of buffCounts.values()) {
+      image(AssetManager.renderable(buffImage), cursor, y, 20 * k, 20 * k);
+      if (count > 1) {
+        noStroke();
+        fill(255, alpha);
+        textAlign(RIGHT, BOTTOM);
+        textSize(10 * k);
+        text(count, cursor + 10 * k, y + 10 * k);
+        textAlign(LEFT, BASELINE);
+      }
+      cursor += 20 * k;
+    }
+    pop();
+  }
+
+  /**
+   * How wide the compact frame is, and whether it carries the buff row.
+   *
+   * Two callers reach the compact frame and they want opposite things, which is
+   * why these are properties rather than one number. A **summon** is always
+   * compact because of what it *is* — a small body that must read as
+   * subordinate to the champion beside it, and `PetHealthBar.test.ts` is the
+   * guard on that. A **champion** is compact only because of the camera, and
+   * for it the frame still has to answer "how hurt am I, and what is on me" —
+   * the report that produced these two lines was
+   * *"thanh máu rút gọn thì ko xem đc rõ buffs + máu đang bao nhiêu"*.
+   *
+   * Widening the one width for the champion's sake quietly widened every pet's
+   * bar too, and the pet test caught it. That is the whole reason this is two
+   * knobs.
+   */
+  protected compactBarWidth = 88;
+  protected compactShowsBuffIcons = true;
+
   drawHealthBar(compact = false) {
     let pos = this.position;
     let { displaySize: size, alpha } = this.animatedValues;
@@ -866,12 +936,19 @@ export default class Champion extends AttackableUnit {
 
     // At minimum mobile zoom a champion body is only ~10–15 screen pixels, but
     // the normal health frame deliberately stays 125px and also paints score,
-    // ticks, buff icons and status text. Eight of those cost more than the
-    // terrain pass and cover the fight they are meant to explain. The compact
-    // path keeps the three combat signals that still read at that scale.
+    // ticks and status text. Eight of those cost more than the terrain pass and
+    // cover the fight they are meant to explain.
+    //
+    // What compact drops is what a player can do without for a few seconds: the
+    // score, the tick marks, the frame border, the status line. What it keeps
+    // is what they are deciding from — the bars, and the **buff icons**. Those
+    // were dropped too in the first version, and the report was exactly that:
+    // *"thanh máu rút gọn thì ko xem đc rõ buffs + máu đang bao nhiêu"*. The
+    // bar is wider than it was for the same reason: at 52px a half-full bar and
+    // a third-full one are the same picture.
     if (compact) {
       const k = this.game?.camera?.constantSize?.(1) ?? 1;
-      const barWidth = 52 * k;
+      const barWidth = this.compactBarWidth * k;
       const healthHeight = 6 * k;
       const manaHeight = 2 * k;
       const x = pos.x - barWidth / 2;
@@ -908,6 +985,9 @@ export default class Champion extends AttackableUnit {
         rect(x, y + healthHeight + k, barWidth * manaRatio, manaHeight);
       }
       pop();
+      // Outside the push/pop above: the icon row manages its own tint, the
+      // same as it does over the full frame.
+      if (this.compactShowsBuffIcons) this.drawBuffIcons(x, y - 22 * k, k, alpha);
       return;
     }
 
@@ -991,43 +1071,7 @@ export default class Champion extends AttackableUnit {
     fill(this.isDead ? [153, 153, 153, alpha] : [108, 179, 213, alpha]);
     rect(topleft.x + barHeight, topleft.y + barHeight - manaHeight, manaW, manaHeight);
 
-    push();
-    let x = topleft.x + 10 * k;
-    if (alpha < 255) tint(255, alpha);
-    // One icon per kind of buff with a stack count, not one per instance:
-    // one stacking spell can hold hundreds of StatAmp stacks, which used to draw hundreds
-    // of icons straight off the side of the screen.
-    // (buff.draw() belongs to AttackableUnit.drawBuffs(); calling it here too
-    // drew every buff twice, and inside this block's tint().)
-    // `buff.stacks` rather than "one per array entry": a `countedStacks`
-    // buff is a single instance carrying its whole count on `.stacks`, and
-    // every other buff in the game leaves
-    // `.stacks` at `Buff`'s default of 1 — so summing it is exactly the old
-    // per-instance count for them, and the real stack count for a counted
-    // buff instead of always reading 1.
-    const buffCounts = new Map<BuffStackId, { image: AssetHandle; count: number }>();
-    for (const buff of this.buffs) {
-      if (!buff.image) continue;
-      if (buff.hudVisible === false) continue;
-      const key = buff.stackId;
-      const row = buffCounts.get(key);
-      if (row) row.count += buff.stacks;
-      else buffCounts.set(key, { image: buff.image, count: buff.stacks });
-    }
-
-    for (const { image: buffImage, count } of buffCounts.values()) {
-      image(AssetManager.renderable(buffImage), x, topleft.y - 13 * k, 20 * k, 20 * k);
-      if (count > 1) {
-        noStroke();
-        fill(255, alpha);
-        textAlign(RIGHT, BOTTOM);
-        textSize(10 * k);
-        text(count, x + 10 * k, topleft.y - 3 * k);
-        textAlign(LEFT, BASELINE);
-      }
-      x += 20 * k;
-    }
-    pop();
+    this.drawBuffIcons(topleft.x + 10 * k, topleft.y - 13 * k, k, alpha);
 
     if (this.isDead) {
       noStroke();

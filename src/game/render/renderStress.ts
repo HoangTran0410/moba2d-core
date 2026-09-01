@@ -1,57 +1,123 @@
 /**
- * Whether the machine is keeping up, as one boolean with hysteresis.
+ * Whether the machine is keeping up — and it takes rather more than one bad
+ * frame to say so.
  *
- * ## What `auto` used to mean
+ * ## What the first version got wrong
  *
- * `ObjectManager.draw`'s quality branch read exactly one thing to decide
- * whether to ration particles or draw units compactly: `game.touchUi`. So
- * "automatic" meant "are you on a phone" — a weak laptop, an old desktop, or a
- * phone that had switched to the pointer HUD got the full-quality path however
- * badly it was coping, and the only way out was for the player to find the
- * quality dropdown and choose Thấp themselves.
+ * It compared one smoothed reading against two thresholds and flipped on the
+ * spot: below 83% of target, degrade; back above 95%, restore. Reported from a
+ * real match on an M4 Pro, which is not a machine that struggles: automatic
+ * quality dropped anyway and did not come back.
  *
- * Meanwhile `FpsMeter` — allocation-free, already smoothing, already tracking
- * the *worst* frame rather than just the mean — was sitting behind the `fps`
- * debug flag and not even being sampled unless a developer turned the readout
- * on. The measurement the decision needed already existed; nothing was asking
- * it anything.
+ * Traced on the shipped build (`tests/e2e/`-style probe, idle match, one
+ * deliberate 900ms hitch):
  *
- * ## Against the target, not against 60
+ *     idle            displayFps 58.5 - 60.6, worst frame 24ms every sample
+ *     after a hitch   displayFps 54.2
  *
- * The thresholds are fractions of whatever the player asked for, because
- * choosing the 30 FPS cap is not the same as failing to reach 60. A machine
- * holding a rock-solid 30 under a 30 cap is not stressed and must not be
- * degraded for it; the same 30 under a 60 cap is missing every other frame.
+ * Two things fall out of that and both were fatal. A healthy machine's *normal*
+ * band already dips to 58.5, and a single hitch drops the average to 54.2 —
+ * which is **below the 57 the old rule needed to restore quality**. So one
+ * hiccup could park it in the degraded state, and every later hiccup parked it
+ * again before the average had climbed out. Worse, the worst frame at idle is a
+ * routine 24ms, so anything reading `displayLow` would have called this machine
+ * stressed forever.
  *
- * ## Why two thresholds
+ * ## What it takes now
  *
- * One would oscillate. Degrading raises the frame rate, which clears the
- * condition, which restores the quality, which drops the frame rate — at best a
- * visible flutter of particles appearing and vanishing, at worst a machine
- * spending its whole match on the boundary doing both. Entering at 83% of
- * target and leaving at 95% means the recovery has to be real before the
- * quality comes back.
+ * Time, in both directions. A machine has to stay under the floor
+ * *continuously* for `STRESS_ENTER_SUSTAIN_MS` before anything is given up, and
+ * back over the ceiling for `STRESS_LEAVE_SUSTAIN_MS` before it is handed back.
+ * A single hitch — the case that actually happens — moves neither, because the
+ * counter it feeds is reset by the very next healthy frame.
+ *
+ * The band is wider too, and deliberately placed outside the measured jitter: a
+ * machine holding 48fps of a 60 target is not degraded at all. That is the
+ * point. Degrading is a visible thing to do to somebody's screen, and 48fps is
+ * playable where guessing wrong is not.
  */
 
-/** Below this share of the target frame rate, start cutting. */
-export const STRESS_ENTER_SHARE = 0.83;
+/** Below this share of the target, and only while it lasts, start cutting. */
+export const STRESS_ENTER_SHARE = 0.75;
 
-/** Back above this share, and only then, stop cutting. */
-export const STRESS_LEAVE_SHARE = 0.95;
+/** Back above this share, and only while it lasts, stop cutting. */
+export const STRESS_LEAVE_SHARE = 0.88;
 
 /**
- * The next state of the "this machine is struggling" flag.
+ * How long the rate has to stay under the floor before anything is given up.
+ *
+ * Long enough that no single stall reaches it: the measured hitch above cost
+ * one frame and the average was back inside a few hundred ms.
+ */
+export const STRESS_ENTER_SUSTAIN_MS = 1_500;
+
+/**
+ * And how long it has to stay over the ceiling before quality comes back.
+ *
+ * Shorter than the entry window on purpose. The two errors are not equal —
+ * degrading a machine that was fine costs the player information they need,
+ * and restoring one that is still struggling costs a few dropped frames.
+ */
+export const STRESS_LEAVE_SUSTAIN_MS = 800;
+
+/** The running state. `Game` holds one and reads `stressed` off it. */
+export interface RenderStress {
+  stressed: boolean;
+  /** ms spent continuously under the floor, or over the ceiling. */
+  belowMs: number;
+  aboveMs: number;
+}
+
+export const freshRenderStress = (): RenderStress => ({
+  stressed: false,
+  belowMs: 0,
+  aboveMs: 0,
+});
+
+/**
+ * Advances the state by one frame.
  *
  * Deliberately total: a target of zero, a `NaN` from a first frame with no
  * measurable delta, or a meter that has not published yet all return the state
- * unchanged rather than inventing one. A quality drop is a visible thing to do
- * to somebody's screen, and doing it because of a divide by zero would be worse
- * than never doing it at all.
+ * untouched rather than inventing one.
  */
-export function nextStressState(stressed: boolean, fps: number, targetFps: number): boolean {
-  if (!Number.isFinite(fps) || !Number.isFinite(targetFps) || fps <= 0 || targetFps <= 0) {
-    return stressed;
+export function nextStressState(
+  state: RenderStress,
+  fps: number,
+  targetFps: number,
+  elapsedMs: number
+): RenderStress {
+  if (
+    !Number.isFinite(fps) ||
+    !Number.isFinite(targetFps) ||
+    !Number.isFinite(elapsedMs) ||
+    fps <= 0 ||
+    targetFps <= 0 ||
+    elapsedMs < 0
+  ) {
+    return state;
   }
+
   const share = fps / targetFps;
-  return stressed ? share < STRESS_LEAVE_SHARE : share < STRESS_ENTER_SHARE;
+
+  if (share < STRESS_ENTER_SHARE) {
+    const belowMs = state.belowMs + elapsedMs;
+    if (!state.stressed && belowMs >= STRESS_ENTER_SUSTAIN_MS) {
+      return { stressed: true, belowMs: 0, aboveMs: 0 };
+    }
+    return { stressed: state.stressed, belowMs, aboveMs: 0 };
+  }
+
+  if (share > STRESS_LEAVE_SHARE) {
+    const aboveMs = state.aboveMs + elapsedMs;
+    if (state.stressed && aboveMs >= STRESS_LEAVE_SUSTAIN_MS) {
+      return { stressed: false, belowMs: 0, aboveMs: 0 };
+    }
+    return { stressed: state.stressed, belowMs: 0, aboveMs };
+  }
+
+  // Between the two: neither a machine in trouble nor one clearly out of it.
+  // Both counters reset, so a rate wandering across a threshold accumulates
+  // nothing — only a *sustained* stretch on one side of the band moves this.
+  return { stressed: state.stressed, belowMs: 0, aboveMs: 0 };
 }

@@ -5,13 +5,19 @@ import ObjectManager, {
   MOBILE_PARTICLE_DRAW_BUDGET,
 } from '../../../src/game/managers/ObjectManager';
 import ParticleSystem from '../../../src/game/gameObject/helpers/ParticleSystem';
+import AttackableUnit from '../../../src/game/gameObject/attackableUnits/AttackableUnit';
+import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import { Rectangle } from '../../../src/libs/quadtree';
 import {
   STRESS_ENTER_SHARE,
+  STRESS_ENTER_SUSTAIN_MS,
   STRESS_LEAVE_SHARE,
+  STRESS_LEAVE_SUSTAIN_MS,
+  freshRenderStress,
   nextStressState,
+  type RenderStress,
 } from '../../../src/game/render/renderStress';
-import { stubGameGlobals } from '../fixtures';
+import { createGame, stubGameGlobals } from '../fixtures';
 
 /**
  * **`auto` used to mean "are you on a phone".**
@@ -96,33 +102,143 @@ describe('what automatic quality does on a machine that is not a phone', () => {
   });
 });
 
-describe('deciding that a machine is struggling', () => {
-  it('is measured against the cap the player chose, not against 60', () => {
-    // A rock-solid 30 under a 30 cap is not a machine in trouble.
-    expect(nextStressState(false, 30, 30)).toBe(false);
-    // The same 30 under a 60 cap is missing every other frame.
-    expect(nextStressState(false, 30, 60)).toBe(true);
+/**
+ * The half of the report that was a *design* mistake rather than a threshold
+ * one: stress used to compact the units too.
+ *
+ * The compact body drops the score, the tick marks and — until this — the buff
+ * icons, and halves the bar. That is the right trade for a phone zoomed out to
+ * where a champion is twelve screen pixels. It is the wrong trade for a desktop
+ * that dropped frames for a second and a half, because what it costs is the
+ * information the player is deciding from, and they cannot tell you why the
+ * screen changed.
+ */
+describe('what stress is allowed to take away', () => {
+  /**
+   * A world with a player in it. `AttackableUnit.isAllied` — reached from
+   * `getDisplayBoundingBox` — asks the game who the player is, and the fixture
+   * throws rather than answering `undefined`.
+   */
+  const world = () => {
+    const game = createGame();
+    game.setPlayer(new Champion({ game, teamId: 'blue' } as never));
+    return game;
+  };
+
+  /** Whether the draw pass asked for compact bodies this frame. */
+  const compactAsked = (game: { renderQuality?: string; renderStressed?: boolean }): boolean => {
+    let compact = false;
+    const manager = new ObjectManager({ mapSize: 1_000, camera, ...game } as never);
+    // A real world for the unit: `getDisplayBoundingBox` reads its `game`.
+    // The manager gets its own context above — the two are separate objects on
+    // purpose, since what is under test is the manager's quality branch.
+    const probe = new (class extends AttackableUnit {
+      draw(options: { compactUnits?: boolean } = {}) {
+        compact = options.compactUnits === true;
+      }
+    })({ game: world(), visionRadius: 20 } as never);
+    probe.position.set(50, 50);
+    probe.visibleToPlayerTeam = true;
+    manager.objects = [probe];
+    manager._objectsTree.insert(probe.getDisplayBoundingBox());
+    manager.draw();
+    return compact;
+  };
+
+  it('does not compact a body just because the frame was late', () => {
+    expect(compactAsked({ renderQuality: 'auto', renderStressed: true })).toBe(false);
   });
 
-  it('takes two different thresholds to turn on and off', () => {
-    const target = 60;
-    const between = target * ((STRESS_ENTER_SHARE + STRESS_LEAVE_SHARE) / 2);
+  it('still compacts under an explicit Thấp, which is the player asking for it', () => {
+    expect(compactAsked({ renderQuality: 'low', renderStressed: false })).toBe(true);
+  });
+});
 
-    // Between the two: whichever state it is in, it stays there. A single
-    // threshold here would flutter — cutting raises the rate, which restores
-    // the quality, which drops the rate again.
-    expect(nextStressState(false, between, target)).toBe(false);
-    expect(nextStressState(true, between, target)).toBe(true);
+describe('deciding that a machine is struggling', () => {
+  const TARGET = 60;
+  const frame = 1000 / 60;
 
-    expect(nextStressState(false, target * (STRESS_ENTER_SHARE - 0.01), target)).toBe(true);
-    expect(nextStressState(true, target * (STRESS_LEAVE_SHARE + 0.01), target)).toBe(false);
+  /** Runs `ms` of frames at a steady rate, and hands back the state. */
+  const hold = (state: RenderStress, fps: number, ms: number): RenderStress => {
+    let next = state;
+    for (let elapsed = 0; elapsed < ms; elapsed += frame) {
+      next = nextStressState(next, fps, TARGET, frame);
+    }
+    return next;
+  };
+
+  it('is measured against the cap the player chose, not against 60', () => {
+    // A rock-solid 30 under a 30 cap is not a machine in trouble, however long
+    // it holds there.
+    let steady = freshRenderStress();
+    for (let elapsed = 0; elapsed < 10_000; elapsed += frame) {
+      steady = nextStressState(steady, 30, 30, frame);
+    }
+    expect(steady.stressed).toBe(false);
+  });
+
+  /**
+   * The reported bug, as arithmetic.
+   *
+   * Traced on an M4 Pro: idle sits at 58.5-60.6 and **one** 900ms hitch drops
+   * the smoothed average to 54.2. The first version of this rule degraded below
+   * 50 and only restored above 57 — so a machine that never struggles could be
+   * parked in the degraded state by a single hiccup, and 54.2 was not enough to
+   * climb back out.
+   */
+  it('is unmoved by one hitch on a machine that is otherwise fine', () => {
+    let state = hold(freshRenderStress(), 59, 3_000);
+    expect(state.stressed).toBe(false);
+
+    // The hitch itself: a handful of frames at the measured post-hitch average.
+    state = hold(state, 54.2, 200);
+    expect(state.stressed).toBe(false);
+
+    state = hold(state, 59, 1_000);
+    expect(state.stressed).toBe(false);
+  });
+
+  it('does not degrade a machine holding a playable rate below target', () => {
+    // 48 of 60 is inside the band on purpose: playable, and not worth taking
+    // anybody's information away for.
+    expect(hold(freshRenderStress(), 48, 10_000).stressed).toBe(false);
+  });
+
+  it('degrades a machine that stays under the floor', () => {
+    const struggling = hold(freshRenderStress(), 30, STRESS_ENTER_SUSTAIN_MS + 200);
+    expect(struggling.stressed).toBe(true);
+  });
+
+  it('needs the stretch to be continuous, not merely frequent', () => {
+    let state = freshRenderStress();
+    // Half the entry window under the floor, then one healthy frame, over and
+    // over: never a sustained stretch, so never degraded.
+    for (let round = 0; round < 8; round++) {
+      state = hold(state, 30, STRESS_ENTER_SUSTAIN_MS * 0.6);
+      state = nextStressState(state, 59, TARGET, frame);
+    }
+    expect(state.stressed).toBe(false);
+  });
+
+  /** And the half the report was actually about: it has to come back. */
+  it('restores quality once the machine is clearly out of trouble', () => {
+    const struggling = hold(freshRenderStress(), 25, STRESS_ENTER_SUSTAIN_MS + 200);
+    expect(struggling.stressed).toBe(true);
+
+    const recovered = hold(struggling, 59, STRESS_LEAVE_SUSTAIN_MS + 200);
+    expect(recovered.stressed).toBe(false);
+  });
+
+  it('restores faster than it degrades, because the two mistakes are not equal', () => {
+    expect(STRESS_LEAVE_SUSTAIN_MS).toBeLessThan(STRESS_ENTER_SUSTAIN_MS);
+    expect(STRESS_ENTER_SHARE).toBeLessThan(STRESS_LEAVE_SHARE);
   });
 
   it('changes nothing on a reading it cannot trust', () => {
-    expect(nextStressState(false, Number.NaN, 60)).toBe(false);
-    expect(nextStressState(true, Number.NaN, 60)).toBe(true);
-    expect(nextStressState(false, 60, 0)).toBe(false);
-    expect(nextStressState(true, 0, 60)).toBe(true);
+    const stressed: RenderStress = { stressed: true, belowMs: 0, aboveMs: 0 };
+    expect(nextStressState(stressed, Number.NaN, TARGET, frame)).toBe(stressed);
+    expect(nextStressState(stressed, 60, 0, frame)).toBe(stressed);
+    expect(nextStressState(stressed, 60, TARGET, Number.NaN)).toBe(stressed);
   });
 });
 

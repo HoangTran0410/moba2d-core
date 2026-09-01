@@ -567,11 +567,22 @@ export default class ObjectManager {
       (this.game.camera.currentScale ?? Infinity) <= MOBILE_COMPACT_UNIT_SCALE &&
       attackableCount >= MOBILE_COMPACT_UNIT_COUNT
     );
-    const compactUnits = quality === 'low' || stressed || (quality === 'auto' && automaticCompact);
+    // **Stress does not compact a unit.** It used to, and that was the wrong
+    // thing to give up: the compact body drops the health numbers, the buff
+    // icons and the status text, which is the information a player needs to
+    // decide anything — reported as "the bar shrank and I could no longer read
+    // my health or my buffs". Compact art answers a different question, and
+    // only one: is this body about twelve screen pixels wide, on a phone,
+    // in a crowd. A frame arriving late is not that question.
+    //
+    // What stress gives up is particles, which is what the budget was built
+    // for and what a fight actually spends its frame on.
+    const compactUnits = quality === 'low' || (quality === 'auto' && automaticCompact);
+    const crowded = drawables.length > MOBILE_CROWDED_DRAWABLE_COUNT;
     const particleBudget =
       quality === 'high'
         ? Infinity
-        : quality === 'low' || (compactUnits && drawables.length > MOBILE_CROWDED_DRAWABLE_COUNT)
+        : quality === 'low' || ((compactUnits || stressed) && crowded)
           ? MOBILE_CROWDED_PARTICLE_DRAW_BUDGET
           : MOBILE_PARTICLE_DRAW_BUDGET;
     const limitParticles =

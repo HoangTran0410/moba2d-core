@@ -370,6 +370,16 @@ export default class Pet extends Champion {
    * reason here is the unit, so this ignores the `compact` argument rather than
    * passing it through — zooming in must not put a score box on a box.
    */
+  /**
+   * A summon's compact frame stays the narrow one it always was, with no buff
+   * row. `Champion` widened both for the case where compact is the *camera's*
+   * doing and the bar still has to be readable; a pet is compact because of
+   * what it is, and the whole point of that is being visibly subordinate to
+   * the champion it belongs to.
+   */
+  protected override compactBarWidth = 52;
+  protected override compactShowsBuffIcons = false;
+
   drawHealthBar(_compact = false): void {
     super.drawHealthBar(true);
   }

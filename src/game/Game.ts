@@ -8,7 +8,7 @@ import type {
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { withSimulationStep } from './simulationClock';
 import { randomMatchSeed } from './matchSeed';
-import { nextStressState } from './render/renderStress';
+import { freshRenderStress, nextStressState } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
@@ -198,12 +198,16 @@ export default class Game {
   renderFps: RenderFps = renderFpsPreference();
   /**
    * Whether this machine is currently missing its own frame target, which is
-   * what `auto` quality degrades on. Written once a frame in `draw()` from the
-   * same meter the FPS readout prints; see `render/renderStress.ts` for why it
-   * is measured against the chosen cap rather than against 60, and why it takes
-   * two different thresholds to turn on and off.
+   * what `auto` quality degrades on. Derived once a frame in `draw()` from the
+   * same meter the FPS readout prints.
+   *
+   * See `render/renderStress.ts` for why it takes a *sustained* stretch in
+   * either direction rather than one reading: the first version flipped on a
+   * single smoothed sample and an M4 Pro — which does not struggle — could be
+   * parked in the degraded state by one hitch.
    */
   renderStressed = false;
+  private stressState = freshRenderStress();
   renderQuality: RenderQuality = renderQualityPreference();
 
   camera!: Camera;
@@ -781,11 +785,13 @@ export default class Game {
     // First, and unconditionally: the frame this is measuring is the one about
     // to be drawn with the answer. `deltaTime` here is p5's real render delta —
     // the simulation's substitution (`simulationClock.ts`) is already back off.
-    this.renderStressed = nextStressState(
-      this.renderStressed,
+    this.stressState = nextStressState(
+      this.stressState,
       this.fpsMeter.sample(deltaTime),
-      this.renderFps
+      this.renderFps,
+      deltaTime
     );
+    this.renderStressed = this.stressState.stressed;
     background(MAP_BACKGROUND_GREY);
 
     // Substitute the interpolated camera around the *whole* body: the minimap
