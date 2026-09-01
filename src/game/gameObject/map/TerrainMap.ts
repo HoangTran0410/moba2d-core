@@ -373,11 +373,23 @@ export default class TerrainMap {
     pop();
   }
 
+  /**
+   * Hand-rolled rather than `retrieve().map().filter()`, for the reason
+   * `ObjectManager.queryObjects` gives for the same shape: the chain allocated
+   * two whole arrays per call to hand back a list the caller almost always just
+   * iterates, and this is called around seventy-seven times a *frame* — every
+   * fog observer, every champion's wall check, every line-of-sight test. Same
+   * result, same order, one array.
+   */
   getObstaclesInArea(area: Rectangle | Circle, terrainTypes: string[] = []): Obstacle[] {
-    return this.quadtree
-      .retrieve(area)
-      .map((o: Rectangle) => o.data)
-      .filter((o: Obstacle) => !terrainTypes.length || terrainTypes.includes(o.type));
+    const regions = this.quadtree.retrieve(area);
+    const filtered = terrainTypes.length > 0;
+    const obstacles: Obstacle[] = [];
+    for (let i = 0; i < regions.length; i++) {
+      const obstacle = regions[i].data as Obstacle;
+      if (!filtered || terrainTypes.includes(obstacle.type)) obstacles.push(obstacle);
+    }
+    return obstacles;
   }
 
   getObstaclesInView(terrainTypes?: string[]): Obstacle[] {

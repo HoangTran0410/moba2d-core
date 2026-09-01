@@ -11,6 +11,7 @@ import DomUtils from '@/utils/dom.utils';
 import AssetManager from '@/managers/AssetManager';
 import { ensurePackAsset } from '@/game/config/packAsset';
 import { renderAlpha } from '@/game/render/Interpolation';
+import { stepsToRun } from '@/game/simulationClock';
 import { contentCatalog } from '@/content/catalog';
 import { activeMapOf } from '@/content/activeMap';
 import { resolveMapId } from '@/content/defaultMap';
@@ -465,15 +466,24 @@ export default class GameScene extends Scene {
     if (resumeP5ForNextScene) loop();
   }
 
+  /**
+   * The simulation's own timer, polled at twice the step so a step is never
+   * more than half an interval late.
+   *
+   * A poll used to run *one* tick however far behind it was, and move the clock
+   * on as if it had run them all — so every step lost to a GC pause, a long
+   * frame or a backgrounded tab was lost for good, and the match quietly ran
+   * slower than real time. `stepsToRun` repays a hitch up to a ceiling instead;
+   * see `simulationClock.ts` for why the ceiling is not optional.
+   */
   updateLoop() {
     if (!this.game) return;
 
-    const currentTime = performance.now();
-    const elapsedTime = currentTime - previousTime;
     const interval = 1000 / this.game.fps;
-    if (elapsedTime > interval) {
-      previousTime = currentTime - (elapsedTime % interval);
-      this.runTick();
+    const { run, advanceMs } = stepsToRun(performance.now() - previousTime, interval);
+    if (run > 0) {
+      previousTime += advanceMs;
+      for (let step = 0; step < run; step++) this.runTick();
     }
 
     this._animationFrameId = window.setTimeout(() => {

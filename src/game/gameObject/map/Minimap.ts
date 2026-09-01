@@ -132,6 +132,45 @@ const BLIP_DIAMETER: Record<BlipKind | 'player', number> = {
 /** Past this the expanded map's icons would be blobs of their own. */
 const BLIP_SCALE_MAX = 2.2;
 
+/**
+ * How often the moving layer — dots, camera box, player — is repainted.
+ *
+ * It used to be repainted onto the main canvas every frame, which measured at
+ * 0.80ms of a 4.36ms frame on a throttled machine: the single most expensive
+ * thing on screen after the fog, for a picture whose dots move a fraction of
+ * one minimap pixel per frame. The cost is not the dots themselves — building
+ * the blip list was 0.20ms of it — it is issuing the p5 calls sixty times a
+ * second.
+ *
+ * 50ms is a considered number rather than a round one: it is under the ~100ms
+ * at which a moving dot starts to read as stepping rather than sliding, and it
+ * is slower than one simulation step so a dot never repaints twice for the same
+ * position. The layer is held in a buffer between repaints, so the map is drawn
+ * every frame either way — a skipped *repaint* is invisible, a skipped *draw*
+ * would flicker, because `Game.draw` clears the whole canvas first.
+ */
+export const MINIMAP_LIVE_INTERVAL_MS = 50;
+
+/**
+ * Whether the moving layer is due a repaint. Pure, and deliberately written so
+ * that a first frame (`paintedAtMs` of `-Infinity`) and a clock that has gone
+ * backwards both repaint rather than freeze.
+ */
+export const liveLayerIsStale = (nowMs: number, paintedAtMs: number): boolean =>
+  !(nowMs - paintedAtMs >= 0 && nowMs - paintedAtMs < MINIMAP_LIVE_INTERVAL_MS);
+
+/**
+ * Pixel density of the moving layer's buffer.
+ *
+ * The wall layer under it is pinned to 1 — it is a static trace nobody can see
+ * the resolution of. The dots are different: a 3.5px "unit" dot rendered at
+ * density 1 and scaled up on a 3x phone would lose the thing that makes it
+ * readable. 2 keeps it crisp on the ordinary case and costs a quarter of the
+ * fill area a full-density buffer would, at a fifth of the repaints the main
+ * canvas was doing.
+ */
+const LIVE_BUFFER_DENSITY = 2;
+
 export class Minimap {
   /** Collapsed until tapped. */
   expanded = false;
@@ -152,6 +191,21 @@ export class Minimap {
   private expandedBufferSize = 0;
   /** The restore generation these buffers were painted under — see `bufferFor`. */
   private bufferEpoch = AssetManager.purgeEpoch;
+
+  /**
+   * The moving layer, held between repaints. See `MINIMAP_LIVE_INTERVAL_MS`:
+   * this is painted at 20Hz and blitted at whatever the frame rate is.
+   */
+  private liveBuffer: any = null;
+  private liveBufferSize = 0;
+  private liveDrawnAtMs = -Infinity;
+  /**
+   * Its own epoch, not `bufferEpoch`. `bufferFor` runs first in `draw()` and
+   * clears that field as it repaints the wall layer, so sharing it would mean
+   * the moving layer never heard about a purge at all — it would blit a blank
+   * canvas for the rest of the match.
+   */
+  private liveBufferEpoch = AssetManager.purgeEpoch;
 
   constructor(private readonly host: MinimapHost) {
     const viewport = host.viewport();
@@ -198,6 +252,8 @@ export class Minimap {
     // static layer, and it happens on the next frame that needs it.
     removeGraphics(this.expandedBuffer);
     this.expandedBuffer = null;
+    removeGraphics(this.liveBuffer);
+    this.liveBuffer = null;
   }
 
   // -------------------------------------------------------------------- draw
@@ -209,12 +265,13 @@ export class Minimap {
   draw(): void {
     const bounds = this.rect;
     const buffer = this.bufferFor(bounds.size);
+    const live = this.liveLayerFor(bounds);
 
     push();
     imageMode(CORNER);
     rectMode(CORNER);
     image(buffer, bounds.x, bounds.y, bounds.size, bounds.size);
-    this.drawLiveLayer(bounds);
+    image(live, bounds.x, bounds.y, bounds.size, bounds.size);
     noFill();
     stroke(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3]);
     strokeWeight(2);
@@ -222,40 +279,87 @@ export class Minimap {
     pop();
   }
 
-  /** Everything that moves: the camera's view, the dots, and the player. */
-  private drawLiveLayer(bounds: MinimapRect): void {
+  /**
+   * The moving layer's buffer, repainted only when it is due.
+   *
+   * Same lazy/epoch shape as `bufferFor`, and the same reason for it: a
+   * background purge blanks every canvas the page holds, and this one is not
+   * something `AssetManager` ever saw.
+   */
+  private liveLayerFor(bounds: MinimapRect): any {
+    const pixels = Math.max(1, Math.round(bounds.size));
+    if (this.liveBufferEpochStale() || !this.liveBuffer || this.liveBufferSize !== pixels) {
+      removeGraphics(this.liveBuffer);
+      const graphics: any = createGraphics(pixels, pixels);
+      graphics.pixelDensity(LIVE_BUFFER_DENSITY);
+      this.liveBuffer = graphics;
+      this.liveBufferSize = pixels;
+      this.liveDrawnAtMs = -Infinity;
+    }
+    const now = performance.now();
+    if (liveLayerIsStale(now, this.liveDrawnAtMs)) {
+      this.liveDrawnAtMs = now;
+      this.paintLiveLayer(this.liveBuffer, bounds.size);
+    }
+    return this.liveBuffer;
+  }
+
+  /** The same check `bufferFor` makes, against this layer's own generation. */
+  private liveBufferEpochStale(): boolean {
+    if (this.liveBufferEpoch === AssetManager.purgeEpoch) return false;
+    this.liveBufferEpoch = AssetManager.purgeEpoch;
+    return true;
+  }
+
+  /**
+   * Everything that moves: the camera's view, the dots, and the player.
+   *
+   * Painted in the buffer's own coordinates — a rect at the origin — rather
+   * than at the map's screen position, so the same picture is correct wherever
+   * the map is blitted and an expand/collapse needs no repaint of its own.
+   */
+  private paintLiveLayer(graphics: any, size: number): void {
+    const local: MinimapRect = { x: 0, y: 0, size };
     const mapSize = this.host.mapSize();
-    const dotScale = Math.min(BLIP_SCALE_MAX, bounds.size / MINIMAP_SIZE);
+    const dotScale = Math.min(BLIP_SCALE_MAX, size / MINIMAP_SIZE);
+
+    graphics.clear();
+    graphics.rectMode(graphics.CORNER);
 
     // The view rectangle first, so no dot is hidden under its outline.
     const box = this.host.cameraBox();
-    const topLeft = worldToMinimap({ x: box.x, y: box.y }, bounds, mapSize);
-    const span = { w: (box.w / mapSize) * bounds.size, h: (box.h / mapSize) * bounds.size };
-    noFill();
-    stroke(CAMERA_BOX_COLOR[0], CAMERA_BOX_COLOR[1], CAMERA_BOX_COLOR[2], CAMERA_BOX_COLOR[3]);
-    strokeWeight(1);
-    rect(topLeft.x, topLeft.y, span.w, span.h);
+    const topLeft = worldToMinimap({ x: box.x, y: box.y }, local, mapSize);
+    const span = { w: (box.w / mapSize) * size, h: (box.h / mapSize) * size };
+    graphics.noFill();
+    graphics.stroke(
+      CAMERA_BOX_COLOR[0],
+      CAMERA_BOX_COLOR[1],
+      CAMERA_BOX_COLOR[2],
+      CAMERA_BOX_COLOR[3]
+    );
+    graphics.strokeWeight(1);
+    graphics.rect(topLeft.x, topLeft.y, span.w, span.h);
 
-    noStroke();
+    graphics.noStroke();
     for (const blip of this.host.blips()) {
-      const at = worldToMinimap(blip, bounds, mapSize);
+      const at = worldToMinimap(blip, local, mapSize);
       const diameter = BLIP_DIAMETER[blip.kind] * dotScale;
-      fill(blip.color[0], blip.color[1], blip.color[2]);
+      graphics.fill(blip.color[0], blip.color[1], blip.color[2]);
       if (blip.kind === 'structure') {
-        rect(at.x - diameter / 2, at.y - diameter / 2, diameter, diameter);
+        graphics.rect(at.x - diameter / 2, at.y - diameter / 2, diameter, diameter);
       } else {
-        circle(at.x, at.y, diameter);
+        graphics.circle(at.x, at.y, diameter);
       }
     }
 
     // Last, and outlined: the player is the one dot that must never be lost
     // under another, and is drawn whatever the fog says.
-    const player = worldToMinimap(this.host.playerPosition(), bounds, mapSize);
+    const player = worldToMinimap(this.host.playerPosition(), local, mapSize);
     const playerDiameter = BLIP_DIAMETER.player * dotScale;
-    stroke(20, 24, 32, 220);
-    strokeWeight(1.5);
-    fill(PLAYER_COLOR[0], PLAYER_COLOR[1], PLAYER_COLOR[2]);
-    circle(player.x, player.y, playerDiameter);
+    graphics.stroke(20, 24, 32, 220);
+    graphics.strokeWeight(1.5);
+    graphics.fill(PLAYER_COLOR[0], PLAYER_COLOR[1], PLAYER_COLOR[2]);
+    graphics.circle(player.x, player.y, playerDiameter);
   }
 
   private bufferFor(size: number): any {
@@ -311,8 +415,10 @@ export class Minimap {
   destroy(): void {
     removeGraphics(this.collapsedBuffer);
     removeGraphics(this.expandedBuffer);
+    removeGraphics(this.liveBuffer);
     this.collapsedBuffer = null;
     this.expandedBuffer = null;
+    this.liveBuffer = null;
   }
 }
 

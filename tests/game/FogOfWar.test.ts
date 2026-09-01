@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import FogOfWar from '../../src/game/gameObject/map/FogOfWar';
+import FogOfWar, { FOG_SIGHT_TICK_INTERVAL } from '../../src/game/gameObject/map/FogOfWar';
 import Champion from '../../src/game/gameObject/attackableUnits/Champion';
 import { Rectangle } from '../../src/libs/quadtree';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from './fixtures';
@@ -173,16 +173,22 @@ describe('FogOfWar and the spell-made eye', () => {
   }
 
   /**
-   * One frame's worth of "the world moved".
+   * Enough of "the world moved" that the sight pass runs again.
    *
-   * `calculateSight` caches its whole result against `ObjectManager.revision`,
-   * which the real quadtree rebuild bumps once a tick — so in a match the pass
-   * re-runs every frame. `indexObjects` inserts straight into the tree and
-   * bumps nothing, so without this a second call in the same test reads the
-   * first one's answer and every assertion after it is about stale state.
+   * `calculateSight` holds its whole result for `FOG_SIGHT_TICK_INTERVAL` of
+   * the ticks that `ObjectManager.revision` counts, so that the fog is computed
+   * at 30Hz rather than once per drawn frame. `indexObjects` inserts straight
+   * into the tree and bumps nothing, so without this a later call in the same
+   * test reads the first one's answer and every assertion after it is about
+   * stale state.
+   *
+   * Bumping by the interval rather than by one is the whole reason this helper
+   * exists rather than the bump being written inline: what a test means here is
+   * "and then a frame happened", and how many ticks that takes is the fog's
+   * business, not the test's.
    */
   const tick = (game: TestGame): void => {
-    (game.objectManager as unknown as { revision: number }).revision++;
+    (game.objectManager as unknown as { revision: number }).revision += FOG_SIGHT_TICK_INTERVAL;
   };
 
   /** A ward the way a pack builds one: position, teamId, a plain visionRadius. */

@@ -66,6 +66,44 @@ const GRANTED_SIGHT_RING_PX = 100;
 const GRANTED_SIGHT_TOLERANCE_PX = 12;
 
 /**
+ * How many simulation ticks one sight pass is allowed to stand for.
+ *
+ * `ObjectManager.revision` is bumped once per tick, so the pass used to run
+ * once per tick — and since a machine draws at roughly its tick rate, that
+ * meant once per frame. Measured at 10x CPU throttle with 200 minions on the
+ * board, `calculateSight` was 2.1ms of an 8.0ms frame: after the fog's own
+ * painting, the most expensive thing the renderer did.
+ *
+ * Two, i.e. 30Hz, is the whole change. It is not a guess about what is
+ * imperceptible — the *painting* still runs every frame, and the polygons it
+ * paints are in world space, so nothing on screen goes stale when the camera
+ * moves. What is held for one extra tick is where the revealers were, and one
+ * tick of champion movement is under 8px on a 6400px map, drawn through a
+ * gradient rim over a hundred pixels wide.
+ *
+ * Raising it further is not free in the way this step was: past about four
+ * ticks a dash starts to visibly drag its own fog behind it.
+ */
+export const FOG_SIGHT_TICK_INTERVAL = 2;
+
+/**
+ * Slack on the "is this revealer worth painting" camera test, in world px.
+ *
+ * The pass used to re-run whenever the camera box changed by any amount, so
+ * "on camera" could be answered exactly. It no longer does, so the answer has
+ * to hold for `FOG_SIGHT_TICK_INTERVAL` ticks of panning.
+ *
+ * Sized to what a camera can actually travel in that time and no further. The
+ * first attempt at this used 256px on the reasoning that slack is cheap, and it
+ * measured the whole point of the change away: minions queue in lanes just off
+ * screen, so a margin that generous nearly tripled the polygons cast per pass —
+ * from about ten to about twenty-eight — and the fog cost exactly what it had
+ * before. A camera follows a champion, the fastest of whom covers well under
+ * 10px in a tick, so 48 is already several times the worst case.
+ */
+const SIGHT_CAMERA_MARGIN_PX = 48;
+
+/**
  * How far an object lights fog. AttackableUnits carry the `fogRevealRadius`
  * getter (minions and turrets have no combat sight — visionRadius 0 — but
  * still light a circle for the team). A spell-made eye — a pack's ward, a
@@ -122,8 +160,8 @@ export default class FogOfWar {
   // separately via context translate (see prepareRadialGradient).
   gradientCache: Map<string, CanvasGradient>;
   lastSightCalculation?: {
+    /** The tick this answer was computed on — see `FOG_SIGHT_TICK_INTERVAL`. */
     revision: number;
-    cameraKey: string;
     result: SightResult[];
   };
 
@@ -183,13 +221,20 @@ export default class FogOfWar {
   calculateSight(): SightResult[] {
     const { x, y, w, h } = this.game.camera.getBoundingBox();
     const revision = this.game.objectManager.revision;
-    const cameraKey = `${x}:${y}:${w}:${h}`;
+    const cached = this.lastSightCalculation;
+    // Held for a fixed number of ticks (`FOG_SIGHT_TICK_INTERVAL`), never for a
+    // camera that happens not to have moved. The camera used to be half the
+    // key, which sounds right and measured at a 19% hit rate: a player who is
+    // walking moves the camera every frame, and a player who is walking is
+    // exactly when the fog costs the most. `>= 0` so a new match — whose
+    // revision counts from zero again — does not read the old one's answer.
     if (
       typeof revision === 'number' &&
-      this.lastSightCalculation?.revision === revision &&
-      this.lastSightCalculation.cameraKey === cameraKey
+      cached !== undefined &&
+      revision - cached.revision >= 0 &&
+      revision - cached.revision < FOG_SIGHT_TICK_INTERVAL
     ) {
-      return this.lastSightCalculation.result;
+      return cached.result;
     }
 
     // Deliberately NOT narrowed to the camera.
@@ -222,8 +267,18 @@ export default class FogOfWar {
     const visiblePlayers: any[] = [];
     /** Every allied granted circle on the map — what `visibleToPlayerTeam` is computed from. */
     const revealCircles: RevealCircle[] = [];
+    // Widened: this answer now stands for more than one tick. See
+    // `SIGHT_CAMERA_MARGIN_PX`.
     const nearCamera = (ox: number, oy: number, r: number) =>
-      CollideUtils.circleRect(ox, oy, r, x, y, w, h);
+      CollideUtils.circleRect(
+        ox,
+        oy,
+        r,
+        x - SIGHT_CAMERA_MARGIN_PX,
+        y - SIGHT_CAMERA_MARGIN_PX,
+        w + SIGHT_CAMERA_MARGIN_PX * 2,
+        h + SIGHT_CAMERA_MARGIN_PX * 2
+      );
 
     allyObjects.forEach((obj: any) => {
       const radius = fogRevealOf(obj);
@@ -364,7 +419,7 @@ export default class FogOfWar {
     }
 
     if (typeof revision === 'number') {
-      this.lastSightCalculation = { revision, cameraKey, result: allSightPoly };
+      this.lastSightCalculation = { revision, result: allSightPoly };
     }
     return allSightPoly;
   }

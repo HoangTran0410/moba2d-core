@@ -337,6 +337,24 @@ one.** None is visible from the file you are editing.
   reaches the values through `api.layers.GROUND_Z_INDEX` — never a magic number
   on either side. `ground-decal-zindex.test.ts`.
 
+**The two clocks and the frame budget** → `docs/TRAPS.md` § *The two clocks, and the frame budget*
+
+- **The simulation must never read `deltaTime` for its own step** — that is p5's
+  *render* delta, and the sim is a fixed 60Hz loop of its own. Reading it made
+  the 30 FPS setting run the whole game at **double speed**.
+  `Game.update` substitutes the global around the tick; `simulationClock.ts`.
+- **`auto` quality means "is this machine keeping up", not "is this a phone"** —
+  `render/renderStress.ts`, fed from `Game.draw`, measured against the cap the
+  player chose, with two thresholds so it cannot oscillate.
+- **Never key a render cache on the camera** — a walking player invalidates it
+  every frame, which is exactly when the work costs most. The fog measured a
+  19% hit rate that way. `FogOfWar.performance.test.ts`.
+- **Baking static art into a buffer does not make a translucent disc cheaper** —
+  the blit fills the same pixels, and a supersampled buffer is *slower*. When
+  fill is the cost, draw fewer or smaller pixels.
+- **Quote no render number that was not measured interleaved** —
+  `tests/e2e/measure-frame-cost.mjs`, `measure-sim-clock.mjs`.
+
 **Combat seams** → `docs/TRAPS.md` § *Combat seams*
 
 - **Match rules are read live, and only through their seam**: `Spell.effectiveMana()`,

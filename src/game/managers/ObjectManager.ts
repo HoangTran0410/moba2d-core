@@ -26,6 +26,13 @@ export interface ObjectManagerGameContext {
   readonly mapSize: number;
   readonly touchUi?: boolean;
   readonly renderQuality?: RenderQuality;
+  /**
+   * Whether the machine is missing its own frame target right now
+   * (`render/renderStress.ts`). Read only under `auto`: choosing Cao or Thấp is
+   * the player overriding the measurement, and a measurement must not override
+   * them back.
+   */
+  readonly renderStressed?: boolean;
   camera: {
     getBoundingBox(): Rectangle;
     constantSize?(pixels: number): number;
@@ -548,19 +555,27 @@ export default class ObjectManager {
     drawables.sort((a, b) => (a.z !== b.z ? a.z - b.z : Number(b.dead) - Number(a.dead)));
 
     const quality = this.game.renderQuality ?? 'auto';
+    // Two ways in, and they say different things. `automaticCompact` is "this
+    // is a phone, zoomed out, in a crowd" — a guess from the shape of the
+    // situation. `renderStressed` is the machine reporting that it is actually
+    // missing frames, whatever kind of machine it is; before it existed, a
+    // struggling laptop got the full-quality path forever because the only
+    // question `auto` asked was whether it had a touchscreen.
+    const stressed = quality === 'auto' && this.game.renderStressed === true;
     const automaticCompact = Boolean(
       this.game.touchUi &&
       (this.game.camera.currentScale ?? Infinity) <= MOBILE_COMPACT_UNIT_SCALE &&
       attackableCount >= MOBILE_COMPACT_UNIT_COUNT
     );
-    const compactUnits = quality === 'low' || (quality === 'auto' && automaticCompact);
+    const compactUnits = quality === 'low' || stressed || (quality === 'auto' && automaticCompact);
     const particleBudget =
       quality === 'high'
         ? Infinity
         : quality === 'low' || (compactUnits && drawables.length > MOBILE_CROWDED_DRAWABLE_COUNT)
           ? MOBILE_CROWDED_PARTICLE_DRAW_BUDGET
           : MOBILE_PARTICLE_DRAW_BUDGET;
-    const limitParticles = quality === 'low' || (quality === 'auto' && this.game.touchUi);
+    const limitParticles =
+      quality === 'low' || stressed || (quality === 'auto' && this.game.touchUi);
     const particleScale =
       limitParticles && particleCount > particleBudget ? particleBudget / particleCount : 1;
 

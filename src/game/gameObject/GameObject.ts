@@ -48,6 +48,16 @@ export interface GameObjectRuntimeContext extends GameObjectGameContext {
    * `matchTimeMs` beside it, because a headless context has no map.
    */
   mapTuning?: MapTuning;
+  /**
+   * Whether the machine is currently missing its own frame target
+   * (`render/renderStress.ts`). Optional and read as `=== true`, so a headless
+   * context — which has no renderer to be behind — draws everything.
+   *
+   * Anything that reads this must degrade only what a player would not miss
+   * while the frame is being dropped: it is a hint about the machine, never
+   * about the match, and nothing it changes may be visible to the simulation.
+   */
+  renderStressed?: boolean;
   randomSpawnPoint(teamId?: string): p5.Vector;
   createSpellContext(
     spell: Spell,

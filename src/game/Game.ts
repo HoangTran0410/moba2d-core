@@ -6,6 +6,8 @@ import type {
   StructureSlot,
 } from '@/content/ContentPack';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
+import { withSimulationStep } from './simulationClock';
+import { nextStressState } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
@@ -183,6 +185,14 @@ export default class Game {
    */
   readonly fps = 60;
   renderFps: RenderFps = renderFpsPreference();
+  /**
+   * Whether this machine is currently missing its own frame target, which is
+   * what `auto` quality degrades on. Written once a frame in `draw()` from the
+   * same meter the FPS readout prints; see `render/renderStress.ts` for why it
+   * is measured against the chosen cap rather than against 60, and why it takes
+   * two different thresholds to turn on and off.
+   */
+  renderStressed = false;
   renderQuality: RenderQuality = renderQualityPreference();
 
   camera!: Camera;
@@ -728,10 +738,24 @@ export default class Game {
     this.net?.update();
   }
 
+  /**
+   * One simulation step, and exactly one step's worth of time.
+   *
+   * The step is this match's own, never the renderer's: `simulationClock.ts`
+   * has the measurement, but the short version is that reading p5's
+   * `deltaTime` here made the 30 FPS setting run the whole game at double
+   * speed. The global is substituted for the duration of the tick so the
+   * eighty-two places inside the simulation that already read it get the right
+   * number without any of them being edited, and restored afterwards so
+   * draw-time animation keeps the real frame delta.
+   */
   update() {
     if (this.paused) return;
-    this.matchTimeMs += Math.max(0, deltaTime);
-    this.fixedUpdate();
+    const step = 1000 / this.fps;
+    withSimulationStep(step, () => {
+      this.matchTimeMs += step;
+      this.fixedUpdate();
+    });
   }
 
   /**
@@ -743,6 +767,14 @@ export default class Game {
    */
   draw(alpha = 1) {
     if (this.paused) return;
+    // First, and unconditionally: the frame this is measuring is the one about
+    // to be drawn with the answer. `deltaTime` here is p5's real render delta —
+    // the simulation's substitution (`simulationClock.ts`) is already back off.
+    this.renderStressed = nextStressState(
+      this.renderStressed,
+      this.fpsMeter.sample(deltaTime),
+      this.renderFps
+    );
     background(MAP_BACKGROUND_GREY);
 
     // Substitute the interpolated camera around the *whole* body: the minimap

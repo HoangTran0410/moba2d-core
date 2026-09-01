@@ -109,9 +109,15 @@ const TEXT_SIZE = 14;
  * in `DebugOverlay.ts` follows — so sampling and drawing both cost nothing
  * while this is off.
  */
+/**
+ * The readout. Sampling is **not** here any more: `Game.draw` feeds the meter
+ * every frame whether or not anyone is looking, because `renderStress.ts` reads
+ * the same number to decide whether to ration the frame. Leaving the sample
+ * behind this flag meant the automatic quality path had no measurement at all
+ * unless a developer happened to have the overlay switched on.
+ */
 export function drawFpsOverlay(host: FpsOverlayHost, meter: FpsMeter): void {
   if (!host.director.debug.fps) return;
-  meter.sample(deltaTime);
 
   push();
   noStroke();

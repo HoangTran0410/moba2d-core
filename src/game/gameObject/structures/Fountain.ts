@@ -168,12 +168,23 @@ export default class Fountain extends GameObject {
     const r = this.radius;
     const breathe = 1 + Math.sin(this._pulse) * 0.03;
 
+    // What the platform costs is fill, not shape: four translucent discs the
+    // width of the base, alpha-blended over each other every frame. Tracing
+    // them is nothing — baking the whole thing into buffers was tried and
+    // measured *identical*, because the blit fills the same pixels — so the
+    // only thing that makes it cheaper is drawing fewer of them. The outermost
+    // is the widest and the faintest at alpha 26, and it is the one nobody
+    // looks at while their machine is dropping frames.
+    const stressed = this.game?.renderStressed === true;
+
     push();
     noStroke();
 
     // outer glow
-    fill(70, 190, 235, 26);
-    circle(x, y, r * 2 * breathe);
+    if (!stressed) {
+      fill(70, 190, 235, 26);
+      circle(x, y, r * 2 * breathe);
+    }
     fill(70, 190, 235, 34);
     circle(x, y, r * 1.7);
 
@@ -213,9 +224,9 @@ export default class Fountain extends GameObject {
     endShape(CLOSE);
     pop();
 
-    // rising motes
+    // rising motes — decoration, and the second thing to go
     noStroke();
-    for (const m of this._motes) {
+    for (const m of stressed ? [] : this._motes) {
       const mx = x + cos(m.angle) * m.radius;
       const my = y + sin(m.angle) * m.radius - m.rise;
       fill(150, 240, 255, 200 * m.life);

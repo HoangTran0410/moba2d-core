@@ -132,10 +132,30 @@ describe('drawFpsOverlay', () => {
   });
 
   it('draws the held number and the window’s worst frame, with the flag on', () => {
-    vi.stubGlobal('deltaTime', 16); // 62.5 -> rounds to 63, and it is its own worst frame
-    drawFpsOverlay(host(true), new FpsMeter());
+    const meter = new FpsMeter();
+    meter.sample(16); // 62.5 -> rounds to 63, and it is its own worst frame
+    drawFpsOverlay(host(true), meter);
     expect(spies.text).toHaveBeenCalledTimes(1);
     expect(spies.text.mock.calls[0][0]).toBe('63 FPS · min 63');
+  });
+
+  /**
+   * Sampling moved to `Game.draw`, because `render/renderStress.ts` reads the
+   * same meter to decide whether to ration the frame and the sample cannot be
+   * behind a debug flag for that. Putting it back here would not just restore
+   * the old coupling — it would feed the meter *twice* on any frame the readout
+   * is on, and the number a player is shown when they are checking whether
+   * their machine is struggling is exactly the number that must not be wrong.
+   */
+  it('reads the meter without feeding it', () => {
+    const meter = new FpsMeter();
+    meter.sample(16);
+    const before = meter.displayFps;
+
+    vi.stubGlobal('deltaTime', 1_000);
+    drawFpsOverlay(host(true), meter);
+
+    expect(meter.displayFps).toBe(before);
   });
 
   it('does not sample or draw when the flag is off, even across repeated calls', () => {
