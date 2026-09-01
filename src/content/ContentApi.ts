@@ -3,6 +3,7 @@ import { packAsset } from '@/game/config/packAsset';
 import { seededRandom, seededShuffle } from '@/game/matchSeed';
 
 import Spell from '@/game/gameObject/Spell';
+import GameObject from '@/game/gameObject/GameObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import MissileSpellObject from '@/game/gameObject/MissileSpellObject';
 import AreaSpellObject from '@/game/gameObject/spellObjects/AreaSpellObject';
@@ -134,6 +135,17 @@ import { uuidv4, hasFlag, rectToVertices } from '@/utils/index';
  */
 export interface ContentApi {
   Spell: typeof Spell;
+  /**
+   * The base every drawn thing in the world extends, for the one case that is
+   * not a spell's: an object a pack stands on a map slot
+   * (`ContentPackCode.slotObjects`) — a relic, an altar, a shrine.
+   *
+   * `SpellObject` below is the base for everything a *cast* produces, and it
+   * takes an owner and reads its `game`, `position` and `teamId` off it. A
+   * relic on the ground has no owner and never had a caster, so it is built
+   * from the slot and the game directly, which is what this constructor takes.
+   */
+  GameObject: typeof GameObject;
   SpellObject: typeof SpellObject;
   MissileSpellObject: typeof MissileSpellObject;
   AreaSpellObject: typeof AreaSpellObject;
@@ -393,6 +405,7 @@ export function buildContentApi(): ContentApi {
   if (cached) return cached;
   cached = Object.freeze({
     Spell,
+    GameObject,
     SpellObject,
     MissileSpellObject,
     AreaSpellObject,

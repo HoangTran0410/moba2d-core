@@ -8,6 +8,8 @@ import type {
   MonsterTemperament,
 } from '@/game/gameObject/attackableUnits/Monster';
 import type { MinionStyle } from '@/game/gameObject/attackableUnits/Minion';
+import type GameObject from '@/game/gameObject/GameObject';
+import type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 
 /**
  * Re-exported so a pack may `import type { MonsterAbility } from '@/content/types'`.
@@ -1179,7 +1181,43 @@ export interface ContentPackCode {
    * every pack got before this field existed.
    */
   turretPassives?: TurretPassive[];
+
+  /**
+   * A pack's own object standing on a neutral slot, keyed by the slot `role`
+   * it claims.
+   *
+   * `slots.neutral` used to mean one thing — a jungle camp — and a role no
+   * installed pack filled left the slot empty. But a map's neutral slots are
+   * just *named points on the ground*: "core never interprets it"
+   * (`NeutralSlot.role`). Everything a map wants to stand there that is not a
+   * body to fight — a relic somebody walks over, an altar, a shrine, a
+   * capture point — had nowhere to be declared, and a pack could not place so
+   * much as a decoration of its own without pretending it was a monster.
+   *
+   * The factory is handed the slot itself and the running game, and returns
+   * the object to add — or `null` for a slot it looked at and declined,
+   * which is how a pack conditions on the slot's own `stats` without core
+   * learning what any of them mean.
+   *
+   * **A role is filled once.** A role a factory claims does not also resolve
+   * to a camp: `Game.spawnJungle` asks here first, so a pack that declares
+   * both for one role has said something contradictory and the object wins.
+   *
+   * Silently ignored by a core too old to know the field, like every other
+   * optional half of this interface — the slot simply stays empty. A pack
+   * that ships one states the floor in its manifest's `coreRange`.
+   */
+  slotObjects?: Record<string, SlotObjectFactory>;
 }
+
+/**
+ * Builds one pack-owned object for one neutral slot. See
+ * `ContentPackCode.slotObjects`.
+ */
+export type SlotObjectFactory = (
+  slot: NeutralSlot,
+  game: GameObjectRuntimeContext
+) => GameObject | null;
 
 /**
  * The whole pack, as every reader from before the split still names it —

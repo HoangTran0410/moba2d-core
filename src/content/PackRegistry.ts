@@ -20,6 +20,7 @@ import type {
   ArchetypeDef,
   ItemDef,
   MonsterDef,
+  SlotObjectFactory,
   SpellClass,
   SpellDisplayData,
   SpellSource,
@@ -125,6 +126,8 @@ export class PackRegistry {
    * order decides, and nothing is silently dropped.
    */
   private readonly turretPassiveList: TurretPassive[] = [];
+  /** Keyed by neutral-slot role. See `ContentPackCode.slotObjects`. */
+  private readonly slotObjectFactories = new Map<string, SlotObjectFactory>();
   private readonly championList: QualifiedChampion[] = [];
   /** Installed items, by qualified id — the shop's whole catalogue. */
   private readonly itemsById = new Map<string, QualifiedItem>();
@@ -419,6 +422,13 @@ export class PackRegistry {
     // already eager too; see `MonsterBody`'s doc comment for why the split
     // exists at all.
     for (const passive of code.turretPassives ?? []) this.turretPassiveList.push(passive);
+    // Not qualified: a slot's `role` is the map's own free string, matched the
+    // same way `monstersFilling` matches a camp's `fills` — across packs, on
+    // the bare word, because the map naming it may come from a different pack
+    // than the thing that stands there.
+    for (const [role, factory] of Object.entries(code.slotObjects ?? {})) {
+      this.slotObjectFactories.set(role, factory);
+    }
     for (const [localId, abilities] of Object.entries(code.monsterAbilities ?? {})) {
       this.monsterAbilities.set(qualify(packId, localId), abilities);
     }
@@ -715,6 +725,15 @@ export class PackRegistry {
     return this.turretPassiveList;
   }
 
+  /**
+   * The pack-owned object that claims this neutral-slot role, if any.
+   * `Game.spawnJungle` asks this before it looks for a camp — see
+   * `ContentPackCode.slotObjects`.
+   */
+  slotObjectFor(role: string): SlotObjectFactory | undefined {
+    return this.slotObjectFactories.get(role);
+  }
+
   reset(): void {
     this.revision += 1;
     this.packs.length = 0;
@@ -723,6 +742,7 @@ export class PackRegistry {
     this.monsterList.length = 0;
     this.monsterAbilities.clear();
     this.turretPassiveList.length = 0;
+    this.slotObjectFactories.clear();
     this.mapList.length = 0;
     this.sources.clear();
     this.display.clear();

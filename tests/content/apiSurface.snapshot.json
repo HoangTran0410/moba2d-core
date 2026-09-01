@@ -1,10 +1,11 @@
 {
-  "contract": 18,
+  "contract": 19,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
     "BeamSpellObject:class",
     "CHILL_DURATION_MS:number",
+    "GameObject:class",
     "HomingMissileSpellObject:class",
     "MissileSpellObject:class",
     "Spell:class",

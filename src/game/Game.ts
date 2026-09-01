@@ -30,7 +30,7 @@ import {
   getChampionPresetFromLoadout,
   minionMusterSlotsFrom,
   monsterBodyPreset,
-  monsterFillingSlot,
+  neutralSlotFill,
   loadoutFromPlan,
   planLoadout,
   planMatchKits,
@@ -645,9 +645,21 @@ export default class Game {
   spawnJungle() {
     const economy = resolveEconomy(this.mapTuning);
     for (const slot of this.neutralSlots) {
-      const monster = monsterFillingSlot(slot);
-      if (!monster) continue;
+      // What stands here at all — a pack's own object, a camp, or nothing.
+      // The ruling lives in `preset.ts` rather than in this loop because this
+      // loop cannot be tested: nothing constructs a real `Game`.
+      const fill = neutralSlotFill(slot);
+      if (!fill) continue;
 
+      if (fill.kind === 'object') {
+        const object = fill.build(slot, this);
+        // `null` is a slot the pack looked at and declined, which is how it
+        // conditions on the slot's own numbers without core learning them.
+        if (object) this.objectManager.addObject(object);
+        continue;
+      }
+
+      const monster = fill.monster;
       for (const member of monster.members) {
         const preset = monsterBodyPreset(monster, member, slot, this.mapTuning);
         const body = new Monster({ game: this, preset });

@@ -6,6 +6,7 @@ import type {
   MinionSlot,
   MonsterBody,
   NeutralSlot,
+  SlotObjectFactory,
   SpawnSlot,
   StructureSlot,
 } from '@/content/ContentPack';
@@ -708,6 +709,34 @@ export const loadChampionPresetFromLoadout = async (
  */
 export const monsterFillingSlot = (slot: NeutralSlot): QualifiedMonster | null =>
   contentRegistry().monstersFilling(slot.role)[0] ?? null;
+
+/**
+ * What actually stands on a neutral slot: a pack's own object, a camp, or
+ * nothing.
+ *
+ * `slots.neutral` meant one thing for as long as it existed — a jungle camp —
+ * and `ContentPackCode.slotObjects` is what widened it: a map's neutral slots
+ * are named points on the ground, and a relic somebody walks over is as much
+ * a thing that stands on one as a pack of wolves is.
+ *
+ * **A role is filled once, and an object outranks a camp.** A pack declaring
+ * both for one role has said something contradictory, and this is the ruling —
+ * stated here rather than inside `Game.spawnJungle`'s loop, because that loop
+ * cannot be tested: nothing in this codebase constructs a real `Game` (see
+ * `tests/game/fixtures.ts`), which is exactly why `fountainsFromSlots` and
+ * `turretsFromSlots` are pure functions beside it too.
+ */
+export type NeutralSlotFill =
+  | { kind: 'object'; build: SlotObjectFactory }
+  | { kind: 'camp'; monster: QualifiedMonster }
+  | null;
+
+export const neutralSlotFill = (slot: NeutralSlot): NeutralSlotFill => {
+  const build = contentRegistry().slotObjectFor(slot.role);
+  if (build) return { kind: 'object', build };
+  const monster = monsterFillingSlot(slot);
+  return monster ? { kind: 'camp', monster } : null;
+};
 
 /**
  * One body of a resolved monster's `members`, spawn-ready — `Game.spawnJungle()`

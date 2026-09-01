@@ -119,6 +119,7 @@ export type {
   MonsterTuning,
   NeutralSlot,
   PackManifest,
+  SlotObjectFactory,
   SpawnSlot,
   SpellClass,
   SpellDisplayData,
