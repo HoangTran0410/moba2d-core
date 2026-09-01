@@ -19,6 +19,7 @@
     "./testing/spells": "./src/testing/spellRegistry.ts",
     "./testing/items": "./src/testing/itemRules.ts",
     "./testing/maps": "./src/testing/mapRules.ts",
+    "./testing/boundary": "./src/testing/boundaryRules.ts",
     "./testing/vitest": "./src/testing/vitest.mjs",
     "./testing/setup": "./src/testing/setup.ts",
     "./package.json": "./package.json",

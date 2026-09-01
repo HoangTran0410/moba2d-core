@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the seventeen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the eighteen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -172,6 +172,26 @@ describe('package.json public surface', () => {
         // use; a pack is held to a named list of subpaths and that barrel,
         // full of source scanners, is rightly not on it.
         './testing/maps',
+        // The eighteenth, and the same argument a third time. `./testing/
+        // boundary` is `describeCoreBoundary` — "this pack names no core
+        // internal", the rule `src/seams/packCoreBoundary.ts` has always
+        // owned, registered as a suite a pack's own `npm test` runs.
+        //
+        // It is published rather than left as ten lines in each pack because
+        // it had been ten lines in *one* pack: the other pack's test suite
+        // said nothing about the rule at all. And it is a pack-side suite
+        // rather than only a `check-seams` rule because of the one thing
+        // TypeScript cannot do here — a pack's `tsconfig.json` must publish
+        // core's `@/*` alias so its `tsc` can see types through core's own
+        // unbundled source, `paths` has no notion of which file is asking,
+        // and so `import … from '@/game/…'` in a pack spell typechecks
+        // cleanly and always will.
+        //
+        // Its own subpath, not the `./testing` barrel, for the reason
+        // `./testing/items` has one: this module reaches `src/seams`, which
+        // is `node:fs` and a directory walk, and no pack's fixture world
+        // should carry that to build a match.
+        './testing/boundary',
         './testing/vitest',
         './testing/setup',
         // The two build helpers a pack's own tooling runs, added when the

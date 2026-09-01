@@ -188,6 +188,7 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/setup`,
   `${CORE_PACKAGE}/testing/items`,
   `${CORE_PACKAGE}/testing/maps`,
+  `${CORE_PACKAGE}/testing/boundary`,
   `${CORE_PACKAGE}/seams`,
   `${CORE_PACKAGE}/pack-webp`,
   `${CORE_PACKAGE}/pack-assets`,
