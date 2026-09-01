@@ -41,7 +41,9 @@ beforeEach(() => {
   game = createGame();
   game.setPlayer(new Champion({ game, teamId: 'player-uuid' }));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const pair = (age: number) => {
   const attacker = new Champion({ game, teamId: 'blue' });
