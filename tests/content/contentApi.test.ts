@@ -46,7 +46,7 @@ describe('buildContentApi', () => {
     }
   });
 
-  it('carries the 24 buffs as constructors, not as an interface', () => {
+  it('carries the 26 buffs as constructors, not as an interface', () => {
     // Slow is `new`-ed 64 times across the spell tree, Dash 51, StatAmp 33.
     // They are mechanics rather than content, so core keeps them and hands
     // over the constructors themselves.

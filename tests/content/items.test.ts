@@ -57,17 +57,23 @@ describe('validating a pack’s items', () => {
   });
 
   it('names the stat key that is not a stat', () => {
-    // `abilityHaste` rather than `abilityPower`: this test used to reach for
-    // the latter as its example of a plausible-looking non-stat, and then
-    // `abilityPower` became a real one. Its neighbour is the same shape of
-    // mistake a pack author actually makes — the *other* game's word for
-    // cooldown reduction, which this engine deliberately does not have.
+    // `lethality`, and the churn here is the point: this test reached for
+    // `abilityPower` as its plausible-looking non-stat until that became real,
+    // then for `abilityHaste` until *that* did. The lesson each time is the
+    // same — the example has to be something the engine has decided **not** to
+    // model, not merely something it has not got round to.
+    //
+    // Lethality is that today: penetration here is a *share* of the victim's
+    // resistance (`armorPenetration`), deliberately never a flat number,
+    // because a flat "ignores 18 armour" means everything against one pack's
+    // tuning and nothing against another's. A pack author coming from the
+    // other game will still type it.
     const result = validatePack({
       manifest,
-      items: { boots: item({ stats: { speed: 25, abilityHaste: 40 } }) },
+      items: { boots: item({ stats: { speed: 25, lethality: 18 } }) },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.join(' ')).toMatch(/abilityHaste/);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/lethality/);
   });
 
   it('refuses a stat the shop must never grant, however real the field is', () => {

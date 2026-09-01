@@ -30,9 +30,15 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
   healthRegen: 'Hồi máu',
   manaRegen: 'Hồi năng lượng',
   speed: 'Tốc chạy',
+  // Two move-speed stats, and the labels have to be told apart because
+  // `shopFilter.ts` keys its chips *by label* — two entries reading "Tốc chạy"
+  // would collapse into one chip that counts half the shelf. The percent one
+  // wears the sign in its name for the same reason Riot's own item data has
+  // `FlatMovementSpeedMod` beside `PercentMovementSpeedMod`.
+  speedPercent: 'Tốc chạy %',
   attackDamage: 'Sát thương',
   abilityPower: 'Sức mạnh phép',
-  cooldownReduction: 'Giảm hồi chiêu',
+  abilityHaste: 'Điểm hồi kỹ năng',
   attackSpeed: 'Tốc đánh',
   attackRange: 'Tầm đánh',
   armor: 'Giáp',
@@ -47,6 +53,12 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
   spellVamp: 'Hút máu phép',
   onHitDamage: 'Sát thương cộng thêm',
   visionRadius: 'Tầm nhìn',
+  // The counters. Each is a *share* of something the other side bought, so
+  // each name says what it eats rather than what it grants.
+  armorPenetration: 'Xuyên giáp',
+  magicPenetration: 'Xuyên kháng phép',
+  tenacity: 'Kháng hiệu ứng',
+  healingReceived: 'Tăng hồi phục nhận vào',
 };
 
 /**
@@ -54,8 +66,19 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
  *
  * Exported because a buff asks the same question — `buffs/describeBuff.ts`
  * lists what a `StatAmp` grants — and the answer is a property of the stat,
- * not of the shop. Note who is *not* on it: `attackSpeed` is points in this
- * engine, and a second copy of this list written from memory gets that wrong.
+ * not of the shop.
+ *
+ * **This list has to agree with `items/Item.ts`'s `GRANT_SLOT`**, and it once
+ * did not: attack speed became a share of the wearer's own rate there and this
+ * file went on printing it as points, so a bow granting +15% swing rate drew
+ * `+0.15` on its card — a number that reads as a fifteenth of a swing and is
+ * off by the champion's whole base rate. Anything landing on a `percent*`
+ * slot belongs here, and the two lists are checked against each other by
+ * `itemStatLines.test.ts` rather than by remembering.
+ *
+ * `abilityHaste` is the one that looks like it belongs and does not: it is
+ * points on purpose, and 25 of them is not 25% off anything (`Stats.ts`'s
+ * `hasteCooldownMultiplier`).
  */
 export const AS_PERCENT = new Set<ItemStatKey>([
   'critChance',
@@ -64,7 +87,12 @@ export const AS_PERCENT = new Set<ItemStatKey>([
   'lifesteal',
   'spellVamp',
   'abilityPower',
-  'cooldownReduction',
+  'armorPenetration',
+  'magicPenetration',
+  'tenacity',
+  'healingReceived',
+  'attackSpeed',
+  'speedPercent',
 ]);
 
 export interface StatLine {

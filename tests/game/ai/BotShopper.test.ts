@@ -30,6 +30,7 @@ import {
   nextBotPurchase,
   type BotBody,
 } from '@/game/ai/BotShopper';
+import { MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
 import { grantItem } from '@/game/economy/ItemShop';
 import type { QualifiedItem } from '@/content/PackRegistry';
 
@@ -65,7 +66,7 @@ const body = (over: Partial<BotBody> = {}): BotBody => ({
   critChance: 0,
   critDamage: 1.75,
   abilityPower: 0,
-  cooldownReduction: 0,
+  abilityHaste: 0,
   omnivamp: 0,
   lifesteal: 0,
   spellVamp: 0,
@@ -109,12 +110,13 @@ describe('what a body is worth', () => {
   });
 
   it('never pays for a stat past the ceiling the engine enforces', () => {
-    // `MAX_COOLDOWN_REDUCTION` is 0.6 and `Stat` clamps to it. A valuation that
-    // did not would have a bot buy its fifth cooldown item for a discount it
-    // will never receive — and `1 / (1 - r)` past 1 is a negative multiplier,
-    // i.e. a bot that thinks capped cooldowns are worthless.
-    const atCap = combatValue(body({ cooldownReduction: 0.6 }));
-    expect(combatValue(body({ cooldownReduction: 0.9 }))).toBe(atCap);
+    // `Stat` clamps haste at `MAX_ABILITY_HASTE`, so a valuation that did not
+    // would have a bot keep paying for points the engine throws away. The
+    // fraction this replaced made the same mistake worse: past its cap
+    // `1 / (1 - r)` goes negative, so a bot could decide that capped cooldowns
+    // were worth *less* than none.
+    const atCap = combatValue(body({ abilityHaste: MAX_ABILITY_HASTE }));
+    expect(combatValue(body({ abilityHaste: MAX_ABILITY_HASTE * 2 }))).toBe(atCap);
     expect(atCap).toBeGreaterThan(combatValue(body()));
   });
 });

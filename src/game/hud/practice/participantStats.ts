@@ -163,9 +163,9 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
           value: percent(stats.abilityPower.value),
         },
         {
-          icon: STAT_ICON.cooldownReduction,
-          label: 'Giảm hồi chiêu',
-          value: percent(stats.cooldownReduction.value),
+          icon: STAT_ICON.abilityHaste,
+          label: 'Điểm hồi kỹ năng',
+          value: String(Math.round(stats.abilityHaste.value)),
         },
       ],
     },

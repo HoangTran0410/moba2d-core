@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentPackData, ItemDef } from '@/content/ContentPack';
-import { INVENTORY_SIZE } from '@/game/items/Item';
-import { MAX_COOLDOWN_REDUCTION } from '@/game/gameObject/Stats';
+import { GRANT_SLOT, INVENTORY_SIZE } from '@/game/items/Item';
+import { MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
 
 /**
  * `@moba2d/core/testing/items` — the rules every pack's shop has to obey,
@@ -21,8 +21,10 @@ import { MAX_COOLDOWN_REDUCTION } from '@/game/gameObject/Stats';
  *   - the same icon rule, written twice;
  *   - the same "an item spell must not reach `spellDisplay`" rule, written
  *     twice and differently — one by prefix, one by an enumerated list;
- *   - the same cooldown ceiling, with **core's own `MAX_COOLDOWN_REDUCTION`
- *     copied into each of them as a literal `0.6`**;
+ *   - the same cooldown ceiling, with **core's own constant copied into each
+ *     of them as a bare literal** (that ceiling has since become
+ *     `MAX_ABILITY_HASTE`, which is the point: the copies would still say
+ *     `0.6`);
  *   - a description contract each had half of — one checked that no markup
  *     escaped the three allowed spans, the other that no digit escaped them;
  *   - and a set of recipe rules only one of them had at all, which is to say
@@ -46,11 +48,13 @@ import { MAX_COOLDOWN_REDUCTION } from '@/game/gameObject/Stats';
  *
  * ## Cost
  *
- * This module reaches `game/items/Item` and `gameObject/Stats` for the two
- * constants it refuses to copy, so importing it is not free the way a
- * data-only test is. That is the trade being made on purpose: a literal `6`
+ * This module reaches `game/items/Item` and `gameObject/Stats` for the
+ * constants and the one table it refuses to copy, so importing it is not free
+ * the way a data-only test is. That is the trade being made on purpose: a literal `6`
  * and a literal `0.6` in two repositories are two numbers that go stale
- * silently, and the whole point of the file is to have one of each.
+ * silently — and one of them since has, when cooldown reduction became ability
+ * haste and the constant changed both name and magnitude. The whole point of
+ * the file is to have one of each.
  */
 
 /**
@@ -303,18 +307,59 @@ export function describeItemShop(fixture: ItemShopFixture): void {
   });
 
   describe(fixture.label ? `${fixture.label}: what a full build reaches` : 'what a full build reaches', () => {
-    it('never sells enough cooldown reduction to reach core’s cap', () => {
-      // `Stat` clamps at `MAX_COOLDOWN_REDUCTION`, so a shop that can reach it
-      // sells a key which can be held down — and every point bought past the
-      // clamp is gold that buys literally nothing.
+    it('sells ability haste in points, not as a fraction', () => {
+      // The rule this replaced policed `cooldownReduction` against its cap.
+      // Haste has no cap worth approaching (`MAX_ABILITY_HASTE` is a runaway
+      // rail at 500, not a balance line), so the failure worth catching is the
+      // *migration* one: a pack writing `abilityHaste: 0.15` because that is
+      // what the old fraction looked like. It is not a type error, it is not a
+      // validation error, and it buys a fifteen-hundredth of a point — an item
+      // that silently grants nothing, which is exactly the class of bug this
+      // suite exists for.
+      for (const [key, def] of entries) {
+        const haste = def.stats?.abilityHaste ?? 0;
+        if (haste === 0) continue;
+        expect(
+          haste,
+          `${key} grants ${haste} ability haste — points, not a fraction (25, not 0.25)`
+        ).toBeGreaterThanOrEqual(1);
+        expect(haste, `${key} grants a fractional point of haste`).toBe(Math.round(haste));
+      }
+    });
+
+    it('sells a share of the wearer as a fraction, not as percentage points', () => {
+      // The same mistake as the haste one, in the other direction, and read
+      // off `GRANT_SLOT` rather than listed here so a stat added to that table
+      // is covered the day it lands.
+      //
+      // These are the keys core multiplies the wearer's own base by
+      // (`items/Item.ts`), so `attackSpeed: 15` is not +15%, it is sixteen
+      // times the champion's swing rate. Nothing downstream objects: it is a
+      // number, it is finite, and the item is simply the best in the game.
+      // Two, not one, so a pack may still sell a legendary that doubles a
+      // stat — what is being caught is a factor of a hundred.
+      const shares = Object.keys(GRANT_SLOT) as (keyof NonNullable<ItemDef['stats']>)[];
+      for (const [key, def] of entries) {
+        for (const stat of shares) {
+          const share = def.stats?.[stat] ?? 0;
+          if (share === 0) continue;
+          expect(
+            share,
+            `${key} grants ${share} ${stat} — a fraction, not percentage points (0.15, not 15)`
+          ).toBeLessThanOrEqual(2);
+        }
+      }
+    });
+
+    it('cannot reach core’s runaway rail on haste even holding the whole shop', () => {
       const total = Object.values(items)
-        .map(def => def.stats?.cooldownReduction ?? 0)
+        .map(def => def.stats?.abilityHaste ?? 0)
         .reduce((sum, amount) => sum + amount, 0);
 
       expect(
         total,
-        `the whole shop grants ${total}, against a cap of ${MAX_COOLDOWN_REDUCTION}`
-      ).toBeLessThan(MAX_COOLDOWN_REDUCTION);
+        `the whole shop grants ${total} haste, against a rail of ${MAX_ABILITY_HASTE}`
+      ).toBeLessThan(MAX_ABILITY_HASTE);
     });
   });
 }

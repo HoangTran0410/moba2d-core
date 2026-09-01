@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '@/testing';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Spell from '@/game/gameObject/Spell';
-import { HeldItem, INVENTORY_SIZE, ITEM_STAT_KEYS, modifierFor } from '@/game/items/Item';
-import { StatsModifier } from '@/game/gameObject/Stats';
+import { GRANT_SLOT, HeldItem, INVENTORY_SIZE, ITEM_STAT_KEYS, modifierFor } from '@/game/items/Item';
+import { AS_PERCENT } from '@/game/hud/itemStatLines';
+import Stats, { StatsModifier } from '@/game/gameObject/Stats';
 import type { CastSpec } from '@/game/spell/runtime/types';
 import type { ItemDef } from '@/content/ContentPack';
 
@@ -35,7 +36,83 @@ const def = (over: Partial<ItemDef> = {}): ItemDef => ({
 });
 
 describe('modifierFor', () => {
-  it('lands every grant on flatBonus, never baseValue', () => {
+  /**
+   * The first of the two stats that do not land on `flatBonus`, and the reason
+   * the slot is a decision rather than a default.
+   *
+   * Attack speed is a *rate*, and every champion has a different one. A flat
+   * `+0.25 swings a second` is a sixth again for a marksman on 1.65 and a third
+   * again for a mage on 0.7 — so the same item quietly does most for whoever
+   * needed it least, and the shelf cannot be priced against any champion in
+   * particular. A share of the wearer's own base is what League grants, what
+   * every ability in the installed packs already grants
+   * (`percentBaseBonus`), and what makes "+25% attack speed" mean one thing.
+   */
+  it('grants attack speed as a share of the wearer’s own base, not as swings', () => {
+    const modifier = modifierFor({ attackSpeed: 0.25 });
+    expect(modifier.attackSpeed.percentBaseBonus).toBe(0.25);
+    expect(modifier.attackSpeed.flatBonus).toBe(0);
+  });
+
+  it('is worth more to a champion who already swings faster', () => {
+    const fast = new Stats();
+    const slow = new Stats();
+    fast.attackSpeed.baseValue = 1.65;
+    slow.attackSpeed.baseValue = 0.7;
+
+    const modifier = modifierFor({ attackSpeed: 0.4 });
+    fast.addModifier(modifier);
+    slow.addModifier(modifier);
+
+    expect(fast.attackSpeed.value).toBeCloseTo(1.65 * 1.4, 6);
+    expect(slow.attackSpeed.value).toBeCloseTo(0.7 * 1.4, 6);
+  });
+
+  it('takes the share back off cleanly when the item is sold', () => {
+    const stats = new Stats();
+    stats.attackSpeed.baseValue = 1.2;
+    const modifier = modifierFor({ attackSpeed: 0.35 });
+
+    stats.addModifier(modifier);
+    stats.removeModifier(modifier);
+
+    expect(stats.attackSpeed.value).toBeCloseTo(1.2, 6);
+  });
+
+  /**
+   * The second, and the pair is what it is for. Boots are flat because a fixed
+   * number is worth most to whoever walks slowest; `speedPercent` multiplies
+   * the total, so buying it *after* the boots is worth more than buying it
+   * first — a shelf that can sell a first item and a fifth.
+   */
+  it('grants percent move speed on top of the boots, not instead of them', () => {
+    const stats = new Stats();
+    const boots = modifierFor({ speed: 0.45 });
+    const zeal = modifierFor({ speedPercent: 0.1 });
+
+    expect(zeal.speed.percentBonus).toBe(0.1);
+    expect(zeal.speed.flatBonus).toBe(0);
+
+    stats.addModifier(boots);
+    stats.addModifier(zeal);
+    // (3 + 0.45) * 1.1 — League's own `(base + flat) * (1 + %)`.
+    expect(stats.speed.value).toBeCloseTo(3.795, 6);
+
+    stats.removeModifier(zeal);
+    expect(stats.speed.value).toBeCloseTo(3.45, 6);
+  });
+
+  it('keeps a movement item clear of a slow, which writes the other slot', () => {
+    // `Slow` writes `speed.percentBaseBonus`. Landing an item's percent there
+    // too would let a 30% slow and a 30% item cancel to nothing, which is a
+    // cripple a player can buy their way out of by arithmetic accident.
+    const stats = new Stats();
+    stats.addModifier(modifierFor({ speedPercent: 0.3 }));
+    stats.speed.percentBaseBonus -= 0.3;
+    expect(stats.speed.value).toBeCloseTo(3 * 0.7 * 1.3, 6);
+  });
+
+  it('lands every other grant on flatBonus, never baseValue', () => {
     // A bonus is something added on top of what the unit is. Writing
     // `baseValue` would make an item's contribution indistinguishable from the
     // champion's own tuning to anything that read the stat afterwards.
@@ -72,8 +149,28 @@ describe('ITEM_STAT_KEYS', () => {
   it('names only fields that really exist on StatsModifier', () => {
     // A typo here is an item that silently grants nothing, forever, with
     // nothing anywhere to look at.
-    const missing = ITEM_STAT_KEYS.filter(key => modifier[key] === undefined);
+    //
+    // Through `GRANT_SLOT`, because a key is allowed to name a stat other than
+    // itself: `speedPercent` is not a field and never will be, it is a second
+    // way of writing `speed`. What has to exist is whatever it points at.
+    const missing = ITEM_STAT_KEYS.filter(key => modifier[GRANT_SLOT[key]?.[0] ?? key] === undefined);
     expect(missing, `${missing.join(', ')} is not a stat`).toEqual([]);
+  });
+
+  it('prints every stat it grants as a share as a percentage', () => {
+    // One direction only. `AS_PERCENT` is wider than `GRANT_SLOT` on purpose —
+    // `abilityPower: 0.35` is a fraction that lands on `flatBonus`, because
+    // the stat itself *is* a multiplier and nothing needs scaling by the body.
+    // What must not happen is the other way round: a stat granted as a share
+    // of the wearer and printed as points. Attack speed did exactly that —
+    // `+0.15` on a card that meant +15% — for as long as the two lists were
+    // kept in step by remembering.
+    const printedAsPoints = ITEM_STAT_KEYS.filter(
+      key => (GRANT_SLOT[key]?.[1] ?? 'flatBonus') !== 'flatBonus' && !AS_PERCENT.has(key)
+    );
+    expect(printedAsPoints, `${printedAsPoints.join(', ')} is a share printed as points`).toEqual(
+      []
+    );
   });
 
   it('leaves the current pools and the body out on purpose', () => {

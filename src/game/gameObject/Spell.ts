@@ -15,6 +15,7 @@ import {
 import type { TargetingRequest } from '@/game/spell/targeting/TargetResolver';
 import { beginAttribution, endAttribution } from '@/game/combat/DamageAttribution';
 import { isNetClient } from '@/game/net/netRole';
+import { hasteCooldownMultiplier } from '@/game/gameObject/Stats';
 import type {
   CancelReason,
   CastContext,
@@ -549,12 +550,12 @@ export default class Spell {
     // is a question about a *cast*, which is what `countsAsAbilityCast` has
     // always answered.
     if (!this.countsAsAbilityCast) return rule;
-    const reduction = this.owner?.stats?.cooldownReduction?.value;
-    if (!Number.isFinite(reduction) || reduction <= 0) return rule;
-    // `Stats.cooldownReduction` is capped at `MAX_COOLDOWN_REDUCTION` and
-    // floored at 0, so this cannot reach a zero or negative duration; the guard
-    // above is for a hand-built stat block in a pack's own tests.
-    return rule * Math.max(0, 1 - (reduction as number));
+    const haste = this.owner?.stats?.abilityHaste?.value;
+    if (!Number.isFinite(haste) || (haste as number) <= 0) return rule;
+    // `100 / (100 + haste)` — `Stats.hasteCooldownMultiplier` owns the curve and
+    // the argument for points over a fraction. It can never reach zero, so
+    // unlike the fraction this replaced there is no cap to respect here.
+    return rule * hasteCooldownMultiplier(haste as number);
   }
 
   /**

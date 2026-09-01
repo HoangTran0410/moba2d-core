@@ -79,8 +79,45 @@ export function mitigationMultiplier(resistance: number): number {
   return 2 - 100 / (100 - resistance);
 }
 
-/** Which of the target's two resistances this damage type has to get past. */
-export function resistanceAgainst(type: DamageType, target: MitigationTarget): number {
+/**
+ * Anything with enough of a stat block to ignore part of a resistance.
+ *
+ * Penetration is the counter a shop selling resistances owes its players, the
+ * same way `combat/Healing.ts`'s wound is the counter a shop selling sustain
+ * owes them: without it, stacked armour is a wall nothing in the game can
+ * answer, and the only counterplay left is not fighting.
+ */
+export interface PenetrationSource {
+  stats?: {
+    /** Share of the victim's `armor` ignored by `PHYSICAL` damage, 0..1. */
+    armorPenetration?: { value: number };
+    /** Share of the victim's `magicResist` ignored by `MAGIC` damage, 0..1. */
+    magicPenetration?: { value: number };
+  };
+}
+
+/** A share, cleaned: anything not a real 0..1 fraction is no penetration at all. */
+const shareOf = (stat: { value: number } | undefined): number => {
+  const value = stat?.value;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+  return value > 1 ? 1 : value;
+};
+
+/**
+ * Which of the target's two resistances this damage type has to get past,
+ * after whatever share of it `attacker` ignores.
+ *
+ * **Penetration never touches a resistance that is already negative.** Below
+ * zero the curve is mirrored and the victim is taking *extra* damage; taking a
+ * share off that number moves it back towards zero, so penetration would
+ * quietly undo a shred — a build that bought both would have paid for two
+ * effects that cancel, against exactly the target it spent them on.
+ */
+export function resistanceAgainst(
+  type: DamageType,
+  target: MitigationTarget,
+  attacker?: PenetrationSource
+): number {
   if (type === 'TRUE') return 0;
   const stat = type === 'PHYSICAL' ? target.stats?.armor : target.stats?.magicResist;
   const value = stat?.value;
@@ -88,14 +125,21 @@ export function resistanceAgainst(type: DamageType, target: MitigationTarget): n
   // multiplier makes every hit against that unit NaN, its health bar goes
   // blank, and nothing in the stack trace says which of the two stats was the
   // one that did not exist.
-  return Number.isFinite(value) ? (value as number) : 0;
+  const resistance = Number.isFinite(value) ? (value as number) : 0;
+  if (resistance <= 0 || !attacker) return resistance;
+
+  const pen = shareOf(
+    type === 'PHYSICAL' ? attacker.stats?.armorPenetration : attacker.stats?.magicPenetration
+  );
+  return pen > 0 ? resistance * (1 - pen) : resistance;
 }
 
 /** The whole question, in one call: what this hit is actually worth against this body. */
 export function effectiveDamage(
   damage: number,
   type: DamageType,
-  target: MitigationTarget
+  target: MitigationTarget,
+  attacker?: PenetrationSource
 ): number {
-  return damage * mitigationMultiplier(resistanceAgainst(type, target));
+  return damage * mitigationMultiplier(resistanceAgainst(type, target, attacker));
 }

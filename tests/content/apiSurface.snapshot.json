@@ -1,5 +1,5 @@
 {
-  "contract": 12,
+  "contract": 16,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -22,12 +22,14 @@
     "buffs.Disarm:class",
     "buffs.Fear:class",
     "buffs.Ground:class",
+    "buffs.HealCut:class",
     "buffs.Invisible:class",
     "buffs.Invulnerable:class",
     "buffs.Nearsight:class",
     "buffs.Phasing:class",
     "buffs.Root:class",
     "buffs.Shield:class",
+    "buffs.ShieldCut:class",
     "buffs.Silence:class",
     "buffs.Slow:class",
     "buffs.Speedup:class",

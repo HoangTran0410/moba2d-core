@@ -29,12 +29,14 @@ import Dash from '@/game/gameObject/buffs/Dash';
 import Disarm from '@/game/gameObject/buffs/Disarm';
 import Fear from '@/game/gameObject/buffs/Fear';
 import Ground from '@/game/gameObject/buffs/Ground';
+import HealCut from '@/game/gameObject/buffs/HealCut';
 import Invisible from '@/game/gameObject/buffs/Invisible';
 import Invulnerable from '@/game/gameObject/buffs/Invulnerable';
 import Nearsight from '@/game/gameObject/buffs/Nearsight';
 import Phasing from '@/game/gameObject/buffs/Phasing';
 import Root from '@/game/gameObject/buffs/Root';
 import Shield from '@/game/gameObject/buffs/Shield';
+import ShieldCut from '@/game/gameObject/buffs/ShieldCut';
 import Silence from '@/game/gameObject/buffs/Silence';
 import Slow from '@/game/gameObject/buffs/Slow';
 import Speedup from '@/game/gameObject/buffs/Speedup';
@@ -153,7 +155,7 @@ export interface ContentApi {
   lazy: typeof lazy;
   /**
    * Not inside `buffs`: every entry there is a constructor (see
-   * `contentApi.test.ts`'s "carries the 24 buffs as constructors" case), and
+   * `contentApi.test.ts`'s "carries the 26 buffs as constructors" case), and
    * this is a plain duration in milliseconds, not a class. It rides at the
    * top level for the same reason `beamBoundingBox` does — a real symbol
    * whose module has no clean home among the eight namespaces.
@@ -319,7 +321,7 @@ const UTILS = Object.freeze({
   rectToVertices,
 });
 
-// Every file in src/game/gameObject/buffs/ that has a default export — 24 of
+// Every file in src/game/gameObject/buffs/ that has a default export — 26 of
 // them, not the 23 an earlier draft of this list counted; TrueSight was the
 // one missed. Buff itself is the base class, filed one directory up.
 // createReveal is a named export real spells import alongside TrueSight's
@@ -337,12 +339,14 @@ const BUFFS = Object.freeze({
   Disarm,
   Fear,
   Ground,
+  HealCut,
   Invisible,
   Invulnerable,
   Nearsight,
   Phasing,
   Root,
   Shield,
+  ShieldCut,
   Silence,
   Slow,
   Speedup,

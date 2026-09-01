@@ -17,17 +17,36 @@
  * a champion's body radius would silently change every ability range measured
  * against it (`combat/Reach.ts`).
  *
- * **Two of these are fractions and the rest are points.** `abilityPower: 0.35`
- * is +35% ability damage and `cooldownReduction: 0.15` is a cooldown 15%
- * shorter, the same convention `critChance`, `critDamage` and the three vamp
- * stats already use; `attackDamage: 35` is thirty-five points of damage. An item
- * written with the wrong one of those is not a type error and never will be —
- * both are numbers — so it is worth reading twice. `abilityPower: 35` is a
- * champion whose abilities hit for thirty-six times normal.
+ * **Several of these are fractions and the rest are points.** `abilityPower:
+ * 0.35` is +35% ability damage, and so read `critChance`, `critDamage`, the
+ * three vamp stats, `armorPenetration: 0.35` (35% of the victim's armour
+ * ignored), `tenacity: 0.3` and `healingReceived: 0.25`. The rest are points:
+ * `attackDamage: 35` is thirty-five damage, and **`abilityHaste: 25` is
+ * twenty-five points of haste** — a fifth off every cooldown, with the next
+ * twenty-five taking another fifth off what is left (`Stats.ts`'s
+ * `hasteCooldownMultiplier` has the curve and the argument for it).
  *
- * `inventory.test.ts` checks every key here is a real `StatsModifier` field —
- * this file cannot import `Stats` to check it itself, and a typo would be an
- * item that silently grants nothing, forever, with nothing to look at.
+ * Two of the fractions are a share of *the wearer*, not of a fight, and
+ * `Item.ts`'s `GRANT_SLOT` is where that is decided: `attackSpeed: 0.15` is
+ * +15% of the champion's own swing rate, and `speedPercent: 0.07` is +7% move
+ * speed on top of whatever boots are already on.
+ *
+ * **`speed` and `speedPercent` are both here on purpose**, the way Riot's own
+ * item data carries `FlatMovementSpeedMod` beside `PercentMovementSpeedMod`.
+ * Boots are flat because a fixed number is worth more to the champion who has
+ * the least; the percent one compounds with them, so a shelf can sell both a
+ * first item and a fifth. Every champion starts on the same 3 (`Stats.speed`),
+ * so unlike attack speed neither is unfair to a body in particular — the
+ * difference is what they stack *with*, and nothing else.
+ *
+ * An item written with the wrong one of those is not a type error and never
+ * will be — both are numbers — so it is worth reading twice. `abilityPower: 35`
+ * is a champion whose abilities hit for thirty-six times normal, and
+ * `abilityHaste: 0.25` is a quarter of a point, which is nothing at all.
+ *
+ * `inventory.test.ts` checks every key here reaches a real `StatsModifier`
+ * field — this file cannot import `Stats` to check it itself, and a typo would
+ * be an item that silently grants nothing, forever, with nothing to look at.
  */
 export const ITEM_STAT_KEYS = [
   'maxHealth',
@@ -35,15 +54,20 @@ export const ITEM_STAT_KEYS = [
   'healthRegen',
   'manaRegen',
   'speed',
+  'speedPercent',
   'attackDamage',
   'abilityPower',
-  'cooldownReduction',
+  'abilityHaste',
   'attackSpeed',
   'attackRange',
   'armor',
   'magicResist',
   'critChance',
   'critDamage',
+  'armorPenetration',
+  'magicPenetration',
+  'tenacity',
+  'healingReceived',
   'omnivamp',
   'lifesteal',
   'spellVamp',

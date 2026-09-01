@@ -143,7 +143,7 @@ export class StatsModifier {
   visionRadius = new StatModifier(0);
   attackDamage = new StatModifier(0);
   abilityPower = new StatModifier(0);
-  cooldownReduction = new StatModifier(0);
+  abilityHaste = new StatModifier(0);
   attackSpeed = new StatModifier(0);
   attackRange = new StatModifier(0);
   omnivamp = new StatModifier(0);
@@ -152,6 +152,10 @@ export class StatsModifier {
   onHitDamage = new StatModifier(0);
   critChance = new StatModifier(0);
   critDamage = new StatModifier(0);
+  armorPenetration = new StatModifier(0);
+  magicPenetration = new StatModifier(0);
+  tenacity = new StatModifier(0);
+  healingReceived = new StatModifier(0);
   armor = new StatModifier(0);
   magicResist = new StatModifier(0);
 
@@ -169,7 +173,7 @@ export class StatsModifier {
     this.visionRadius.add(modifier.visionRadius);
     this.attackDamage.add(modifier.attackDamage);
     this.abilityPower.add(modifier.abilityPower);
-    this.cooldownReduction.add(modifier.cooldownReduction);
+    this.abilityHaste.add(modifier.abilityHaste);
     this.attackSpeed.add(modifier.attackSpeed);
     this.attackRange.add(modifier.attackRange);
     this.omnivamp.add(modifier.omnivamp);
@@ -178,6 +182,10 @@ export class StatsModifier {
     this.onHitDamage.add(modifier.onHitDamage);
     this.critChance.add(modifier.critChance);
     this.critDamage.add(modifier.critDamage);
+    this.armorPenetration.add(modifier.armorPenetration);
+    this.magicPenetration.add(modifier.magicPenetration);
+    this.tenacity.add(modifier.tenacity);
+    this.healingReceived.add(modifier.healingReceived);
     this.armor.add(modifier.armor);
     this.magicResist.add(modifier.magicResist);
   }
@@ -196,7 +204,7 @@ export class StatsModifier {
     this.visionRadius.remove(modifier.visionRadius);
     this.attackDamage.remove(modifier.attackDamage);
     this.abilityPower.remove(modifier.abilityPower);
-    this.cooldownReduction.remove(modifier.cooldownReduction);
+    this.abilityHaste.remove(modifier.abilityHaste);
     this.attackSpeed.remove(modifier.attackSpeed);
     this.attackRange.remove(modifier.attackRange);
     this.omnivamp.remove(modifier.omnivamp);
@@ -205,6 +213,10 @@ export class StatsModifier {
     this.onHitDamage.remove(modifier.onHitDamage);
     this.critChance.remove(modifier.critChance);
     this.critDamage.remove(modifier.critDamage);
+    this.armorPenetration.remove(modifier.armorPenetration);
+    this.magicPenetration.remove(modifier.magicPenetration);
+    this.tenacity.remove(modifier.tenacity);
+    this.healingReceived.remove(modifier.healingReceived);
     this.armor.remove(modifier.armor);
     this.magicResist.remove(modifier.magicResist);
   }
@@ -254,18 +266,46 @@ export const CRIT_MULTIPLIER = 1.75;
 export const MIN_ABILITY_POWER = -1;
 
 /**
- * Ceiling on cooldown reduction. Required for the same reason
- * `MAX_ATTACK_SPEED` is: the stat is a fraction and reductions add, so two
- * items and a buff reach 1.0 without anybody intending it — and 1.0 is not
- * "very short", it is a cooldown of zero, which is a key that can be held down.
- * Past 1.0 the duration goes negative and the ability is off cooldown before it
- * is cast.
+ * Ceiling on ability haste. Not a balance number — a sanity rail.
  *
- * 0.6 rather than a rounder number because it is the point where a 10-second
- * ultimate becomes a 4-second one; beyond that an ultimate stops being a
- * decision and the cooldown stops being the thing that separates the kits.
+ * The curve below can never reach a zero cooldown however large this gets, so
+ * unlike the fraction this stat replaced it needs no cap to stay safe. 500 is
+ * League's own, and it exists here for the same reason: to keep a runaway
+ * stacking bug (a buff applied every frame, a cheat left on) from producing an
+ * absurd number that shows up in a tooltip rather than a plausible one that
+ * hides.
  */
-export const MAX_COOLDOWN_REDUCTION = 0.6;
+export const MAX_ABILITY_HASTE = 500;
+
+/**
+ * What `abilityHaste` does to a duration: `100 / (100 + haste)`.
+ *
+ * ## Why points, not the fraction this replaced
+ *
+ * `cooldownReduction` was a fraction that additively stacked, and every problem
+ * it had came from that: sources had to be *capped* (0.6 here) or two items and
+ * a buff would reach 1.0 — a cooldown of zero, which is not a short cooldown
+ * but a held key. Worse, under a cap each point is worth more than the last
+ * (the tenth percent of reduction buys far more casts than the first), so a
+ * shop cannot price the stat consistently and the last item a player buys is
+ * the strongest one in the game.
+ *
+ * Haste inverts that: **casts per second is linear in it**. 100 haste is
+ * exactly one extra cast in the time two used to take; the next 100 is another
+ * one. Every point is worth the same against the base rate — the same property
+ * armour has against damage, which is why League moved to it in 2020 and why
+ * this engine follows. No cap is needed, a pack can keep selling it, and a
+ * gold value per point actually means something.
+ *
+ * Negative haste is clamped away by the stat's own floor, but the guard is here
+ * too: this is reachable from a hand-built stat block in a pack's tests, and a
+ * multiplier above 1 would *lengthen* a cooldown past the number its author
+ * typed.
+ */
+export function hasteCooldownMultiplier(haste: number): number {
+  if (!Number.isFinite(haste) || haste <= 0) return 1;
+  return 100 / (100 + haste);
+}
 
 export default class Stats {
   maxHealth = new Stat(100);
@@ -323,16 +363,27 @@ export default class Stats {
    * doc comment says so, and it was already multiplying by a match-wide rule,
    * so this stat joins that expression rather than adding a second one.
    *
-   * Zero by default and capped at `MAX_COOLDOWN_REDUCTION`; see there for why
-   * the cap is not optional.
+   * Zero by default and railed at `MAX_ABILITY_HASTE`; see
+   * `hasteCooldownMultiplier` for the curve and for why this is points.
    */
-  cooldownReduction = new Stat(0, MAX_COOLDOWN_REDUCTION, 0);
+  abilityHaste = new Stat(0, MAX_ABILITY_HASTE, 0);
   /**
    * Basic attacks per second, not the period between them. A rate is what buffs
    * actually modify — "+30% attack speed" is a 1.3x on this number and composes
-   * with the existing percentBonus machinery, while the same buff on a period
+   * with the existing percent machinery, while the same buff on a period
    * would have to be written as a division. It is also the direction a ceiling
    * makes sense in, so MAX_ATTACK_SPEED can be a plain maxValue.
+   *
+   * **`baseValue` is the champion's own rate, and every bonus is a share of
+   * it.** Items grant `percentBaseBonus` (`items/Item.ts`'s `GRANT_SLOT`)
+   * and so do abilities, which puts every gain in one additive pool that
+   * multiplies the base exactly once — League's arrangement, and the reason
+   * "+25% attack speed" means the same thing on every champion instead of
+   * being worth a third again to the slowest one and a sixth to the fastest.
+   *
+   * **Slows use the outer `percentBonus` instead**, so they multiply whatever
+   * the build reached rather than diluting into that pool: a cripple is worth
+   * the same share against a fed carry as against a starved one.
    */
   attackSpeed = new Stat(0, MAX_ATTACK_SPEED);
   /** Surface-to-surface reach of a basic attack; decides melee versus ranged. */
@@ -372,6 +423,53 @@ export default class Stats {
   /** What a crit multiplies the swing by. 1.75 is +75%, League's own number. */
   critDamage = new Stat(CRIT_MULTIPLIER);
   /**
+   * The share of a victim's `armor` this unit's `PHYSICAL` damage ignores —
+   * 0..1, and 0 for everyone until something grants it.
+   *
+   * **A fraction rather than points**, for the reason `abilityPower` is one:
+   * a resistance here is whatever the installed pack tuned it to, and a flat
+   * "ignores 18 armour" is worth everything against this shop's Giáp Lụa and
+   * nothing against the next pack's. A share is the only form that means the
+   * same thing in both. `combat/Mitigation.ts` owns what it does, including
+   * the part that is easy to get wrong — it never applies to a resistance
+   * that is already negative.
+   */
+  armorPenetration = new Stat(0, 1, 0);
+  /** The same, against `magicResist`, for `MAGIC` damage. */
+  magicPenetration = new Stat(0, 1, 0);
+  /**
+   * The share taken off the *duration* of crowd control somebody else applies
+   * — 0..1. `AttackableUnit.addBuff` is where it is read, against
+   * `CROWD_CONTROL_FLAGS`, which is the same definition `cleanse()` uses: a
+   * slow is not on that list and neither is a knock-up, so this shortens
+   * stuns, roots, silences and their neighbours and leaves the two effects a
+   * player cannot play around anyway.
+   */
+  tenacity = new Stat(0, 1, 0);
+  /**
+   * How much more this unit gets out of everything that puts health back on
+   * it — a fraction, so `0.25` is a quarter again of every heal and every
+   * point of regeneration.
+   *
+   * The mirror of a grievous wound, and it goes through the same module
+   * (`combat/Healing.ts`) at the same two doors for the same reason: a
+   * sustain build that answered the wound only on *heals* would still be shut
+   * off by it, because regeneration is what a sustain build is mostly made
+   * of. Floored at -1 rather than 0, so a pack can express "heals for less"
+   * as a stat if it ever wants to, without the value crossing into negative
+   * healing.
+   *
+   * **Named for the direction on purpose.** League has two different things
+   * here and it is easy to ship the wrong one: *heal and shield power* boosts
+   * what a champion **gives** (and their own self-heals), and pointedly does
+   * not touch regeneration or lifesteal; the "healing *received* is increased"
+   * effect is a single item's passive. This stat is the second one — every
+   * source of health arriving at this unit — because that is the direction a
+   * grievous wound cuts, and a counter that answered a different direction
+   * from the thing it counters would be no counter at all.
+   */
+  healingReceived = new Stat(0, Infinity, -1);
+  /**
    * Resistance to `PHYSICAL` damage, on the `100 / (100 + r)` curve
    * `combat/Mitigation.ts` owns — 100 halves the hit.
    *
@@ -407,7 +505,7 @@ export default class Stats {
     this.visionRadius.addModifier(modifier.visionRadius);
     this.attackDamage.addModifier(modifier.attackDamage);
     this.abilityPower.addModifier(modifier.abilityPower);
-    this.cooldownReduction.addModifier(modifier.cooldownReduction);
+    this.abilityHaste.addModifier(modifier.abilityHaste);
     this.attackSpeed.addModifier(modifier.attackSpeed);
     this.attackRange.addModifier(modifier.attackRange);
     this.omnivamp.addModifier(modifier.omnivamp);
@@ -416,6 +514,10 @@ export default class Stats {
     this.onHitDamage.addModifier(modifier.onHitDamage);
     this.critChance.addModifier(modifier.critChance);
     this.critDamage.addModifier(modifier.critDamage);
+    this.armorPenetration.addModifier(modifier.armorPenetration);
+    this.magicPenetration.addModifier(modifier.magicPenetration);
+    this.tenacity.addModifier(modifier.tenacity);
+    this.healingReceived.addModifier(modifier.healingReceived);
     this.armor.addModifier(modifier.armor);
     this.magicResist.addModifier(modifier.magicResist);
   }
@@ -434,7 +536,7 @@ export default class Stats {
     this.visionRadius.removeModifier(modifier.visionRadius);
     this.attackDamage.removeModifier(modifier.attackDamage);
     this.abilityPower.removeModifier(modifier.abilityPower);
-    this.cooldownReduction.removeModifier(modifier.cooldownReduction);
+    this.abilityHaste.removeModifier(modifier.abilityHaste);
     this.attackSpeed.removeModifier(modifier.attackSpeed);
     this.attackRange.removeModifier(modifier.attackRange);
     this.omnivamp.removeModifier(modifier.omnivamp);
@@ -443,6 +545,10 @@ export default class Stats {
     this.onHitDamage.removeModifier(modifier.onHitDamage);
     this.critChance.removeModifier(modifier.critChance);
     this.critDamage.removeModifier(modifier.critDamage);
+    this.armorPenetration.removeModifier(modifier.armorPenetration);
+    this.magicPenetration.removeModifier(modifier.magicPenetration);
+    this.tenacity.removeModifier(modifier.tenacity);
+    this.healingReceived.removeModifier(modifier.healingReceived);
     this.armor.removeModifier(modifier.armor);
     this.magicResist.removeModifier(modifier.magicResist);
   }
@@ -480,7 +586,21 @@ export default class Stats {
     this.setActionState(ActionState.CAN_ATTACK, !deniesAttacking(statusFlag));
   }
 
-  update() {
+  /**
+   * `healingMultiplier` is what a grievous wound left of this unit's
+   * regeneration, handed down by `AttackableUnit.update` — the one caller —
+   * because a `Stats` cannot see the buffs on the body it belongs to and a
+   * cut that reached heals but not regeneration would be no cut at all
+   * (`combat/Healing.ts` owns both halves of that sentence).
+   *
+   * A parameter with a default rather than a field: every other caller in the
+   * game and in the tests is a bare `update()`, and an unwounded unit must
+   * regenerate exactly what it always did.
+   *
+   * **Health only.** Mana is not healing, so `manaRegen` is untouched below —
+   * a wound does not stop anybody casting.
+   */
+  update(healingMultiplier = 1) {
     // `baseValue`, not `value`, on the right-hand side of both of these.
     //
     // These two lines are the only place a stat's *read* is written back into
@@ -500,7 +620,7 @@ export default class Stats {
     // — but the write-back is what turned a merely meaningless modifier into a
     // game-breaking one, so it is fixed here as well.
     this.health.baseValue = constrain(
-      this.health.baseValue + this.healthRegen.value,
+      this.health.baseValue + this.healthRegen.value * healingMultiplier,
       0,
       this.maxHealth.value
     );

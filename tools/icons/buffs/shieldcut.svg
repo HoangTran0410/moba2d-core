@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Cracked shield">
+  <title>Cracked shield</title>
+  <g fill="none" stroke="#12171d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M32 9 L52 17 V33 C52 44 43 51 32 55 C21 51 12 44 12 33 V17 Z" fill="#7d8ea3"/>
+    <path d="M32 9 L52 17 V33 C52 44 43 51 32 55 Z" fill="#5b6b7e"/>
+    <path d="M34 12 L24 30 H35 L27 52" stroke="#12171d" stroke-width="8"/>
+    <path d="M34 12 L24 30 H35 L27 52" stroke="#e8c15a" stroke-width="4"/>
+  </g>
+</svg>

@@ -14,7 +14,7 @@ import {
 import {
   CRIT_MULTIPLIER,
   MAX_ATTACK_SPEED,
-  MAX_COOLDOWN_REDUCTION,
+  MAX_ABILITY_HASTE,
 } from '@/game/gameObject/Stats';
 import { profileFor, type BotDifficulty } from '@/game/ai/Difficulty';
 
@@ -83,7 +83,7 @@ export const BOT_SHOP_INTERVAL_MS = 2_000;
 
 /**
  * What a champion's abilities are worth per second, for valuing `abilityPower`
- * and `cooldownReduction`.
+ * and `abilityHaste`.
  *
  * A constant, because the real number is unknowable from here: it is the sum
  * over a pack's own spell classes of damage core never sees as a total. It is
@@ -135,11 +135,19 @@ const TYPED_VAMP_SHARE = 0.5;
 export interface BotBody {
   attackDamage: number;
   attackSpeed: number;
+  /**
+   * The wearer's *unbuilt* swing rate, which an item's attack speed is a share
+   * of (`items/Item.ts`'s `GRANT_SLOT`). Carried beside the total because
+   * "what if I also had this item" has to add the same absolute number the
+   * stat pipeline would — a share of the *current* total compounds, and a bot
+   * would price its fourth attack-speed item as its most valuable one.
+   */
+  baseAttackSpeed: number;
   onHitDamage: number;
   critChance: number;
   critDamage: number;
   abilityPower: number;
-  cooldownReduction: number;
+  abilityHaste: number;
   omnivamp: number;
   lifesteal: number;
   spellVamp: number;
@@ -147,6 +155,8 @@ export interface BotBody {
   armor: number;
   magicResist: number;
   speed: number;
+  /** The wearer's *unbuilt* walk, for `speedPercent` — the same reason as `baseAttackSpeed`. */
+  baseSpeed: number;
 }
 
 /** Reads a live champion's current numbers, items and buffs included. */
@@ -155,11 +165,12 @@ export function bodyOf(champion: Champion): BotBody {
   return {
     attackDamage: stats.attackDamage.value,
     attackSpeed: stats.attackSpeed.value,
+    baseAttackSpeed: stats.attackSpeed.baseValue,
     onHitDamage: stats.onHitDamage.value,
     critChance: stats.critChance.value,
     critDamage: stats.critDamage.value,
     abilityPower: stats.abilityPower.value,
-    cooldownReduction: stats.cooldownReduction.value,
+    abilityHaste: stats.abilityHaste.value,
     omnivamp: stats.omnivamp.value,
     lifesteal: stats.lifesteal.value,
     spellVamp: stats.spellVamp.value,
@@ -167,6 +178,7 @@ export function bodyOf(champion: Champion): BotBody {
     armor: stats.armor.value,
     magicResist: stats.magicResist.value,
     speed: stats.speed.value,
+    baseSpeed: stats.speed.baseValue,
   };
 }
 
@@ -174,7 +186,7 @@ export function bodyOf(champion: Champion): BotBody {
 const clamp = (body: BotBody): BotBody => ({
   ...body,
   attackSpeed: Math.min(body.attackSpeed, MAX_ATTACK_SPEED),
-  cooldownReduction: Math.min(body.cooldownReduction, MAX_COOLDOWN_REDUCTION),
+  abilityHaste: Math.min(body.abilityHaste, MAX_ABILITY_HASTE),
   critChance: Math.min(body.critChance, 1),
   abilityPower: Math.max(-1, body.abilityPower),
 });
@@ -191,7 +203,7 @@ const BODY_FIELD: Partial<Record<ItemStatKey, keyof BotBody>> = {
   critChance: 'critChance',
   critDamage: 'critDamage',
   abilityPower: 'abilityPower',
-  cooldownReduction: 'cooldownReduction',
+  abilityHaste: 'abilityHaste',
   omnivamp: 'omnivamp',
   lifesteal: 'lifesteal',
   spellVamp: 'spellVamp',
@@ -199,6 +211,23 @@ const BODY_FIELD: Partial<Record<ItemStatKey, keyof BotBody>> = {
   armor: 'armor',
   magicResist: 'magicResist',
   speed: 'speed',
+  speedPercent: 'speed',
+};
+
+/**
+ * The stats granted as a **share of the wearer**, and the unbuilt number that
+ * share is of. Mirrors `items/Item.ts`'s `GRANT_SLOT`: a key here is a key
+ * whose amount is a fraction, and pricing it as points is a bot that values a
+ * +15% bow at fifteen hundredths of a swing.
+ *
+ * The share is always of the *base*, never of the running total. The total
+ * already contains the last three items, so a share of it compounds and a bot
+ * prices its fourth attack-speed item as its most valuable one — and it would
+ * no longer subtract to zero when `applyItemStats` takes a component back off.
+ */
+const SHARE_OF: Partial<Record<ItemStatKey, keyof BotBody>> = {
+  attackSpeed: 'baseAttackSpeed',
+  speedPercent: 'baseSpeed',
 };
 
 /** `body` with an item's stats added (`sign` 1) or taken back off (`sign` -1). */
@@ -207,7 +236,9 @@ export function applyItemStats(body: BotBody, def: QualifiedItem, sign = 1): Bot
   for (const [key, amount] of Object.entries(def.stats ?? {})) {
     const field = BODY_FIELD[key as ItemStatKey];
     if (!field || typeof amount !== 'number') continue;
-    next[field] += sign * amount;
+    const shareOf = SHARE_OF[key as ItemStatKey];
+    const points = shareOf ? amount * body[shareOf] : amount;
+    next[field] += sign * points;
   }
   return next;
 }
@@ -238,11 +269,12 @@ export function combatValue(raw: BotBody): number {
   const swing = (body.attackDamage + body.onHitDamage) *
     (1 + body.critChance * Math.max(0, body.critDamage - 1));
   const autos = swing * body.attackSpeed;
-  // Cooldown reduction is more casts in the same second, which is what `1/(1-r)`
-  // says and `r` alone does not: 50% off a cooldown is twice the casts, not
-  // half again.
-  const casts =
-    (BOT_ABILITY_BASELINE_DPS * (1 + body.abilityPower)) / (1 - body.cooldownReduction);
+  // Haste is *casts per second*, linear in the stat by construction: 100 haste
+  // is one extra cast in the time two used to take. That is the whole reason
+  // the stat is points rather than the fraction it replaced — the bot's
+  // valuation is a straight multiply now instead of `1/(1-r)`, which grew
+  // without bound as the fraction approached its cap.
+  const casts = BOT_ABILITY_BASELINE_DPS * (1 + body.abilityPower) * (1 + body.abilityHaste / 100);
   const offence = Math.max(0, autos + casts);
 
   // `Mitigation`'s own curve, averaged over the two damage types because a

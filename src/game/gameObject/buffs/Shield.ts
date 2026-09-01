@@ -6,6 +6,7 @@ import CombatText from '@/game/gameObject/helpers/CombatText';
 import { DAMAGE_CLASS, DAMAGE_WORD } from '@/game/gameObject/buffs/describeBuff';
 import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
+import { shieldMultiplier } from '@/game/combat/Shielding';
 
 /**
  * Absorbs incoming damage until it runs out, then expires.
@@ -70,6 +71,13 @@ export default class Shield extends Buff {
    */
   onCreate(): void {
     if (abilityPowerScales()) this.amount = amplifiedAbilityDamage(this.amount, this.sourceUnit);
+    // The crack, on the *amplified* figure and before `_initialAmount`, for the
+    // same two reasons the amplification itself is here: this is the pool the
+    // wearer is actually standing behind, and the bar draws a fraction of
+    // `_initialAmount` — cutting after it would paint a shield that starts at
+    // half and reads as full. `combat/Shielding.ts` owns the rest, including
+    // why a shield already standing is never touched.
+    this.amount *= shieldMultiplier(this.targetUnit);
     this._initialAmount = this.amount;
     // The amplified figure, not the one the caster asked for: this is the
     // pool the tooltip's reader is actually standing behind — and *which*

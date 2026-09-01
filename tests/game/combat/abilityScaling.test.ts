@@ -5,7 +5,7 @@ import Spell from '@/game/gameObject/Spell';
 import Buff from '@/game/gameObject/Buff';
 import SpellObject from '@/game/gameObject/SpellObject';
 import BasicAttack from '@/game/gameObject/coreSpells/BasicAttack';
-import { MAX_COOLDOWN_REDUCTION, MIN_ABILITY_POWER } from '@/game/gameObject/Stats';
+import { MAX_ABILITY_HASTE, MIN_ABILITY_POWER } from '@/game/gameObject/Stats';
 import {
   beginAttribution,
   endAttribution,
@@ -279,29 +279,53 @@ describe('abilities scale with the caster’s build', () => {
       expect(new Fireball(caster).effectiveCoolDownMs).toBe(10_000);
     });
 
-    it('shortens an ability by the fraction', () => {
+    /**
+     * `100 / (100 + haste)`, which is League's own curve and the reason the
+     * stat is points rather than a percentage: 25 haste is a fifth off, and the
+     * *next* 25 is another fifth off what is left. Every point is worth the
+     * same against the base rate, so a shop can keep selling haste for ever
+     * without a cap and without the last item being worthless.
+     */
+    it('shortens an ability by the haste curve', () => {
       const { caster } = duo();
-      caster.stats.cooldownReduction.baseValue = 0.25;
+      caster.stats.abilityHaste.baseValue = 25;
 
-      expect(new Fireball(caster).effectiveCoolDownMs).toBe(7_500);
+      expect(new Fireball(caster).effectiveCoolDownMs).toBe(8_000);
     });
 
-    it('is capped, because 1.0 is not a short cooldown but a held key', () => {
+    it('adds point for point, and the second helping is worth as much as the first', () => {
       const { caster } = duo();
-      caster.stats.cooldownReduction.baseValue = 5;
+      caster.stats.abilityHaste.baseValue = 100;
+      expect(new Fireball(caster).effectiveCoolDownMs).toBe(5_000);
 
-      expect(caster.stats.cooldownReduction.value).toBe(MAX_COOLDOWN_REDUCTION);
-      expect(new Fireball(caster).effectiveCoolDownMs).toBeCloseTo(
-        10_000 * (1 - MAX_COOLDOWN_REDUCTION),
-        6
-      );
+      // Casts per second is what haste is linear in: 100 haste doubles the
+      // rate, 200 triples it. The *duration* curve flattening is what a
+      // fraction-with-a-cap could never express.
+      caster.stats.abilityHaste.baseValue = 200;
+      expect(new Fireball(caster).effectiveCoolDownMs).toBeCloseTo(10_000 / 3, 6);
+    });
+
+    it('never reaches zero, so no amount of it turns a key into a held button', () => {
+      const { caster } = duo();
+      caster.stats.abilityHaste.baseValue = 100_000;
+
+      const cooldown = new Fireball(caster).effectiveCoolDownMs;
+      expect(cooldown).toBeGreaterThan(0);
+      expect(caster.stats.abilityHaste.value).toBe(MAX_ABILITY_HASTE);
+    });
+
+    it('is floored at nothing, so a debuff cannot lengthen a cooldown past its tuning', () => {
+      const { caster } = duo();
+      caster.stats.abilityHaste.baseValue = -50;
+
+      expect(new Fireball(caster).effectiveCoolDownMs).toBe(10_000);
     });
 
     it('leaves the casts that are not abilities at their full duration', () => {
       // The swing rhythm belongs to `stats.attackSpeed` and its own controller;
       // an item's cooldown is not shortened by another item either.
       const { caster } = duo();
-      caster.stats.cooldownReduction.baseValue = 0.5;
+      caster.stats.abilityHaste.baseValue = 100;
 
       const item = new Fireball(caster);
       item.countsAsAbilityCast = false;

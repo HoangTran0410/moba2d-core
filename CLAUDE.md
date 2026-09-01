@@ -367,13 +367,39 @@ one.** None is visible from the file you are editing.
   a re-entrancy latch.
 - **Ability damage scales with the caster's build, and you write none of it.**
   `stats.abilityPower` (a *fraction*) amplifies in `takeDamage` via
-  `combat/Amplification.ts`; `stats.cooldownReduction` shortens in
+  `combat/Amplification.ts`; `stats.abilityHaste` shortens in
   `Spell.reducedCooldown`. Both default to 0. What counts as an ability is
   `Spell.damageScalesWithAbilityPower` (defaults true, inherited at construction)
   — **not `countsAsAbilityCast`**, which gates cooldown reduction only.
+- **Ability haste is *points*, not a fraction** (`Stats.hasteCooldownMultiplier`,
+  `100 / (100 + haste)`). It replaced a capped `cooldownReduction` fraction for
+  the reason League replaced its own: casts per second is linear in haste, so
+  every point is worth the same, no cap is needed to stop a zero cooldown, and
+  a shop can price it. `abilityHaste: 25`, never `0.25` — the shared pack rule
+  in `src/testing/itemRules.ts` refuses the second.
 - **`ON_ATTACK_HIT` is basic attacks only** (`combat/BasicAttack.ts` is the sole
   emitter), so an effect hung there is invisible to every spell. For "someone
-  damaged me", use `Buff.onDamageTaken`.
+  damaged me", use `Buff.onDamageTaken`; for "I damaged someone",
+  `Buff.onDamageDealt(swung, landed, victim, type)`, which walks the *attacker's*
+  buffs from the same funnel and is the only hook a spell's damage reaches.
+- **A resistance is answered by a share, never by points.** `armorPenetration`
+  and `magicPenetration` are fractions read in `combat/Mitigation.ts`
+  (`effectiveDamage(damage, type, target, attacker)`), and they **never touch a
+  resistance that is already negative** — a shred put it there, and a share of
+  a negative number undoes it. `tenacity` is the same idea for crowd control,
+  applied once in `AttackableUnit.addBuff` against `CROWD_CONTROL_FLAGS` and
+  only to what somebody *else* landed.
+- **Healing reduction goes through `combat/Healing.ts`, and health enters the
+  pool by two doors.** `AttackableUnit.takeHeal` is one; `Stats.update`'s
+  `healthRegen` is the other, which is why `update()` takes the multiplier as an
+  argument. A cut that reached one and not the other would be no cut at all. The
+  strongest live `Buff.healCut` wins — they never sum — and a shield is not a
+  heal, so `buffs/Shield.ts` is untouched by any of it. `stats.healingReceived` is
+  the same multiplier the other way and composes with the cut multiplicatively,
+  so the order the two arrive in cannot change the answer. **A shield is
+  counted separately** (`combat/Shielding.ts`, applied in `Shield.onCreate`
+  before `_initialAmount`): a cut there reaches only shields granted *while* it
+  is on, never one already standing.
 - **A `UNIT` targeting spell must declare `targetingRequest: { targetTeam: 'ENEMY' }`
   (or `'ALLY'`), validate `context.target`, and override `press()`.** Omitting
   `targetTeam` defaults `TargetResolver` to `'ANY'`, which includes the caster —

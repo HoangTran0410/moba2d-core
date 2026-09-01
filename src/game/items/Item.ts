@@ -1,5 +1,5 @@
 import type Spell from '@/game/gameObject/Spell';
-import { StatModifier, StatsModifier } from '@/game/gameObject/Stats';
+import { StatsModifier } from '@/game/gameObject/Stats';
 import { ITEM_STAT_KEYS, type ItemStatKey } from './itemStats';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type { ItemDef } from '@/content/ContentPack';
@@ -52,14 +52,65 @@ export { ITEM_STAT_KEYS, type ItemStatKey };
 
 const GRANTABLE = new Set<string>(ITEM_STAT_KEYS);
 
+/** Every field on a `StatsModifier` that is a stat, which is all but its two methods. */
+type ModifierField = Exclude<keyof StatsModifier, 'addModifier' | 'removeModifier'>;
+
+/** The four slots of `Stat`'s formula an item is allowed to write. Never `baseValue`. */
+type BonusSlot = 'baseBonus' | 'flatBonus' | 'percentBonus' | 'percentBaseBonus';
+
+/**
+ * Where a stat's grant lands, for the stats that are **a share of what the
+ * wearer already is** rather than points.
+ *
+ * Everything absent from this table is points on the stat of the same name,
+ * landing on `flatBonus` (see `modifierFor`). The two entries here are the
+ * stats that cannot be:
+ *
+ * **`attackSpeed`** is a *rate*, and every champion has a different one, so a
+ * flat "+0.25 swings a second" is a sixth again for a marksman on 1.65 and a
+ * third again for a mage on 0.7. The same item would do most for whoever
+ * needed it least, and no shelf could be priced against a champion in
+ * particular. It takes `percentBaseBonus` — the *inner* factor of `Stat`'s
+ * formula — rather than `percentBonus`, and the difference is the whole
+ * design: every bonus in that slot pools **additively** before multiplying the
+ * base once, which is how League adds up bonus attack speed. The outer
+ * `percentBonus` is left free for attack-speed *slows*, which multiply on top
+ * of whatever the build reached — also League's own arrangement, and the
+ * reason a cripple is worth the same against a fed carry as against a starved
+ * one.
+ *
+ * **`speedPercent`** is the other side of a pair, and the pair is the point.
+ * `speed` stays flat, because boots are flat in the source game and a fixed
+ * number is deliberately worth more to whoever is slowest. `speedPercent`
+ * lands on the *outer* `percentBonus`, so it multiplies the boots rather than
+ * ignoring them — `(3 + 0.45) * 1.07`, which is League's own `(base + flat) *
+ * (1 + %)`. That also keeps it clear of `Slow`, which writes
+ * `speed.percentBaseBonus`: a movement item and a cripple land in different
+ * slots and neither can cancel the other by arithmetic accident.
+ *
+ * The value is `[field, slot]` rather than a bare slot because `speedPercent`
+ * is a *key* with no stat of its own — the name a pack writes, pointed at the
+ * stat it really moves. Adding another one is one line here and one in
+ * `itemStats.ts`.
+ */
+export const GRANT_SLOT: Partial<Record<ItemStatKey, readonly [ModifierField, BonusSlot]>> = {
+  attackSpeed: ['attackSpeed', 'percentBaseBonus'],
+  speedPercent: ['speed', 'percentBonus'],
+};
+
 /**
  * Builds the modifier an item grants while it is held.
  *
- * Everything lands on `flatBonus`, never `baseValue`: a bonus is something
+ * Everything lands on a *bonus* slot, never `baseValue`: a bonus is something
  * added on top of what the unit is, and writing `baseValue` would make the
  * item's contribution indistinguishable from the champion's own tuning the
  * moment anything else read the stat. It also has to come back off cleanly on
  * unequip, and `StatModifier.remove` subtracts exactly what was added.
+ *
+ * *Which* stat and which bonus slot is `GRANT_SLOT`'s decision: points go to
+ * `flatBonus` on the stat of the same name, and the share stats go where that
+ * table says, because a share has to be granted as a share of what the wearer
+ * already has.
  */
 export function modifierFor(
   stats: Partial<Record<ItemStatKey, number>> | undefined
@@ -72,7 +123,8 @@ export function modifierFor(
     // reaching this branch at runtime means core and the validator disagree.
     if (!GRANTABLE.has(key)) continue;
     if (!Number.isFinite(amount)) continue;
-    (modifier as unknown as Record<string, StatModifier>)[key].flatBonus += amount as number;
+    const [field, slot] = GRANT_SLOT[key as ItemStatKey] ?? [key as ModifierField, 'flatBonus'];
+    modifier[field][slot] += amount as number;
   }
   return modifier;
 }

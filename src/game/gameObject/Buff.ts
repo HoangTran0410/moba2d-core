@@ -248,6 +248,36 @@ export default class Buff {
   onDamageTaken(_swung: number, _landed: number, _attacker?: AttackableUnit): void {}
 
   /**
+   * The mirror of `onDamageTaken`, on the other body: called once for every hit
+   * the *owner of this buff* dealt to somebody else, after it resolved.
+   *
+   * `Buff.onHit` above is basic attacks only — `combat/BasicAttack.ts` is its
+   * one emitter — so before this hook an effect that answers "I damaged
+   * somebody" could not exist for a spell at all. A grievous-wounds passive on
+   * a mage's item is the case that needed it: the item is bought to be used
+   * with abilities, and hanging it on the on-hit seam would have sold a
+   * counter that never fires to the half of the roster that never swings.
+   *
+   * `type` is here and absent from `onDamageTaken` because this side is where
+   * it decides anything: an item that answers physical damage and one that
+   * answers magic are two different items in the same shop, while a buff
+   * reacting to *being* hit has the attacker in hand and cares about who, not
+   * which kind.
+   *
+   * Like the taken side it cannot change the hit — the numbers are settled by
+   * the time it runs, `landed` is already capped at the pool that took it, and
+   * a buff that wants to modify a hit is a `modifyIncomingDamage` on the other
+   * unit. Also like the taken side, it fires for a hit a shield swallowed
+   * whole, with `landed` at 0: what was swung still happened.
+   */
+  onDamageDealt(
+    _swung: number,
+    _landed: number,
+    _victim: AttackableUnit,
+    _type: DamageType = DEFAULT_DAMAGE_TYPE
+  ): void {}
+
+  /**
    * Called once per basic attack the *owner of this buff* lands — the on-hit
    * seam, walked by `combat/OnHit.ts`'s `applyOnHitEffects` from
    * `landBasicAttack` after the swing's own damage has been applied.

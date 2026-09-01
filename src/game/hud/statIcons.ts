@@ -74,9 +74,13 @@ export const STAT_ICON: Record<StatIconKey, string> = {
   healthRegen: 'fa-heart-pulse',
   manaRegen: 'fa-bolt',
   speed: 'fa-person-running',
+  // The runner is the flat one, because boots are what a player pictures. The
+  // percent one is the wind: the same axis, and the thing that compounds with
+  // whatever is already on the feet.
+  speedPercent: 'fa-wind',
   attackDamage: 'fa-khanda',
   abilityPower: 'fa-wand-sparkles',
-  cooldownReduction: 'fa-clock-rotate-left',
+  abilityHaste: 'fa-clock-rotate-left',
   attackSpeed: 'fa-stopwatch',
   attackRange: 'fa-bullseye',
   armor: 'fa-shield-halved',
@@ -93,6 +97,14 @@ export const STAT_ICON: Record<StatIconKey, string> = {
   omnivamp: 'fa-hand-holding-droplet',
   lifesteal: 'fa-heart-circle-plus',
   spellVamp: 'fa-flask',
+  // The four counters, each drawn as the thing it gets *through* rather than
+  // as the thing it grants: a hammer for armour broken through, a bare
+  // wand for magic resist, a shackle coming off for tenacity, and a plus on
+  // a heart for the sustain the wound shelf exists to take away.
+  armorPenetration: 'fa-hammer',
+  magicPenetration: 'fa-wand-magic',
+  tenacity: 'fa-unlock',
+  healingReceived: 'fa-kit-medical',
   visionRadius: 'fa-eye',
 
   // ------------------------------------------- what only a stat sheet draws

@@ -9,6 +9,7 @@ import Stats from '@/game/gameObject/Stats';
 import EventType from '@/game/enums/EventType';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
 import { vampFraction } from '@/game/combat/Vamp';
+import { healingMultiplier } from '@/game/combat/Healing';
 import { resolveEconomy } from '@/game/config/mapTuning';
 import CombatText, {
   DAMAGE_TEXT_COLOR,
@@ -101,6 +102,27 @@ const ASSIST_LEDGER_PRUNE_AT = 10;
  * would be a dispel wearing a smaller name. So is `Slow`, which is not a
  * status flag at all — it is a stat modifier, and it stays.
  */
+/**
+ * The disables tenacity may **not** shorten, and the floor under the ones it
+ * may.
+ *
+ * League exempts knock-ups, suppression, nearsight, drowsy and stasis by name,
+ * and the through-line is that each is an effect the victim cannot play around
+ * *at all* — no flash out, no cleanse window, nothing to do but watch. Those
+ * are exactly the effects whose duration is the whole design, so an item that
+ * shaved a share off them would be deleting counterplay rather than buying it.
+ * Airborne is already out (it carries no `CROWD_CONTROL_FLAGS` bit) and Stasis
+ * is self-applied, which `addBuff` skips for `cleanse`'s reason.
+ */
+export const TENACITY_EXEMPT_FLAGS = StatusFlags.NearSighted | StatusFlags.Suppressed;
+
+/**
+ * However much tenacity a build carries, a disable that was longer than this
+ * still lands for at least this long: a stun has to remain a stun. One that was
+ * *already* shorter is left where it is rather than extended up to the floor.
+ */
+export const TENACITY_FLOOR_MS = 300;
+
 export const CROWD_CONTROL_FLAGS =
   StatusFlags.Disarmed |
   StatusFlags.Charmed |
@@ -338,7 +360,10 @@ export default class AttackableUnit extends GameObject {
     }
 
     this.updateBuffs();
-    this.stats.update();
+    // The one caller that passes the wound down. Read *after* `updateBuffs`, so
+    // a cut that expired this frame has already been swept and is not still
+    // taxing a regeneration tick it no longer covers.
+    this.stats.update(healingMultiplier(this));
 
     // The route picks this frame's destination before the step is taken, so a
     // unit rounding a corner turns on the frame it arrives rather than the one
@@ -524,6 +549,29 @@ export default class AttackableUnit extends GameObject {
   addBuff(buff: Buff): void {
     if (this.isDead || !buff) return;
 
+    // Tenacity is taken off here rather than where the buff was built: what a
+    // stun *is* belongs to the caster, how long it survives contact belongs to
+    // the body it lands on, and only this side knows the stat. `sourceUnit !==
+    // this` for `cleanse`'s reason — `Stasis` wears the same `Stunned` bit and
+    // is a way out of a fight, so an item must not shorten its owner's own
+    // escape. A permanent effect (`duration === 0`) stays permanent: a share
+    // of nothing is nothing, and the multiply would be a no-op anyway.
+    if (buff.duration > 0 && buff.sourceUnit !== this) {
+      const tenacity = this.stats.tenacity.value;
+      const flags = buff.statusFlagsToEnable;
+      if (
+        tenacity > 0 &&
+        (flags & CROWD_CONTROL_FLAGS) !== 0 &&
+        (flags & TENACITY_EXEMPT_FLAGS) === 0
+      ) {
+        // The floor applies to what this *would* have become, not to the buff's
+        // own length: a 200ms stun stays 200ms rather than being lengthened to
+        // the floor by the thing that is supposed to shorten it.
+        const shortened = buff.duration * (1 - tenacity);
+        buff.duration = Math.max(shortened, Math.min(buff.duration, TENACITY_FLOOR_MS));
+      }
+    }
+
     // group by stackId when a buff declares one, so two spells applying the same
     // generic class (StatAmp, DamageOverTime) do not evict each other
     const stackKey = buff.stackId;
@@ -694,6 +742,13 @@ export default class AttackableUnit extends GameObject {
 
     if (abilityPowerScales()) heal = amplifiedAbilityDamage(heal, healer as AmplificationSource);
 
+    // A grievous wound is taken off last, on the amplified number: it cuts the
+    // heal that *would have* arrived, not the one written in the spell file, so
+    // a support's ability power and the wound on their ally both count exactly
+    // once. `combat/Healing.ts` says what a cut reaches; the other half of that
+    // answer is `Stats.update`, which regeneration goes through instead of here.
+    heal *= healingMultiplier(this);
+
     // whole points, for the same reason takeDamage rounds
     heal = Math.round(heal);
     if (heal <= 0) return;
@@ -803,7 +858,10 @@ export default class AttackableUnit extends GameObject {
     // It also settles what `swung` below means: a reflect answers the hit that
     // arrived, and 40 stopped to 20 by armour genuinely *was* a 20, whereas 40
     // eaten by a shield was still a 40.
-    damage = Math.round(effectiveDamage(damage, type, this));
+    // `attacker` is here for penetration only — the share of this unit's
+    // resistance the hitter ignores (`combat/Mitigation.ts`). Everything else
+    // about the attacker was already settled before the hit arrived.
+    damage = Math.round(effectiveDamage(damage, type, this, attacker));
     if (damage <= 0) return;
 
     // What was aimed at this unit, before anything ate it. Retaliation is
@@ -836,6 +894,7 @@ export default class AttackableUnit extends GameObject {
     // pass below still owes an answer. Only the health side is skipped.
     if (damage <= 0) {
       this.reactToDamage(swung, 0, attacker);
+      this.reactToDamageDealt(swung, 0, attacker, type);
       return;
     }
 
@@ -903,6 +962,10 @@ export default class AttackableUnit extends GameObject {
     // Before the death check, for the same reason omnivamp is: a hit that kills
     // still happened, and a reflect buff on the victim still returns it.
     this.reactToDamage(swung, damage, attacker);
+    // And the same hit from the other side. After the vamp payout above,
+    // deliberately: a wound this hit applies must not retroactively shrink the
+    // drain the hit that applied it already paid.
+    this.reactToDamageDealt(swung, landed, attacker, type);
 
     if (this.stats.health.baseValue <= 0) {
       this.die({ attacker, reviveAfter: this.reviveTime });
@@ -999,6 +1062,42 @@ export default class AttackableUnit extends GameObject {
    * a buff that expires during the pass would otherwise mutate the list being
    * walked.
    */
+  /**
+   * The same pass on the attacker's own buffs — see `Buff.onDamageDealt`.
+   *
+   * Its own loop rather than a branch inside `reactToDamage`, because the two
+   * walk different units' buff lists and answer different questions; folding
+   * them together would make every reflect on the victim read the attacker's
+   * list to decide it had nothing to do.
+   *
+   * Silent for a unit hurting itself: a spell that charges its caster health is
+   * a cost, not an attack on somebody, and an item passive that fired on it
+   * would let a champion apply their own on-damage effects at will.
+   */
+  private reactToDamageDealt(
+    swung: number,
+    landed: number,
+    attacker: AttackableUnit | undefined,
+    type: DamageType
+  ): void {
+    if (!attacker || attacker === this) return;
+    // Over a copy, for `reactToDamage`'s reason: an effect hung here may deal
+    // damage of its own, which re-enters this funnel and can expire a buff
+    // mid-pass.
+    for (const buff of [...attacker.buffs]) {
+      if (buff.toRemove) continue;
+      // Under the buff's own name, so damage an item passive deals from in here
+      // lands in the recap as that passive rather than nameless inside somebody
+      // else's hit — the same bracket `reactToDamage` puts a reflect under.
+      const previous = beginAttribution(buff);
+      try {
+        buff.onDamageDealt(swung, landed, this, type);
+      } finally {
+        endAttribution(previous);
+      }
+    }
+  }
+
   private reactToDamage(swung: number, landed: number, attacker?: AttackableUnit): void {
     for (const buff of [...this.buffs]) {
       if (buff.toRemove) continue;
