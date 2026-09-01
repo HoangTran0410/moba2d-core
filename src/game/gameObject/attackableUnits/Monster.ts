@@ -1,5 +1,6 @@
 import { withinRadius } from '@/utils/math.utils';
 import type { DamageType } from '@/game/combat/Mitigation';
+import { canSee } from '@/game/combat/Vision';
 import { Circle } from '@/libs/quadtree';
 import { MONSTER_BOUNTY } from '@/game/economy/Wallet';
 import { packAsset } from '@/game/config/packAsset';
@@ -351,6 +352,19 @@ export {
 } from '@/game/config/tuningDefaults';
 
 /**
+ * How close a camp has to get to the last place it saw you before it stops
+ * walking and simply waits.
+ *
+ * Not a tuning knob a map should own: it is "arrived", and the number that
+ * decides that is the body's own reach into the brush, not a property of the
+ * jungle. Wide enough that a camp does not grind at a point it cannot stand
+ * on, short enough that it does end up *in* the brush — which is what lets it
+ * see you again, and is the whole reason hiding is a delay rather than an
+ * escape.
+ */
+export const MONSTER_LAST_SEEN_ARRIVE_PX = 40;
+
+/**
  * The longest hop a retreat ever takes, whatever room the body has.
  *
  * A ceiling, not a distance: what a body actually tries is this or its own
@@ -521,6 +535,17 @@ export default class Monster extends AttackableUnit {
   _announcedSpawn = false;
   /** ms of enforced no-healing left, refreshed by every hit taken. */
   _regenHold = 0;
+  /**
+   * The last place this camp actually saw its target, and whether it ever has.
+   *
+   * Two numbers rather than a point object: this is written on most frames of
+   * every fight on the board, and a camp is the one body type there are
+   * twenty-six of.
+   */
+  _lastSeenX = 0;
+  _lastSeenY = 0;
+  _hasLastSeen = false;
+
   /** ms left before the next idle aggro scan. */
   _scanCooldown = 0;
   /** Grace left before a camp whose target left the chase leash turns for home. */
@@ -873,10 +898,30 @@ export default class Monster extends AttackableUnit {
     // for a moment, or ducks out and back, is still pursued rather than dropped
     // the instant they step over it. A stationary boss (no legs) never moves, so only its
     // target leaving can start the clock.
+    // Whether the camp can *currently* see what it is holding, through the same
+    // seam every scan that picks a target goes through. `nearestThreat` has
+    // always asked this, so walking past a crab in a brush never startled it —
+    // but nothing asked it again afterwards, so a camp that had already
+    // acquired you kept swinging while you stood in a bush it was not in.
+    // Reported from a real match, together with the reveal above: "quái đang
+    // đuổi theo, trốn vào bụi, quái vẫn đánh được."
+    const visible = canSee(this, target);
+    if (visible) {
+      this._lastSeenX = target.position.x;
+      this._lastSeenY = target.position.y;
+      this._hasLastSeen = true;
+    }
+
     const leash = this.chaseLeashRange();
     const escaped =
       !withinRadius(pos, this.camp, leash) || !withinRadius(target.position, this.camp, leash);
-    if (escaped) {
+    // One timer for both ways of losing a fight, because they are the same
+    // question — how long a camp keeps pursuing something it cannot act on —
+    // and two would need two numbers a map author has no way to tell apart.
+    // A camp that walks into the brush after you regains sight there and the
+    // timer resets, which is the behaviour that makes hiding a delay rather
+    // than an escape.
+    if (escaped || !visible) {
       this._giveUpTimer -= deltaTime;
       if (this._giveUpTimer <= 0) {
         this.goBackToCamp();
@@ -884,6 +929,22 @@ export default class Monster extends AttackableUnit {
       }
     } else {
       this._giveUpTimer = this.giveUpDelayMs;
+    }
+
+    if (!visible) {
+      // It walks to where you were, and nothing else: no ability, no swing, and
+      // no navigating to a live position it has no way of knowing. A camp with
+      // no legs simply waits it out on its spot.
+      if (this.hasLegs && this._hasLastSeen) {
+        const dx = pos.x - this._lastSeenX;
+        const dy = pos.y - this._lastSeenY;
+        if (dx * dx + dy * dy > MONSTER_LAST_SEEN_ARRIVE_PX * MONSTER_LAST_SEEN_ARRIVE_PX) {
+          this.navigateTo(this._lastSeenX, this._lastSeenY);
+          return;
+        }
+      }
+      this.stopMovement();
+      return;
     }
 
     // Before the reach check, so a camp can open with an ability while it is
@@ -938,6 +999,15 @@ export default class Monster extends AttackableUnit {
    */
   launchAttack(target: AttackableUnit, reach: number): void {
     const objects = this.game.objectManager;
+
+    // Committing to a swing is what gives a body away — a camp's exactly as
+    // much as a champion's. `BasicAttackController.launch` has done this for
+    // every champion and minion in the game since the reveal rule was written;
+    // camps never went through that controller, so a camp sitting in a brush
+    // hit you from a hole in the fog that never opened. Reported from a real
+    // match: "quái rừng đứng trong bụi, tướng không có tầm nhìn, nhưng nó vẫn
+    // đánh." `combat/AttackReveal.ts` has the rule and League's wording.
+    this.revealForAttack();
 
     if (this.attackStyle === 'ranged') {
       const spit = new MonsterSpit(this);
@@ -1070,6 +1140,16 @@ export default class Monster extends AttackableUnit {
     this.targetLock = unit;
     this.phase = Monster.PHASES.ATTACK;
     this._giveUpTimer = this.giveUpDelayMs;
+    // Where the fight started is the one place a camp knows to look, and it is
+    // the case that matters: hit from inside a brush the camp cannot see into,
+    // it has no other way of ever learning where you were. Seeded here rather
+    // than left to `updateAttack`, which would never see this target visible
+    // and so would never write it down at all.
+    if (unit.position) {
+      this._lastSeenX = unit.position.x;
+      this._lastSeenY = unit.position.y;
+      this._hasLastSeen = true;
+    }
     // A fight settles the shove too: a camp knocked back *while chasing* is
     // being kited, not stranded, and the leash that decides when that chase
     // ends is `updateAttack`'s own. Without this, a knockback would be a free
