@@ -93,6 +93,7 @@ import { SpellRole } from '@/game/ai/SpellRole';
 
 import { wallOutlinesInArea, slabVertices } from '@/game/gameObject/map/DynamicTerrain';
 import TerrainField, { sweepToWall } from '@/game/gameObject/map/TerrainField';
+import { inZone, zoneIdsAt } from '@/game/gameObject/map/TerrainMap';
 
 import VectorUtils from '@/utils/vector.utils';
 import CollideUtils from '@/utils/collide.utils';
@@ -331,7 +332,14 @@ const ENUMS = Object.freeze({
   SpellForm,
   SpellRole,
 });
-const TERRAIN = Object.freeze({ wallOutlinesInArea, slabVertices, TerrainField, sweepToWall });
+const TERRAIN = Object.freeze({
+  wallOutlinesInArea,
+  slabVertices,
+  TerrainField,
+  sweepToWall,
+  zoneIdsAt,
+  inZone,
+});
 const UTILS = Object.freeze({
   VectorUtils,
   CollideUtils,

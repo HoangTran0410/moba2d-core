@@ -157,6 +157,29 @@ export interface AttackLaunchNetEvent {
   tid: string;
 }
 
+/**
+ * A champion changed form: `stance` is the pack's own id, or `null` back to
+ * the base kit. `spells` are the qualified ids now filling slots 0..n-1.
+ *
+ * An event and not a snapshot field, for the same reason `BagEvent` is one: a
+ * form changes twice a fight and then not at all, while a snapshot is thirty
+ * frames a second of things that move. Diffed in `discover` and *also* carried
+ * in the hello, again like the bag — a diff only speaks on change, so a
+ * champion already transformed when a client joined would never announce it,
+ * and that client would spend the form looking at the wrong four icons.
+ *
+ * The ids rather than the classes because a client resolves them through the
+ * same registry a spawn does, and may have to `loadSpells` a chunk it has
+ * never fetched — a form's abilities are their own lazy chunks, exactly like
+ * every other spell in a pack.
+ */
+export interface StanceEvent {
+  k: 'stance';
+  id: string;
+  stance: string | null;
+  spells: string[];
+}
+
 /** A committed cast — the client plays the spell's visual half from this. */
 export interface CastEvent {
   k: 'cast';
@@ -172,6 +195,7 @@ export type NetEvent =
   | GoneEvent
   | LinkEvent
   | BagEvent
+  | StanceEvent
   | CastEvent
   | DamageNumberNetEvent
   | AttackLaunchNetEvent;

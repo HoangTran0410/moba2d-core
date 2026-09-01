@@ -10,7 +10,8 @@ import { getLaneWaypoints, nextWaypointIndexFrom } from '@/game/lanes';
 import { attachRecall, presetFromPlan, type KitPlan } from '@/game/preset';
 import { buildHeldItem } from '@/game/economy/ItemShop';
 import { contentCatalog } from '@/content/catalog';
-import { loadSpells } from '@/game/spellRegistry';
+import { loadSpells, spellClassOfId } from '@/game/spellRegistry';
+import BasicAttack from '@/game/gameObject/coreSpells/BasicAttack';
 import { setNetRole } from './netRole';
 import { clearNetLink, netLinkLost } from './netLink';
 import { disarmNetUrl } from '@/scenes/lanSignal';
@@ -513,6 +514,23 @@ export class ClientSession implements NetGameHooks {
         attacker.basicAttack.replayLaunch(target);
         return;
       }
+      case 'stance': {
+        const unit = this.units.get(event.id);
+        if (!(unit instanceof Champion)) return;
+        if (event.stance === null) {
+          // Bump the generation as an entry does: a form ending while that
+          // form's own chunk is still in flight must not be undone by the
+          // load landing afterwards.
+          this.stanceGeneration.set(event.id, (this.stanceGeneration.get(event.id) ?? 0) + 1);
+          unit.exitStance();
+          return;
+        }
+        if (!Array.isArray(event.spells) || !event.spells.every(id => typeof id === 'string')) {
+          return;
+        }
+        void this.applyStance(event.id, unit, event.stance, event.spells);
+        return;
+      }
       case 'cast': {
         const unit = this.units.get(event.id);
         if (!(unit instanceof Champion)) return;
@@ -530,6 +548,45 @@ export class ClientSession implements NetGameHooks {
         return;
       }
     }
+  }
+
+  /**
+   * The form a stance event named, once the classes for it are in memory.
+   *
+   * Asynchronous because a form's abilities are their own lazy chunks: the
+   * first Kurama Mode of a match is the first time that client has ever
+   * needed those three modules, exactly as a champion spawn may be the first
+   * time it needed a kit's. `applyEvent` stays synchronous and this is
+   * fire-and-forget behind it, the same shape the spawn path already uses.
+   *
+   * The generation guard is what that await costs. Two stance events can
+   * cross while a chunk is in flight — a form ending, or a second form
+   * beginning — and applying them in completion order rather than arrival
+   * order would leave the client in a form the host has already left. So the
+   * newest request wins and any older one that finishes late is dropped.
+   */
+  private stanceGeneration = new Map<string, number>();
+
+  private async applyStance(
+    netId: string,
+    unit: Champion,
+    id: string,
+    spellIds: string[]
+  ): Promise<void> {
+    const generation = (this.stanceGeneration.get(netId) ?? 0) + 1;
+    this.stanceGeneration.set(netId, generation);
+
+    await loadSpells(spellIds);
+
+    // The world moved while the chunk was fetching: a newer stance event
+    // superseded this one, or the champion left entirely.
+    if (this.stanceGeneration.get(netId) !== generation) return;
+    if (unit.toRemove) return;
+
+    unit.enterStance(
+      id,
+      spellIds.map(spellId => new (spellClassOfId(spellId) ?? BasicAttack)(unit))
+    );
   }
 
   /**

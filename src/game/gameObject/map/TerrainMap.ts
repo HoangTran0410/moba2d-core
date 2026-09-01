@@ -35,6 +35,30 @@ interface ZoneRegion {
   vertices: { x: number; y: number }[];
 }
 
+/**
+ * The zone seam a pack goes through — see `TerrainZone`.
+ *
+ * Free functions taking `game`, the same shape `wallOutlinesInArea` already
+ * publishes on `api.terrain`, because a spell holds a `game` and must not
+ * reach for `game.terrainMap` itself: that field is undefined on a
+ * `SpellWorld` built by `testing/spell`, so every pack that reached through
+ * it would break in its own tests. Answering "no zones here" for a world
+ * without a map is the honest answer and keeps a spell's zone check writable
+ * before a map exists to run it on.
+ */
+export function zoneIdsAt(game: { terrainMap?: TerrainMap }, x: number, y: number): string[] {
+  return game.terrainMap?.zoneIdsAt?.(x, y) ?? [];
+}
+
+export function inZone(
+  game: { terrainMap?: TerrainMap },
+  x: number,
+  y: number,
+  id: string
+): boolean {
+  return game.terrainMap?.inZone?.(x, y, id) ?? false;
+}
+
 export default class TerrainMap {
   game: any;
   size: number;
@@ -296,7 +320,8 @@ export default class TerrainMap {
         // body in opposite directions for the whole match. It also cannot be
         // displaced into a wall in the first place, which is the only way a
         // camp gets into one.
-        unit => !(unit instanceof Monster) || unit.hasLegs || !unit.isImmovable,
+        (unit: AttackableUnit) =>
+          !(unit instanceof Monster) || unit.hasLegs || !unit.isImmovable,
       ],
     });
     for (const m of walkers) this.pushOutOfWalls(m);

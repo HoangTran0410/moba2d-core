@@ -60,6 +60,32 @@ const bagOf = (champion: Champion): (string | null)[] => {
   return ids;
 };
 
+/**
+ * A champion's form as it goes on the wire: the stance id and the ids of the
+ * spells standing in the slots it swapped.
+ *
+ * Reads the *live* `spells[]` rather than anything the stance remembered,
+ * because that array is what the client has to end up matching — and it is
+ * the same array `HostSession` already addresses casts and cooldowns by
+ * index into.
+ */
+export const stanceSignatureOf = (stance: {
+  stance: string | null;
+  spells: string[];
+}): string =>
+  // `null` gets a marker of its own rather than folding to `''`. A pack may
+  // legally name a form with the empty string, and collapsing the two would
+  // make leaving *that* form a change the diff cannot see.
+  `${stance.stance === null ? '\u0000none' : stance.stance}\u0000${stance.spells.join('\u0000')}`;
+
+const stanceOf = (champion: Champion): { stance: string | null; spells: string[] } => ({
+  stance: champion.stance,
+  spells:
+    champion.stance === null
+      ? []
+      : champion.spells.map(spell => spellIdOfClass(spell?.constructor as never) ?? 'BasicAttack'),
+});
+
 /** What this host has installed, so a joiner can install the same. */
 const installedManifestUrls = (): string[] => {
   const urls: string[] = [];
@@ -165,6 +191,7 @@ export class HostSession implements NetGameHooks {
   private lastSnapshotAt = 0;
   /** Bag contents at last broadcast, per champion — see `discover`. */
   private bagSignatures = new WeakMap<Champion, string>();
+  private stanceSignatures = new WeakMap<Champion, string>();
   /** The champion whose side change is a client's own doing — see `onTeamChanged`. */
   private teamEchoFor: Champion | null = null;
   /** Per-unit "what we last put on the wire, and when" — see `snapshotUnits`. */
@@ -381,6 +408,18 @@ export class HostSession implements NetGameHooks {
         if (this.bagSignatures.get(object) !== signature) {
           this.bagSignatures.set(object, signature);
           this.pendingEvents.push({ k: 'bag', id: this.ids.get(object)!, items: bag });
+        }
+        // And the form, diffed the same hook-free way: entering, leaving and
+        // swapping straight from one form to another all end as a different
+        // pair of (stance, slot ids), and none of them has to know a socket
+        // exists. The spell ids are part of the signature, not just the
+        // stance id, so a pack that swaps a form's contents without renaming
+        // the form still crosses.
+        const stance = stanceOf(object);
+        const stanceSignature = stanceSignatureOf(stance);
+        if (this.stanceSignatures.get(object) !== stanceSignature) {
+          this.stanceSignatures.set(object, stanceSignature);
+          this.pendingEvents.push({ k: 'stance', id: this.ids.get(object)!, ...stance });
         }
       }
     }
@@ -930,6 +969,12 @@ export class HostSession implements NetGameHooks {
           roster.push({ k: 'bag', id: unitId, items: bag });
           break;
         }
+        // Same reasoning one line up, and the same trap: a champion that
+        // transformed before this client arrived would never change again,
+        // so the joiner would watch a Kurama-mode Naruto cast base-form
+        // abilities for the rest of the form.
+        const stance = stanceOf(unit);
+        if (stance.stance !== null) roster.push({ k: 'stance', id: unitId, ...stance });
       } else if (unit instanceof Minion) {
         roster.push({
           k: 'minion',
