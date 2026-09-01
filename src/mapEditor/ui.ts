@@ -629,10 +629,22 @@ export const UI = (() => {
       },
     ],
     neutral: [
-      { key: "role", label: "Role", kind: "text", placeholder: "warden" },
+      // `role` là từ vựng của pack, không phải của editor: core không bao giờ
+      // diễn giải chuỗi này. Pack khớp nó theo hai đường — `fills` của một bãi
+      // quái, hoặc `slotObjects` cho thứ không phải thân để đánh (pack lol có
+      // `relic`, cục hồi máu). Nên đây là ô chữ tự do chứ không phải danh sách:
+      // editor không thấy được pack nào đang cài.
+      {
+        key: "role", label: "Role", kind: "text", placeholder: "warden",
+        hint: "tên do pack đặt — bãi quái (`fills`) hoặc vật thể (`slotObjects`, ví dụ `relic`)",
+      },
       { key: "r", label: "Bán kính", kind: "number", unit: "px", min: 1 },
       { key: "rotationDeg", label: "Xoay camp", kind: "number", unit: "°", hint: "xoay bố cục quái bên trong" },
-      { sec: "monster-stats", group: "Ghi đè chỉ số cho bãi này", groupKey: "monsters" },
+      // Cả nhóm dưới đây chỉ tới được một *bãi quái*. Một role mà pack trả lời
+      // bằng `slotObjects` không đọc `slot.stats` chút nào, nên điền vào đây
+      // sẽ im lặng không có tác dụng gì — đúng kiểu hỏng mà `coreRange` trong
+      // các pack vẫn ghi chú.
+      { sec: "monster-stats", group: "Ghi đè chỉ số cho bãi quái này", groupKey: "monsters" },
       { key: "stats.healthMult", label: "Máu", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.damageMult", label: "Sát thương", kind: "number", unit: "×", min: 0, ph: "1" },
       { key: "stats.aggroRange", label: "Tầm phát hiện", kind: "number", unit: "px", min: 0, hint: "số tuyệt đối, không phải hệ số" },

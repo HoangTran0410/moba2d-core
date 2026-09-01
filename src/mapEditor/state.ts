@@ -35,7 +35,7 @@ export const KIND = {
   spawn: { label: "Điểm hồi sinh", color: "#ffd166", shape: "circle", group: "slot" },
   structure: { label: "Trụ", color: "#5b8cff", shape: "point", group: "slot" },
   minion: { label: "Điểm gom lính", color: "#f0883e", shape: "point", group: "slot" },
-  neutral: { label: "Bãi quái", color: "#c77dff", shape: "circle", group: "slot" },
+  neutral: { label: "Điểm trung lập", color: "#c77dff", shape: "circle", group: "slot" },
   lane: { label: "Lane", color: "#29d3c4", shape: "line", group: "lane" },
 };
 

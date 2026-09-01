@@ -96,8 +96,18 @@ Tám loại, chia đúng ba nhóm của `MapGeometry`:
 | `slots.spawn` | Điểm hồi sinh | vòng tròn | `faction`, `r` |
 | `slots.structure` | Trụ | điểm | `faction`, `kind: 'turret'` |
 | `slots.minion` | Điểm gom lính | điểm | `faction`, `lane`, `scatter?` |
-| `slots.neutral` | Bãi quái | vòng tròn | `role`, `r`, `rotationDeg?` |
+| `slots.neutral` | Điểm trung lập | vòng tròn | `role`, `r`, `rotationDeg?` |
 | `lanes` | Lane | đường gấp khúc hai chiều | `id` (còn `from`/`to` là dẫn xuất) |
+
+`slots.neutral` là **điểm trung lập**, không phải "bãi quái" — và đó không
+phải chuyện chữ nghĩa. Core không bao giờ diễn giải `role`; pack quyết định
+cái gì đứng ở đó, và nó có hai đường trả lời: `fills` của một bãi quái, hoặc
+`slotObjects` cho một thứ không phải thân để đánh (pack lol trả lời `relic`
+bằng cục hồi máu). Ô *Role* vì thế là ô chữ tự do — editor là một document
+riêng và không thấy được pack nào đang cài. Hệ quả cần nhớ: nhóm *Ghi đè chỉ
+số cho bãi quái này* chỉ tới được một bãi quái, còn một role do `slotObjects`
+trả lời thì không đọc `slot.stats` chút nào, nên điền vào đó là im lặng không
+có tác dụng gì.
 
 Cấp map có thêm `id` (slug) và danh sách **phe** — đúng `MapSummary`. Đổi
 tên một phe thì mọi `faction`/`from`/`to` đang trỏ vào nó đi theo luôn.

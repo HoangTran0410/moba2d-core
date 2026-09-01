@@ -714,13 +714,17 @@ export const MapRules: MapRulesModule = (() => {
       }
     }
 
-    // ---- bãi quái phải đứng trên đất -------------------------------------
+    // ---- điểm trung lập phải đứng trên đất --------------------------------
     //
-    // Một bãi nằm trong tường không làm game sập: nó làm ra một con quái mà
-    // không đường đi nào tới được, và người ta phát hiện ra chuyện đó trong
-    // một trận đấu chứ không phải ở đây. Chỉ hỏi về *tâm* bãi, không hỏi cả
-    // bán kính — bãi quái nằm trong hốc đá là chuyện bình thường, mép bãi
-    // chạm tường là đúng ý đồ.
+    // Một điểm nằm trong tường không làm game sập: nó làm ra một thứ mà không
+    // đường đi nào tới được, và người ta phát hiện ra chuyện đó trong một trận
+    // đấu chứ không phải ở đây. Chỉ hỏi về *tâm* điểm, không hỏi cả bán kính —
+    // bãi quái nằm trong hốc đá là chuyện bình thường, mép bãi chạm tường là
+    // đúng ý đồ.
+    //
+    // "Điểm" chứ không phải "bãi quái": `slots.neutral` là những điểm có tên
+    // trên mặt đất, và pack quyết định cái gì đứng ở đó — một bãi quái, hay
+    // một thứ không phải thân để đánh (`ContentPackCode.slotObjects`).
     if (map.neutrals && map.neutrals.length) {
       const walls = prepareWalls(map.walls || []);
       for (const raw of map.neutrals) {
@@ -729,8 +733,8 @@ export const MapRules: MapRulesModule = (() => {
         if (wallClearance(p.x, p.y, walls, 1) >= 0) continue;
         out.push({
           text:
-            `Bãi quái “${raw.role || "?"}” tại (${Math.round(p.x)}, ${Math.round(p.y)}) ` +
-            `nằm TRONG tường — sẽ có một con quái mà không ai đi tới được.`,
+            `Điểm trung lập “${raw.role || "?"}” tại (${Math.round(p.x)}, ${Math.round(p.y)}) ` +
+            `nằm TRONG tường — thứ đứng ở đó sẽ không ai tới được.`,
           at: at(p),
         });
       }
@@ -778,7 +782,7 @@ export const MapRules: MapRulesModule = (() => {
         if (!best || !(tolerance > 0) || best.off <= tolerance) continue;
         out.push({
           text:
-            `Cặp bãi “${role}” không phải ảnh đối xứng của nhau: gần nhất là ` +
+            `Cặp điểm “${role}” không phải ảnh đối xứng của nhau: gần nhất là ` +
             `${best.name}, vẫn lệch ${Math.round(best.off)}px — quá bán kính bãi ` +
             `(${tolerance}px), nên một nửa rừng đi bộ gần hơn nửa kia.`,
           at: at(a),
