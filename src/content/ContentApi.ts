@@ -1,5 +1,6 @@
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import { packAsset } from '@/game/config/packAsset';
+import { seededRandom, seededShuffle } from '@/game/matchSeed';
 
 import Spell from '@/game/gameObject/Spell';
 import SpellObject from '@/game/gameObject/SpellObject';
@@ -319,6 +320,24 @@ const UTILS = Object.freeze({
   uuidv4,
   hasFlag,
   rectToVertices,
+  /**
+   * Randomness a LAN match can agree on, from `Game.matchSeed`.
+   *
+   * Here rather than left for each pack to write, because a pack cannot
+   * value-import anything from core at runtime — it builds with core marked
+   * `external`, so a surviving import is a bare specifier nothing resolves in
+   * the browser — and `api` is therefore the only way to share a function at
+   * all. The lol pack had already written its own copy of both of these for
+   * the drake rotation, which is one copy away from two packs disagreeing
+   * about what a seed means.
+   *
+   * `game/matchSeed.ts` has the reasoning: a client *builds* its own jungle
+   * rather than receiving one, so `Math.random()` in content is a desync, and
+   * a shared *stream* would be worse than a shared seed because the two ends
+   * do not run the same code and would consume it in different orders.
+   */
+  seededRandom,
+  seededShuffle,
 });
 
 // Every file in src/game/gameObject/buffs/ that has a default export — 26 of
