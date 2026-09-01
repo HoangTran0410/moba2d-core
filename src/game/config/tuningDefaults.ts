@@ -153,6 +153,32 @@ export const DEFAULT_ATTACK_REVEAL_RADIUS = 300;
  * bounds above as arithmetic over these constants and the champion's, so a
  * future retune of either side cannot quietly cross them again.
  *
+ * ## Bigger bites, on a slower beat
+ *
+ * Reported after the champion bodies grew: *"damage minion giờ cũng yếu yếu"*.
+ * The arithmetic agrees, and the interesting half is *why the rule below did
+ * not catch it*. The bound is written against `DEFAULT_CHAMPION_DEFENCE` —
+ * 100 health, **no armour** — which is the body core promises a pack that
+ * declares nothing, and no longer the body anybody plays: the lol pack's
+ * champions run 112 to 233 health with real resistances. A wave dealing 12.2/s
+ * to a bare 100-health champion deals about 9 effective to a 200-health
+ * bruiser on 30 armour, and that is twenty seconds of being nibbled.
+ *
+ * Two things changed and they are not the same thing. Damage per second is up
+ * about 15% (12.2 to 14.0 for the opening wave, against the champion's 15.4),
+ * which is real but modest — the rule below is what caps it, and it is right
+ * to. The **hit** is up much more: 3 to 4, 2 to 3, 5 to 7, on beats stretched
+ * to match. That is the half the report was actually about. A minion that bites
+ * for 2 reads as an ant whatever its damage per second says, and one that bites
+ * for 3 on a slower swing reads as a unit, for the same cost to the player.
+ *
+ * If it still reads as weak, the lever is **not here**. Core's bound protects
+ * core's own default body; a pack whose champions are twice that body can
+ * declare its own minion types and tune them against its own roster, which is
+ * what `MinionSpawner`'s `types` is for. Raising these past the rule below
+ * would make core's default champion lose to the wave, which is the one thing
+ * this file may not do.
+ *
  * ## The cannon is the wave's payday
  *
  * It is the one body worth stopping for — three times the melee bounty, the
@@ -170,8 +196,8 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     speed: 2.6,
     size: 34,
     health: 70,
-    damage: 3,
-    attackInterval: 1_100,
+    damage: 4,
+    attackInterval: 1_300,
     attackRange: 40,
     aggroRange: 300,
   },
@@ -182,8 +208,8 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     speed: 2.6,
     size: 30,
     health: 45,
-    damage: 2,
-    attackInterval: 1_500,
+    damage: 3,
+    attackInterval: 1_900,
     attackRange: 280,
     aggroRange: 340,
   },
@@ -195,8 +221,8 @@ export const MinionPresets: Record<MinionKind, MinionPresetData> = {
     speed: 2.6,
     size: 38,
     health: 150,
-    damage: 5,
-    attackInterval: 1_650,
+    damage: 7,
+    attackInterval: 1_900,
     attackRange: 300,
     aggroRange: 360,
   },
@@ -246,7 +272,7 @@ export const DEFAULT_TURRET_PRESET: TurretPresetData = {
   size: 92,
   attackRange: 430,
   attackInterval: 1300,
-  damage: 12,
+  damage: 50,
   rebuildTime: 30000,
   repairDelay: 6000,
   repairRate: 0.4,
