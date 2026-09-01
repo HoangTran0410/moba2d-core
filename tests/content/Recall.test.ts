@@ -13,6 +13,7 @@ vi.mock('../../src/managers/AssetManager', () => ({
 
 import Champion from '../../src/game/gameObject/attackableUnits/Champion';
 import Fountain from '../../src/game/gameObject/structures/Fountain';
+import Invisible from '../../src/game/gameObject/buffs/Invisible';
 import { SpellRole, rolesOf } from '../../src/game/ai/SpellRole';
 import type AttackableUnit from '../../src/game/gameObject/attackableUnits/AttackableUnit';
 import type { CastContext } from '../../src/game/spell/runtime/types';
@@ -165,5 +166,28 @@ describe('Recall — going home', () => {
   it('is not one of the kit slots the loadout editor indexes', () => {
     const champion = unit('blue', 0);
     expect(champion.spells).not.toContain(champion.recall);
+  });
+
+  /**
+   * The fifth invisible thing, added with `combat/StealthBreak.ts`: every
+   * ability in the game gives a hidden caster away, and this is the one that
+   * must not. Pressing B is not an attack made out of stealth — it is how a
+   * stealthed champion leaves a lane alive — and a bar that lit its owner up
+   * the moment it started would make the pair useless together.
+   *
+   * Not an escape hatch either: the channel above already breaks on damage,
+   * so this stays hidden exactly until somebody finds it.
+   */
+  it('does not give a hidden champion away', () => {
+    const champion = unit('blue', 1_500, 1_500);
+    indexObjects(game, [champion]);
+    champion.addBuff(new Invisible(5_000, champion, champion));
+    champion.updateBuffs();
+    expect(champion.isStealthed).toBe(true);
+
+    expect(champion.recall.press(context(champion))).toBe(true);
+    champion.updateBuffs();
+
+    expect(champion.isStealthed).toBe(true);
   });
 });

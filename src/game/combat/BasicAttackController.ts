@@ -2,6 +2,7 @@ import { hasFlag } from '@/utils/index';
 import ActionState from '@/game/enums/ActionState';
 import EventType from '@/game/enums/EventType';
 import { canSee } from '@/game/combat/Vision';
+import { breakStealthOn } from '@/game/combat/StealthBreak';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import { FALLBACK_CHASE_MARGIN, findAttackTargetNearPoint } from './AttackTargeting';
 import {
@@ -340,6 +341,10 @@ export default class BasicAttackController {
     // the exact stretch in which the victim is trying to work out where the
     // arrow came from. See `combat/AttackReveal.ts`.
     this.owner.revealForAttack();
+    // And the harder half of the same fact: a hidden attacker stops being
+    // hidden. League ends every stealth a champion can act out of on the
+    // action, not on the hit — see `combat/StealthBreak.ts`.
+    breakStealthOn(this.owner);
 
     this.owner.game?.eventManager?.emit(EventType.ON_ATTACK, this.owner);
     // The richer twin, for the LAN host to forward (see the enum's comment):

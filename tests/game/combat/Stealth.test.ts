@@ -25,7 +25,10 @@ import Invisible from '../../../src/game/gameObject/buffs/Invisible';
 import TrueSight from '../../../src/game/gameObject/buffs/TrueSight';
 import TeamId from '../../../src/game/enums/TeamId';
 import { Lane, getLaneWaypoints } from '../../../src/game/lanes';
+import Spell from '../../../src/game/gameObject/Spell';
+import type { CastSpec } from '../../../src/game/spell/runtime/types';
 import { createGame, indexObjects, stubGameGlobals, TEST_AVATAR_KEY, type TestGame } from '../fixtures';
+import { installSketchMathGlobals, installSpellObjectGlobals, pressSpell } from '../spell/fixtures';
 
 const CAMP = { x: 1_000, y: 1_000, r: 300 };
 
@@ -178,5 +181,148 @@ describe('a target that vanishes mid-fight is let go', () => {
 
     expect(camp.targetLock).toBeNull();
     expect(champion.stats.health.value).toBe(health);
+  });
+});
+
+/**
+ * **Acting gives you away** — the other half of stealth, and the half this
+ * engine did not have.
+ *
+ * Everything above is the *observer* side: nothing acquires what it cannot
+ * see. With no rule on the acting side, a champion who vanished stayed
+ * untargetable while standing in a fight and swinging: not a repositioning
+ * tool, a permanent immunity to being answered. `combat/StealthBreak.ts` has
+ * the rule and the two seams it hangs on.
+ */
+describe('acting gives a hidden champion away', () => {
+  /** A cast with nothing in it, so the press itself is what is under test. */
+  class Poke extends Spell {
+    name = 'Poke';
+    coolDown = 0;
+    manaCost = 0;
+    lockoutMs = 0;
+
+    get castSpec(): CastSpec {
+      return {
+        activation: 'PRESS',
+        targeting: 'SELF',
+        castTimeMs: 0,
+        resource: { commitAt: 'start', refundOn: [] },
+        cooldown: { startAt: 'start', durationMs: this.lockoutMs },
+      };
+    }
+
+    onSpellCast(): void {}
+  }
+
+  /** The shape every vanishing ability has: the cast is what hides you. */
+  class Vanish extends Poke {
+    name = 'Vanish';
+
+    onSpellCast(): void {
+      this.owner.addBuff(new Invisible(5_000, this.owner, this.owner));
+    }
+  }
+
+  beforeEach(() => {
+    stubGameGlobals();
+    installSpellObjectGlobals();
+    installSketchMathGlobals();
+    game = createGame();
+    game.setPlayer(new Champion({ game, teamId: 'player-uuid' }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const hidden = (teamId: string, x = 0): Champion => {
+    const champion = new Champion({ game, teamId, position: createVector(x, 0) });
+    champion.stats.attackRange.baseValue = 300;
+    vanish(champion);
+    return champion;
+  };
+
+  /** Settle the flags the way a frame would, then read. */
+  const stillHidden = (champion: Champion): boolean => {
+    champion.updateBuffs();
+    return champion.isStealthed;
+  };
+
+  it('a swing ends it — at the swing, not at the hit', () => {
+    const champion = hidden('solo');
+    const victim = new Champion({ game, teamId: 'other', position: createVector(120, 0) });
+    indexObjects(game, [champion, victim]);
+
+    // `launch` is the commit. A ranged attacker's bolt is still in the air
+    // here, which is exactly the stretch the victim is trying to read.
+    champion.basicAttack.launch(victim, champion.basicAttack.reachTo(victim));
+
+    expect(stillHidden(champion)).toBe(false);
+  });
+
+  it('a cast ends it', () => {
+    const champion = hidden('solo');
+    indexObjects(game, [champion]);
+
+    expect(pressSpell(new Poke(champion))).toBe(true);
+
+    expect(stillHidden(champion)).toBe(false);
+  });
+
+  /**
+   * The one case a naive cast seam gets wrong, and it is the common one: the
+   * ability granting the stealth is itself a cast, so ending every stealth on
+   * every press would undo the vanishing with the press that cast it. The
+   * snapshot in `Spell.press` is what makes this pass.
+   */
+  it('the cast that grants the stealth does not undo its own work', () => {
+    const champion = new Champion({ game, teamId: 'solo' });
+    indexObjects(game, [champion]);
+
+    expect(pressSpell(new Vanish(champion))).toBe(true);
+
+    expect(stillHidden(champion)).toBe(true);
+  });
+
+  it('a refused cast leaves it alone', () => {
+    const champion = hidden('solo');
+    indexObjects(game, [champion]);
+
+    const poke = new Poke(champion);
+    poke.lockoutMs = 5_000;
+    expect(pressSpell(poke)).toBe(true);
+    vanish(champion);
+
+    // Into the cooldown: an AI champion does this several times a second, and
+    // a key pressed into a lockout is not an action.
+    expect(pressSpell(poke)).toBe(false);
+    expect(stillHidden(champion)).toBe(true);
+  });
+
+  it('an ability that opts out leaves it alone — the shape recall uses', () => {
+    const champion = hidden('solo');
+    indexObjects(game, [champion]);
+
+    const quiet = new Poke(champion);
+    quiet.breaksStealth = false;
+    expect(pressSpell(quiet)).toBe(true);
+
+    expect(stillHidden(champion)).toBe(true);
+  });
+
+  /**
+   * **Damage does not break it**, deliberately: a poison applied before the
+   * champion vanished goes on ticking, and every tick is damage the hidden
+   * unit dealt. Hanging the rule on `onDamageDealt` — the obvious place —
+   * would leave a damage-over-time kit unable to use its own stealth at all.
+   */
+  it('damage the hidden champion is still dealing does not break it', () => {
+    const champion = hidden('solo');
+    const victim = new Champion({ game, teamId: 'other', position: createVector(120, 0) });
+    indexObjects(game, [champion, victim]);
+
+    victim.takeDamage(20, champion, 'MAGIC');
+
+    expect(stillHidden(champion)).toBe(true);
   });
 });

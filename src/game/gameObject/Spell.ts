@@ -14,6 +14,7 @@ import {
 } from '@/game/spell/runtime/CancelPolicy';
 import type { TargetingRequest } from '@/game/spell/targeting/TargetResolver';
 import { beginAttribution, endAttribution } from '@/game/combat/DamageAttribution';
+import { NO_STEALTH, breakStealth, stealthsOn } from '@/game/combat/StealthBreak';
 import { isNetClient } from '@/game/net/netRole';
 import { hasteCooldownMultiplier } from '@/game/gameObject/Stats';
 import type {
@@ -97,6 +98,17 @@ export default class Spell {
    * must not draw from both stats at once.
    */
   damageScalesWithAbilityPower = true;
+
+  /**
+   * Whether casting this gives a hidden caster away.
+   *
+   * True for every ability, which is League's own rule. The opt-out exists
+   * for the actions that are not attacks made out of stealth — recall is the
+   * one core ships, and a champion recalling out of a bush that lit up the
+   * moment they pressed B would be a different game. See
+   * `combat/StealthBreak.ts`.
+   */
+  breaksStealth = true;
 
   /**
    * What this ability *does*, for the bot brain — see `src/game/ai/SpellRole.ts`.
@@ -340,6 +352,11 @@ export default class Spell {
   press(context: CastContext): boolean {
     this._castContext = snapshotContext(context);
     this.game.eventManager.emit(EventType.ON_PRE_CAST_SPELL, this);
+    // Read before the cast runs, and used after it is accepted: the ability
+    // that *grants* a stealth is itself a cast, so the snapshot is what stops
+    // a vanishing ability being undone by the press that cast it. See
+    // `StealthBreak.ts`.
+    const hiddenBefore = this.breaksStealth ? stealthsOn(this.owner) : NO_STEALTH;
     const accepted = this.attributed(() => this.runtime.press(this._castContext!));
     if (accepted) {
       this.snapshotOwner();
@@ -361,6 +378,12 @@ export default class Spell {
       // of a brush is a real thing to do, in League and here. See
       // `combat/AttackReveal.ts`.
       if (this._castContext?.target) this.owner?.revealForAttack();
+
+      // Stealth is broader than the reveal above: a skillshot fired out of a
+      // brush keeps its caster hidden from the fog, but a champion who casts
+      // anything at all stops being *invisible*. Only what was already
+      // standing, so a stealth this very cast hung survives it.
+      if (hiddenBefore.length > 0) breakStealth(this.owner, hiddenBefore);
     }
     this.syncVfxPhase();
     return accepted;
