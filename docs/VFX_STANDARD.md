@@ -23,6 +23,49 @@ ships with this checkout — read it once, not once per task.
 5. **Multi-hit protection.** A dash or continuous pass hits each unit at most
    once, tracked in a `Set` or array.
 
+## Every effect has three phases, and the last one is the one that gets skipped
+
+Rule 2 above says "no instant pop-in". It is half a rule, and the missing half
+is what shipped: a spell object that grows in nicely, deals its damage, and
+then **stops existing on the frame it lands**. A player reported the whole
+category in one sentence — *"đột nhiên xuất hiện rồi đột nhiên biến mất gây
+damage"* — and it applies to almost every effect written before this section.
+
+So, for every `SpellObject` that lives longer than a frame:
+
+| phase | what it is | the failure it prevents |
+|---|---|---|
+| **anticipation** | it arrives — grows, brightens, spins up | an effect that pops in has no telegraph |
+| **climax** | it does the thing — the hit, the blast, the peak | — |
+| **dissipation** | it leaves — shrinks, fades, drifts, settles | an effect that vanishes reads as a bug or a dropped frame |
+
+**Dissipation is not decoration; it is how the player reads what happened.** A
+blast that fades over 400ms leaves the shape of the area on screen long enough
+to be understood, so the next one is aimed better. A blast that is deleted on
+the frame it fires teaches nothing, and the damage number is the only evidence
+it existed.
+
+Concretely:
+
+- **Never `toRemove = true` on the same frame an effect deals its damage.**
+  Deal the damage, mark the object *spent*, and let it fade. `MissileSpellObject`
+  callers usually want `removeOnMaxHit = false` plus their own fade, or a second
+  object that owns the aftermath.
+- **A lingering area keeps its rim while it fades.** The fill may drop to
+  nothing; the outline is what was still saying "this is the radius".
+- **A charged ability charges visibly, on the caster.** The stored power has to
+  be readable by the *enemy* — a hold with no growing tell is a burst with no
+  counterplay. `onChargeUpdate(context, elapsedMs, ratio)` gives you the ratio;
+  the orb, the draw, the glow all scale off it.
+- **Phases are driven by one normalized `t` per phase**, not by frame counters,
+  and each gets its own ease — see "The shape of a good `draw()`" below.
+
+The worked example in this repository's packs is Naruto's Rasengan
+(`spells/Naruto_Q.ts` in the Naruto pack): a charge that spirals energy into a
+growing orb beside the caster, a missile whose size and damage come off the
+charge ratio, and a vortex on impact that expands, holds, and fades — three
+objects, one per phase, because the phases outlive each other.
+
 ## The animation is the tooltip
 
 Nobody reads the description mid-fight. Whatever the ability does, the player
