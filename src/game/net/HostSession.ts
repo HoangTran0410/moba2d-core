@@ -960,6 +960,10 @@ export class HostSession implements NetGameHooks {
       you: { id, team, plan },
       roster,
       packs: installedManifestUrls(),
+      // The host's seed is the match's seed. Every client derives the same
+      // drake rotation — and anything else a pack randomises — from it, which
+      // is the only way two independently-built jungles agree (`matchSeed.ts`).
+      seed: this.game.matchSeed,
     });
   }
 

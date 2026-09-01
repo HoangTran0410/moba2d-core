@@ -201,6 +201,18 @@ export type NetMessage =
        * the client then fails the way it always did.
        */
       packs?: string[];
+      /**
+       * `Game.matchSeed` — the one random number both ends derive from.
+       *
+       * A client *builds* the jungle rather than receiving it (see `you`
+       * above: the two sides are matched by construction order), so anything a
+       * pack randomises has to start from a number the host chose. Optional
+       * for the same reason `packs` is: a host on an older build hands out a
+       * usable hello, and a client that gets none keeps the seed it drew
+       * itself — which is exactly the behaviour that shipped before this
+       * field, so nothing gets worse.
+       */
+      seed?: number;
     }
   | { t: 'move'; x: number; y: number }
   /**

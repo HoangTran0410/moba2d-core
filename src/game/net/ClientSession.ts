@@ -185,6 +185,13 @@ export class ClientSession implements NetGameHooks {
     // construction order — the host names them the same way (`HostSession.
     // idFor`), and the handshake already refused a client with a different
     // map.
+    // Before the world is asked anything about itself. A client draws a seed of
+    // its own at construction — it has to, it may never join a host — and this
+    // is the line that replaces it with the one the match actually runs on.
+    // Absent on an older host, in which case the local one stands and the
+    // client behaves exactly as it did before the field existed.
+    if (typeof hello.seed === 'number') game.matchSeed = hello.seed;
+
     this.units.set(hello.you.id, game.player);
     game.turrets.forEach((turret, index) => this.units.set(`t${index}`, turret));
     game.monsters.forEach((monster, index) => this.units.set(`m${index}`, monster));

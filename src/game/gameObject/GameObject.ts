@@ -48,6 +48,18 @@ export interface GameObjectRuntimeContext extends GameObjectGameContext {
    * `matchTimeMs` beside it, because a headless context has no map.
    */
   mapTuning?: MapTuning;
+  /**
+   * `Game.matchSeed` — the one random number this match agrees on, host and
+   * client alike (`game/matchSeed.ts`).
+   *
+   * Optional beside `matchTimeMs` above and read the same way: a headless
+   * context has no match to have seeded, so anything deriving from it must
+   * have an answer for `undefined` rather than assert it away. Content reaches
+   * it through the unit it is already holding — a monster's `game.matchSeed` —
+   * which is how a pack shuffles something per match without calling
+   * `Math.random()` on each end and desyncing the two.
+   */
+  matchSeed?: number;
   randomSpawnPoint(teamId?: string): p5.Vector;
   createSpellContext(
     spell: Spell,

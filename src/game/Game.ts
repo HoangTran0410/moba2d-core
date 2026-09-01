@@ -7,6 +7,7 @@ import type {
 } from '@/content/ContentPack';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { withSimulationStep } from './simulationClock';
+import { randomMatchSeed } from './matchSeed';
 import { nextStressState } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
 import { clearActiveLanes, setActiveLanes } from './lanes';
@@ -184,6 +185,16 @@ export default class Game {
    * (`setActiveLanes`) instead of holding it here.
    */
   readonly fps = 60;
+  /**
+   * The one random number this match agrees on, across the wire.
+   *
+   * Drawn here and overwritten from the handshake on a LAN client, before
+   * anything derives from it — see `matchSeed.ts` for why content that wants
+   * "different every match" has to ask for this rather than call
+   * `Math.random()` itself.
+   */
+  matchSeed = randomMatchSeed();
+
   renderFps: RenderFps = renderFpsPreference();
   /**
    * Whether this machine is currently missing its own frame target, which is
