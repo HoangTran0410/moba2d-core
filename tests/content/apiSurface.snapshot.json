@@ -1,5 +1,5 @@
 {
-  "contract": 17,
+  "contract": 18,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -233,6 +233,7 @@
     "units.DEFAULT_CHAMPION_ATTACK.damage:number",
     "units.DEFAULT_CHAMPION_ATTACK.range:number",
     "units.MAX_UNIT_SIZE:number",
+    "units.Minion:class",
     "units.Monster:class",
     "units.Pet:class",
     "units.StatModifier:class",

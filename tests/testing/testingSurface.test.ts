@@ -29,6 +29,7 @@ describe('@moba2d/core/testing', () => {
       [
         'BasicAttack',
         'BasicAttackSwing',
+      'DEFAULT_TURRET_PRESET',
         'EventManager',
         'FogOfWar',
         'HotKeys',
@@ -44,6 +45,7 @@ describe('@moba2d/core/testing', () => {
         'Stats',
         'TEST_AVATAR_KEY',
         'TeamId',
+        'Turret',
         'TestVector',
         'buildTestApi',
         'createGame',

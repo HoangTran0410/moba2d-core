@@ -41,6 +41,19 @@ export { default as EventManager } from '../managers/EventManager';
 export { default as Minion } from '../game/gameObject/attackableUnits/Minion';
 
 /**
+ * A real tower to hang a passive on.
+ *
+ * Published the moment `ContentPackCode.turretPassives` existed: a pack that
+ * can now state what its turrets are built carrying has to be able to build one
+ * and watch the passive work. A stub with an `addBuff` would prove the passive
+ * calls `addBuff`, which is not the thing anybody doubts — the tower's own
+ * `update()` running the buffs, and `stats.attackDamage` being what a shot
+ * reads, are.
+ */
+export { default as Turret, DEFAULT_TURRET_PRESET } from '../game/gameObject/structures/Turret';
+export type { TurretPassive } from '../game/gameObject/structures/Turret';
+
+/**
  * Building a synthetic stat block, and checking a pack's numbers against
  * core's own ceiling.
  */

@@ -12,11 +12,39 @@ import Minion, {
   teamColors,
 } from '@/game/gameObject/attackableUnits/Minion';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
+import Pet from '@/game/gameObject/attackableUnits/Pet';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import { OBJECTIVE_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager';
 import { canSee } from '@/game/combat/Vision';
 import { pickAggroTarget, type AggroChoice, type AggroLadder } from '@/game/combat/AggroPriority';
 import { DEFAULT_TURRET_PRESET } from '@/game/config/tuningDefaults';
+
+/**
+ * How much further a turret defends an ally than it shoots.
+ *
+ * 1400 / 775 in the source game's own units. See `alliesInRange`.
+ */
+export const TURRET_DEFEND_RANGE_RATIO = 1.8;
+
+/**
+ * A passive a turret is built with — the shape `MonsterAbility` already has,
+ * for the same reason.
+ *
+ * The source game's turrets carry named passives (Ohmwrecker's ramp, Reinforced
+ * Armor, Warden's Eye), and writing them into this class would make every pack
+ * play with core's idea of what a tower does. `onSpawn` hands the pack the
+ * turret and lets it hang real buffs on it, exactly as a jungle camp's kit
+ * hangs its own — a turret is an `AttackableUnit` and runs its buffs inside
+ * `update()`, so nothing else is needed to make that work.
+ *
+ * What stays in core is the part that is a *rule* rather than a passive: which
+ * body a turret shoots first, and how far it will answer for an ally.
+ */
+export interface TurretPassive {
+  /** For a report to name; never shown to a player. */
+  name: string;
+  onSpawn(turret: Turret): void;
+}
 
 export interface TurretPresetData {
   health: number;
@@ -30,6 +58,8 @@ export interface TurretPresetData {
   repairDelay: number;
   /** health per frame once repairing. */
   repairRate: number;
+  /** Built-in passives — see `TurretPassive`. A pack's, never core's. */
+  passives?: readonly TurretPassive[];
 }
 
 /**
@@ -85,7 +115,18 @@ export default class Turret extends AttackableUnit {
   name = 'Trụ';
   attackRange: number;
   attackInterval: number;
-  damage: number;
+  /**
+   * What one shot lands for, read live off the stat rather than held.
+   *
+   * A field here would be the number a preset set once and nothing could ever
+   * change; going through `stats.attackDamage` is what lets a passive ramp it
+   * (the source game's "Warming Up") without that ramp having to live inside
+   * this class. Every other attacker in the game already amplifies through
+   * this slot.
+   */
+  get damage(): number {
+    return this.stats.attackDamage.value;
+  }
   rebuildTime: number;
   repairDelay: number;
   repairRate: number;
@@ -129,13 +170,22 @@ export default class Turret extends AttackableUnit {
 
     this.attackRange = preset.attackRange;
     this.attackInterval = preset.attackInterval;
-    this.damage = preset.damage;
+    // Through the stat, not a plain field. A turret's outgoing damage was the
+    // one attacker's number in the game that nothing could touch — no buff, no
+    // item, no passive — so a "warming up" ramp could only ever have been
+    // written inside this class. `stats.attackDamage` is the same slot every
+    // other attacker already amplifies through.
+    this.stats.attackDamage.baseValue = preset.damage;
     this.rebuildTime = preset.rebuildTime;
     this.repairDelay = preset.repairDelay;
     this.repairRate = preset.repairRate;
     this.reviveTime = preset.rebuildTime;
 
     this._anchor = this.position.copy();
+
+    // Last, with the body finished: a passive that reads `stats.attackDamage`
+    // or hangs a buff needs the turret it is given to be a complete one.
+    for (const passive of preset.passives ?? []) passive.onSpawn(this);
   }
 
   update() {
@@ -256,7 +306,24 @@ export default class Turret extends AttackableUnit {
       { attacker: unit => unit instanceof Minion, victim: ally => ally instanceof Champion },
       { attacker: unit => unit instanceof Monster, victim: ally => ally instanceof Champion },
     ],
-    nearest: [unit => unit instanceof Minion, unit => unit instanceof Champion],
+    // The source game's own order, which core had flattened to "any minion,
+    // then a champion". Wiki, *Turret* § Target Selection: pets, then siege and
+    // super minions, then melee, then casters, then champions.
+    //
+    // It is the difference between a turret that shoots whatever wandered in
+    // and one you can dive behind: the siege minion is the body that out-ranges
+    // the tower and shells it, so it is the one the tower answers first, and a
+    // champion is last because a wave standing in front of them is cover.
+    //
+    // `Pet` is checked before `Champion` on purpose — it extends it, so the
+    // champion rung would otherwise swallow every summon.
+    nearest: [
+      unit => unit instanceof Pet,
+      unit => unit instanceof Minion && unit.kind === 'cannon',
+      unit => unit instanceof Minion && unit.kind === 'melee',
+      unit => unit instanceof Minion && unit.kind === 'ranged',
+      unit => unit instanceof Champion,
+    ],
   };
 
   /**
@@ -307,9 +374,27 @@ export default class Turret extends AttackableUnit {
    * a rung a tower has, because a tower that answered every minion trading in
    * front of it would never shoot the wave it is supposed to hold.
    */
+  /**
+   * The allies this turret will answer for, which reach further than it shoots.
+   *
+   * The source game defends a champion within **1400** units of a turret whose
+   * own range is 775 — an ally can be attacked well outside what the tower can
+   * hit, and the tower still turns. Core had this at exactly the attack range,
+   * so a champion attacked one step outside it bought nothing at all from
+   * standing by their tower.
+   *
+   * Written as the ratio rather than the raw 1400 because this canvas is not
+   * the source game's grid: distances here are pixels and that number is
+   * theirs. The ratio is scale-free and survives a map that widens
+   * `attackRange`, which a copied constant would not.
+   */
   private alliesInRange(): AttackableUnit[] {
     return this.game.objectManager.queryObjects({
-      area: new Circle({ x: this.position.x, y: this.position.y, r: this.attackRange }),
+      area: new Circle({
+        x: this.position.x,
+        y: this.position.y,
+        r: this.attackRange * TURRET_DEFEND_RANGE_RATIO,
+      }),
       filters: [PredefinedFilters.type(Champion), PredefinedFilters.teamId(this.teamId)],
     }) as AttackableUnit[];
   }

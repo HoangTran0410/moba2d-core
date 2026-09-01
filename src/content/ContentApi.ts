@@ -18,6 +18,7 @@ import { lazy } from '@/content/ContentPack';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion, { DEFAULT_CHAMPION_ATTACK } from '@/game/gameObject/attackableUnits/Champion';
 import Pet from '@/game/gameObject/attackableUnits/Pet';
+import Minion from '@/game/gameObject/attackableUnits/Minion';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
 import { MAX_UNIT_SIZE, StatModifier, StatsModifier } from '@/game/gameObject/Stats';
 
@@ -168,6 +169,13 @@ export interface ContentApi {
     Champion: typeof Champion;
     Pet: typeof Pet;
     Monster: typeof Monster;
+    /**
+     * The third body, and the one that was missing. A pack could already reach
+     * a champion, a summon and a camp; a turret passive that has to ask "is
+     * there an enemy *minion* beside me" had no way to say it, and duck-typing
+     * a class through `constructor.name` does not survive a minified build.
+     */
+    Minion: typeof Minion;
     DEFAULT_CHAMPION_ATTACK: typeof DEFAULT_CHAMPION_ATTACK;
     MAX_UNIT_SIZE: typeof MAX_UNIT_SIZE;
     StatModifier: typeof StatModifier;
@@ -399,6 +407,7 @@ export function buildContentApi(): ContentApi {
     CHILL_DURATION_MS,
     units: Object.freeze({
       AttackableUnit,
+      Minion,
       Champion,
       Pet,
       Monster,

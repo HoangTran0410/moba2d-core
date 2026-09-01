@@ -1,4 +1,5 @@
 import type { ContentApi } from './ContentApi';
+import type { TurretPassive } from '@/game/gameObject/structures/Turret';
 import type {
   CreatureRigSpec,
   MonsterAbility,
@@ -1163,6 +1164,21 @@ export interface ContentPackCode {
   spells?: Record<string, SpellSource>;
   /** Keyed by *local* monster id — the same keys as `ContentPackData.monsters`. */
   monsterAbilities?: Record<string, MonsterAbility[]>;
+  /**
+   * What this pack's turrets are built carrying — the source game's named
+   * passives (an armour-piercing ramp, a damage floor while the lane is empty,
+   * true sight over the lane) as real buffs rather than branches inside
+   * `Turret`.
+   *
+   * Not keyed: turrets have no ids and every one on a map is the same kit, so
+   * this is a plain list where `monsterAbilities` is a record.
+   *
+   * What deliberately stays in core is the half that is a *rule* rather than a
+   * passive — which body a turret shoots first, and how far it will answer for
+   * an ally. A pack that declares nothing gets a plain tower, which is what
+   * every pack got before this field existed.
+   */
+  turretPassives?: TurretPassive[];
 }
 
 /**

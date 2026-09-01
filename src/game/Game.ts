@@ -7,6 +7,7 @@ import type {
 } from '@/content/ContentPack';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { withSimulationStep } from './simulationClock';
+import { contentRegistry } from '@/content/registry';
 import { randomMatchSeed } from './matchSeed';
 import { freshRenderStress, nextStressState } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
@@ -673,7 +674,17 @@ export default class Game {
   ) {
     const economy = resolveEconomy(tuning);
     for (const { x, y, teamId, preset } of turretsFromSlots(structureSlots, factions, tuning)) {
-      const turret = new Turret({ game: this, position: createVector(x, y), teamId, preset });
+      // The pack's turret kit, folded on at construction. `resolveTurretPreset`
+      // answers with numbers only — core's, then the map's, then the slot's —
+      // and the *code* half comes from the registry, the same crossing
+      // `monsterBodyPreset` makes for a camp's abilities. A pack that declares
+      // none gets a plain tower, which is every pack before this existed.
+      const turret = new Turret({
+        game: this,
+        position: createVector(x, y),
+        teamId,
+        preset: { ...preset, passives: contentRegistry().turretPassives() },
+      });
       // What a turret is *worth* is a statement about the economy, so it comes
       // from that group rather than from `TurretStats` beside its other
       // numbers — see `EconomyTuning`'s own doc comment.

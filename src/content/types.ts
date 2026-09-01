@@ -216,3 +216,4 @@ export type CombatText = InstanceType<ContentApi['helpers']['CombatText']>;
 // Quadtree shapes, which every area query is expressed in.
 export type Circle = InstanceType<ContentApi['utils']['Quadtree']['Circle']>;
 export type Rectangle = InstanceType<ContentApi['utils']['Quadtree']['Rectangle']>;
+export type { TurretPassive } from '@/game/gameObject/structures/Turret';

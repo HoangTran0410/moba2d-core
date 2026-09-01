@@ -7,6 +7,7 @@ import {
 } from './validate';
 import { isSpellLoader } from './ContentPack';
 import { assetManifest as coreAssetManifest } from '@/generated/assetManifest';
+import type { TurretPassive } from '@/game/gameObject/structures/Turret';
 import type {
   ChampionEntry,
   ContentPack,
@@ -114,6 +115,16 @@ export class PackRegistry {
   private readonly monsterList: QualifiedMonster[] = [];
   /** A monster's code half, by qualified monster id — mirrors `sources` for spells. */
   private readonly monsterAbilities = new Map<string, MonsterAbility[]>();
+  /**
+   * Every installed pack's turret passives, flattened.
+   *
+   * A list rather than a map because turrets have no ids, and *flattened*
+   * because a map's turrets are the map's — two packs installed at once do not
+   * get two towers, they get one tower carrying both packs' passives. That is
+   * the same answer `spells` gives for a colliding id, one level up: install
+   * order decides, and nothing is silently dropped.
+   */
+  private readonly turretPassiveList: TurretPassive[] = [];
   private readonly championList: QualifiedChampion[] = [];
   /** Installed items, by qualified id — the shop's whole catalogue. */
   private readonly itemsById = new Map<string, QualifiedItem>();
@@ -407,6 +418,7 @@ export class PackRegistry {
     // lazy-loaded, because `data.monsters` (the matching data half) is
     // already eager too; see `MonsterBody`'s doc comment for why the split
     // exists at all.
+    for (const passive of code.turretPassives ?? []) this.turretPassiveList.push(passive);
     for (const [localId, abilities] of Object.entries(code.monsterAbilities ?? {})) {
       this.monsterAbilities.set(qualify(packId, localId), abilities);
     }
@@ -693,6 +705,16 @@ export class PackRegistry {
     return this.monsterAbilities.get(qualifiedMonsterId);
   }
 
+  /**
+   * What every turret on this map is built carrying. `Game`'s turret loop is
+   * the one caller — the same shape `abilitiesFor` has, and for the same
+   * reason: it lets a preset carry a pack's code without core importing a pack
+   * file.
+   */
+  turretPassives(): readonly TurretPassive[] {
+    return this.turretPassiveList;
+  }
+
   reset(): void {
     this.revision += 1;
     this.packs.length = 0;
@@ -700,6 +722,7 @@ export class PackRegistry {
     this.itemsById.clear();
     this.monsterList.length = 0;
     this.monsterAbilities.clear();
+    this.turretPassiveList.length = 0;
     this.mapList.length = 0;
     this.sources.clear();
     this.display.clear();
