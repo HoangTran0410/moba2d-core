@@ -1,0 +1,48 @@
+/**
+ * Can the bot actually reach this kit?
+ *
+ * The one gate that catches an ability nobody can see is missing. Everything
+ * else in a pack's build fails loudly — a spell with no icon, a description
+ * quoting a number the engine no longer uses, a champion with five abilities.
+ * This one fails *silently*, in a match, as an absence: the bot has the
+ * ability, it is off cooldown, it is in range, and it is never pressed.
+ *
+ * That happened here. Reported as "sao bot ko bao giờ dùng R" — and nothing
+ * was broken. The ultimate scored 6 while an ordinary Q scored 16, so the Q
+ * won every evaluation it was available for. The cause is a single line of
+ * core's `inferRoles`: a `SELF` cast with a mana cost reads as
+ * `Buff | Shield`, which `scoreSpell` prices at **−5 above half health**, so
+ * the whole mask comes to 0 in a fight and `chooseSpell` drops anything
+ * scoring `<= 0`. Every transform, steroid, spin and self-cast engage tool
+ * ever written has that shape.
+ *
+ * The rules live in core (`@moba2d/core/testing/bots`) and call core's own
+ * `BotBrain.scoreSpell`, so they cannot drift from the numbers the bot
+ * actually uses. This file is only the population — the champions to sweep
+ * and whatever this pack has not fixed yet.
+ *
+ * **Keep this file.** Every new champion is swept the moment it is added to
+ * `data.champions`, which is the point: the shape is far easier to state
+ * once, here, than to notice once, in a match.
+ */
+import { describeBotRoles } from '@moba2d/core/testing/bots';
+import { describe, expect, it } from 'vitest';
+import { data } from '../pack';
+import * as spells from '../spells/index';
+
+describeBotRoles({
+  label: '__PACK_NAME__ — the bot can reach every kit',
+  spells,
+  champions: (data.champions ?? [])
+    .filter(champion => champion.playable)
+    .map(champion => ({ id: champion.id, name: champion.name, spells: champion.spells ?? [] })),
+  // `<rule>:<SpellId>` for anything found and not yet fixed. Stale entries
+  // fail on their own, so this list cannot outlive what it describes.
+  knownDebt: [],
+});
+
+describe('__PACK_NAME__ bot roles', () => {
+  it('sweeps every playable champion', () => {
+    expect((data.champions ?? []).filter(champion => champion.playable).length).toBeGreaterThan(0);
+  });
+});

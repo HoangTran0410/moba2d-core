@@ -1,0 +1,29 @@
+/**
+ * This pack keeps the game fast.
+ *
+ * moba2d is a fast game — that is a property of the engine, not of any one
+ * pack — and the reference pack's 306 abilities say what that means in
+ * numbers: no ultimate above 10 seconds, nothing at all above 12. A pack that
+ * puts a ninety-second cooldown on an ultimate has not made a slower
+ * champion, it has made one who is a basic-attacker for a minute and a half,
+ * and nothing else in a pack's build ever compares a cooldown to anything.
+ *
+ * The band lives in core (`@moba2d/core/testing/tempo`) so a new pack starts
+ * inside it rather than discovering it. Disagreeing is allowed and takes one
+ * line — `maxUltimateMs` / `maxBasicMs` — which is the point: a slower pack
+ * is a decision someone wrote down, not a number that drifted.
+ *
+ * What this cannot see is **uptime**. A 9-second buff on a 10-second cooldown
+ * is a permanent buff wearing a cooldown's clothes, and durations live in
+ * each spell's own constants where no generated file can reach them. Shorten
+ * a cooldown and check the duration by hand, in the same edit.
+ */
+import { describeTempo } from '@moba2d/core/testing/tempo';
+import { data } from '../pack';
+import { spellCatalog } from '../generated/spellCatalog';
+
+describeTempo({
+  label: '__PACK_NAME__ — nobody stands around waiting',
+  spellCatalog,
+  champions: (data.champions ?? []).filter(champion => champion.playable),
+});

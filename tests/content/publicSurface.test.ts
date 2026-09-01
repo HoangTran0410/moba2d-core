@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the eighteen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the twenty content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -192,6 +192,30 @@ describe('package.json public surface', () => {
         // is `node:fs` and a directory walk, and no pack's fixture world
         // should carry that to build a match.
         './testing/boundary',
+        // The nineteenth, and the first of these rules that fails as an
+        // *absence*. `./testing/bots` is `describeBotRoles`: it scores every
+        // ability in every kit through `BotBrain.scoreSpell` itself and
+        // refuses a kit the bot cannot reach. Reported from a real match as
+        // "the bot never presses R" — and nothing was broken. The ultimate
+        // was castable, in range and off cooldown; it scored 6 against an
+        // ordinary Q's 16, because `inferRoles` reads every costed `SELF`
+        // cast as `Buff | Shield` and `scoreSpell` prices `Shield` at −5
+        // above half health, which is exactly 0 once `Buff` is added — and
+        // `chooseSpell` drops candidates scoring `<= 0`. The first sweep of
+        // the three shipped packs found 226 abilities in that shape.
+        //
+        // It value-imports `BotBrain` on purpose, and that is precisely why
+        // it is not in the `./testing` barrel: `export *` would drag 84KB of
+        // engine into every pack test file that only wanted a champion.
+        './testing/bots',
+        // The twentieth. `./testing/tempo` is `describeTempo`, the cooldown
+        // band — 10s on an ultimate, 12s on a basic, measured off the
+        // reference pack's own 306 abilities. Here for `./testing/items`'
+        // reason: moba2d being a fast game is a property of the *engine*, and
+        // every pack was otherwise deciding it alone, in numbers nothing
+        // compared to anything. A pack that means to be slower overrides them
+        // in one visible line.
+        './testing/tempo',
         './testing/vitest',
         './testing/setup',
         // The two build helpers a pack's own tooling runs, added when the

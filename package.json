@@ -18,6 +18,8 @@
     "./testing/spell": "./src/testing/spellWorld.ts",
     "./testing/spells": "./src/testing/spellRegistry.ts",
     "./testing/items": "./src/testing/itemRules.ts",
+    "./testing/bots": "./src/testing/botRules.ts",
+    "./testing/tempo": "./src/testing/tempoRules.ts",
     "./testing/maps": "./src/testing/mapRules.ts",
     "./testing/boundary": "./src/testing/boundaryRules.ts",
     "./testing/vitest": "./src/testing/vitest.mjs",

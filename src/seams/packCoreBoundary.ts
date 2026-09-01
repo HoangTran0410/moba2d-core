@@ -168,6 +168,17 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     core's source scanners and its own boundary checker — this one — and a
  *     pack has no business reaching into either. A pack's map suite imported
  *     `/seams` for exactly one commit and this seam was right to refuse it.
+ *   - `/testing/bots` — `describeBotRoles`, the sweep that asks whether a bot
+ *     can reach a kit at all. It value-imports `BotBrain` on purpose: the
+ *     scores it reports come out of `scoreSpell` itself, so a pack cannot end
+ *     up gated on a table of role weights copied out of the engine on the day
+ *     somebody looked at it. That import is also exactly why it is not in the
+ *     `/testing` barrel — 84KB of engine dragged into every pack test file
+ *     that only wanted a champion fixture.
+ *   - `/testing/tempo` — `describeTempo`, the cooldown band. Cheap, and here
+ *     for the same reason `/testing/items` is: the ceiling is a property of
+ *     the *engine* — moba2d is a fast game — and every pack that adopts it
+ *     was otherwise deciding it alone, in numbers nothing compared.
  *   - `/pack-webp` and `/pack-assets` — the two build helpers a pack's own
  *     tooling runs: a Vite plugin that re-encodes art on the way into
  *     `dist/`, and the asset-manifest generator (a bin, but a pack test may
@@ -189,6 +200,8 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/items`,
   `${CORE_PACKAGE}/testing/maps`,
   `${CORE_PACKAGE}/testing/boundary`,
+  `${CORE_PACKAGE}/testing/bots`,
+  `${CORE_PACKAGE}/testing/tempo`,
   `${CORE_PACKAGE}/seams`,
   `${CORE_PACKAGE}/pack-webp`,
   `${CORE_PACKAGE}/pack-assets`,

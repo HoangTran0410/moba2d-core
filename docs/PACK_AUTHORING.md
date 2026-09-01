@@ -234,6 +234,62 @@ What a floor cannot say is the other direction — an old pack running on a
 *newer* core that removed something. Nothing checks that; core's side of the
 bargain is not removing members.
 
+## The two gates that fail as an absence
+
+Everything above fails loudly. These two fail by nothing happening, in a
+match, and both were reported that way before either existed.
+
+### Tell the bot what an ability *is*
+
+`@moba2d/core/testing/bots` sweeps every kit through `BotBrain.scoreSpell`
+itself and refuses a kit the bot cannot reach. The scaffold ships
+`tests/botRoles.test.ts` wired to your roster; keep it.
+
+The rule that matters is one line of `inferRoles`: **a `SELF` cast with a mana
+cost reads as `Buff | Shield`, and nothing else.** `scoreSpell` prices `Shield`
+at **+20 below half health and −5 above**, so that mask comes to exactly `0`
+in a fight — and `chooseSpell` drops any candidate scoring `<= 0`. The ability
+is not deprioritised while fighting. It is not in the list. A bot presses it
+only once it has already decided to run away.
+
+That is right for a panic button and wrong for every transform, steroid, spin
+and self-cast engage tool ever written. Core says so itself and refuses to
+guess: `Dash`, `Escape` and `Summon` are never inferred at all, because a bot
+that thinks its gap-closer is an escape runs *at* whatever is chasing it.
+
+So declare it:
+
+```ts
+static aiRoles = api.enums.SpellRole.Buff | api.enums.SpellRole.Burst;
+```
+
+Three things worth knowing before you write one:
+
+- **`Summon` scores nothing.** It is in the enum and `scoreSpell` has no term
+  for it. An ability tagged `Summon` alone scores *less* than the inference it
+  replaced — that happened here, and hand-tagging it made the bot use the
+  ability less often. Pair it with something the scorer pays for.
+- **`Shield` means "press this when nearly dead", not "this protects me".**
+  Tagging a shield-shaped engage ultimate `Shield` files it beside a heal.
+- **Do not restate what inference already reads correctly.** A ranged
+  `DIRECTION` skillshot is already `Damage | Poke | Burst`; a second copy by
+  hand is a copy that can drift.
+
+### Keep the game fast
+
+`@moba2d/core/testing/tempo` holds cooldowns to the band the reference pack
+was measured at: **10s on an ultimate, 12s on a basic** — 306 abilities, none
+above either. moba2d is a fast game; a ninety-second ultimate does not make a
+slower champion, it makes a basic-attacker for a minute and a half, and
+nothing else in a pack's build ever compares a cooldown to anything. Disagree
+in one line (`maxUltimateMs`, `maxBasicMs`) if your pack means to — the point
+is that it is written down.
+
+What the band cannot see is **uptime**. A nine-second buff on a ten-second
+cooldown is a permanent buff wearing a cooldown's clothes, and durations live
+in each spell's own constants where no generated file can reach them. Shorten
+a cooldown and check the duration in the same edit.
+
 ## Where things live
 
 ```
