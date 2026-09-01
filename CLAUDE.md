@@ -16,6 +16,7 @@ file you are editing.
 | writing a spell in `packs/reference/` | `docs/ADDING_SPELLS.md` — the three registration points, the `MissileSpellObject` base every skillshot extends, the buff catalogue's mandatory `stackId`, and the engine traps `tsc` cannot catch |
 | writing a spell in a **content pack** | `docs/PACK_AUTHORING.md` first, then `ADDING_SPELLS.md` |
 | designing VFX or tuning damage | `docs/VFX_STANDARD.md` |
+| adding a stat, pricing an item, or asking "what does League do here" | `docs/STATS_VS_LEAGUE.md` — the researched comparison, the four deliberate divergences, and why Riot's item data must not be imported |
 | touching the map editor | `docs/MAP_EDITOR.md` |
 | onboarding a human | `README.md` |
 
