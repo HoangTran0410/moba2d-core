@@ -89,6 +89,7 @@ import BuffAddType from '@/game/enums/BuffAddType';
 import EventType from '@/game/enums/EventType';
 import StatusFlags from '@/game/enums/StatusFlags';
 import { SpellForm } from '@/game/spell/runtime/CancelPolicy';
+import { SpellSlot } from '@/game/constants';
 import { SpellRole } from '@/game/ai/SpellRole';
 
 import { wallOutlinesInArea, slabVertices } from '@/game/gameObject/map/DynamicTerrain';
@@ -330,6 +331,7 @@ const ENUMS = Object.freeze({
   EventType,
   StatusFlags,
   SpellForm,
+  SpellSlot,
   SpellRole,
 });
 const TERRAIN = Object.freeze({

@@ -29,6 +29,32 @@ export const HotKeys = {
   SIX: 54,
 };
 
+/**
+ * Which index in `Champion.spells` each ability actually lives at.
+ *
+ * **Slot 0 is the basic attack, not Q.** `preset.ts` states it — "every kit
+ * has it in slot 0" — and `SpellHotKeys` below is the same list written as
+ * keys. Anything that fills the kit by counting from zero swaps the basic
+ * attack and shifts every ability one place left, which is precisely what a
+ * transforming ultimate did on its first outing: it replaced attack/Q/W where
+ * it meant Q/W/E, and the bug was only visible in a match.
+ *
+ * So the indices are published rather than counted. A pack writing
+ * `spells[SpellSlot.Q]` cannot make that mistake; a pack writing `spells[0]`
+ * has already made it.
+ */
+export const SpellSlot = Object.freeze({
+  /** The basic attack. Present on every kit, and not something a pack replaces. */
+  ATTACK: 0,
+  Q: 1,
+  W: 2,
+  E: 3,
+  R: 4,
+  /** The two summoner slots. */
+  D: 5,
+  F: 6,
+});
+
 export const SpellHotKeys = [
   // internal spell
   HotKeys.A,

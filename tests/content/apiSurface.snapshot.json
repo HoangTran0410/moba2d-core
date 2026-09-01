@@ -1,5 +1,5 @@
 {
-  "contract": 20,
+  "contract": 21,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -173,6 +173,14 @@
     "enums.SpellRole.Summon:number",
     "enums.SpellRole.Ultimate:number",
     "enums.SpellRole.Zone:number",
+    "enums.SpellSlot:object",
+    "enums.SpellSlot.ATTACK:number",
+    "enums.SpellSlot.D:number",
+    "enums.SpellSlot.E:number",
+    "enums.SpellSlot.F:number",
+    "enums.SpellSlot.Q:number",
+    "enums.SpellSlot.R:number",
+    "enums.SpellSlot.W:number",
     "enums.StatusFlags:object",
     "enums.StatusFlags.CanCast:number",
     "enums.StatusFlags.CanMove:number",

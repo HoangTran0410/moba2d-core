@@ -159,7 +159,10 @@ export interface AttackLaunchNetEvent {
 
 /**
  * A champion changed form: `stance` is the pack's own id, or `null` back to
- * the base kit. `spells` are the qualified ids now filling slots 0..n-1.
+ * the base kit. `slots` maps a **slot index** to the qualified spell id now
+ * filling it — keyed rather than positional, because slot 0 is the basic
+ * attack (`SpellSlot`) and a positional list is how the host and the client
+ * end up disagreeing about which three abilities changed.
  *
  * An event and not a snapshot field, for the same reason `BagEvent` is one: a
  * form changes twice a fight and then not at all, while a snapshot is thirty
@@ -177,7 +180,7 @@ export interface StanceEvent {
   k: 'stance';
   id: string;
   stance: string | null;
-  spells: string[];
+  slots: Record<string, string>;
 }
 
 /** A committed cast — the client plays the spell's visual half from this. */

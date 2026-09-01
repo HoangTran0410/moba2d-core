@@ -12,6 +12,7 @@ import { buildHeldItem } from '@/game/economy/ItemShop';
 import { contentCatalog } from '@/content/catalog';
 import { loadSpells, spellClassOfId } from '@/game/spellRegistry';
 import BasicAttack from '@/game/gameObject/coreSpells/BasicAttack';
+import type Spell from '@/game/gameObject/Spell';
 import { setNetRole } from './netRole';
 import { clearNetLink, netLinkLost } from './netLink';
 import { disarmNetUrl } from '@/scenes/lanSignal';
@@ -525,10 +526,13 @@ export class ClientSession implements NetGameHooks {
           unit.exitStance();
           return;
         }
-        if (!Array.isArray(event.spells) || !event.spells.every(id => typeof id === 'string')) {
-          return;
-        }
-        void this.applyStance(event.id, unit, event.stance, event.spells);
+        const slots = event.slots;
+        if (typeof slots !== 'object' || slots === null) return;
+        const entries = Object.entries(slots).filter(
+          ([slot, id]) => typeof id === 'string' && Number.isInteger(Number(slot))
+        ) as [string, string][];
+        if (entries.length === 0) return;
+        void this.applyStance(event.id, unit, event.stance, entries);
         return;
       }
       case 'cast': {
@@ -571,22 +575,26 @@ export class ClientSession implements NetGameHooks {
     netId: string,
     unit: Champion,
     id: string,
-    spellIds: string[]
+    entries: [string, string][]
   ): Promise<void> {
     const generation = (this.stanceGeneration.get(netId) ?? 0) + 1;
     this.stanceGeneration.set(netId, generation);
 
-    await loadSpells(spellIds);
+    await loadSpells(entries.map(([, spellId]) => spellId));
 
     // The world moved while the chunk was fetching: a newer stance event
     // superseded this one, or the champion left entirely.
     if (this.stanceGeneration.get(netId) !== generation) return;
     if (unit.toRemove) return;
 
-    unit.enterStance(
-      id,
-      spellIds.map(spellId => new (spellClassOfId(spellId) ?? BasicAttack)(unit))
-    );
+    // Keyed by slot the whole way across, so the client fills exactly the
+    // indices the host filled. A positional list is what let the two ends
+    // disagree about which abilities a form replaces.
+    const built: Record<number, Spell> = {};
+    for (const [slot, spellId] of entries) {
+      built[Number(slot)] = new (spellClassOfId(spellId) ?? BasicAttack)(unit);
+    }
+    unit.enterStance(id, built);
   }
 
   /**

@@ -14,35 +14,53 @@ import { describe, expect, it } from 'vitest';
 import { stanceSignatureOf } from '@/game/net/HostSession';
 
 describe('the host-side stance signature', () => {
-  const base = { stance: null, spells: [] as string[] };
+  const base = { stance: null, slots: {} as Record<string, string> };
 
   it('is stable while nothing changes', () => {
     expect(stanceSignatureOf(base)).toBe(stanceSignatureOf({ ...base }));
   });
 
   it('changes when a form is entered', () => {
-    const form = { stance: 'kurama', spells: ['naruto:Naruto_Q2', 'naruto:Naruto_W2'] };
+    const form = { stance: 'kurama', slots: { 1: 'naruto:Naruto_Q2', 2: 'naruto:Naruto_W2' } };
     expect(stanceSignatureOf(form)).not.toBe(stanceSignatureOf(base));
   });
 
   it('changes when one form is swapped straight for another', () => {
-    const kurama = { stance: 'kurama', spells: ['naruto:Naruto_Q2'] };
-    const sage = { stance: 'sage', spells: ['naruto:Naruto_Q2'] };
+    const kurama = { stance: 'kurama', slots: { 1: 'naruto:Naruto_Q2' } };
+    const sage = { stance: 'sage', slots: { 1: 'naruto:Naruto_Q2' } };
     expect(stanceSignatureOf(kurama)).not.toBe(stanceSignatureOf(sage));
   });
 
   it('changes when a form keeps its name but not its contents', () => {
     // The spell ids are in the signature, not just the stance id. A pack that
-    // rebuilt a form's slots without renaming the form still has to cross,
-    // or the client casts the abilities it had before.
-    const before = { stance: 'kurama', spells: ['naruto:Naruto_Q2'] };
-    const after = { stance: 'kurama', spells: ['naruto:Naruto_Q3'] };
+    // rebuilt a form's slots without renaming the form still has to cross, or
+    // the client casts the abilities it had before.
+    const before = { stance: 'kurama', slots: { 1: 'naruto:Naruto_Q2' } };
+    const after = { stance: 'kurama', slots: { 1: 'naruto:Naruto_Q3' } };
     expect(stanceSignatureOf(before)).not.toBe(stanceSignatureOf(after));
+  });
+
+  it('changes when the same spell moves to a different slot', () => {
+    // The whole reason the payload is keyed: a form that replaced Q and one
+    // that replaced W are different forms, and a positional list said they
+    // were the same.
+    const onQ = { stance: 'kurama', slots: { 1: 'naruto:Naruto_Q2' } };
+    const onW = { stance: 'kurama', slots: { 2: 'naruto:Naruto_Q2' } };
+    expect(stanceSignatureOf(onQ)).not.toBe(stanceSignatureOf(onW));
+  });
+
+  it('does not change when the same slots are stated in a different order', () => {
+    // `Object.entries` is insertion-ordered, so without the sort a form
+    // rebuilt in another order would look like a change and re-send every
+    // tick that rebuilt it.
+    const one = { stance: 'kurama', slots: { 1: 'a', 2: 'b', 3: 'c' } };
+    const other = { stance: 'kurama', slots: { 3: 'c', 1: 'a', 2: 'b' } };
+    expect(stanceSignatureOf(one)).toBe(stanceSignatureOf(other));
   });
 
   it('tells an empty form apart from no form', () => {
     // `''` and `null` must not collide into the same string, or leaving a
     // form named by the empty string would be a silent no-op.
-    expect(stanceSignatureOf({ stance: '', spells: [] })).not.toBe(stanceSignatureOf(base));
+    expect(stanceSignatureOf({ stance: '', slots: {} })).not.toBe(stanceSignatureOf(base));
   });
 });

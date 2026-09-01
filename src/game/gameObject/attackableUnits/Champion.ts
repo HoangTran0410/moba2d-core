@@ -770,21 +770,38 @@ export default class Champion extends AttackableUnit {
   stance: string | null = null;
 
   /**
-   * The slots `enterStance` displaced, held so `exitStance` can hand back the
-   * *instances* rather than build lookalikes.
+   * The slots `enterStance` displaced, keyed by index, held so `exitStance`
+   * can hand back the *instances* rather than build lookalikes.
    *
    * Holding instances is not an optimisation. Everything a spell remembers
    * between casts — a running cooldown, a stack count, an active phase —
    * lives on the instance and nowhere else, which is the same fact
    * `applyPreset` already keeps a slot's instance for.
    */
-  private baseStanceSpells: Spell[] | null = null;
+  private baseStanceSpells: Map<number, Spell> | null = null;
+
+  /** Which indices the standing stance replaced. Empty in the base form. */
+  get stanceSlots(): number[] {
+    return this.baseStanceSpells ? [...this.baseStanceSpells.keys()] : [];
+  }
 
   /**
-   * Swap the front of the kit for another, keeping both alive.
+   * Swap part of the kit for another, keeping both alive.
    *
-   * `spells` fills slots 0..n-1; anything past it is untouched, which is what
-   * leaves the ultimate that triggered the form in place to end it.
+   * **Keyed by slot, deliberately.** The first version took an array and
+   * filled from index 0, which is the basic attack — see `SpellSlot`. A
+   * transforming ultimate meaning Q/W/E therefore replaced attack/Q/W, and
+   * nothing caught it until someone played a match. An index a caller has to
+   * count is an index a caller gets wrong, so the caller names it:
+   *
+   *     champion.enterStance('kurama', {
+   *       [SpellSlot.Q]: new BijuuRasengan(champion),
+   *       [SpellSlot.W]: new KuramaArms(champion),
+   *       [SpellSlot.E]: new Bijuudama(champion),
+   *     });
+   *
+   * Any slot not named is untouched, which is what leaves the ultimate that
+   * triggered the form in place to end it.
    *
    * **Not `replaceSpell`.** That seam retires a spell for good — it calls
    * `onRemoved()`, whose sweep takes every buff naming the spell as its
@@ -801,16 +818,18 @@ export default class Champion extends AttackableUnit {
    * silently rebuilding the kit under it would reset every cooldown in the
    * form, which is the same exploit one level up.
    */
-  enterStance(id: string, spells: Spell[]): void {
+  enterStance(id: string, spells: Record<number, Spell>): void {
     if (this.stance === id) return;
     if (this.stance !== null) this.exitStance();
 
-    const displaced: Spell[] = [];
-    for (let index = 0; index < spells.length; index++) {
+    const displaced = new Map<number, Spell>();
+    for (const [key, replacement] of Object.entries(spells)) {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index < 0 || index >= this.spells.length) continue;
       const standing = this.spells[index];
-      displaced.push(standing);
+      displaced.set(index, standing);
       standing?.suspend();
-      this.spells[index] = spells[index];
+      this.spells[index] = replacement;
     }
     this.baseStanceSpells = displaced;
     this.stance = id;
@@ -820,9 +839,9 @@ export default class Champion extends AttackableUnit {
   exitStance(): void {
     const base = this.baseStanceSpells;
     if (!base) return;
-    for (let index = 0; index < base.length; index++) {
+    for (const [index, original] of base) {
       this.spells[index]?.suspend();
-      this.spells[index] = base[index];
+      this.spells[index] = original;
     }
     this.baseStanceSpells = null;
     this.stance = null;

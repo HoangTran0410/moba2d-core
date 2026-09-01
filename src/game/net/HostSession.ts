@@ -71,20 +71,33 @@ const bagOf = (champion: Champion): (string | null)[] => {
  */
 export const stanceSignatureOf = (stance: {
   stance: string | null;
-  spells: string[];
+  slots: Record<string, string>;
 }): string =>
   // `null` gets a marker of its own rather than folding to `''`. A pack may
   // legally name a form with the empty string, and collapsing the two would
   // make leaving *that* form a change the diff cannot see.
-  `${stance.stance === null ? '\u0000none' : stance.stance}\u0000${stance.spells.join('\u0000')}`;
+  //
+  // Slots are sorted before joining: `Object.entries` order is insertion
+  // order, so the same form built in a different order would otherwise look
+  // like a change and re-send every tick it was rebuilt.
+  `${stance.stance === null ? '\u0000none' : stance.stance}\u0000${Object.entries(stance.slots)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([slot, id]) => `${slot}:${id}`)
+    .join('\u0000')}`;
 
-const stanceOf = (champion: Champion): { stance: string | null; spells: string[] } => ({
-  stance: champion.stance,
-  spells:
-    champion.stance === null
-      ? []
-      : champion.spells.map(spell => spellIdOfClass(spell?.constructor as never) ?? 'BasicAttack'),
-});
+const stanceOf = (
+  champion: Champion
+): { stance: string | null; slots: Record<string, string> } => {
+  const slots: Record<string, string> = {};
+  // Only the slots the stance actually took, which the champion already has
+  // to remember in order to give them back — so the wire says exactly what
+  // changed rather than restating a whole kit the client already has.
+  for (const index of champion.stanceSlots) {
+    const spell = champion.spells[index];
+    slots[String(index)] = spellIdOfClass(spell?.constructor as never) ?? 'BasicAttack';
+  }
+  return { stance: champion.stance, slots };
+};
 
 /** What this host has installed, so a joiner can install the same. */
 const installedManifestUrls = (): string[] => {

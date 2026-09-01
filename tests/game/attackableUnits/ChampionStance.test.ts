@@ -20,11 +20,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import Spell from '../../../src/game/gameObject/Spell';
 import Buff from '../../../src/game/gameObject/Buff';
+import { SpellSlot } from '../../../src/game/constants';
 import { createGame, stubGameGlobals } from '../fixtures';
 
 class Named extends Spell {
   targetingMode = 'SELF' as const;
   coolDown = 1000;
+}
+class Attack extends Named {
+  name = 'Attack';
 }
 class BaseQ extends Named {
   name = 'BaseQ';
@@ -53,13 +57,31 @@ class OtherQ extends Named {
 
 let game: ReturnType<typeof createGame>;
 
+/**
+ * Laid out the way a real kit is — `[attack, Q, W, E, R]`, see `SpellSlot`.
+ * The first version of this suite used a bare four-spell array starting at
+ * index 0, which is exactly the shape that hid the bug: a stance filling
+ * "the first three" looked correct against a kit with no basic attack in it
+ * and replaced attack/Q/W against every real one.
+ */
 const champion = () => {
   const unit = new Champion({ game, teamId: 'blue' });
-  unit.replaceSpells([new BaseQ(unit), new BaseW(unit), new BaseE(unit), new Ult(unit)]);
+  unit.replaceSpells([
+    new Attack(unit),
+    new BaseQ(unit),
+    new BaseW(unit),
+    new BaseE(unit),
+    new Ult(unit),
+  ]);
   return unit;
 };
 
-const formSpells = (unit: Champion) => [new FormQ(unit), new FormW(unit), new FormE(unit)];
+/** The three ability slots a transform swaps, keyed the way a pack writes it. */
+const kurama = (unit: Champion) => ({
+  [SpellSlot.Q]: new FormQ(unit),
+  [SpellSlot.W]: new FormW(unit),
+  [SpellSlot.E]: new FormE(unit),
+});
 
 beforeEach(() => {
   stubGameGlobals();
@@ -70,13 +92,51 @@ afterEach(() => vi.unstubAllGlobals());
 describe('champion stance', () => {
   it('swaps the slots it is given and leaves the rest alone', () => {
     const unit = champion();
-    const ult = unit.spells[3];
+    const ult = unit.spells[SpellSlot.R];
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
 
-    expect(unit.spells.map(s => s.name)).toEqual(['FormQ', 'FormW', 'FormE', 'Ult']);
-    expect(unit.spells[3]).toBe(ult);
+    expect(unit.spells.map(s => s.name)).toEqual(['Attack', 'FormQ', 'FormW', 'FormE', 'Ult']);
+    expect(unit.spells[SpellSlot.R]).toBe(ult);
     expect(unit.stance).toBe('kurama');
+  });
+
+  it('leaves the basic attack alone', () => {
+    // The bug this API shape exists to prevent, reported from a real match:
+    // the first `enterStance` took an array and filled from index 0, so a
+    // form meaning Q/W/E replaced attack/Q/W and every ability sat one slot
+    // to the left. Nothing in the type system had an opinion, because both
+    // are just `Spell`.
+    const unit = champion();
+    const attack = unit.spells[SpellSlot.ATTACK];
+
+    unit.enterStance('kurama', kurama(unit));
+
+    expect(unit.spells[SpellSlot.ATTACK]).toBe(attack);
+    expect(unit.spells[SpellSlot.Q].name).toBe('FormQ');
+    expect(unit.spells[SpellSlot.E].name).toBe('FormE');
+  });
+
+  it('reports which slots it took', () => {
+    // The wire reads this to say what changed; if it lied, a client would
+    // rebuild the wrong three.
+    const unit = champion();
+    expect(unit.stanceSlots).toEqual([]);
+
+    unit.enterStance('kurama', kurama(unit));
+
+    expect([...unit.stanceSlots].sort()).toEqual([SpellSlot.Q, SpellSlot.W, SpellSlot.E].sort());
+  });
+
+  it('ignores a slot that is not on the kit', () => {
+    // A pack naming slot 99 is a pack with a bug; core must not grow the
+    // array to fit it and leave holes where a spell should be.
+    const unit = champion();
+    const before = unit.spells.length;
+
+    unit.enterStance('bad', { 99: new FormQ(unit) });
+
+    expect(unit.spells.length).toBe(before);
   });
 
   it('gives back the very same instances on exit', () => {
@@ -85,36 +145,36 @@ describe('champion stance', () => {
     const unit = champion();
     const before = [...unit.spells];
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
     unit.exitStance();
 
     expect(unit.spells).toEqual(before);
-    expect(unit.spells[0]).toBe(before[0]);
+    expect(unit.spells[SpellSlot.Q]).toBe(before[SpellSlot.Q]);
     expect(unit.stance).toBe(null);
   });
 
   it('freezes a cooldown instead of refunding it', () => {
     // The exploit. `deactivate()` would have zeroed this.
     const unit = champion();
-    unit.spells[0].currentCooldown = 800;
+    unit.spells[SpellSlot.Q].currentCooldown = 800;
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
     unit.exitStance();
 
-    expect(unit.spells[0].currentCooldown).toBe(800);
+    expect(unit.spells[SpellSlot.Q].currentCooldown).toBe(800);
   });
 
   it('keeps a buff the dormant spell is the source of', () => {
     // `onRemoved()`'s sweep would have taken this with it.
     const unit = champion();
-    const source = unit.spells[0];
+    const source = unit.spells[SpellSlot.Q];
     // `(duration, sourceUnit, targetUnit)`; -1 is the permanent duration a
     // kit passive hangs, which is exactly the kind `onRemoved()` sweeps.
     const buff = new Buff(-1, unit, unit);
     buff.sourceSpell = source;
     unit.addBuff(buff);
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
 
     expect(unit.buffs).toContain(buff);
   });
@@ -123,12 +183,12 @@ describe('champion stance', () => {
     // Nidalee's two forms each keep their own timers; that is free here,
     // because each form is its own instance holding its own field.
     const unit = champion();
-    const form = formSpells(unit);
-    form[0].currentCooldown = 500;
+    const form = kurama(unit);
+    form[SpellSlot.Q].currentCooldown = 500;
 
     unit.enterStance('kurama', form);
 
-    expect(unit.spells[0].currentCooldown).toBe(500);
+    expect(unit.spells[SpellSlot.Q].currentCooldown).toBe(500);
   });
 
   it('exits the standing stance before entering a different one', () => {
@@ -137,11 +197,15 @@ describe('champion stance', () => {
     const unit = champion();
     const base = [...unit.spells];
 
-    unit.enterStance('kurama', formSpells(unit));
-    unit.enterStance('sage', [new OtherQ(unit), new FormW(unit), new FormE(unit)]);
+    unit.enterStance('kurama', kurama(unit));
+    unit.enterStance('sage', {
+      [SpellSlot.Q]: new OtherQ(unit),
+      [SpellSlot.W]: new FormW(unit),
+      [SpellSlot.E]: new FormE(unit),
+    });
 
     expect(unit.stance).toBe('sage');
-    expect(unit.spells[0].name).toBe('OtherQ');
+    expect(unit.spells[SpellSlot.Q].name).toBe('OtherQ');
 
     unit.exitStance();
 
@@ -150,12 +214,12 @@ describe('champion stance', () => {
 
   it('treats re-entering the standing stance as a no-op, not a refresh', () => {
     const unit = champion();
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
     const standing = [...unit.spells];
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
 
-    expect(unit.spells[0]).toBe(standing[0]);
+    expect(unit.spells[SpellSlot.Q]).toBe(standing[SpellSlot.Q]);
   });
 
   it('exiting with no stance standing does nothing', () => {
@@ -173,13 +237,19 @@ describe('champion stance', () => {
     // somewhere else entirely. Exiting has to hand *those* back — which works
     // only because the outgoing set is kept rather than reconstructed.
     const unit = new Champion({ game, teamId: 'blue' });
-    unit.replaceSpells([new OtherQ(unit), new BaseW(unit), new BaseE(unit), new Ult(unit)]);
+    unit.replaceSpells([
+      new Attack(unit),
+      new OtherQ(unit),
+      new BaseW(unit),
+      new BaseE(unit),
+      new Ult(unit),
+    ]);
     const borrowed = [...unit.spells];
 
-    unit.enterStance('kurama', formSpells(unit));
+    unit.enterStance('kurama', kurama(unit));
     unit.exitStance();
 
     expect(unit.spells).toEqual(borrowed);
-    expect(unit.spells[0].name).toBe('OtherQ');
+    expect(unit.spells[SpellSlot.Q].name).toBe('OtherQ');
   });
 });
