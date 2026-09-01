@@ -186,7 +186,7 @@ sau khi biến hình.
 ## Pack `naruto`
 
 Repo mới `moba2d-packs/naruto`, checkout tại `moba2d/naruto/`, scaffold bằng
-`npx moba2d-pack-new`. `coreRange: '>=1.19.0'`.
+`npx moba2d-pack-new`. `coreRange: '>=1.20.0'`.
 
 ### Roster — 12 tướng
 
@@ -245,7 +245,7 @@ hợp lệ và đã bị loại từ đầu.
 2. Core #1 zone: map editor
 3. Core #2 stance: `Spell.suspend` + `Champion.enterStance/exitStance` + tests
 4. Core #2 stance: net event
-5. `contract:bump` → 1.19.0, `npm run verify`
+5. `contract:bump` → 1.20.0, `npm run verify`
 6. Scaffold pack `naruto`, import 12 chân dung
 7. 10 tướng thường (40 spell)
 8. Naruto + Sasuke (14 spell, gồm 2 stance)
@@ -253,12 +253,12 @@ hợp lệ và đã bị loại từ đầu.
 10. Ngũ hành + cân bằng
 
 Bước 1–5 phải xong và `verify` xanh trước khi bước 6 bắt đầu: pack cần core
-1.19 đã publish để `coreRange` có nghĩa.
+1.20 đã publish để `coreRange` có nghĩa.
 
 **Spec này lớn hơn một implementation plan và được tách làm hai**, cắt đúng
 ở ranh giới repo:
 
-- **Plan A — core 1.19** (bước 1–5): hai cơ chế engine, trong `moba2d-core`,
+- **Plan A — core 1.20** (bước 1–5): hai cơ chế engine, trong `moba2d-core`,
   không có gì của Naruto trong đó. Nghiệm thu là `npm run verify` xanh cộng
   một map thử có zone và một tướng thử có stance dựng bằng `testing/spell`.
 - **Plan B — pack `naruto`** (bước 6–10): repo riêng, chỉ bắt đầu sau khi

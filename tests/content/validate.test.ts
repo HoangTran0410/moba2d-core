@@ -236,6 +236,111 @@ describe('validatePack', () => {
     if (result.ok === false) expect(result.errors.join('\n')).toMatch(/lava/);
   });
 
+  // ── terrain zones ────────────────────────────────────────────────────────
+  //
+  // A zone is a tagged region that is deliberately *not* one of the three
+  // layers: it never reaches the nav grid, blocks no sight, and conceals
+  // nobody. So it is checked here rather than folded into the layer loop
+  // above — the layer loop's whole job is to refuse a fourth layer, and a
+  // zone must not become one.
+
+  const zoneMap = (zones: unknown) => ({
+    manifest: goodManifest,
+    maps: [
+      {
+        id: 'arena',
+        name: 'Arena',
+        size: 4000,
+        factions: [{ id: 'solo' }],
+        geometry: {
+          terrain: { wall: [], bush: [], water: [] },
+          zones,
+          slots: { spawn: [], minion: [], structure: [], neutral: [] },
+        },
+      },
+    ],
+  });
+
+  const sandZone = (extra: Record<string, unknown> = {}) => ({
+    id: 'sand',
+    name: 'Cát',
+    speedMultiplier: 0.8,
+    render: { fill: '#d9c08a' },
+    polygons: [
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+      ],
+    ],
+    ...extra,
+  });
+
+  it('accepts a map that declares no zones at all', () => {
+    expect(validatePack(zoneMap(undefined)).ok).toBe(true);
+  });
+
+  it('accepts a well-formed zone', () => {
+    expect(validatePack(zoneMap([sandZone()])).ok).toBe(true);
+  });
+
+  it('accepts a zone that states no speed multiplier', () => {
+    const zone = sandZone();
+    delete (zone as Record<string, unknown>).speedMultiplier;
+    expect(validatePack(zoneMap([zone])).ok).toBe(true);
+  });
+
+  it('refuses two zones sharing an id', () => {
+    // `zoneIdsAt` answers with ids, and a spell asking "am I on sand" gets a
+    // yes from whichever polygon happens to be found first. Two zones named
+    // `sand` with different speeds is a map that means two things at once.
+    const result = validatePack(zoneMap([sandZone(), sandZone({ name: 'Cát 2' })]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join('\n')).toMatch(/sand/);
+  });
+
+  it('refuses a zone with no render fill', () => {
+    // Core has no palette to fall back on: a zone's colour is the pack's own
+    // vocabulary, and an unpainted zone is an invisible speed change.
+    const zone = sandZone();
+    delete (zone as Record<string, unknown>).render;
+    const result = validatePack(zoneMap([zone]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join('\n')).toMatch(/render/);
+  });
+
+  it('refuses a negative speed multiplier', () => {
+    const result = validatePack(zoneMap([sandZone({ speedMultiplier: -1 })]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join('\n')).toMatch(/negative|speedMultiplier/);
+  });
+
+  it('refuses a polygon that is not a polygon', () => {
+    // Two points is a line. `CollideUtils.pointPolygon` returns false for
+    // every point against it, so the zone would exist, cost a query, and
+    // never contain anybody.
+    const result = validatePack(
+      zoneMap([
+        sandZone({
+          polygons: [
+            [
+              { x: 0, y: 0 },
+              { x: 100, y: 0 },
+            ],
+          ],
+        }),
+      ])
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join('\n')).toMatch(/polygon/i);
+  });
+
+  it('refuses zones that are not an array', () => {
+    const result = validatePack(zoneMap({ sand: [] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join('\n')).toMatch(/zones/);
+  });
+
   it('accepts a map whose geometry is a lazy loader, unvalidated until it resolves', () => {
     // Exactly like `SpellSource`: a loader's own body cannot be inspected
     // synchronously, so validation checks that it is a function and stops —

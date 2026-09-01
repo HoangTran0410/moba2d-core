@@ -10,7 +10,7 @@ import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import Monster from '@/game/gameObject/attackableUnits/Monster';
 import { PredefinedParticleSystems } from '@/game/gameObject/helpers/ParticleSystem';
-import type { ActiveMap } from '@/content/ContentPack';
+import type { ActiveMap, TerrainZone } from '@/content/ContentPack';
 import { resolveTerrainTuning, type ResolvedTerrainTuning } from '@/game/config/mapTuning';
 import Obstacle from './Obstacle';
 import TerrainField from './TerrainField';
@@ -21,6 +21,19 @@ const TERRAIN_LAYERS: readonly { key: 'wall' | 'bush' | 'water'; type: string }[
   { key: 'bush', type: TerrainType.BUSH },
   { key: 'water', type: TerrainType.WATER },
 ];
+
+/**
+ * One polygon of one zone, with the box the zone quadtree indexes it by.
+ *
+ * Flattened per polygon rather than per zone because that is the granularity
+ * a quadtree can prune at: a zone whose two patches sit in opposite corners
+ * of the map has a bounding box covering the whole map, and indexing it that
+ * way makes every query retrieve it.
+ */
+interface ZoneRegion {
+  zone: TerrainZone;
+  vertices: { x: number; y: number }[];
+}
 
 export default class TerrainMap {
   game: any;
@@ -36,6 +49,20 @@ export default class TerrainMap {
   readonly terrainSpeed: ResolvedTerrainTuning;
 
   /**
+   * The map's zones, and a quadtree over them that is **not** `quadtree`.
+   *
+   * Kept apart deliberately, and this is the single most load-bearing
+   * decision about zones. `FogOfWar`, `NavigationSystem` (via
+   * `wallPolygons`) and `DynamicTerrain.wallOutlinesInArea` all read
+   * `quadtree`; a zone arriving in it is a patch of sand that blocks sight,
+   * or that pathfinding refuses to cross. It is the same reasoning
+   * `DynamicTerrain` states for staying out of `getObstaclesInArea`, one
+   * layer down.
+   */
+  readonly zones: readonly TerrainZone[];
+  private readonly zoneQuadtree: Quadtree | null;
+
+  /**
    * @param map The active match's map, geometry already resolved. Required,
    *   not defaulted: `validate.ts` refuses a pack whose map has no size, so a
    *   `TerrainMap` built without one is a programming error to surface, not
@@ -46,7 +73,6 @@ export default class TerrainMap {
     this.game = game;
     this.size = map.size;
     this.obstacles = [];
-    this.terrainSpeed = resolveTerrainTuning(map.tuning);
 
     this.rippleEffect = PredefinedParticleSystems.ripple();
 
@@ -72,6 +98,83 @@ export default class TerrainMap {
         this.quadtree.insert(o.getBoundingBox());
       }
     }
+
+    this.zones = Object.freeze([...(map.zones ?? [])]);
+    this.zoneQuadtree = this.zones.length === 0 ? null : this.buildZoneIndex();
+
+    // Resolved *after* the zones, because a zone that changes speed has to
+    // switch the per-frame pass on the same way a tuned river does — and
+    // `resolveTerrainTuning` only ever sees `map.tuning`, which zones are
+    // deliberately not part of (their multiplier lives on the zone itself).
+    const tuned = resolveTerrainTuning(map.tuning);
+    const zonesAffectSpeed = this.zones.some(
+      zone => zone.speedMultiplier !== undefined && zone.speedMultiplier !== 1
+    );
+    this.terrainSpeed =
+      zonesAffectSpeed && !tuned.affectsSpeed ? { ...tuned, affectsSpeed: true } : tuned;
+  }
+
+  /** One quadtree over every polygon of every zone. See `zones`. */
+  private buildZoneIndex(): Quadtree {
+    const tree = new Quadtree({
+      x: 0,
+      y: 0,
+      w: this.size,
+      h: this.size,
+      maxObjects: 10,
+      maxLevels: 6,
+    });
+    for (const zone of this.zones) {
+      for (const vertices of zone.polygons) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const vertex of vertices) {
+          if (vertex.x < minX) minX = vertex.x;
+          if (vertex.x > maxX) maxX = vertex.x;
+          if (vertex.y < minY) minY = vertex.y;
+          if (vertex.y > maxY) maxY = vertex.y;
+        }
+        const region: ZoneRegion = { zone, vertices };
+        tree.insert(
+          new Rectangle({ x: minX, y: minY, w: maxX - minX, h: maxY - minY, data: region })
+        );
+      }
+    }
+    return tree;
+  }
+
+  /**
+   * The ids of every zone covering a point, in the map's own declared order.
+   *
+   * Declared order rather than retrieval order because the quadtree's is an
+   * implementation detail that changes with the tree's shape, and a pack
+   * reading `zoneIdsAt(...)[0]` would silently depend on it.
+   */
+  zoneIdsAt(x: number, y: number): string[] {
+    const found = this.zoneRegionsAt(x, y);
+    if (found.length === 0) return [];
+    const ids = new Set(found.map(region => region.zone.id));
+    return this.zones.filter(zone => ids.has(zone.id)).map(zone => zone.id);
+  }
+
+  /** Whether a point is inside the named zone. An unknown id is simply a miss. */
+  inZone(x: number, y: number, id: string): boolean {
+    for (const region of this.zoneRegionsAt(x, y)) {
+      if (region.zone.id === id) return true;
+    }
+    return false;
+  }
+
+  private zoneRegionsAt(x: number, y: number): ZoneRegion[] {
+    if (!this.zoneQuadtree) return [];
+    const found: ZoneRegion[] = [];
+    for (const box of this.zoneQuadtree.retrieve(new Circle({ x, y, r: 1 }))) {
+      const region = box.data as ZoneRegion;
+      if (CollideUtils.pointPolygon(x, y, region.vertices)) found.push(region);
+    }
+    return found;
   }
 
   /**
@@ -253,6 +356,21 @@ export default class TerrainMap {
     if (this.terrainSpeed.water !== 1 && this.containsPoint(x, y, TerrainType.WATER)) {
       factor *= this.terrainSpeed.water;
     }
+    // Zones multiply in on the same terms, and a zone is queried at most once
+    // per point: `zoneRegionsAt` is one retrieve, where the two layers above
+    // are one each.
+    if (this.zoneQuadtree) {
+      const seen = new Set<string>();
+      for (const region of this.zoneRegionsAt(x, y)) {
+        const multiplier = region.zone.speedMultiplier;
+        if (multiplier === undefined || multiplier === 1) continue;
+        // A zone drawn as two overlapping patches is still one zone, and must
+        // not slow twice where they meet.
+        if (seen.has(region.zone.id)) continue;
+        seen.add(region.zone.id);
+        factor *= multiplier;
+      }
+    }
     return factor;
   }
 
@@ -342,6 +460,11 @@ export default class TerrainMap {
       else if (o.type === TerrainType.BUSH) bushes.push(o);
     }
 
+    // Zones go down first, underneath everything. They are ground, not
+    // objects standing on it: a river drawn over a desert should read as a
+    // river, and a bush inside a mist bank must still look like a bush.
+    this.drawZones();
+
     // The paint order — water, ripples, bushes, walls — is what it always was;
     // only the style setting moved out of the loop. Each group keeps its own
     // push/pop so `rippleEffect.draw()` still runs in the environment it used
@@ -352,6 +475,53 @@ export default class TerrainMap {
     this.drawObstacleGroup(bushes, TerrainType.BUSH);
     this.drawObstacleGroup(walls, TerrainType.WALL);
     pop();
+  }
+
+  /**
+   * Paints every zone polygon in view, one style per zone.
+   *
+   * Grouped by zone for the same reason `Obstacle.applyStyle` was lifted out
+   * of the per-obstacle loop: `fill('#d9c08a')` is not an assignment but a
+   * `p5.Color` construction — it parses the CSS string, allocates the level
+   * arrays and serialises back to `rgba(...)` — and a profile of a worst-case
+   * mobile frame named that path as ~3% of the whole frame. A zone's colours
+   * never change, so setting them once per zone rather than once per polygon
+   * is free.
+   */
+  private drawZones(): void {
+    if (!this.zoneQuadtree) return;
+    const area = this.game.camera.getBoundingBox();
+    const byZone = new Map<string, ZoneRegion[]>();
+    for (const box of this.zoneQuadtree.retrieve(area)) {
+      const region = box.data as ZoneRegion;
+      const bucket = byZone.get(region.zone.id);
+      if (bucket) bucket.push(region);
+      else byZone.set(region.zone.id, [region]);
+    }
+    if (byZone.size === 0) return;
+
+    // Declared order, not retrieval order — two overlapping zones must stack
+    // the way the map drew them rather than the way the tree happened to
+    // return them, which changes with the tree's shape.
+    for (const zone of this.zones) {
+      const regions = byZone.get(zone.id);
+      if (!regions) continue;
+      push();
+      noStroke();
+      if (zone.render.stroke) {
+        stroke(zone.render.stroke);
+        strokeWeight(4);
+      }
+      fill(zone.render.fill);
+      for (const region of regions) {
+        beginShape();
+        // `point`, not `vertex`: the loop variable would shadow p5's global
+        // `vertex()` — the very function this line has to call.
+        for (const point of region.vertices) vertex(point.x, point.y);
+        endShape(CLOSE);
+      }
+      pop();
+    }
   }
 
   private drawObstacleGroup(group: Obstacle[], type: string): void {

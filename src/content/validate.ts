@@ -1275,6 +1275,79 @@ function checkMinionRoster(
   }
 }
 
+/**
+ * The zone list — see `TerrainZone` for what a zone is and is not.
+ *
+ * Checked apart from the terrain-layer loop on purpose. That loop's whole job
+ * is to refuse a *fourth layer*, because `TerrainMap` drops an unknown one in
+ * silence; a zone is deliberately not a layer, and folding the two together
+ * would make the error message for each one wrong.
+ *
+ * Every failure here is one the engine answers with silence of its own: a
+ * duplicate id makes `zoneIdsAt` mean two things, a missing `render.fill`
+ * paints nothing (an invisible speed change), and a two-point "polygon"
+ * contains no point at all — `CollideUtils.pointPolygon` returns false for
+ * every query against it, so the zone costs a lookup forever and catches
+ * nobody.
+ */
+function checkZones(zones: unknown, name: string, errors: string[]): void {
+  if (zones === undefined) return;
+  if (!Array.isArray(zones)) {
+    errors.push(`${name}.zones: must be an array`);
+    return;
+  }
+  const seen = new Set<string>();
+  zones.forEach((zone, index) => {
+    const path = `${name}.zones[${index}]`;
+    if (!isObject(zone)) {
+      errors.push(`${path}: must be an object`);
+      return;
+    }
+    if (typeof zone.id !== 'string' || zone.id === '') {
+      errors.push(`${path}.id: must be a non-empty string`);
+    } else if (seen.has(zone.id)) {
+      errors.push(
+        `${path}.id: duplicate ${JSON.stringify(zone.id)} — two zones sharing an id ` +
+          `make a query for it mean two different things`
+      );
+    } else {
+      seen.add(zone.id);
+    }
+    if (typeof zone.name !== 'string' || zone.name === '') {
+      errors.push(`${path}.name: must be a non-empty string`);
+    }
+    if (zone.speedMultiplier !== undefined) {
+      if (!isFiniteNumber(zone.speedMultiplier)) {
+        errors.push(`${path}.speedMultiplier: must be a finite number`);
+      } else if (zone.speedMultiplier < 0) {
+        errors.push(`${path}.speedMultiplier: must not be negative`);
+      }
+    }
+    if (!isObject(zone.render) || typeof zone.render.fill !== 'string' || zone.render.fill === '') {
+      errors.push(`${path}.render.fill: must be a non-empty colour string`);
+    } else if (zone.render.stroke !== undefined && typeof zone.render.stroke !== 'string') {
+      errors.push(`${path}.render.stroke: must be a colour string`);
+    }
+    if (!Array.isArray(zone.polygons)) {
+      errors.push(`${path}.polygons: must be an array`);
+      return;
+    }
+    zone.polygons.forEach((polygon: unknown, polygonIndex: number) => {
+      const polygonPath = `${path}.polygons[${polygonIndex}]`;
+      if (!Array.isArray(polygon) || polygon.length < 3) {
+        errors.push(`${polygonPath}: a polygon needs at least 3 points`);
+        return;
+      }
+      for (const point of polygon) {
+        if (!isObject(point) || !isFiniteNumber(point.x) || !isFiniteNumber(point.y)) {
+          errors.push(`${polygonPath}: every point needs finite x and y`);
+          return;
+        }
+      }
+    });
+  });
+}
+
 export function checkMapGeometry(
   geometry: Record<string, unknown>,
   name: string,
@@ -1295,6 +1368,8 @@ export function checkMapGeometry(
       }
     }
   }
+
+  checkZones(geometry.zones, name, errors);
 
   // Slots that declare a muster point, kept so the lane loop below can ask
   // "does this faction have somewhere to form up on this lane" — see the

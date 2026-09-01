@@ -1044,12 +1044,68 @@ export interface MapSummary {
  * fountains, turrets, jungle camps and minions occupy. Fetched only once a
  * match is actually starting — see `MapGeometrySource`.
  */
+/**
+ * A tagged region of ground: sand, a lava field, a bank of mist.
+ *
+ * ## Why this is not a fourth `terrain` layer
+ *
+ * The three layers carry heavy, *named* semantics core is entitled to know:
+ * a wall is rasterized into the navigation grid, a wall and a bush block
+ * sight, a bush conceals. A zone carries none of them. It multiplies speed,
+ * answers "is this point inside me", and paints itself — and that is the
+ * whole list, on purpose.
+ *
+ * The distinction is what lets core stay ignorant of the vocabulary. Core
+ * knows what a *wall* is and always will; it does not know what "sand" is,
+ * and — exactly like `ArchetypeDef`, the role taxonomy that was moved out of
+ * core once already — it must not learn. A pack names its own zones, and a
+ * pack whose world has acid pools instead of deserts works the same way with
+ * no change here.
+ *
+ * ## Why the definition carries its own polygons
+ *
+ * The first cut split these: definitions in one list, polygons in a
+ * `Record<string, Point[][]>` keyed by id. That is two lists to keep in step
+ * and a class of bug — a zone painted under an id nothing declares — that
+ * only surfaces as a region which is silently ordinary ground. One
+ * self-contained object cannot drift from itself.
+ *
+ * ## Why it lives on the map and not on the pack
+ *
+ * `TerrainMap` is handed an `ActiveMap`, never a pack, so a pack-level list
+ * would need `PackRegistry` to thread it through. It would also put the map
+ * editor — which edits exactly one map — in the position of editing
+ * something it does not own. A map that is self-contained round-trips
+ * through `localMaps.ts` and `localStorage` with nothing else consulted.
+ */
+export interface TerrainZone {
+  /** Local to the pack, unique within the map. Core never interprets it. */
+  id: string;
+  /** What the editor and the HUD call it. The pack's own language. */
+  name: string;
+  /**
+   * Multiplied into the speed of anything standing here. Absent means 1.
+   *
+   * Overlapping zones multiply, the same rule `bush` and `water` already
+   * follow — see `TerrainMap.speedFactorAt`.
+   */
+  speedMultiplier?: number;
+  /** Core ships no palette for these: a zone core cannot name, it cannot colour. */
+  render: { fill: string; stroke?: string };
+  polygons: { x: number; y: number }[][];
+}
+
 export interface MapGeometry {
   terrain: {
     wall: { x: number; y: number }[][];
     bush: { x: number; y: number }[][];
     water: { x: number; y: number }[][];
   };
+  /**
+   * Regions that are not terrain layers — see `TerrainZone`. Absent on every
+   * map written before them, which is why nothing here is required.
+   */
+  zones?: TerrainZone[];
   slots: {
     spawn: SpawnSlot[];
     minion: MinionSlot[];
