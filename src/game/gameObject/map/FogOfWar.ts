@@ -192,7 +192,19 @@ export default class FogOfWar {
     // (Measured under software rasterisation; a GPU-composited canvas may
     // trade differently, so re-measure on a device before revisiting.)
     this.overlay.pixelDensity(1);
-    this.outOfViewColor = '#0007';
+    // `rgba()` và **không** phải `#0007`.
+    //
+    // Cả hai nhánh fog gán chuỗi này thẳng vào `drawingContext.fillStyle`, tức
+    // là bộ phân tích màu của canvas chứ không phải của p5. Hex bốn chữ số
+    // (`#RGBA`) là cú pháp mới hơn hẳn `rgba()`, và theo spec một giá trị
+    // `fillStyle` không phân tích được **không báo lỗi**: phép gán bị bỏ qua
+    // và fillStyle giữ nguyên giá trị *trước đó* — trong một vòng lặp game đó
+    // là màu của thứ vừa vẽ xong, thường là màu sáng. Fog sẽ được tô sáng thay
+    // vì tối, đổi theo từng khung hình, ở cả nhánh mềm lẫn nhánh cứng.
+    //
+    // Không có gì đánh đổi ở đây: `rgba()` được mọi bản canvas từng phân tích
+    // đúng, và đây là một chuỗi hằng viết một lần.
+    this.outOfViewColor = 'rgba(0, 0, 0, 0.47)';
 
     this.colorStops = [
       { stop: 0, color: '#fff' },
