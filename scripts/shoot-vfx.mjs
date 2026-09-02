@@ -19,7 +19,7 @@
  *
  *   moba2d-shoot-vfx [outDir] [championFilter]
  *
- * Reads `tests/e2e/vfx-casts.json` from the pack it is run in:
+ * Reads `<pack>/tests/e2e/vfx-casts.json` from the pack it is run in:
  *
  *   { "championName": "Gaara",
  *     "casts": [ { "champion": "Gaara", "slot": "R",
