@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { buildVersion } from './scripts/version.mjs';
 // @ts-expect-error — same: plain .mjs, shared with `scripts/check-chunks.mjs`.
 import { installedContentPackages } from './scripts/installed-packs.mjs';
+// @ts-expect-error — same again: a build-time plugin, plain .mjs, no types.
 import { restartOnVersionChange } from './scripts/vite/restart-on-version-change.mjs';
 
 const version: string = buildVersion();
