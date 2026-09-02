@@ -627,7 +627,9 @@ export default class ObjectManager {
       if (o instanceof ParticleSystem) {
         o.draw(Math.floor(o.particles.length * particleScale));
       } else if (o instanceof TrailSystem) {
-        o.draw(compactUnits);
+        // The second thing stress rations, after particles: a trail collapses
+        // to one segment. Its shape is decoration; where it points is not.
+        o.draw(compactUnits || stressed);
       } else if (o instanceof AttackableUnit) {
         o.draw({ compactUnits });
       } else {

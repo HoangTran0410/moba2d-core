@@ -64,6 +64,11 @@ export class FpsMeter {
   displayFps = 0;
   /** The slowest single frame of the last window, as a rate. */
   displayLow = 0;
+  /** Smoothed cost of one simulation step and of one drawn frame, in ms — see `sampleUpdate`/`sampleDraw`. */
+  displayUpdateMs = 0;
+  displayDrawMs = 0;
+  private updateMs: number | null = null;
+  private drawMs: number | null = null;
 
   /**
    * Feed one frame's delta (`deltaTime`, in ms) in, get the current smoothed
@@ -86,12 +91,34 @@ export class FpsMeter {
     if (seeding || this.windowMs >= FPS_DISPLAY_INTERVAL_MS) {
       this.displayFps = this.smoothed;
       this.displayLow = 1000 / this.windowWorstMs;
+      this.displayUpdateMs = this.updateMs ?? 0;
+      this.displayDrawMs = this.drawMs ?? 0;
       this.windowMs = 0;
       this.windowWorstMs = 0;
     }
     return this.smoothed;
   }
+
+  /**
+   * The two halves of a frame, kept apart. An FPS number says the machine is
+   * behind and nothing about which loop is to blame — the simulation step
+   * (`Game.update`) and the draw (`Game.draw`) run on different clocks, and
+   * every render change in this repo has needed to know which one it moved.
+   * Same smoothing as the rate, published on the same window.
+   */
+  sampleUpdate(ms: number): void {
+    this.updateMs = smooth(this.updateMs, ms);
+  }
+
+  sampleDraw(ms: number): void {
+    this.drawMs = smooth(this.drawMs, ms);
+  }
 }
+
+const smooth = (previous: number | null, sample: number): number => {
+  if (!Number.isFinite(sample) || sample < 0) return previous ?? 0;
+  return previous === null ? sample : previous + (sample - previous) * FPS_SMOOTHING_ALPHA;
+};
 
 /** The slice of `Game` this overlay needs. Keeps it off the `Game` type, same as its neighbours. */
 export interface FpsOverlayHost {
@@ -127,7 +154,7 @@ export function drawFpsOverlay(host: FpsOverlayHost, meter: FpsMeter): void {
   // `min` is the window's slowest frame, not a running minimum: a running one
   // would latch onto the first hitch of the match and never move again.
   text(
-    `${Math.round(meter.displayFps)} FPS · min ${Math.round(meter.displayLow)}`,
+    `${Math.round(meter.displayFps)} FPS · min ${Math.round(meter.displayLow)} · upd ${meter.displayUpdateMs.toFixed(1)}ms · draw ${meter.displayDrawMs.toFixed(1)}ms`,
     width - MARGIN,
     TOP_OFFSET
   );

@@ -12,7 +12,7 @@ import DomUtils from '@/utils/dom.utils';
 import AssetManager from '@/managers/AssetManager';
 import { ensurePackAsset } from '@/game/config/packAsset';
 import { renderAlpha } from '@/game/render/Interpolation';
-import { stepsToRun } from '@/game/simulationClock';
+import { stepsToRun, MAX_CATCHUP_STEPS, TOUCH_MAX_CATCHUP_STEPS, } from '@/game/simulationClock';
 import { contentCatalog } from '@/content/catalog';
 import { activeMapOf } from '@/content/activeMap';
 import { resolveMapId } from '@/content/defaultMap';
@@ -499,7 +499,11 @@ export default class GameScene extends Scene {
     if (!this.game) return;
 
     const interval = 1000 / this.game.fps;
-    const { run, advanceMs } = stepsToRun(performance.now() - previousTime, interval);
+    const { run, advanceMs } = stepsToRun(
+      performance.now() - previousTime,
+      interval,
+      this.game.touchUi ? TOUCH_MAX_CATCHUP_STEPS : MAX_CATCHUP_STEPS
+    );
     if (run > 0) {
       previousTime += advanceMs;
       for (let step = 0; step < run; step++) this.runTick();

@@ -136,7 +136,8 @@ describe('drawFpsOverlay', () => {
     meter.sample(16); // 62.5 -> rounds to 63, and it is its own worst frame
     drawFpsOverlay(host(true), meter);
     expect(spies.text).toHaveBeenCalledTimes(1);
-    expect(spies.text.mock.calls[0][0]).toBe('63 FPS · min 63');
+    // The two halves of the frame ride along; nothing has sampled them here.
+    expect(spies.text.mock.calls[0][0]).toBe('63 FPS · min 63 · upd 0.0ms · draw 0.0ms');
   });
 
   /**
@@ -163,5 +164,27 @@ describe('drawFpsOverlay', () => {
     drawFpsOverlay(host(false), meter);
     drawFpsOverlay(host(false), meter);
     expect(spies.text).not.toHaveBeenCalled();
+  });
+});
+
+describe('FpsMeter — the two halves of a frame', () => {
+  it('smooths update and draw cost apart, and publishes them with the window', () => {
+    const meter = new FpsMeter();
+    meter.sampleUpdate(4);
+    meter.sampleDraw(10);
+    meter.sampleUpdate(2);
+    // Nothing published until the window closes; the first `sample` seeds it.
+    expect(meter.displayUpdateMs).toBe(0);
+    meter.sample(16);
+    expect(meter.displayUpdateMs).toBeCloseTo(4 + (2 - 4) * FPS_SMOOTHING_ALPHA, 6);
+    expect(meter.displayDrawMs).toBe(10);
+  });
+
+  it('ignores a sample that is not a duration', () => {
+    const meter = new FpsMeter();
+    meter.sampleDraw(Number.NaN);
+    meter.sampleDraw(-5);
+    meter.sample(16);
+    expect(meter.displayDrawMs).toBe(0);
   });
 });

@@ -204,6 +204,11 @@ export default class FogOfWar {
   }
 
   draw(): void {
+    // The stressed tier's fog: one pass on the main canvas, no overlay at all.
+    if (this.hardEdged()) {
+      this.drawDirect();
+      return;
+    }
     // clear() (clearRect) followed by background() (a normal-blend fillRect)
     // is two full-canvas passes to reach the same result as one: painting with
     // 'copy' compositing discards the destination outright, same as clearing
@@ -222,6 +227,76 @@ export default class FogOfWar {
     this.overlay.noErase();
 
     image(this.overlay, width / 2, height / 2, width, height);
+  }
+
+  /**
+   * Whether the fog gives up its soft edge for a cheaper frame: the player
+   * chose Thấp, or `auto` has found the machine not keeping up
+   * (`render/renderStress.ts`). Read per frame, so the picture recovers the
+   * moment the stress does.
+   */
+  hardEdged(): boolean {
+    const quality = this.game.renderQuality ?? 'auto';
+    return quality === 'low' || (quality === 'auto' && this.game.renderStressed === true);
+  }
+
+  /**
+   * The fog without the buffer: one fill on the main canvas, the viewport
+   * with every sight polygon cut out of it, hard-edged.
+   *
+   * The soft path is three full-viewport passes — a `copy` fill of the
+   * overlay, an `erase` of every polygon, and the `image()` blit back — and a
+   * CPU profile charged 82% of every `drawImage` in the game to that blit.
+   * The constructor records why a smaller overlay is not the answer (a
+   * resample is slower than a copy). This is: no overlay at all, so one pass
+   * where there were three, at the price of the gradient rim — which is why
+   * it is the stressed tier's picture and not everyone's.
+   *
+   * **Winding, not even-odd.** Two allies' sight polygons overlap wherever
+   * they stand together, and an even-odd fill would paint the overlap fogged
+   * again. With the viewport rectangle wound one way and every hole wound the
+   * other, the nonzero rule leaves the union of the holes clear however many
+   * of them overlap. `PolyVisibility`'s sweep does not promise an orientation,
+   * so each polygon's is measured (`signedArea`) and reversed when it matches
+   * the rectangle's.
+   */
+  drawDirect(): void {
+    const ctx = drawingContext as CanvasRenderingContext2D;
+    const camera = this.game.camera;
+    const sights = this.calculateSight();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    const rectSign = Math.sign(
+      signedArea([
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: width, y: height },
+        { x: 0, y: height },
+      ])
+    );
+
+    const screen: { x: number; y: number }[] = [];
+    for (const { sightPoly } of sights) {
+      if (sightPoly.length < 3) continue;
+      screen.length = 0;
+      for (const v of sightPoly) {
+        const p = camera.worldToScreen(v.x, v.y);
+        screen.push({ x: p.x, y: p.y });
+      }
+      const sameAsRect = Math.sign(signedArea(screen)) === rectSign;
+      const count = screen.length;
+      for (let i = 0; i < count; i++) {
+        const p = screen[sameAsRect ? count - 1 - i : i];
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+    }
+    ctx.fillStyle = this.outOfViewColor;
+    ctx.fill('nonzero');
+    ctx.restore();
   }
 
   calculateSight(): SightResult[] {
@@ -706,4 +781,15 @@ export default class FogOfWar {
     // `utils/graphics.utils.ts`.
     removeGraphics(this.overlay);
   }
+}
+
+/** Shoelace area with sign: a polygon's orientation, which is all `drawDirect` needs of it. */
+export function signedArea(points: readonly { x: number; y: number }[]): number {
+  let twice = 0;
+  for (let i = 0, n = points.length; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    twice += a.x * b.y - b.x * a.y;
+  }
+  return twice / 2;
 }

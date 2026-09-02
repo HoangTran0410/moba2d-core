@@ -72,6 +72,15 @@ export function withSimulationStep<T>(stepMs: number, body: () => T): T {
  * slow motion instead of locking up.
  */
 export const MAX_CATCHUP_STEPS = 3;
+/**
+ * The same ceiling on a phone, one lower. Each catch-up step is a whole
+ * `fixedUpdate` — quadtree rebuild, collision grid, every unit — inside one
+ * timer callback, and a phone that has just hitched is exactly the machine
+ * that cannot afford three of them back to back before the next frame. Two
+ * repays an ordinary stutter; a longer one is honest slow motion either way,
+ * because `stepsToRun` advances the clock past whatever it drops.
+ */
+export const TOUCH_MAX_CATCHUP_STEPS = 2;
 
 /**
  * The tick loop's decision, as arithmetic rather than as a branch inside a
@@ -87,11 +96,12 @@ export const MAX_CATCHUP_STEPS = 3;
  */
 export function stepsToRun(
   elapsedMs: number,
-  intervalMs: number
+  intervalMs: number,
+  maxSteps: number = MAX_CATCHUP_STEPS
 ): { run: number; advanceMs: number } {
   if (!(intervalMs > 0) || !Number.isFinite(elapsedMs) || elapsedMs < intervalMs) {
     return { run: 0, advanceMs: 0 };
   }
   const due = Math.floor(elapsedMs / intervalMs);
-  return { run: Math.min(due, MAX_CATCHUP_STEPS), advanceMs: due * intervalMs };
+  return { run: Math.min(due, maxSteps), advanceMs: due * intervalMs };
 }

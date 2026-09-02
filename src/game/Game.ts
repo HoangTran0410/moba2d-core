@@ -800,10 +800,14 @@ export default class Game {
   update() {
     if (this.paused) return;
     const step = 1000 / this.fps;
+    const startedAt = performance.now();
     withSimulationStep(step, () => {
       this.matchTimeMs += step;
       this.fixedUpdate();
     });
+    // Optional: `simulationClock.test.ts` drives this off the prototype with a
+    // stub that has no meter.
+    this.fpsMeter?.sampleUpdate(performance.now() - startedAt);
   }
 
   /**
@@ -815,6 +819,7 @@ export default class Game {
    */
   draw(alpha = 1) {
     if (this.paused) return;
+    const drawStartedAt = performance.now();
     // First, and unconditionally: the frame this is measuring is the one about
     // to be drawn with the answer. `deltaTime` here is p5's real render delta —
     // the simulation's substitution (`simulationClock.ts`) is already back off.
@@ -873,6 +878,7 @@ export default class Game {
     // True camera back, for the next fixedUpdate's screenToWorld and the next
     // tick's lerp — which would otherwise start from a blended position.
     this.camera.restoreRenderOrigin();
+    this.fpsMeter.sampleDraw(performance.now() - drawStartedAt);
   }
 
   destroy() {

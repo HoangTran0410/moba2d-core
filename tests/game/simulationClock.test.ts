@@ -5,8 +5,7 @@ import Game from '../../src/game/Game';
 import {
   MAX_CATCHUP_STEPS,
   stepsToRun,
-  withSimulationStep,
-} from '../../src/game/simulationClock';
+  withSimulationStep, TOUCH_MAX_CATCHUP_STEPS, } from '../../src/game/simulationClock';
 
 /**
  * **A tick is one step long, whatever the renderer is doing.**
@@ -89,6 +88,18 @@ describe('how many steps one poll may run', () => {
 
   it('runs one step per elapsed interval', () => {
     expect(stepsToRun(interval * 2.5, interval).run).toBe(2);
+  });
+
+  it('repays a hitch, but only up to the ceiling — one lower on a phone', () => {
+    expect(stepsToRun(interval * 40, interval, TOUCH_MAX_CATCHUP_STEPS).run).toBe(
+      TOUCH_MAX_CATCHUP_STEPS
+    );
+    expect(TOUCH_MAX_CATCHUP_STEPS).toBeLessThan(MAX_CATCHUP_STEPS);
+    // The clock still moves the whole way under the lower ceiling too.
+    expect(stepsToRun(interval * 40, interval, TOUCH_MAX_CATCHUP_STEPS).advanceMs).toBeCloseTo(
+      interval * 40,
+      6
+    );
   });
 
   it('repays a hitch, but only up to the ceiling', () => {
