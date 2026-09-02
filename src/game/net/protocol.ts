@@ -1,3 +1,5 @@
+import type { WireAnnouncement } from '@/game/combat/Announcer';
+
 /**
  * The LAN wire format — plain JSON, versioned by shape rather than number
  * for v1. Everything here is pure data and pure functions so the format is
@@ -140,6 +142,12 @@ export interface DamageNumberNetEvent {
   a: number;
   /** `DamageType` — picks the colour, and with it the merge key. */
   ty: string;
+  /**
+   * `1` when the swing crit. Present only then, so the common case costs no
+   * bytes; the client cannot roll a crit of its own, and without this it
+   * would draw every hit the same size.
+   */
+  c?: 1;
 }
 
 /**
@@ -192,7 +200,21 @@ export interface CastEvent {
   y: number;
 }
 
+/**
+ * A kill, as the host's `MatchAnnouncer` told it (`combat/Announcer.ts`). A
+ * client's `die()` comes from the snapshot's dead flag with no killer, so
+ * without this it would have a health bar going grey and nothing to say
+ * about it. `kid`/`vid` are the two units' net ids, so the client can mark
+ * its own kills and deaths; the names and art travel too, for a unit the
+ * client has already dropped.
+ */
+export interface AnnouncementNetEvent {
+  k: 'ann';
+  a: WireAnnouncement;
+}
+
 export type NetEvent =
+  | AnnouncementNetEvent
   | ChampionSpawnEvent
   | MinionSpawnEvent
   | GoneEvent

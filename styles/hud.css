@@ -2533,3 +2533,795 @@ button.practice-roster-item {
   cursor: pointer;
   appearance: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Kill callouts and banner — `KillFeed.vue`, fed by `hudState.buildFeed`.
+
+   Top centre, newest on top, between the minimap and the corner cluster.
+   Nothing here takes a tap: it narrates the fight, it is not part of it.
+   Ally/enemy is the player's side, not blue/red, so the colours agree with
+   the rings drawn under the champions. Four colour families say *what kind*
+   of kill before the words do — crimson first blood, gold burst, fire run,
+   violet shutdown — and a run is the one that must not look like a kill. */
+.kill-callouts {
+  position: fixed;
+  /* under the score strip */
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.kill-feed {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.kill-feed-row {
+  --feed-edge: #ffffff26;
+  --feed-glow: transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  /* see-through enough to fight under: it narrates the fight, it must not hide it */
+  background: linear-gradient(90deg, #0b0f14a6 0%, #141b24c9 50%, #0b0f14a6 100%);
+  border: 1px solid var(--feed-edge);
+  box-shadow:
+    0 2px 8px #0008,
+    0 0 12px var(--feed-glow);
+  color: #e6ebf0;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: opacity 0.2s linear;
+}
+
+/* The stack is the whole occlusion budget: three rows on a monitor, two on a phone. */
+.kill-feed-row:nth-child(n + 4) {
+  display: none;
+}
+
+.kill-feed-row.mine {
+  --feed-edge: var(--hextech-teal, #4cc9c0);
+}
+
+.kill-feed-row.accent-first {
+  --feed-edge: #d63a44;
+  --feed-glow: #d63a4455;
+}
+
+.kill-feed-row.accent-multi {
+  --feed-edge: #f2c14e;
+  --feed-glow: #f2c14e55;
+}
+
+.kill-feed-row.accent-shutdown {
+  --feed-edge: #9b7bff;
+  --feed-glow: #9b7bff55;
+}
+
+/* A run burns: warm ground, ember edge, a slow breathing glow — kept narrow,
+   so it marks the row without lighting the fight under it. */
+.kill-feed-row.accent-streak {
+  --feed-edge: #ff8a3d;
+  --feed-glow: #ff6a2a77;
+  background: linear-gradient(90deg, #1c0b06b8 0%, #3a1608d9 50%, #1c0b06b8 100%);
+  animation: kill-feed-ember 1.6s ease-in-out infinite;
+}
+
+@keyframes kill-feed-ember {
+  0%,
+  100% {
+    box-shadow:
+      0 2px 8px #0008,
+      0 0 8px #ff6a2a55;
+  }
+  50% {
+    box-shadow:
+      0 2px 8px #0008,
+      0 0 16px #ff8a3d99;
+  }
+}
+
+.kill-feed-face {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 2px solid #777;
+  background: #1a2029;
+  overflow: hidden;
+  flex: none;
+  /* the initial, shown until the image lands over it */
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #9aa3ad;
+}
+
+.kill-feed-face img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kill-feed-face.ally {
+  border-color: #5fd35f;
+}
+
+.kill-feed-face.enemy {
+  border-color: #f0655f;
+}
+
+.kill-feed-name {
+  font-weight: 700;
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kill-feed-name.ally {
+  color: #8ff08f;
+}
+
+.kill-feed-name.enemy {
+  color: #ff8f88;
+}
+
+.kill-feed-mark {
+  color: #b7c0ca;
+  font-size: 12px;
+  margin: 0 2px;
+}
+
+.kill-feed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kill-feed-badge.badge-first {
+  background: linear-gradient(#e0434e, #a8222b);
+  color: #fff;
+}
+
+.kill-feed-badge.badge-multi {
+  background: linear-gradient(#ffd977, #dda122);
+  color: #2b1d00;
+}
+
+.kill-feed-badge.badge-streak {
+  background: linear-gradient(#ff9a4a, #d64518);
+  color: #fff;
+  text-shadow: 0 1px 0 #0006;
+}
+
+.kill-feed-badge.badge-shutdown {
+  background: linear-gradient(#a98cff, #6a45d9);
+  color: #fff;
+}
+
+/* A new callout drops in from the top edge; the row's own `opacity` handles the end. */
+.kill-feed-enter-active {
+  animation: kill-feed-drop 0.32s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+.kill-feed-move {
+  transition: transform 0.25s ease;
+}
+
+.kill-feed-leave-active {
+  position: absolute;
+  transition: opacity 0.2s ease;
+}
+
+.kill-feed-leave-to {
+  opacity: 0;
+}
+
+@keyframes kill-feed-drop {
+  from {
+    transform: translateY(-14px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* The banner: under the callouts, the loudest line on screen for
+   `BANNER_TTL_MS`. The colour family says which kind of moment before the
+   words do; the title is the news, the subtitle the names. */
+.kill-banner {
+  --banner-a: #ffe08a;
+  --banner-b: #e2a72e;
+  --banner-glow: #f2c14e88;
+  margin-top: 2px;
+  text-align: center;
+  filter: drop-shadow(0 0 14px var(--banner-glow)) drop-shadow(0 2px 2px #000);
+}
+
+.kill-banner-title {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, var(--banner-a) 20%, var(--banner-b) 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 0.6px #0008;
+}
+
+.kill-banner-sub {
+  margin-top: 1px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #eef2f6;
+  text-shadow:
+    0 0 8px #000,
+    0 1px 1px #000;
+}
+
+.kill-banner.banner-kill {
+  --banner-a: #f4f7fa;
+  --banner-b: #aab6c3;
+  --banner-glow: #ffffff55;
+}
+
+.kill-banner.banner-first {
+  --banner-a: #ff8a90;
+  --banner-b: #c0262f;
+  --banner-glow: #d63a4488;
+}
+
+.kill-banner.banner-multi {
+  --banner-a: #ffe08a;
+  --banner-b: #e2a72e;
+  --banner-glow: #f2c14e99;
+}
+
+.kill-banner.banner-streak {
+  --banner-a: #ffb56b;
+  --banner-b: #e5501c;
+  --banner-glow: #ff6a2aaa;
+}
+
+.kill-banner.banner-shutdown {
+  --banner-a: #cdbcff;
+  --banner-b: #6f4bd8;
+  --banner-glow: #9b7bff99;
+}
+
+.kill-banner.banner-death {
+  --banner-a: #ff9a94;
+  --banner-b: #b12a2a;
+  --banner-glow: #ff5a5a66;
+}
+
+.kill-banner-enter-active {
+  animation: kill-banner-pop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.kill-banner-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.kill-banner-leave-to {
+  opacity: 0;
+}
+
+@keyframes kill-banner-pop {
+  from {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+body.touch-ui .kill-callouts {
+  top: 36px;
+  gap: 6px;
+}
+
+body.touch-ui .kill-feed {
+  gap: 4px;
+}
+
+body.touch-ui .kill-feed-row {
+  font-size: 11px;
+  padding: 2px 8px;
+  gap: 5px;
+}
+
+/* Two rows of a 390px-tall screen, and no more. */
+body.touch-ui .kill-feed-row:nth-child(n + 3) {
+  display: none;
+}
+
+body.touch-ui .kill-feed-face {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+body.touch-ui .kill-feed-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+}
+
+body.touch-ui .kill-banner-title {
+  font-size: 20px;
+}
+
+body.touch-ui .kill-banner-sub {
+  font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   The Tab scoreboard — `Scoreboard.vue`, fed by `hudState.buildScoreboard`.
+
+   A glance held under a key, so it wears the panels' hextech skin but none of
+   their weight: no tabs, no controls, see-through enough to keep half an eye
+   on the fight. Two teams side by side, the player's on the left; on a phone
+   the damage column goes and the rows tighten. */
+.scoreboard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 115;
+  display: grid;
+  place-items: center;
+  background: #00000033;
+}
+
+.scoreboard {
+  width: min(960px, 94vw);
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px 12px;
+  background: var(--hextech-bg);
+  border: 3px solid transparent;
+  border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
+  color: var(--hextech-text);
+  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
+  opacity: 0.94;
+  animation: scoreboard-in 0.14s ease-out;
+}
+
+@keyframes scoreboard-in {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 0.94;
+  }
+}
+
+.scoreboard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.scoreboard-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hextech-teal);
+}
+
+.scoreboard-hint {
+  font-size: 11px;
+  color: #9aa3ad;
+}
+
+/* Two columns where two fit, one where they do not — a portrait phone stacks
+   the sides and scrolls, a landscape one keeps them side by side. */
+.scoreboard-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* `min-width: 0` on every grid level, or a row's fixed columns set the
+   section's minimum width and the whole thing pushes past its border — which
+   is exactly what the items column did on the first cut. */
+.scoreboard-team {
+  min-width: 0;
+  padding: 6px 8px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.scoreboard-team--blue {
+  background: rgba(74, 158, 255, 0.08);
+  border-color: rgba(74, 158, 255, 0.22);
+}
+
+.scoreboard-team--red {
+  background: rgba(224, 86, 79, 0.08);
+  border-color: rgba(224, 86, 79, 0.22);
+}
+
+.scoreboard-team--other {
+  background: rgba(200, 200, 200, 0.06);
+  border-color: rgba(200, 200, 200, 0.18);
+}
+
+.scoreboard-team-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.scoreboard-team--blue .scoreboard-team-name {
+  color: #7fb8ff;
+}
+
+.scoreboard-team--red .scoreboard-team-name {
+  color: #ff8a84;
+}
+
+.scoreboard-team-kills {
+  font-size: 15px;
+  color: #f2e6c8;
+}
+
+/* One grid for the header row and every body row, so the columns line up.
+   Fixed columns add up to less than half the panel at its narrowest; the name
+   is the only column that stretches, and the only one allowed to be cut. */
+.scoreboard-cols,
+.scoreboard-row {
+  display: grid;
+  grid-template-columns: 26px minmax(56px, 1fr) 64px 28px 50px 42px max-content;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scoreboard-cols {
+  padding: 0 4px 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8892a0;
+}
+
+.scoreboard-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scoreboard-row {
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  background: #ffffff08;
+}
+
+.scoreboard-row.me {
+  background: #4cc9c01f;
+  box-shadow: inset 0 0 0 1px #4cc9c066;
+}
+
+.scoreboard-row.dead {
+  opacity: 0.6;
+}
+
+.scoreboard-face {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #1a2029;
+}
+
+.scoreboard-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scoreboard-row.dead .scoreboard-face img {
+  filter: grayscale(100%);
+}
+
+.scoreboard-dead {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0007;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 4px #000;
+}
+
+.scoreboard-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #ffffff33;
+  background: #ffffff10;
+  color: #d8dde3;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.scoreboard-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+/* The name gives way; the run badge beside it never does. */
+.scoreboard-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreboard-streak {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: linear-gradient(#ff9a4a, #d64518);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.scoreboard-streak i {
+  margin-right: 2px;
+}
+
+.scoreboard-kda {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scoreboard-kda b {
+  color: #f2e6c8;
+}
+
+.scoreboard-kda .d {
+  color: #ff8a84;
+}
+
+.scoreboard-cs,
+.scoreboard-dmg {
+  font-variant-numeric: tabular-nums;
+  color: #c9d1d9;
+}
+
+.scoreboard-gold {
+  font-variant-numeric: tabular-nums;
+  color: #f5c451;
+  white-space: nowrap;
+}
+
+.scoreboard-gold i {
+  margin-right: 3px;
+  font-size: 10px;
+}
+
+.scoreboard-items {
+  display: grid;
+  grid-template-columns: repeat(6, 18px);
+  gap: 2px;
+}
+
+.scoreboard-item {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: #0b0f14;
+  border: 1px solid #ffffff1f;
+  overflow: hidden;
+}
+
+.scoreboard-item.empty {
+  background: #ffffff08;
+}
+
+.scoreboard-item.filled {
+  cursor: pointer;
+}
+
+.scoreboard-item.filled:hover,
+.scoreboard-item.active {
+  border-color: var(--hextech-teal, #4cc9c0);
+  box-shadow: 0 0 6px #4cc9c088;
+}
+
+/* Over the board (z 115), where the inventory's own card (z 100) would sit under it. */
+.scoreboard-item-info {
+  z-index: 130;
+}
+
+.scoreboard-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The score strip — `ScoreStrip.vue`. Always up, so as slim as it can be and
+   still be tapped; the player's side is on the left, as on the scoreboard. */
+.score-strip {
+  position: fixed;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 112;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #ffffff26;
+  background: #0b0f14b8;
+  color: #d8dde3;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px #0008;
+}
+
+.score-strip:hover,
+.score-strip.active {
+  border-color: var(--hextech-teal, #4cc9c0);
+  color: #fff;
+}
+
+.score-strip-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 2.2em;
+}
+
+.score-strip-side i {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.score-strip-side.first {
+  justify-content: flex-end;
+}
+
+.score-strip-side--blue {
+  color: #7fb8ff;
+}
+
+.score-strip-side--red {
+  color: #ff8a84;
+}
+
+.score-strip-side--other {
+  color: #cfd6dd;
+}
+
+.score-strip-clock {
+  padding: 0 6px;
+  color: #eef2f6;
+  font-weight: 700;
+  border-left: 1px solid #ffffff22;
+  border-right: 1px solid #ffffff22;
+}
+
+body.touch-ui .score-strip {
+  top: 4px;
+  height: 26px;
+  font-size: 12px;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+body.touch-ui .scoreboard {
+  width: min(880px, 97vw);
+  max-height: 96vh;
+  padding: 6px 10px 8px;
+}
+
+body.touch-ui .scoreboard-teams {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 6px;
+}
+
+body.touch-ui .scoreboard-cols,
+body.touch-ui .scoreboard-row {
+  grid-template-columns: 20px minmax(36px, 1fr) 56px 24px 40px max-content;
+  gap: 4px;
+}
+
+body.touch-ui .col-dmg {
+  display: none;
+}
+
+body.touch-ui .scoreboard-row {
+  font-size: 11px;
+  padding: 2px 3px;
+}
+
+body.touch-ui .scoreboard-face {
+  width: 22px;
+  height: 22px;
+}
+
+body.touch-ui .scoreboard-items {
+  grid-template-columns: repeat(6, 14px);
+}
+
+body.touch-ui .scoreboard-item {
+  width: 14px;
+  height: 14px;
+}
+
+/* The narrowest phones: six in a row no longer fit beside the numbers, so the
+   bag folds into two rows of three. */
+@media (max-width: 720px) {
+  body.touch-ui .scoreboard-items {
+    grid-template-columns: repeat(3, 14px);
+  }
+}
+
+body.touch-ui .scoreboard-head {
+  margin-bottom: 4px;
+}

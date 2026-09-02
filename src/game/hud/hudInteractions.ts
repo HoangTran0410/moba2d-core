@@ -136,6 +136,9 @@ export interface HudInteractions {
   readonly renderFps: RenderFps;
   setRenderQuality(quality: RenderQuality): void;
   setRenderFps(fps: RenderFps): void;
+  /** The camera-shake toggle — `Game.screenShake` / `Game.setScreenShake`. */
+  readonly screenShake: boolean;
+  setScreenShake(enabled: boolean): void;
   /**
    * Apply a touch/pointer switch to the *running* match — the on-screen
    * controls and the HUD layout both. The config panel's Cài đặt tab is the
@@ -257,6 +260,16 @@ export interface HudInteractions {
   closeShop(): void;
   /** What the `P` key does — one key in, one key out. */
   toggleShop(): void;
+  /**
+   * The quick scoreboard is up: both teams, K/D/A, CS, gold, items. Held on
+   * Tab on a keyboard (`Game.keyPressed`/`keyReleased`), toggled from a corner
+   * button on touch. A glance, not a panel: it does not pause, it takes no
+   * input of its own beyond a tap to dismiss, and the config panel's Đội tab
+   * stays the place to *change* anything.
+   */
+  showScoreboard: boolean;
+  setScoreboard(visible: boolean): void;
+  toggleScoreboard(): void;
   /**
    * Open the shop **aimed at another champion** — the roster's entry point.
    *
@@ -402,6 +415,13 @@ export function createHudInteractions(game: Game): HudInteractions {
     editPlayerSlot: null as number | null,
     onEscapeInner: null as (() => boolean) | null,
     showShop: false,
+    showScoreboard: false,
+    setScoreboard(visible: boolean): void {
+      state.showScoreboard = visible;
+    },
+    toggleScoreboard(): void {
+      state.showScoreboard = !state.showScoreboard;
+    },
     /**
      * Whose shop is open — `null` for the player's own, which is the default
      * and the only thing the corner button and the `P` key ever set.
@@ -450,6 +470,12 @@ export function createHudInteractions(game: Game): HudInteractions {
     setRenderFps(fps: RenderFps): void {
       game.setRenderFps(fps);
     },
+    get screenShake(): boolean {
+      return game.screenShake;
+    },
+    setScreenShake(enabled: boolean): void {
+      game.setScreenShake(enabled);
+    },
     setTouchUiEnabled(enabled: boolean): void {
       // `remember: false` — see the interface comment. The panel owns the
       // stored tri-state; this only applies a resolved side to the live match.
@@ -461,6 +487,8 @@ export function createHudInteractions(game: Game): HudInteractions {
       // the panel under it on one keypress is the mis-hit this whole change
       // exists to design out.
       if (state.onEscapeInner?.()) return;
+      // The glance goes first: it is over everything and costs nothing to drop.
+      if (state.showScoreboard) return state.setScoreboard(false);
       // The shop is a layer over the match too, and it is the innermost thing
       // Escape can reach when it is up — closing the whole config panel out
       // from under someone who meant to leave the shop is the same mis-hit

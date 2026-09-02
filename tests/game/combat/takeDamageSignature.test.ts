@@ -34,8 +34,13 @@ import { join, relative } from 'node:path';
 
 const SRC = join(process.cwd(), 'src');
 
-/** The four parameters the base declares, in order. */
-const REQUIRED = ['damage', 'attacker', 'type', 'source'];
+/**
+ * The five parameters the base declares, in order. `presentation` is the
+ * fifth: presentation-only (the crit flag `presentHit` draws), but dropping
+ * it is the same bug in a different coat — a bot's crit would land with the
+ * multiplier and *look* like an ordinary hit, on that body type only.
+ */
+const REQUIRED = ['damage', 'attacker', 'type', 'source', 'presentation'];
 
 const sourceFiles = (dir: string, found: string[] = []): string[] => {
   for (const entry of readdirSync(dir)) {
@@ -65,7 +70,7 @@ describe('every takeDamage', () => {
     expect(declarations().length).toBeGreaterThan(3);
   });
 
-  it('declares all four parameters, so none of them can be dropped', () => {
+  it('declares all five parameters, so none of them can be dropped', () => {
     const truncated = declarations()
       .filter(({ params }) => REQUIRED.some(name => !params.includes(name)))
       .map(({ file, params }) => `${file}: takeDamage(${params.replace(/\s+/g, ' ').trim()})`);
@@ -77,7 +82,7 @@ describe('every takeDamage', () => {
     ).toEqual([]);
   });
 
-  it('hands all four on to super, rather than declaring them and dropping them', () => {
+  it('hands all five on to super, rather than declaring them and dropping them', () => {
     // Declaring `type` and then calling `super.takeDamage(damage, attacker)`
     // is the same bug with the evidence removed.
     const dropped: string[] = [];
@@ -85,7 +90,7 @@ describe('every takeDamage', () => {
       const source = readFileSync(file, 'utf8');
       for (const call of source.matchAll(/super\.takeDamage\(([^)]*)\)/g)) {
         const args = call[1].replace(/\s+/g, ' ').trim();
-        if (args.split(',').length < 4) {
+        if (args.split(',').length < REQUIRED.length) {
           dropped.push(`${relative(SRC, file).split('\\').join('/')}: super.takeDamage(${args})`);
         }
       }

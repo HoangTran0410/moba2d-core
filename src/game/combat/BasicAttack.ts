@@ -5,7 +5,6 @@ import { drawMeleeStrike, drawMeleeWindup } from '@/game/vfx/MeleeSwing';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import SpellObject from '@/game/gameObject/SpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
-import AoePulse from '@/game/gameObject/spellObjects/AoePulse';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 
 /**
@@ -157,8 +156,10 @@ export function landBasicAttack(
   // `combat/Mitigation.ts`'s header on why the default runs that way round.
   // `landBasicAttack` is the sole place a swing becomes damage, so this single
   // line is what makes armour mean anything at all.
-  victim.takeDamage(total, attacker, 'PHYSICAL', BASIC_ATTACK_SOURCE);
-  if (crit) showCritSpark(attacker, victim);
+  // `crit` rides along as presentation only: the multiplier is already in
+  // `total`, and the victim's `presentHit` is what makes a crit look like one
+  // (bigger number, longer flash, the spark) — on both ends of a LAN match.
+  victim.takeDamage(total, attacker, 'PHYSICAL', BASIC_ATTACK_SOURCE, { crit });
   // After the swing's own damage, before the observation event: an on-hit
   // effect is part of the attack (League's order too), so anything watching
   // ON_ATTACK_HIT sees the world with the whole attack already applied. Each
@@ -184,19 +185,6 @@ export function landBasicAttack(
 function rollCrit(attacker: AttackableUnit): boolean {
   const chance = attacker.stats?.critChance?.value ?? 0;
   return chance > 0 && Math.random() < chance;
-}
-
-/** A crit that looks like every other hit is not a crit. */
-function showCritSpark(attacker: AttackableUnit, victim: AttackableUnit): void {
-  const spark = new AoePulse(attacker);
-  spark.position = victim.position.copy();
-  spark.radius = 55;
-  spark.lifeTime = 300;
-  spark.color = [255, 205, 90];
-  spark.style = 'shards';
-  spark.spokes = 8;
-  spark.fillAlpha = 0;
-  attacker.game?.objectManager?.addObject?.(spark);
 }
 
 /**

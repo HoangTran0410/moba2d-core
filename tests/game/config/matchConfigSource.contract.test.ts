@@ -134,6 +134,7 @@ const fakeHost = (director: MatchDirector): MatchDirectorHost => {
   let zoom = 1;
   let quality: MatchDirectorHost['renderQuality'] = 'auto';
   let fps: MatchDirectorHost['renderFps'] = 60;
+  let shake = true;
   return {
     director,
     camera: {
@@ -163,6 +164,12 @@ const fakeHost = (director: MatchDirector): MatchDirectorHost => {
     },
     setRenderFps(next) {
       fps = next;
+    },
+    get screenShake() {
+      return shake;
+    },
+    setScreenShake(next) {
+      shake = next;
     },
     setTouchUiEnabled() {},
     requestExit() {},
@@ -550,6 +557,13 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       source.setRenderFps(30);
       expect(source.renderQuality).toBe('low');
       expect(source.renderFps).toBe(30);
+    });
+
+    it('stores the screen-shake toggle', () => {
+      source.setScreenShake(false);
+      expect(source.screenShake).toBe(false);
+      source.setScreenShake(true);
+      expect(source.screenShake).toBe(true);
     });
   });
 

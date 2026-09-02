@@ -21,6 +21,7 @@ export type RenderFps = 30 | 60;
 
 const RENDER_QUALITY_STORAGE_KEY = 'moba2d.renderQuality';
 const RENDER_FPS_STORAGE_KEY = 'moba2d.renderFps';
+const SCREEN_SHAKE_STORAGE_KEY = 'moba2d.screenShake';
 
 export function renderQualityPreference(): RenderQuality {
   try {
@@ -57,5 +58,43 @@ export function setRenderFpsPreference(fps: RenderFps): void {
     window.localStorage.setItem(RENDER_FPS_STORAGE_KEY, fps === 30 ? '30' : '60');
   } catch {
     /* storage blocked: the live setting still works */
+  }
+}
+
+/**
+ * Whether the camera may shake on the player's own heavy hits, kills and
+ * death (`Camera.shake`, fed from `render/hitFeedback.ts`).
+ *
+ * On by default — except when the OS asks for reduced motion, which is the
+ * one thing a player has already said about exactly this kind of effect. An
+ * explicit choice in the settings tab wins over the OS either way.
+ */
+export function screenShakePreference(): boolean {
+  try {
+    const stored = window.localStorage.getItem(SCREEN_SHAKE_STORAGE_KEY);
+    if (stored === 'on') return true;
+    if (stored === 'off') return false;
+  } catch {
+    /* storage blocked: fall through to the OS hint */
+  }
+  return !prefersReducedMotion();
+}
+
+export function setScreenShakePreference(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(SCREEN_SHAKE_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch {
+    /* storage blocked: the live setting still works */
+  }
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return (
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches === true
+    );
+  } catch {
+    return false;
   }
 }

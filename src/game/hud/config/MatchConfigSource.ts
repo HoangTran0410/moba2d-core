@@ -446,6 +446,9 @@ export interface MatchConfigSource {
   readonly renderFps: RenderFps;
   setRenderQuality(quality: RenderQuality): void;
   setRenderFps(fps: RenderFps): void;
+  /** Camera shake on the player's own heavy hits, kills and death — `Camera.shake`. */
+  readonly screenShake: boolean;
+  setScreenShake(enabled: boolean): void;
 
   /** Writes `DEFAULT_PREGAME_CONFIG` and — in a match — applies it on the spot. */
   resetToDefaults(): Promise<void>;

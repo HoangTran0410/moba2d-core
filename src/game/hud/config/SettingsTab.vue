@@ -31,6 +31,9 @@ import { vTap } from '../tapGuard';
 import DomUtils from '@/utils/dom.utils';
 import { DEBUG_LAYER_KEYS, type DebugLayerConfig } from '@/game/config/PregameConfig';
 import {
+  hapticsPreference,
+  hapticsSupported,
+  setHapticsPreference,
   setTouchTargetPriorityPreference,
   touchTargetPriorityPreference,
   type TouchModePreference,
@@ -76,6 +79,16 @@ const setInputMode = (mode: TouchModePreference): void => {
 
 const targetPriority = ref<TouchTargetPriority>(touchTargetPriorityPreference());
 
+// A stored preference read at the moment of each buzz, like the target
+// priority: nothing live to apply, so it needs no `MatchConfigSource` row.
+const hapticsAvailable = hapticsSupported();
+const haptics = ref<boolean>(hapticsPreference());
+
+const onHapticsChange = (event: Event): void => {
+  setHapticsPreference((event.target as HTMLInputElement).checked);
+  haptics.value = hapticsPreference();
+};
+
 const setTargetPriority = (priority: TouchTargetPriority): void => {
   setTouchTargetPriorityPreference(priority);
   targetPriority.value = priority;
@@ -94,6 +107,13 @@ const onRenderQualityChange = (event: Event): void => {
 const onRenderFpsChange = (event: Event): void => {
   source.setRenderFps(Number((event.target as HTMLSelectElement).value) as RenderFps);
   renderFps.value = source.renderFps;
+};
+
+const screenShake = ref<boolean>(source.screenShake);
+
+const onScreenShakeChange = (event: Event): void => {
+  source.setScreenShake((event.target as HTMLInputElement).checked);
+  screenShake.value = source.screenShake;
 };
 
 /**
@@ -229,6 +249,12 @@ const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
       </template>
     </p>
 
+    <!-- Only where the device can buzz at all: iOS Safari has no vibrate. -->
+    <label v-if="hapticsAvailable" class="pregame-toggle">
+      <input type="checkbox" id="pregame-haptics" :checked="haptics" @change="onHapticsChange" />
+      <span>Rung máy khi bấm nút, trúng đòn nặng, hạ gục, hoặc chết</span>
+    </label>
+
     <h3 class="practice-section-title">Ưu tiên mục tiêu khi chạm nhanh</h3>
     <div class="input-mode-row" role="group" aria-label="Ưu tiên mục tiêu">
       <button
@@ -272,6 +298,16 @@ const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
         </select>
       </label>
     </div>
+
+    <label class="pregame-toggle">
+      <input
+        type="checkbox"
+        id="practice-screen-shake"
+        :checked="screenShake"
+        @change="onScreenShakeChange"
+      />
+      <span>Rung màn hình khi trúng đòn nặng, hạ gục, hoặc chết</span>
+    </label>
 
     <!-- Needs a camera to act on, so it is not offered before a match exists. -->
     <label v-if="live" class="pregame-field">

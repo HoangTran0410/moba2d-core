@@ -19,6 +19,12 @@ export const HotKeys = {
   // never steal a cast.
   P: 80,
 
+  // The scoreboard, held down (Game.keyPressed/keyReleased ->
+  // HudInteractions.setScoreboard). The browser's own Tab — moving focus —
+  // is swallowed in GameScene.keyPressed, or the first press would land the
+  // keyboard on a HUD button.
+  TAB: 9,
+
   // The inventory row. A *second* layout, not more of the kit — see
   // `ItemHotKeys` below.
   ONE: 49,

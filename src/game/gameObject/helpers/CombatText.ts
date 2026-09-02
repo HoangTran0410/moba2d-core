@@ -2,6 +2,7 @@ import ColorUtils from '@/utils/color.utils';
 import SpellObject from '@/game/gameObject/SpellObject';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { DamageType } from '@/game/combat/Mitigation';
+import { damageTextScale, hitFraction } from '@/game/render/hitFeedback';
 
 /** How long a floating number stays on screen once nothing is refreshing it. */
 export const COMBAT_TEXT_LIFETIME_MS = 1000;
@@ -127,6 +128,41 @@ const ARC_QUADRATIC_PX = 90;
 /** Peak sideways drift once the arc completes, so two numbers on one unit don't sit on identical x. */
 const DRIFT_MAX_PX = 40;
 
+/** Screen-space size of a number nothing has made bigger. */
+const BASE_TEXT_SIZE = 20;
+/**
+ * The "punch": a number lands oversized and settles to its size over this
+ * long, reset on every merge so sustained fire keeps pulsing. Rhythm and size
+ * are how a crit is told apart — colour is spoken for (`DAMAGE_TEXT_COLOR`).
+ */
+export const PUNCH_MS = 120;
+const PUNCH_SCALE = 0.35;
+
+/** What the headline should be drawn at. Only damage weighs itself against the pool. */
+const sizeFor = (owner: AttackableUnit, kind: CombatTextKind, amount: number, crit: boolean): number =>
+  kind === 'damage'
+    ? BASE_TEXT_SIZE * damageTextScale(hitFraction(amount, owner.stats?.maxHealth?.value ?? 0), crit)
+    : BASE_TEXT_SIZE;
+
+/**
+ * Hits landing within this long of the first hit of a group are one
+ * *headline* — see "The headline and the total" on the class. Long enough to
+ * fold a multi-projectile spell or an aura's same-frame ticks into one
+ * number; short enough that two basic attacks (400ms apart at the attack
+ * speed cap) are two.
+ */
+export const HEADLINE_WINDOW_MS = 150;
+/** The total line, relative to the headline: smaller and quieter, a footnote. */
+const TOTAL_TEXT_SCALE = 0.6;
+const TOTAL_TEXT_ALPHA = 0.75;
+const TOTAL_PREFIX = '∑ ';
+
+/** Presentation options `show` accepts beside the number. */
+export interface CombatTextOptions {
+  /** A crit hit: bigger, heavier outline, and it marks the merged text for good. */
+  crit?: boolean;
+}
+
 /**
  * Extra clearance the arc's rest point keeps above the unit's health bar, in
  * screen-space px (scaled like the bar itself — see `Camera.constantSize`).
@@ -208,6 +244,26 @@ const HEALTH_BAR_CLEARANCE_PX = 20;
  * roster) rather than by event rate — an AOE hitting forty units still shows
  * forty numbers, one each, which is the correct answer, not something a cap
  * should be trimming.
+ *
+ * ## The headline and the total
+ *
+ * Merging answers "how much am I taking" and, on its own, destroys "how much
+ * was *that*": a crit landing on a running total of 300 reads as 352 — the
+ * player can see neither the crit nor the total for what they are. Reported
+ * from a phone on the day crits got a size of their own.
+ *
+ * So one text carries two numbers, and the object count stays exactly what
+ * the merge rule bought. The **headline** (`recent`, drawn as `text`) is the
+ * sum of the hits that landed within `HEADLINE_WINDOW_MS` of the first hit of
+ * the current group; a hit landing later than that opens a new group and the
+ * headline *replaces* itself rather than climbing. Size and crit styling
+ * follow the headline, so a crit is drawn at the crit's own number and a
+ * chain of pokes never grows into the picture of a single big blow. The
+ * **total** (`amount`, drawn as `totalText`) is everything since this text
+ * was born, and is only drawn once a second group has opened — a lone hit is
+ * one number, exactly as before. The text still fades a lifetime after the
+ * last hit, so the total's window is the burst of combat itself, not a
+ * constant to tune.
  */
 export default class CombatText extends SpellObject {
   lifeTime: number;
@@ -222,8 +278,20 @@ export default class CombatText extends SpellObject {
   textSize: number;
   textColor: string | number[];
   text: string;
-  /** Running total this instance is displaying, before `FORMAT_BY_KIND`. */
+  /** Everything since this text was born, before `FORMAT_BY_KIND`. See "The headline and the total". */
   amount = 0;
+  /** The headline group's sum — what `text` shows. */
+  recent = 0;
+  /** `amount`, formatted, for the total line. */
+  totalText = '';
+  /** Ms since the current headline group opened. Simulation clock, like `age`. */
+  groupAgeMs = 0;
+  /** Headline groups so far; the total line is drawn from the second on. */
+  groups = 1;
+  /** A crit landed in the current headline group. Reset when a new group opens. */
+  crit = false;
+  /** Ms of landing "punch" left; see `PUNCH_MS`. */
+  punchMs = 0;
 
   constructor(owner: AttackableUnit) {
     super(owner);
@@ -233,7 +301,7 @@ export default class CombatText extends SpellObject {
     this.offsetX = 0;
     this.offsetY = 0;
     this.driftTargetX = random(-DRIFT_MAX_PX, DRIFT_MAX_PX);
-    this.textSize = 20;
+    this.textSize = BASE_TEXT_SIZE;
     this.textColor = 'white';
     this.text = '';
   }
@@ -243,25 +311,46 @@ export default class CombatText extends SpellObject {
     owner: AttackableUnit,
     kind: CombatTextKind,
     amount: number,
-    textColor: string | number[]
+    textColor: string | number[],
+    options?: CombatTextOptions
   ): void {
     amount = Math.round(amount);
     if (amount === 0) return;
+    const crit = options?.crit === true;
 
     const key = kind + '|' + colorKey(textColor);
     const byKey = mergeTargets.get(owner);
     const existing = byKey?.get(key);
     if (existing && !existing.toRemove) {
       existing.amount += amount;
-      existing.text = FORMAT_BY_KIND[kind](existing.amount);
+      existing.totalText = FORMAT_BY_KIND[kind](existing.amount);
       existing.age = 0;
+      if (existing.groupAgeMs > HEADLINE_WINDOW_MS) {
+        // A new group: the headline is *this* hit, not the pile it joined.
+        existing.recent = amount;
+        existing.crit = crit;
+        existing.groupAgeMs = 0;
+        existing.groups += 1;
+      } else {
+        existing.recent += amount;
+        existing.crit ||= crit;
+      }
+      existing.text = FORMAT_BY_KIND[kind](existing.recent);
+      // Size follows the headline: "how hard was that", not "how much so far".
+      existing.textSize = sizeFor(owner, kind, existing.recent, existing.crit);
+      existing.punchMs = PUNCH_MS;
       return;
     }
 
     const combatText = new CombatText(owner);
     combatText.amount = amount;
+    combatText.recent = amount;
     combatText.text = FORMAT_BY_KIND[kind](amount);
+    combatText.totalText = combatText.text;
     combatText.textColor = textColor;
+    combatText.crit = crit;
+    combatText.textSize = sizeFor(owner, kind, amount, crit);
+    combatText.punchMs = PUNCH_MS;
 
     let targets = byKey;
     if (!targets) {
@@ -282,6 +371,9 @@ export default class CombatText extends SpellObject {
     const arcProgress = Math.min(this.elapsedMs, COMBAT_TEXT_ARC_MS) / COMBAT_TEXT_ARC_MS;
     this.offsetY = ARC_LINEAR_PX * arcProgress + ARC_QUADRATIC_PX * arcProgress * arcProgress;
     this.offsetX = this.driftTargetX * arcProgress * arcProgress;
+
+    if (this.punchMs > 0) this.punchMs -= deltaTime;
+    this.groupAgeMs += deltaTime;
 
     this.age += deltaTime;
     if (this.age > this.lifeTime) {
@@ -312,14 +404,36 @@ export default class CombatText extends SpellObject {
     const x = this.owner.position.x + this.offsetX;
     const y = restY + this.offsetY;
 
-    strokeWeight(2);
+    // A heavier outline is the crit's second tell, beside its size.
+    strokeWeight(this.crit ? 3 : 2);
     stroke(strokeColor);
     fill(colorAlpha);
     textStyle(BOLD);
+    // Lands oversized and settles — see PUNCH_MS.
+    const punch = this.punchMs > 0 ? 1 + PUNCH_SCALE * Math.min(1, this.punchMs / PUNCH_MS) : 1;
     // An overlay, not the world: a damage number is the same size on screen at
     // every zoom. See Camera.constantSize.
-    textSize(this.textSize * zoomFactor);
+    const headlineSize = this.textSize * punch * zoomFactor;
+    textSize(headlineSize);
     text(this.text, x, y);
+
+    if (this.showsTotal) {
+      // The footnote: above the headline (the arc carries both away from the
+      // bar, so above is the side with room), smaller, quieter, never punched
+      // and never in the crit's heavy outline — the total is context, and the
+      // headline is the news.
+      const totalSize = BASE_TEXT_SIZE * TOTAL_TEXT_SCALE * zoomFactor;
+      strokeWeight(2);
+      stroke(ColorUtils.applyColorAlpha([16, 12, 20], alpha * TOTAL_TEXT_ALPHA));
+      fill(ColorUtils.applyColorAlpha(this.textColor, alpha * TOTAL_TEXT_ALPHA));
+      textSize(totalSize);
+      text(TOTAL_PREFIX + this.totalText, x, y - headlineSize * 0.95);
+    }
     pop();
+  }
+
+  /** The total line earns its place only once there is more than one headline to sum. */
+  get showsTotal(): boolean {
+    return this.groups >= 2;
   }
 }

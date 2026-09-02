@@ -53,6 +53,13 @@ describe('the ON_TAKE_DAMAGE damage-number event', () => {
     expect(heard[0].unit).toBe(victim);
   });
 
+  it('carries the crit flag a swing passed in, and false when none did', () => {
+    victim.takeDamage(40, attacker, 'PHYSICAL', 'swing', { crit: true });
+    victim.takeDamage(10, attacker, 'MAGIC');
+
+    expect(heard.map(hit => hit.crit)).toEqual([true, false]);
+  });
+
   it('stays silent for a hit a shield swallowed whole — nothing was floated', () => {
     const guard = new Shield(10_000, victim, victim);
     guard.amount = 200;

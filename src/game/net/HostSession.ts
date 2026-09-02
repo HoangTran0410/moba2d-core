@@ -212,6 +212,7 @@ export class HostSession implements NetGameHooks {
   private stopCastListener: () => void;
   private stopDamageListener: () => void;
   private stopAttackListener: () => void;
+  private stopAnnounceListener: () => void;
 
   constructor(
     private readonly game: Game,
@@ -238,9 +239,23 @@ export class HostSession implements NetGameHooks {
       EventType.ON_TAKE_DAMAGE,
       (hit: DamageNumberEvent) => {
         const id = this.ids.get(hit.unit);
-        if (id) this.pendingEvents.push({ k: 'dmg', id, a: hit.amount, ty: hit.type });
+        if (!id) return;
+        this.pendingEvents.push(
+          hit.crit
+            ? { k: 'dmg', id, a: hit.amount, ty: hit.type, c: 1 }
+            : { k: 'dmg', id, a: hit.amount, ty: hit.type }
+        );
       }
     );
+    // Every kill the feed announces, forwarded: a client's deaths arrive as a
+    // snapshot flag with no killer attached, so it cannot narrate them itself.
+    // The unit references stay here; the wire carries names, art and ids.
+    this.stopAnnounceListener = game.announcer.onAnnounce(announcement => {
+      const { killerUnit, victimUnit, ...wire } = announcement;
+      const kid = killerUnit ? this.ids.get(killerUnit) : undefined;
+      const vid = victimUnit ? this.ids.get(victimUnit) : undefined;
+      this.pendingEvents.push({ k: 'ann', a: { ...wire, kid, vid } });
+    });
     // Champion swings, forwarded — the one attack the client cannot produce
     // locally: minions/monsters/turrets swing on their own timers there, but
     // a champion's controller fires only on orders, which puppets never hold.
@@ -1139,6 +1154,7 @@ export class HostSession implements NetGameHooks {
     this.stopCastListener();
     this.stopDamageListener();
     this.stopAttackListener();
+    this.stopAnnounceListener();
     this.transport.close();
     this.game.net = null;
     setNetRole('off');

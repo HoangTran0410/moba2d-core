@@ -2,6 +2,7 @@ import { getChampionPresetRandom } from '@/game/preset';
 import type { DamageType } from '@/game/combat/Mitigation';
 import Champion, { type ChampionOptions, type ChampionPresetData } from './Champion';
 import type AttackableUnit from './AttackableUnit';
+import type { HitPresentationOptions } from './AttackableUnit';
 import { type BotDifficulty, DEFAULT_DIFFICULTY } from '@/game/ai/Difficulty';
 import BotBrain from '@/game/ai/BotBrain';
 import { BOT_SHOP_INTERVAL_MS, botShopTick } from '@/game/ai/BotShopper';
@@ -282,8 +283,14 @@ export default class AIChampion extends Champion {
    * by magic resist while the same swing against a human was mitigated by
    * armour. `takeDamageSignature.test.ts` is the guard.
    */
-  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
-    super.takeDamage(damage, attacker, type, source);
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type?: DamageType,
+    source?: string,
+    presentation?: HitPresentationOptions
+  ) {
+    super.takeDamage(damage, attacker, type, source, presentation);
     // The brain's "am I safe enough to stand still" clock. Written here rather
     // than derived from health, because a shield eats the number and not the
     // fact: being shot at is what makes a recall a bad idea, not losing health

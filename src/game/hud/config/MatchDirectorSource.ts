@@ -84,6 +84,8 @@ export interface MatchDirectorHost {
   readonly renderFps: RenderFps;
   setRenderQuality(quality: RenderQuality): void;
   setRenderFps(fps: RenderFps): void;
+  readonly screenShake: boolean;
+  setScreenShake(enabled: boolean): void;
   /** Applies a touch/pointer switch to the live match — `Game.setTouchControlsEnabled`. */
   setTouchUiEnabled(enabled: boolean): void;
   /** Opens the shop panel aimed at a roster unit — `HudInteractions.openShopFor`. */
@@ -599,6 +601,14 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   setRenderFps(fps: RenderFps): void {
     this.host.setRenderFps(fps);
+  }
+
+  get screenShake(): boolean {
+    return this.host.screenShake;
+  }
+
+  setScreenShake(enabled: boolean): void {
+    this.host.setScreenShake(enabled);
   }
 
   /**

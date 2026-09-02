@@ -100,6 +100,48 @@ describe('practice range controls', () => {
   });
 });
 
+describe('createHudInteractions — the Tab scoreboard', () => {
+  const fakeGame = () =>
+    ({
+      player: { spells: [{}, {}] },
+      objectManager: { objects: [] },
+      renderQuality: 'auto',
+      renderFps: 60,
+      setRenderQuality: vi.fn(),
+      setRenderFps: vi.fn(),
+      pause: vi.fn(),
+      unpause: vi.fn(),
+    }) as any;
+
+  beforeEach(() => {
+    vi.stubGlobal('window', globalThis);
+  });
+
+  it('is held, not toggled, from the key — and toggled from the corner button', () => {
+    const hud = createHudInteractions(fakeGame());
+    expect(hud.showScoreboard).toBe(false);
+    hud.setScoreboard(true);
+    hud.setScoreboard(true);
+    expect(hud.showScoreboard).toBe(true);
+    hud.setScoreboard(false);
+    expect(hud.showScoreboard).toBe(false);
+    hud.toggleScoreboard();
+    expect(hud.showScoreboard).toBe(true);
+    hud.toggleScoreboard();
+    expect(hud.showScoreboard).toBe(false);
+  });
+
+  it('is the first thing Escape drops, and never pauses the match', () => {
+    const game = fakeGame();
+    const hud = createHudInteractions(game);
+    hud.setScoreboard(true);
+    hud.escape();
+    expect(hud.showScoreboard).toBe(false);
+    expect(hud.showSpellsPicker).toBe(false);
+    expect(game.pause).not.toHaveBeenCalled();
+  });
+});
+
 describe('createHudInteractions — the ways into the practice panel', () => {
   const fakeGame = () =>
     ({

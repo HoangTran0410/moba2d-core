@@ -43,6 +43,9 @@ import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
 import { vTap } from './tapGuard';
 import DeathRecapPanel from './DeathRecapPanel.vue';
+import KillFeed from './KillFeed.vue';
+import Scoreboard from './Scoreboard.vue';
+import ScoreStrip from './ScoreStrip.vue';
 import DesktopHudView from './DesktopHudView.vue';
 import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
@@ -162,6 +165,31 @@ defineExpose({
       <i class="fa-solid fa-wand-magic-sparkles"></i>
     </button>
   </div>
+
+  <!--
+    The score strip: team kills and the clock, top centre, and the one way into
+    the scoreboard a phone has (a keyboard also has Tab). Not a third corner
+    button on purpose — see `TouchLayout`'s `CORNER_BUTTON_BOX`.
+  -->
+  <ScoreStrip
+    v-if="state && !hud.showSpellsPicker && !hud.showShop"
+    :teams="state.scoreboard.teams"
+    :clock="state.clock"
+    :active="hud.showScoreboard"
+    @toggle="hud.toggleScoreboard()"
+  />
+
+  <!-- The Tab glance, over both layouts; dismissed by releasing Tab, a tap, or Escape. -->
+  <Scoreboard
+    v-if="state && hud.showScoreboard"
+    :board="state.scoreboard"
+    :touch="hud.touchUi"
+    @close="hud.setScoreboard(false)"
+  />
+
+  <!-- One feed for both views, out of the way with the corner cluster when a
+       panel owns that corner. -->
+  <KillFeed v-if="state && !hud.showSpellsPicker && !hud.showShop" :feed="state.feed" />
 
   <!-- One recap for both views — see its own header. -->
   <DeathRecapPanel

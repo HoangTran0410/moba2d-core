@@ -395,6 +395,27 @@ describe('TouchControls — haptics', () => {
 
     expect(vibrate).not.toHaveBeenCalled();
   });
+
+  it('stays quiet when the player has turned haptics off', () => {
+    const vibrate = vi.fn();
+    vi.stubGlobal('navigator', { vibrate });
+    const values = new Map<string, string>([['moba2d.haptics', 'off']]);
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+      },
+    });
+    const h = harness();
+
+    h.controls.syncPointers([{ id: 1, x: attack.x, y: attack.y }]);
+    h.controls.syncPointers([
+      { id: 1, x: attack.x, y: attack.y },
+      { id: 2, x: attack.x + 2, y: attack.y + 2 },
+    ]);
+
+    expect(vibrate).not.toHaveBeenCalled();
+  });
 });
 
 describe('TouchControls — preference', () => {

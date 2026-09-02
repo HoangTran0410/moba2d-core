@@ -13,6 +13,7 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import SpellObject from '@/game/gameObject/SpellObject';
 import AttackableUnit from './AttackableUnit';
+import type { HitPresentationOptions } from './AttackableUnit';
 import type {
   AttackableUnitOptions,
   AttackableUnitRenderOptions,
@@ -649,9 +650,15 @@ export default class Minion extends AttackableUnit {
    * by magic resist while the same swing against a human was mitigated by
    * armour. `takeDamageSignature.test.ts` is the guard.
    */
-  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type?: DamageType,
+    source?: string,
+    presentation?: HitPresentationOptions
+  ) {
     if (this.isDead) return;
-    super.takeDamage(damage, attacker, type, source);
+    super.takeDamage(damage, attacker, type, source, presentation);
     // super.takeDamage may have killed us; a corpse must not pick a fight. Only
     // swap targets when we have none — otherwise a wave under turret fire would
     // drop the minion it was killing every time a bolt landed.
@@ -756,6 +763,9 @@ export default class Minion extends AttackableUnit {
     if (this.style === 'cannon') this.drawCart(size);
     else if (this.style === 'ranged') this.drawCaster(size);
     else this.drawSoldier(size);
+    // In the rotated frame, over the body: the base's `drawAvatar` is not
+    // used here, so the flash it would have painted is painted by hand.
+    this.drawHitFlash(0, 0, size * 1.12);
 
     pop();
 

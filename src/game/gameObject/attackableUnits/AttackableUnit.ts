@@ -8,6 +8,15 @@ import type { GameObjectOptions, GameObjectRuntimeContext } from '@/game/gameObj
 import Stats from '@/game/gameObject/Stats';
 import EventType from '@/game/enums/EventType';
 import { DEFAULT_DAMAGE_TYPE, effectiveDamage, type DamageType } from '@/game/combat/Mitigation';
+import {
+  DEATH_SHAKE_TRAUMA,
+  KILL_SHAKE_TRAUMA,
+  hitFlashMs,
+  hitFraction,
+  hitShakeTrauma,
+} from '@/game/render/hitFeedback';
+import AoePulse from '@/game/gameObject/spellObjects/AoePulse';
+import { feelHaptic, type FeedbackKind } from '@/game/input/haptics';
 import { vampFraction } from '@/game/combat/Vamp';
 import { healingMultiplier } from '@/game/combat/Healing';
 import { resolveEconomy } from '@/game/config/mapTuning';
@@ -49,6 +58,43 @@ export interface UnitDeathData {
   attacker?: AttackableUnit;
   reviveAfter: number;
 }
+
+/**
+ * What a hit *looks* like, as `presentHit` shows it: the shown number, its
+ * type (for the colour), and whether the swing that landed it was a crit.
+ * Presentation only — nothing here feeds back into the arithmetic.
+ */
+export interface HitPresentation {
+  amount: number;
+  type: DamageType;
+  crit?: boolean;
+}
+
+/**
+ * `takeDamage`'s fifth argument: the part of a hit that only matters to how
+ * it is shown. Only `landBasicAttack` sets anything today, because only a
+ * swing can crit.
+ */
+export interface HitPresentationOptions {
+  crit?: boolean;
+}
+
+/**
+ * `EventType.ON_DIE`'s payload, emitted once per death on the transition in
+ * `die()` — after the tally, the bounty and the assists have been paid, so a
+ * listener sees the world with the kill already counted. `killer` is whatever
+ * landed the blow (a champion, a turret, a minion), or absent for a death
+ * nobody caused; `credit` is the victim's `killCredit`, so a listener can
+ * tell a champion's death from a minion's without knowing the classes.
+ */
+export interface UnitDeathEvent {
+  unit: AttackableUnit;
+  killer?: AttackableUnit;
+  credit: KillCredit;
+}
+
+/** Peak alpha of the white disc a hit lights on a body. See `drawHitFlash`. */
+const HIT_FLASH_PEAK_ALPHA = 150;
 
 export type HealSource = GameObject;
 
@@ -343,10 +389,20 @@ export default class AttackableUnit extends GameObject {
     };
   }
 
+  /**
+   * Ms of hit flash left on the body, and the length it started from, so the
+   * disc fades over whatever `presentHit` chose rather than a fixed span.
+   * Simulation clock, like `_recentAttackerTtl`: a paused match holds the
+   * flash, which is the honest picture of a paused hit.
+   */
+  hitFlashMs = 0;
+  hitFlashTotalMs = 0;
+
   update() {
     // ticked before the buffs run, so a displacement applied during this frame's
     // updateBuffs() still gets its full grace afterwards
     if (this._separationGrace > 0) this._separationGrace -= 1;
+    if (this.hitFlashMs > 0) this.hitFlashMs -= deltaTime;
 
     if (this._recentAttackerTtl > 0) {
       this._recentAttackerTtl -= deltaTime;
@@ -429,6 +485,7 @@ export default class AttackableUnit extends GameObject {
     fill(240, alpha);
 
     this.drawBody(pos.x, pos.y, size, alpha);
+    this.drawHitFlash(pos.x, pos.y, size);
 
     stroke(this.isAllied ? [0, 255, 0, alpha] : [255, 0, 0, alpha]);
     strokeWeight(2);
@@ -463,6 +520,22 @@ export default class AttackableUnit extends GameObject {
     drawingContext.clip();
     image(AssetManager.renderable(this.avatar), x, y, size, size);
     drawingContext.restore();
+  }
+
+  /**
+   * The disc `presentHit` lit, fading over `hitFlashTotalMs`. Over the body
+   * and under the team ring in `drawAvatar`; a subclass that paints its own
+   * body in its own frame (`Minion`) calls it there. White on purpose — the
+   * damage type has one colour channel and it is the number, never the body
+   * (`VFX_STANDARD.md`, colour rule 1). Lives inside the unit's own `draw()`,
+   * so it is culled and fogged exactly as the body is.
+   */
+  protected drawHitFlash(x: number, y: number, size: number): void {
+    if (this.hitFlashMs <= 0 || this.hitFlashTotalMs <= 0 || this.isDead) return;
+    const strength = Math.min(1, this.hitFlashMs / this.hitFlashTotalMs);
+    noStroke();
+    fill(255, 255, 255, HIT_FLASH_PEAK_ALPHA * strength);
+    circle(x, y, size);
   }
 
   drawDir() {
@@ -818,7 +891,8 @@ export default class AttackableUnit extends GameObject {
     damage: number,
     attacker?: AttackableUnit,
     type: DamageType = DEFAULT_DAMAGE_TYPE,
-    source?: string
+    source?: string,
+    presentation?: HitPresentationOptions
   ): void {
     // A LAN client never simulates outcomes: health is snapshot truth
     // (`net/netRole.ts`, spec §4 of the LAN design). This being the one
@@ -898,11 +972,11 @@ export default class AttackableUnit extends GameObject {
       return;
     }
 
-    // Its own type's colour, not one red for all three: see `DAMAGE_TEXT_COLOR`.
-    // `CombatText.show` keys its merge on the colour too, so this is also what
-    // keeps a physical hit and a magic hit on one victim from blending into a
-    // single number that hides which was which.
-    CombatText.show(this, 'damage', damage, [...DAMAGE_TEXT_COLOR[type]]);
+    // Everything the hit *looks* like — the number, the flash, the camera —
+    // goes through one door, because a LAN client has to reach the same door
+    // from the wire (see `presentHit`).
+    const crit = presentation?.crit === true;
+    this.presentHit({ amount: damage, type, crit });
     // The same number, for anyone who cannot compute it: a LAN client's own
     // `takeDamage` is gated shut (the early return at the top), so the only
     // damage numbers it can ever float are the ones the host's sim announces.
@@ -911,6 +985,7 @@ export default class AttackableUnit extends GameObject {
       unit: this,
       amount: damage,
       type,
+      crit,
     } satisfies DamageNumberEvent);
 
     // What actually landed, for the scoreboard: capped at the pool that was
@@ -970,6 +1045,28 @@ export default class AttackableUnit extends GameObject {
     if (this.stats.health.baseValue <= 0) {
       this.die({ attacker, reviveAfter: this.reviveTime });
     }
+  }
+
+  /**
+   * Show a hit landing on this body: the number, the flash, the crit spark,
+   * and — when this body is the player's — the camera. Everything a hit
+   * *looks* like and nothing of what it *does*.
+   *
+   * The one door for both ends of a LAN match. The host reaches it from
+   * `takeDamage`; a client, whose `takeDamage` is gated shut, reaches it from
+   * `ClientSession`'s `dmg` stream with the host's own numbers. Anything a
+   * hit should look like belongs here and nowhere else, or the client will
+   * not see it. The type's colour, not one red for all three: see
+   * `DAMAGE_TEXT_COLOR`, whose colour is also half of the text's merge key.
+   */
+  presentHit(hit: HitPresentation): void {
+    const crit = hit.crit === true;
+    const fraction = hitFraction(hit.amount, this.stats.maxHealth.value);
+    const color = DAMAGE_TEXT_COLOR[hit.type] ?? DAMAGE_TEXT_COLOR[DEFAULT_DAMAGE_TYPE];
+    CombatText.show(this, 'damage', hit.amount, [...color], { crit });
+    this.hitFlashTotalMs = this.hitFlashMs = hitFlashMs(fraction, crit);
+    if (crit) showCritSpark(this);
+    if (isLocalPlayer(this.game, this)) feel(this.game, 'hit', hitShakeTrauma(fraction, crit));
   }
 
   /**
@@ -1147,7 +1244,8 @@ export default class AttackableUnit extends GameObject {
   die(deathData: UnitDeathData): void {
     // `die` is reachable on a corpse — `Champion.die` runs cleanup that is safe
     // to repeat — so the ledger is only touched on the transition.
-    if (!this.isDead) {
+    const transition = !this.isDead;
+    if (transition) {
       this.tally.deaths++;
       // The recap is the ledger as it stood at the killing blow (which
       // `takeDamage` has already written). Snapshot on the transition only, or
@@ -1159,10 +1257,15 @@ export default class AttackableUnit extends GameObject {
         entries: this.recentDamageLog.slice(),
       };
       this.recentDamageLog.length = 0;
+      // The player's own death is the one hit that always lands hardest —
+      // and it lands on a LAN client too, whose `die` comes from the snapshot.
+      if (isLocalPlayer(this.game, this)) feel(this.game, 'death', DEATH_SHAKE_TRAUMA);
       const killer = deathData.attacker;
       if (killer && killer !== this) {
-        if (this.killCredit === 'champion') killer.tally.kills++;
-        else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
+        if (this.killCredit === 'champion') {
+          killer.tally.kills++;
+          if (isLocalPlayer(this.game, killer)) feel(this.game, 'kill', KILL_SHAKE_TRAUMA);
+        } else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
         // Inside the same `!isDead` guard as the ledger and the bounty, and
         // before `clearBuffs` below touches anything: a second `die` on a
         // corpse must not pay a second set of assists.
@@ -1184,6 +1287,16 @@ export default class AttackableUnit extends GameObject {
     this.deathData = deathData;
     this.pathAgent?.clear();
     this.clearBuffs();
+    // Last, so a listener sees a corpse (`isDead` true, buffs gone) with the
+    // kill already counted. On the transition only, like everything above.
+    if (transition) {
+      const killer = deathData.attacker;
+      this.game?.eventManager?.emit(EventType.ON_DIE, {
+        unit: this,
+        killer: killer && killer !== this ? killer : undefined,
+        credit: this.killCredit,
+      } satisfies UnitDeathEvent);
+    }
   }
 
   /**
@@ -1482,6 +1595,8 @@ export interface DamageNumberEvent {
   unit: AttackableUnit;
   amount: number;
   type: DamageType;
+  /** The swing's crit roll, so a client can show the crit it cannot roll. */
+  crit?: boolean;
 }
 
 export interface DamageLogEntry {
@@ -1506,3 +1621,51 @@ export interface DeathRecap {
  *  it, so this reads it structurally and says "unknown" honestly otherwise. */
 const unitDisplayName = (unit?: unknown): string =>
   (unit as { name?: string } | undefined)?.name ?? 'Không rõ';
+
+/**
+ * Is `unit` the champion this device is playing? Presentation asks this on
+ * every hit and every death, so it must be safe to ask anywhere a unit can
+ * live — including the headless test contexts, whose `player` getter throws
+ * by design to catch *gameplay* that depends on one. A hit's look is not
+ * gameplay, so here the honest answer to "no player" is simply "not the
+ * player".
+ */
+function isLocalPlayer(game: GameObjectRuntimeContext | undefined, unit: AttackableUnit): boolean {
+  if (!game) return false;
+  try {
+    return game.player === unit;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Make the player *feel* something: the camera and the thumb, from one trauma
+ * number so they always agree (`render/hitFeedback.ts` sets it,
+ * `input/haptics.ts` shapes the buzz). The runtime context types its camera
+ * by the two methods every context answers (`getBoundingBox`,
+ * `constantSize?`); the headless test contexts and the spell suites' stub
+ * cameras have no `shake`, and must not need one.
+ */
+function feel(game: GameObjectRuntimeContext, kind: FeedbackKind, trauma: number): void {
+  const camera = game.camera as { shake?(trauma: number): void };
+  camera.shake?.(trauma);
+  feelHaptic(kind, trauma);
+}
+
+/**
+ * A crit that looks like every other hit is not a crit. Owned by the victim,
+ * not the attacker, because on a LAN client the attacker is not known — the
+ * `dmg` stream names the body that was hit — and because that is where the
+ * spark belongs anyway.
+ */
+function showCritSpark(victim: AttackableUnit): void {
+  const spark = new AoePulse(victim);
+  spark.radius = 55;
+  spark.lifeTime = 300;
+  spark.color = [255, 205, 90];
+  spark.style = 'shards';
+  spark.spokes = 8;
+  spark.fillAlpha = 0;
+  victim.game?.objectManager?.addObject?.(spark);
+}

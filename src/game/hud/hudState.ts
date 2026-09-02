@@ -12,6 +12,18 @@ import type Game from '@/game/Game';
 import { HotKeys, ItemHotKeys, SpellHotKeys } from '@/game/constants';
 import { INVENTORY_SIZE } from '@/game/items/Item';
 import { atOwnFountain } from '@/game/economy/ItemShop';
+import type MatchAnnouncer from '@/game/combat/Announcer';
+import TeamId from '@/game/enums/TeamId';
+import {
+  FEED_TTL_MS,
+  SHUTDOWN_STREAK,
+  announcementTags,
+  bannerText,
+  type AnnouncementKind,
+  type AnnouncementSide,
+  type AnnouncementTag,
+  type BannerKind,
+} from '@/game/combat/Announcer';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import { statLinesFor, type StatLine } from '@/game/hud/itemStatLines';
 
@@ -215,6 +227,82 @@ export interface PassiveDisplay {
   description: string;
 }
 
+/** One kill-feed row, from the player's side of it. */
+export interface FeedSideDisplay {
+  name: string;
+  avatar: string;
+  side: 'ally' | 'enemy';
+}
+
+export interface FeedRowDisplay {
+  seq: number;
+  killer: FeedSideDisplay | null;
+  victim: FeedSideDisplay;
+  /** "Máu đầu", "Song sát", "Chuỗi 5" — see `announcementTags`. */
+  tags: AnnouncementTag[];
+  /**
+   * The row's colour family. A run is the one thing that must read
+   * differently from a kill at a glance, so it wins over the rest; a plain
+   * kill has none.
+   */
+  accent: AnnouncementKind | null;
+  /** 1 fresh, falling to 0 over the row's last moment on screen. */
+  fade: number;
+  /** The player killed or died here. */
+  mine: boolean;
+}
+
+export interface BannerDisplay {
+  seq: number;
+  kind: BannerKind;
+  title: string;
+  subtitle: string;
+}
+
+export interface FeedDisplay {
+  rows: FeedRowDisplay[];
+  banner: BannerDisplay | null;
+}
+
+/** One champion on the quick scoreboard. */
+export interface ScoreboardRow {
+  id: string;
+  name: string;
+  avatar: string;
+  isPlayer: boolean;
+  isDead: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold: number;
+  damage: number;
+  /** Kills since this champion last died — `MatchAnnouncer.streakOf`; 0 without an announcer. */
+  streak: number;
+  /** Whole seconds until the corpse stands up; 0 while alive. Painted over the grey portrait. */
+  reviveAfter: number;
+  /**
+   * Always `INVENTORY_SIZE` entries, the same shape the inventory bar reads,
+   * so the scoreboard's hover shows exactly the card the owner would see —
+   * stats and prose included.
+   */
+  items: ItemSlotDisplay[];
+}
+
+export interface ScoreboardTeam {
+  teamId: string;
+  label: string;
+  modifier: 'blue' | 'red' | 'other';
+  /** The player's own side — listed first. */
+  mine: boolean;
+  kills: number;
+  rows: ScoreboardRow[];
+}
+
+export interface ScoreboardDisplay {
+  teams: ScoreboardTeam[];
+}
+
 export interface HudState {
   avatar: string;
   isDead: boolean;
@@ -226,6 +314,12 @@ export interface HudState {
   recall: RecallDisplay | null;
   /** Null while alive (or before the first death). See `DeathRecapDisplay`. */
   deathRecap: DeathRecapDisplay | null;
+  /** The kill feed and the banner. Empty for a context with no announcer. */
+  feed: FeedDisplay;
+  /** Every champion in the match, by team, for the Tab glance. */
+  scoreboard: ScoreboardDisplay;
+  /** `Game.matchTimeMs` as m:ss — the score strip's clock. */
+  clock: string;
   /** Whole coins. 0 for a unit with no wallet — a minion, a pet, a test double. */
   gold: number;
   /** Always `INVENTORY_SIZE` entries. See `ItemSlotDisplay`. */
@@ -593,6 +687,120 @@ function recapIconsFor(player: any, recap: unknown): Map<string, string> {
   return icons;
 }
 
+/** A row's last moment: it thins out over this long before it goes. */
+const FEED_FADE_MS = 1_500;
+
+/** m:ss, hours folded into the minutes: a match here has no end to count down to. */
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+const TEAM_LABEL: Record<string, { label: string; modifier: ScoreboardTeam['modifier'] }> = {
+  [TeamId.BLUE]: { label: 'Đội Xanh', modifier: 'blue' },
+  [TeamId.RED]: { label: 'Đội Đỏ', modifier: 'red' },
+};
+
+/**
+ * Every champion on the board, grouped by side, the player's side first.
+ * Read off the live objects rather than the director's roster so a LAN
+ * client — which has no director and builds its champions from the wire —
+ * sees the same board the host does. Pets are champions by class and are
+ * left out by their `killCredit`, the same way the kill feed leaves them out.
+ */
+function buildScoreboard(game: any, player: any): ScoreboardDisplay {
+  const objects: any[] = game?.objectManager?.objects ?? [];
+  const announcer = game?.announcer as MatchAnnouncer | undefined;
+  const byTeam = new Map<string, ScoreboardRow[]>();
+  for (const unit of objects) {
+    if (!unit || unit.killCredit !== 'champion' || !unit.tally || unit.toRemove) continue;
+    ensureVisibleAsset(unit.avatar);
+    const row: ScoreboardRow = {
+      id: String(unit.id ?? unit.name ?? ''),
+      name: unit.name ?? 'Không rõ',
+      avatar: unit.avatar?.path ?? '',
+      isPlayer: unit === player,
+      isDead: !!unit.isDead,
+      kills: unit.tally.kills,
+      deaths: unit.tally.deaths,
+      assists: unit.tally.assists,
+      cs: unit.tally.minionsKilled,
+      gold: Math.floor(unit.wallet?.balance ?? 0),
+      damage: Math.round(unit.tally.damageDealt ?? 0),
+      streak: announcer?.streakOf(unit) ?? 0,
+      reviveAfter: unit.isDead ? Math.ceil((unit.deathData?.reviveAfter ?? 0) / 1000) : 0,
+      items: buildItems(unit),
+    };
+    const team = byTeam.get(unit.teamId);
+    if (team) team.push(row);
+    else byTeam.set(unit.teamId, [row]);
+  }
+  const teams: ScoreboardTeam[] = [...byTeam.entries()].map(([teamId, rows]) => {
+    rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name));
+    const named = TEAM_LABEL[teamId] ?? { label: 'Đội khác', modifier: 'other' as const };
+    return {
+      teamId,
+      ...named,
+      mine: teamId === player.teamId,
+      kills: rows.reduce((sum, row) => sum + row.kills, 0),
+      rows,
+    };
+  });
+  teams.sort((a, b) => Number(b.mine) - Number(a.mine) || a.label.localeCompare(b.label));
+  return { teams };
+}
+
+/**
+ * The kill feed, read from the match's announcer. Tolerates a context with
+ * none (the headless HUD tests, a pack's test double) by showing nothing.
+ */
+function buildFeed(game: any, player: any): FeedDisplay {
+  const announcer = game?.announcer as MatchAnnouncer | undefined;
+  if (!announcer) return { rows: [], banner: null };
+  const now: number = game?.matchTimeMs ?? 0;
+  const sideOf = (side: AnnouncementSide | null): FeedSideDisplay | null =>
+    side && {
+      name: side.name,
+      avatar: side.avatar,
+      side: side.team === player.teamId ? 'ally' : 'enemy',
+    };
+  // Newest first: a new callout lands at the top and pushes the rest down,
+  // the way the eye expects a ticker under the top edge to move.
+  const rows = announcer
+    .recent(now)
+    .map(row => {
+      ensureVisibleAsset(row.killerUnit?.avatar);
+      ensureVisibleAsset(row.victimUnit?.avatar);
+      const left = FEED_TTL_MS - (now - row.atMs);
+      const tags = announcementTags(row);
+      const accent: AnnouncementKind | null =
+        row.streak >= SHUTDOWN_STREAK
+          ? 'streak'
+          : row.multi >= 2
+            ? 'multi'
+            : row.shutdown > 0
+              ? 'shutdown'
+              : row.firstBlood
+                ? 'first'
+                : null;
+      return {
+        seq: row.seq,
+        killer: sideOf(row.killer),
+        victim: sideOf(row.victim)!,
+        tags,
+        accent,
+        fade: left >= FEED_FADE_MS ? 1 : Math.max(0, left / FEED_FADE_MS),
+        mine: row.killerUnit === player || row.victimUnit === player,
+      };
+    })
+    .reverse();
+  const top = announcer.banner(now, player);
+  const banner = top && { seq: top.seq, ...bannerText(top, player) };
+  return { rows, banner };
+}
+
 /**
  * Groups the death ledger for the panel: one row per attacker, heaviest
  * first; inside a row, one line per named source (or per damage type when
@@ -675,6 +883,9 @@ export function computeHudState(game: Game | undefined | null): HudState | null 
     buffs: buildBuffs(player),
     recall: buildRecall(player),
     deathRecap: buildDeathRecap(player),
+    feed: buildFeed(game, player),
+    scoreboard: buildScoreboard(game, player),
+    clock: formatClock(game?.matchTimeMs ?? 0),
     gold: player.wallet?.balance ?? 0,
     items: buildItems(player),
     passive: buildPassive(player),

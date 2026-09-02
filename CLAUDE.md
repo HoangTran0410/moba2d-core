@@ -181,6 +181,8 @@ clear of `src/game/`.
 | `Game.ts` | game loop; owns camera / objectManager / terrainMap / fogOfWar |
 | `managers/ObjectManager.ts` | updates and draws every object; **two** quadtrees — `_objectsTree` for anything gameplay can ask about, `_decorTree` for particles and trails, which no query should page in. `draw` reads both, `queryObjects` only the first; `isDecoration()` is the closed list, and a `SpellObject` never belongs on it |
 | `MatchDirector.ts` | every mutation of a *running* match, and the only thing that persists them |
+| `render/hitFeedback.ts` + `AttackableUnit.presentHit` | how a hit *looks* — number size, body flash, camera shake, haptics — from one fraction-of-max-health table; the one door both the host's `takeDamage` and a LAN client's `dmg` stream go through |
+| `combat/Announcer.ts` | the kill feed: runs, multi-kills, first blood, shutdowns, from `EventType.ON_DIE` (emitted once per death, on the transition, last thing in `die()`); forwarded to LAN clients as `ann` |
 | `managers/MinionSpawner.ts` | wave clock for both bases; owns the live minion cap |
 | `gameObject/map/Minimap.ts` | screen-space map; tap expands it, tapping the expanded map teleports |
 

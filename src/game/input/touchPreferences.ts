@@ -17,6 +17,43 @@ import type { AttackTargetPriority } from '@/game/combat/AttackTargeting';
 
 const STORAGE_KEY = 'moba2d.touchControls';
 const TARGET_PRIORITY_STORAGE_KEY = 'moba2d.touchTargetPriority';
+const HAPTICS_STORAGE_KEY = 'moba2d.haptics';
+
+/**
+ * Can this device buzz at all? `navigator.vibrate` is Android Chrome and
+ * little else — iOS Safari has never shipped it — so the settings row for it
+ * only appears where it would do something.
+ */
+export function hapticsSupported(): boolean {
+  try {
+    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the device may buzz: on a button press, and on the player's own
+ * heavy hits, kills and death (`game/input/haptics.ts`, fed by the same
+ * trauma number the camera shake reads). On by default; the row is hidden
+ * where `hapticsSupported()` is false, so the default never asks a device
+ * for something it cannot do.
+ */
+export function hapticsPreference(): boolean {
+  try {
+    return window.localStorage.getItem(HAPTICS_STORAGE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setHapticsPreference(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(HAPTICS_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch {
+    /* storage blocked: the default remains playable */
+  }
+}
 
 export type TouchTargetPriority = AttackTargetPriority;
 

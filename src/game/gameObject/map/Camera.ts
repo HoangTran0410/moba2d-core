@@ -66,6 +66,20 @@ export default class Camera {
   private _renderTrueScale = 0;
   private _renderSubstituted = false;
 
+  // Screen shake. A render-time offset and nothing else: `shake()` adds
+  // trauma, `advanceShake()` — once per *drawn* frame, on p5's render delta —
+  // decays it and rolls this frame's offset, and `applyRenderOrigin` adds the
+  // offset to the substituted position so the world transform, the fog and
+  // the minimap all move together (an offset in `push()` alone would leave the
+  // fog's edge standing still while the body under it shook).
+  // `restoreRenderOrigin` puts the true position back, so the simulation and
+  // `screenToWorld` never see a shaken camera. Who sends how much is
+  // `render/hitFeedback.ts`'s table.
+  shakeEnabled = true;
+  private _trauma = 0;
+  private _shakeX = 0;
+  private _shakeY = 0;
+
   constructor() {
     this.position = createVector(0, 0);
     this.currentScale = 0.5;
@@ -120,6 +134,54 @@ export default class Camera {
     return this.currentScale > 0 ? px / this.currentScale : px;
   }
 
+  /**
+   * Add shake. `trauma` is 0..1 and accumulates, clamped at 1, so a burst of
+   * hits builds rather than restarts; the offset is `trauma²` so small trauma
+   * is nearly still and only real blows move the picture.
+   */
+  shake(trauma: number): void {
+    if (!this.shakeEnabled || !(trauma > 0)) return;
+    this._trauma = Math.min(1, this._trauma + trauma);
+  }
+
+  /** The settings toggle. Turning it off also stops a shake in progress. */
+  setShakeEnabled(enabled: boolean): void {
+    this.shakeEnabled = enabled;
+    if (!enabled) {
+      this._trauma = 0;
+      this._shakeX = 0;
+      this._shakeY = 0;
+    }
+  }
+
+  get shaking(): boolean {
+    return this._trauma > 0;
+  }
+
+  /**
+   * Decay the trauma and roll this frame's offset. Called from `Game.draw`
+   * with the **render** delta, deliberately: this is a picture-only effect
+   * with no simulation twin, so the render clock is the right one (the
+   * render-interpolation design's §2.2 forbids render time for the camera's
+   * *lerp*, which is simulation state; this is not).
+   *
+   * The amplitude is `constantSize`d so a shake is the same number of screen
+   * pixels at every zoom.
+   */
+  advanceShake(deltaMs: number): void {
+    if (this._trauma <= 0) {
+      this._shakeX = 0;
+      this._shakeY = 0;
+      return;
+    }
+    const amplitude = this._trauma * this._trauma * this.constantSize(SHAKE_MAX_PX);
+    const angle = Math.random() * Math.PI * 2;
+    this._shakeX = Math.cos(angle) * amplitude;
+    this._shakeY = Math.sin(angle) * amplitude;
+    const step = Number.isFinite(deltaMs) && deltaMs > 0 ? deltaMs : 0;
+    this._trauma = Math.max(0, this._trauma - step / SHAKE_DECAY_MS);
+  }
+
   update(): void {
     // Before the lerps below move either, so the origin is the start-of-tick
     // state the draw pass blends *from* — matching every GameObject's origin,
@@ -153,8 +215,8 @@ export default class Camera {
     this._renderTrueX = this.position.x;
     this._renderTrueY = this.position.y;
     this._renderTrueScale = this.currentScale;
-    this.position.x = blend(this._renderOriginX, this._renderTrueX, alpha);
-    this.position.y = blend(this._renderOriginY, this._renderTrueY, alpha);
+    this.position.x = blend(this._renderOriginX, this._renderTrueX, alpha) + this._shakeX;
+    this.position.y = blend(this._renderOriginY, this._renderTrueY, alpha) + this._shakeY;
     this.currentScale = blend(this._renderOriginScale, this._renderTrueScale, alpha);
     this._renderSubstituted = true;
   }
@@ -254,6 +316,11 @@ export default class Camera {
     pop();
   }
 }
+
+/** Peak shake at full trauma, in screen pixels. Ten is a shudder, not a quake. */
+export const SHAKE_MAX_PX = 10;
+/** Full trauma decays to nothing in this long. */
+export const SHAKE_DECAY_MS = 400;
 
 /** Mirrors `TouchControls.ts:160`'s `'moba2d.touchControls'`. */
 const POINTER_ZOOM_STORAGE_KEY = 'moba2d.zoomFactor';

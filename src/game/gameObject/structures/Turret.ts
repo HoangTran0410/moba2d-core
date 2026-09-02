@@ -5,7 +5,10 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
-import type { AttackableUnitOptions } from '@/game/gameObject/attackableUnits/AttackableUnit';
+import type {
+  AttackableUnitOptions,
+  HitPresentationOptions,
+} from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion, {
   AGGRO_SCAN_INTERVAL_MS,
@@ -423,9 +426,15 @@ export default class Turret extends AttackableUnit {
    * by magic resist while the same swing against a human was mitigated by
    * armour. `takeDamageSignature.test.ts` is the guard.
    */
-  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type?: DamageType,
+    source?: string,
+    presentation?: HitPresentationOptions
+  ) {
     if (this.isDead) return;
-    super.takeDamage(damage, attacker, type, source);
+    super.takeDamage(damage, attacker, type, source, presentation);
     this._sinceDamaged = 0;
     this._hitFlash = 180;
   }

@@ -57,3 +57,41 @@ describe('render preferences', () => {
     expect(applyFrameRate).toHaveBeenCalledWith(30);
   });
 });
+
+describe('screen-shake preference', () => {
+  let storage: MemoryStorage;
+
+  beforeEach(() => {
+    storage = new MemoryStorage();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is on by default when the OS says nothing about motion', async () => {
+    vi.stubGlobal('window', { localStorage: storage });
+    const prefs = await import('../../../src/game/config/renderPreferences');
+    expect(prefs.screenShakePreference()).toBe(true);
+  });
+
+  it('is off by default under prefers-reduced-motion', async () => {
+    vi.stubGlobal('window', {
+      localStorage: storage,
+      matchMedia: (query: string) => ({ matches: query.includes('reduce') }),
+    });
+    const prefs = await import('../../../src/game/config/renderPreferences');
+    expect(prefs.screenShakePreference()).toBe(false);
+  });
+
+  it('lets an explicit choice beat the OS hint, both ways', async () => {
+    vi.stubGlobal('window', {
+      localStorage: storage,
+      matchMedia: (query: string) => ({ matches: query.includes('reduce') }),
+    });
+    const prefs = await import('../../../src/game/config/renderPreferences');
+    prefs.setScreenShakePreference(true);
+    expect(storage.getItem('moba2d.screenShake')).toBe('on');
+    expect(prefs.screenShakePreference()).toBe(true);
+    prefs.setScreenShakePreference(false);
+    expect(prefs.screenShakePreference()).toBe(false);
+  });
+});

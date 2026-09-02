@@ -146,7 +146,10 @@ const ITEM_SLOT_COUNT = 6;
  * each other's way, and it is what puts the recall button on the same line as
  * them rather than in a corner of its own.
  *
- * 46 + 6 + 46 + 6 = 104.
+ * 46 + 6 + 46 + 6 = 104. **Two, and it has to stay two**: a third button
+ * pushes the recall circle onto the expanded minimap on a 667px-wide phone
+ * (`TouchLayout.test.ts`), which is why the scoreboard opens from the score
+ * strip at the top centre rather than from a corner button.
  */
 const CORNER_BUTTON_BOX = 104;
 

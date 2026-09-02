@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, createUnit, installSpellObjectGlobals } from '../spell/fixtures';
 import CombatText, {
   COMBAT_TEXT_LIFETIME_MS,
+  HEADLINE_WINDOW_MS,
+  PUNCH_MS,
 } from '../../../src/game/gameObject/helpers/CombatText';
+import { damageTextScale } from '../../../src/game/render/hitFeedback';
 
 const combatTexts = (game: ReturnType<typeof createGame>): CombatText[] =>
   [...game.objectManager.objects, ...game.objectManager._objectToBeAdd].filter(
@@ -215,5 +218,173 @@ describe('CombatText anchors above the unit and its health bar', () => {
     // Smaller y is higher on screen: the number must start above the unit's
     // own top edge, clear of the health bar sitting just above that edge.
     expect(y).toBeLessThan(topOfUnit);
+  });
+});
+
+// The number has weight: see `render/hitFeedback.ts`'s `damageTextScale`.
+// Only damage weighs itself against the victim's pool, and a crit is told
+// by size and outline — never by colour, which the type already owns.
+describe('CombatText sizes damage by its share of the pool', () => {
+  beforeEach(() => installSpellObjectGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const victim = (game: ReturnType<typeof createGame>) => {
+    const unit = createUnit(game, 0, 'blue');
+    unit.stats.maxHealth.baseValue = 100;
+    unit.stats.health.baseValue = 100;
+    return unit;
+  };
+
+  it('draws a scratch near the base size and a quarter-pool hit half again as big', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 1, [255, 0, 0]);
+    CombatText.show(unit, 'damage', 25, [0, 0, 255]);
+    const [scratch, heavy] = combatTexts(game);
+    expect(scratch.textSize).toBeCloseTo(20 * damageTextScale(0.01, false), 5);
+    expect(heavy.textSize).toBe(30);
+  });
+
+  it('sizes a same-frame burst by its coalesced headline', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+    CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+    CombatText.show(unit, 'damage', 15, [255, 0, 0]);
+    const [text] = combatTexts(game);
+    expect(text.amount).toBe(25);
+    expect(text.recent).toBe(25);
+    expect(text.textSize).toBe(30);
+  });
+
+  it('marks a crit by size, and an ordinary hit in the same group keeps the mark', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 10, [255, 0, 0], { crit: true });
+    const [text] = combatTexts(game);
+    expect(text.crit).toBe(true);
+    expect(text.textSize).toBeCloseTo(20 * 1.2 * 1.3, 5);
+    CombatText.show(unit, 'damage', 10, [255, 0, 0]);
+    expect(text.crit).toBe(true);
+    expect(combatTexts(game)).toHaveLength(1);
+  });
+
+  it('caps the crit-times-heavy product so a one-shot stays readable', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 100, [255, 0, 0], { crit: true });
+    expect(combatTexts(game)[0].textSize).toBeCloseTo(20 * 1.9, 5);
+  });
+
+  it('leaves heals and gold at the base size', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'heal', 100, [0, 255, 0]);
+    CombatText.show(unit, 'gold', 100, [255, 206, 92]);
+    expect(combatTexts(game).map(text => text.textSize)).toEqual([20, 20]);
+  });
+
+  it('re-arms the landing punch on every merge and lets it settle', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+    const [text] = combatTexts(game);
+    expect(text.punchMs).toBe(PUNCH_MS);
+    tick(game, PUNCH_MS + 32);
+    expect(text.punchMs).toBeLessThanOrEqual(0);
+    CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+    expect(text.punchMs).toBe(PUNCH_MS);
+  });
+});
+
+// One text, two numbers: the headline is the hit (or the same-frame burst) that
+// just landed, the total is everything since the text was born. See "The
+// headline and the total" on the class — the merge rule stays, and so does the
+// object count; only what the one object *says* changed.
+describe('CombatText keeps the headline apart from the total', () => {
+  beforeEach(() => installSpellObjectGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const victim = (game: ReturnType<typeof createGame>) => {
+    const unit = createUnit(game, 0, 'blue');
+    unit.stats.maxHealth.baseValue = 100;
+    unit.stats.health.baseValue = 100;
+    return unit;
+  };
+
+  it('shows a lone hit as one number and no total', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 15, [255, 0, 0]);
+    const [text] = combatTexts(game);
+    expect(text.text).toBe('-15');
+    expect(text.showsTotal).toBe(false);
+  });
+
+  it('replaces the headline with the next hit once the window has passed, and sums the total', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 15, [255, 0, 0]);
+    tick(game, HEADLINE_WINDOW_MS * 2);
+    CombatText.show(unit, 'damage', 10, [255, 0, 0]);
+
+    const texts = combatTexts(game);
+    expect(texts).toHaveLength(1);
+    expect(texts[0].text).toBe('-10');
+    expect(texts[0].amount).toBe(25);
+    expect(texts[0].totalText).toBe('-25');
+    expect(texts[0].showsTotal).toBe(true);
+  });
+
+  it('coalesces hits inside one window into one headline', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 4, [255, 0, 0]);
+    tick(game, 48);
+    CombatText.show(unit, 'damage', 4, [255, 0, 0]);
+    tick(game, 48);
+    CombatText.show(unit, 'damage', 4, [255, 0, 0]);
+    const [text] = combatTexts(game);
+    expect(text.text).toBe('-12');
+    expect(text.showsTotal).toBe(false);
+  });
+
+  it('reads a crit at its own number, not the pile it lands on', () => {
+    const game = createGame();
+    const unit = victim(game);
+    for (let i = 0; i < 4; i++) {
+      CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+      tick(game, HEADLINE_WINDOW_MS * 2);
+    }
+    CombatText.show(unit, 'damage', 30, [255, 0, 0], { crit: true });
+    const [text] = combatTexts(game);
+    expect(text.text).toBe('-30');
+    expect(text.crit).toBe(true);
+    expect(text.totalText).toBe('-50');
+    expect(text.textSize).toBeCloseTo(20 * 1.9, 5);
+  });
+
+  it('drops the crit mark when an ordinary hit opens the next group', () => {
+    const game = createGame();
+    const unit = victim(game);
+    CombatText.show(unit, 'damage', 30, [255, 0, 0], { crit: true });
+    tick(game, HEADLINE_WINDOW_MS * 2);
+    CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+    const [text] = combatTexts(game);
+    expect(text.crit).toBe(false);
+    expect(text.text).toBe('-5');
+  });
+
+  it('sizes by the headline, so a chain of pokes never looks like one blow', () => {
+    const game = createGame();
+    const unit = victim(game);
+    for (let i = 0; i < 5; i++) {
+      CombatText.show(unit, 'damage', 5, [255, 0, 0]);
+      tick(game, HEADLINE_WINDOW_MS * 2);
+    }
+    const [text] = combatTexts(game);
+    expect(text.amount).toBe(25);
+    expect(text.textSize).toBeCloseTo(20 * damageTextScale(0.05, false), 5);
+    expect(text.textSize).toBeLessThan(30);
   });
 });

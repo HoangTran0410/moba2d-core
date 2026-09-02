@@ -38,8 +38,10 @@ import type { MatchTeamId } from '@/game/config/MatchTeams';
 import {
   renderFpsPreference,
   renderQualityPreference,
+  screenShakePreference,
   setRenderFpsPreference,
   setRenderQualityPreference,
+  setScreenShakePreference,
   type RenderFps,
 } from '@/game/config/renderPreferences';
 import {
@@ -395,6 +397,14 @@ export default class PregameConfigSource implements MatchConfigSource {
 
   setRenderFps(fps: RenderFps): void {
     setRenderFpsPreference(fps);
+  }
+
+  get screenShake(): boolean {
+    return screenShakePreference();
+  }
+
+  setScreenShake(enabled: boolean): void {
+    setScreenShakePreference(enabled);
   }
 
   async resetToDefaults(): Promise<void> {

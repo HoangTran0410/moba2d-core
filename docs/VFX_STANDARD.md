@@ -122,6 +122,14 @@ block), filtered down to what a p5 canvas at this scale can honour.
    focus by *contrast against its own secondary elements*, not by maxing any
    slider. One focal point per effect — if two layers compete, desaturate or
    dim the one that carries less information.
+4. **The hit itself is already drawn — do not draw it again.** Every landed
+   hit goes through `AttackableUnit.presentHit`: the typed number (sized by
+   the hit's share of the victim's health, bigger and heavier-outlined for a
+   crit), a white flash on the body, the crit spark, and — for the player's
+   own body — the camera shake. The table is `render/hitFeedback.ts`. A spell
+   adds its *identity* on top (its own impact motif), never a second flash, a
+   second number or its own camera shake; and the flash stays white precisely
+   because of rule 1.
 
 ## Items and procs: the noise budget
 

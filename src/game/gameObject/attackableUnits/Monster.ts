@@ -21,7 +21,11 @@ import {
 } from '@/game/render/creature/drawCreature';
 import AttackableUnit from './AttackableUnit';
 import type { AttackableUnitRenderOptions } from './AttackableUnit';
-import type { AttackableUnitOptions, UnitDeathData } from './AttackableUnit';
+import type {
+  AttackableUnitOptions,
+  HitPresentationOptions,
+  UnitDeathData,
+} from './AttackableUnit';
 import Champion from './Champion';
 import {
   DEFAULT_MONSTER_ATTACK_COLOR,
@@ -1484,7 +1488,13 @@ export default class Monster extends AttackableUnit {
    * by magic resist while the same swing against a human was mitigated by
    * armour. `takeDamageSignature.test.ts` is the guard.
    */
-  takeDamage(damage: number, attacker?: AttackableUnit, type?: DamageType, source?: string) {
+  takeDamage(
+    damage: number,
+    attacker?: AttackableUnit,
+    type?: DamageType,
+    source?: string,
+    presentation?: HitPresentationOptions
+  ) {
     // Refreshed on the swing, not on losing a target: "recently hurt" is the
     // honest reading of in-combat, and it is the one a player can see.
     this._regenHold = this.regenDelayMs;
@@ -1494,7 +1504,7 @@ export default class Monster extends AttackableUnit {
     // the fight, and a corpse has had its lock cleared by `die`.
     const engagedWith = this.phase === Monster.PHASES.ATTACK ? this.targetLock : null;
 
-    super.takeDamage(damage, attacker, type, source);
+    super.takeDamage(damage, attacker, type, source, presentation);
 
     if (!attacker) return;
     // super.takeDamage may have killed us; a corpse must not hold aggro. A camp

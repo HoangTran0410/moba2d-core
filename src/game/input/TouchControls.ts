@@ -223,6 +223,7 @@ export {
   type TouchModePreference,
   type TouchTargetPriority,
 } from './touchPreferences';
+import { vibrate } from './haptics';
 
 import {
   touchControlsPreference,
@@ -231,13 +232,9 @@ import {
 } from './touchPreferences';
 
 const pulseTouchHaptic = (): void => {
-  try {
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate(TOUCH_HAPTIC_MS);
-    }
-  } catch {
-    // Vibration is optional and may be denied by the browser or device policy.
-  }
+  // Through the one door every buzz goes through, so the settings toggle
+  // covers the button pulse too.
+  vibrate(TOUCH_HAPTIC_MS);
 };
 
 export class TouchControls {

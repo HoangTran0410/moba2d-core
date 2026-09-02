@@ -1,7 +1,7 @@
 import type Game from '@/game/Game';
 import AttackableUnit, { type DeathRecap } from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
-import CombatText, { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
+import { DAMAGE_TEXT_COLOR } from '@/game/gameObject/helpers/CombatText';
 import Pet from '@/game/gameObject/attackableUnits/Pet';
 import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
 import Minion, { MinionPresets } from '@/game/gameObject/attackableUnits/Minion';
@@ -491,16 +491,29 @@ export class ClientSession implements NetGameHooks {
       }
       case 'dmg': {
         // The host's floated number, replayed through the same door it went
-        // through there — the per-victim merge and the type colours are the
-        // local `CombatText.show`'s own behaviour, not something re-derived.
-        // This stream is the client's only source: its `takeDamage` is gated,
-        // so nothing local ever floats a damage number.
+        // through there — `presentHit`: the per-victim merge, the type
+        // colours, the flash, the crit spark and the camera are that door's
+        // own behaviour, not something re-derived. This stream is the client's
+        // only source: its `takeDamage` is gated, so nothing local ever floats
+        // a damage number.
         const unit = this.units.get(event.id);
         if (!unit || typeof event.a !== 'number') return;
-        const color =
-          DAMAGE_TEXT_COLOR[event.ty as DamageType] ?? DAMAGE_TEXT_COLOR[DEFAULT_DAMAGE_TYPE];
+        const type = (event.ty as DamageType) in DAMAGE_TEXT_COLOR
+          ? (event.ty as DamageType)
+          : DEFAULT_DAMAGE_TYPE;
         this.debugStats.damageTextsShown++;
-        CombatText.show(unit, 'damage', event.a, [...color]);
+        unit.presentHit({ amount: event.a, type, crit: event.c === 1 });
+        return;
+      }
+      case 'ann': {
+        // The host's kill feed, re-stamped to this clock; the ids become
+        // local references so "mine" means the same thing on both ends.
+        const wire = event.a;
+        if (!wire || typeof wire.seq !== 'number' || !wire.victim) return;
+        this.game.announcer.receive(wire, {
+          killerUnit: wire.kid ? this.units.get(wire.kid) : undefined,
+          victimUnit: wire.vid ? this.units.get(wire.vid) : undefined,
+        });
         return;
       }
       case 'atk': {

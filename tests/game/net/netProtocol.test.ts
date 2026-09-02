@@ -78,7 +78,25 @@ describe('event and order messages', () => {
           { k: 'gone', id: 'u9' },
           { k: 'cast', id: 'u2', slot: 1, x: 500, y: 600 },
           { k: 'dmg', id: 'u2', a: 44, ty: 'MAGIC' },
+          // The crit flag: present only on a crit, so the client can draw the
+          // crit it has no dice to roll.
+          { k: 'dmg', id: 'u3', a: 90, ty: 'PHYSICAL', c: 1 },
           { k: 'atk', id: 'u1', tid: 'u2' },
+          {
+            k: 'ann',
+            a: {
+              seq: 3,
+              atMs: 61_000,
+              killer: { name: 'Vera', avatar: 'a.png', team: 'BLUE' },
+              victim: { name: 'Bot', avatar: 'b.png', team: 'RED' },
+              firstBlood: true,
+              multi: 1,
+              streak: 1,
+              shutdown: 0,
+              kid: 'u1',
+              vid: 'u2',
+            },
+          },
         ],
       },
       { t: 'move', x: 123, y: 456 },

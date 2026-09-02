@@ -1,4 +1,5 @@
 import { Scene } from '@/managers/SceneManager';
+import { HotKeys } from '@/game/constants';
 import Game, { renderFpsPreference } from '@/game/Game';
 import { planMatchKits, plannedSpellIds, type MatchPlan } from '@/game/preset';
 import { loadRemainingSpells, loadSpells } from '@/game/spellRegistry';
@@ -206,7 +207,24 @@ export default class GameScene extends Scene {
    * `blur` does not bubble, so a text field inside the config panel losing
    * focus cannot reach this listener on `window`.
    */
+  /**
+   * Tab is the scoreboard's key (`HotKeys.TAB`), and the browser's own Tab
+   * moves focus: left alone, the first press would park the keyboard on a HUD
+   * button and the next Space would press it. `SceneManager` hands
+   * `keyPressed` no event to cancel, so the cancel lives on its own listener
+   * — capture phase, before p5's — and steps aside while the player is typing
+   * in a HUD field, where Tab means what it always means.
+   */
+  private _swallowTab = (event: KeyboardEvent): void => {
+    if (event.keyCode !== HotKeys.TAB && event.key !== 'Tab') return;
+    if (DomUtils.isTypingKeyEvent(event)) return;
+    event.preventDefault();
+  };
+
   private _handleWindowBlur = (): void => {
+    // A key held across a focus loss never reports its release: drop the
+    // scoreboard the way the key would have.
+    this.game?.keyReleased(HotKeys.TAB);
     this._leavePage();
   };
 
@@ -235,6 +253,7 @@ export default class GameScene extends Scene {
 
     document.addEventListener('visibilitychange', this._handleVisibilityChange);
     window.addEventListener('blur', this._handleWindowBlur);
+    window.addEventListener('keydown', this._swallowTab, true);
 
     void this.beginMatch();
   }
@@ -638,6 +657,7 @@ export default class GameScene extends Scene {
   exit() {
     document.removeEventListener('visibilitychange', this._handleVisibilityChange);
     window.removeEventListener('blur', this._handleWindowBlur);
+    window.removeEventListener('keydown', this._swallowTab, true);
     this.game?.spellInputController.cancelAll('SCENE_EXIT');
     this.stopGame();
     this.dom.style.display = 'none';

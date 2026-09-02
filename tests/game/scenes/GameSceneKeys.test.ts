@@ -481,11 +481,15 @@ describe('GameScene — leaving and returning to the page', () => {
     vi.stubGlobal('document', { hidden: false });
     const scene = new GameScene({} as never);
     const pauseForAway = vi.fn();
-    scene.game = { paused: false, pauseForAway } as never;
+    const keyReleased = vi.fn();
+    scene.game = { paused: false, pauseForAway, keyReleased } as never;
 
     away(scene)._handleWindowBlur();
 
     expect(pauseForAway).toHaveBeenCalledOnce();
+    // A Tab held across the focus loss never reports its release; the blur is
+    // the release, or the scoreboard stays up over a paused match.
+    expect(keyReleased).toHaveBeenCalledWith(HotKeys.TAB);
   });
 
   it('does not resume the match when the page comes back', () => {
