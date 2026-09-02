@@ -195,6 +195,93 @@ describe('the empty-lane damage floor', () => {
   });
 });
 
+/**
+ * What a tower says about itself.
+ *
+ * Both of these passives shipped invisible — `hudVisible = false`, and a turret
+ * has no buff bar to be visible on anyway. A tower currently taking 20% damage
+ * looked exactly like one that is not, and the ramp that makes standing under
+ * it progressively lethal had no tell at all. `Buff.structureMark` is what a
+ * building draws instead; these pin the *states*, since the whole value is the
+ * difference between a lit pip and an unlit one.
+ */
+describe('what a tower shows about its own passives', () => {
+  const marksOn = (tower: ReturnType<typeof turret>) =>
+    tower.buffs.filter(buff => !buff.toRemove).map(buff => buff.structureMark).filter(Boolean);
+
+  it('shows nothing while the ramp is cold', () => {
+    const tower = turret();
+    indexObjects(game as never, [tower] as never);
+    tower.update();
+
+    const ramp = tower.buffs.find(buff => buff.name === 'Nòng Nóng Dần');
+    expect(ramp, 'the ramp is not on this tower at all').toBeDefined();
+    expect(ramp!.structureMark).toBeNull();
+  });
+
+  it('lights one pip per stack, and says how many there could be', () => {
+    const tower = turret();
+    const diver = champion('solo');
+    indexObjects(game as never, [tower, diver] as never);
+    tower.update();
+
+    diver.takeDamage(1, tower as never, 'PHYSICAL');
+    tower.update();
+    const ramp = tower.buffs.find(buff => buff.name === 'Nòng Nóng Dần')!;
+
+    expect(ramp.structureMark).toEqual({
+      filled: 1,
+      total: WARMING_UP_MAX_STACKS,
+      color: expect.anything(),
+    });
+  });
+
+  it('goes dark again when the tower cools', () => {
+    const tower = turret();
+    const diver = champion('solo');
+    indexObjects(game as never, [tower, diver] as never);
+    tower.update();
+    diver.takeDamage(1, tower as never, 'PHYSICAL');
+    tower.update();
+
+    vi.stubGlobal('deltaTime', 100);
+    tick(tower, Math.ceil(WARMING_UP_RESET_MS / 100) + 2);
+
+    const ramp = tower.buffs.find(buff => buff.name === 'Nòng Nóng Dần')!;
+    expect(ramp.structureMark).toBeNull();
+  });
+
+  it('shows the armour floor exactly while the floor is up', () => {
+    // The same predicate `modifyIncomingDamage` spends against, so the picture
+    // cannot claim a wall that is not there.
+    const tower = turret();
+    indexObjects(game as never, [tower] as never);
+    tower.update();
+    const armour = tower.buffs.find(buff => buff.name === 'Giáp Cường Hóa')!;
+    expect(armour.structureMark).not.toBeNull();
+
+    const wave = minion('solo', 120);
+    indexObjects(game as never, [tower, wave] as never);
+    tower.update();
+
+    expect(armour.structureMark, 'a wave is standing under it').toBeNull();
+  });
+
+  it('says nothing at all for a passive that is simply always on', () => {
+    // The ward. A mark that is never absent teaches nothing after the first
+    // glance, and this row is only worth reading because things go out.
+    const tower = turret();
+    indexObjects(game as never, [tower] as never);
+    tower.update();
+
+    const eye = tower.buffs.find(buff => buff.name === 'Mắt Thần Canh Gác')!;
+    expect(eye.structureMark).toBeNull();
+    // And the row a cold, undived tower draws is exactly one pip group: the
+    // armour floor, which is up because the lane is empty.
+    expect(marksOn(tower)).toHaveLength(1);
+  });
+});
+
 describe('the tower’s own true sight', () => {
   it('reveals an enemy hiding inside the lane it watches', () => {
     const tower = turret();

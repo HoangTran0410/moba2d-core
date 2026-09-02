@@ -5,6 +5,7 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
+import type { StructureMark } from '@/game/gameObject/Buff';
 import type {
   AttackableUnitOptions,
   HitPresentationOptions,
@@ -582,6 +583,70 @@ export default class Turret extends AttackableUnit {
     textAlign(CENTER, CENTER);
     textSize(11 * k);
     text(`${~~this.stats.health.value} / ${~~this.stats.maxHealth.value}`, pos.x, y - 9 * k);
+    pop();
+
+    this.drawPassiveMarks(y + h + 4 * k, k);
+  }
+
+  /**
+   * The passives this tower is currently running, as a row of pips under its
+   * health bar.
+   *
+   * ## Why on the building and not on a buff bar
+   *
+   * There is no buff bar for a turret and there should not be: these passives
+   * belong to a building somebody is deciding whether to walk under, and that
+   * decision is made looking at the building. Both of them shipped invisible —
+   * a tower currently taking 20% damage looked exactly like one that is not,
+   * and the ramp that makes standing under it progressively lethal had no tell
+   * at all.
+   *
+   * ## What is drawn and what is not
+   *
+   * Whatever `Buff.structureMark` answers, and nothing else — the turret does
+   * not know which passives exist. That matters because a pack declaring
+   * `turretPassives` replaces core's list outright, so a pack's own tower
+   * draws here without core having heard of its classes.
+   *
+   * A passive that is always on returns `null` and draws nothing. The ward is
+   * the case: a mark that is never absent teaches nothing after the first
+   * glance, and the whole value of this row is the difference between a lit
+   * pip and an unlit one.
+   *
+   * Overlay units (`camera.constantSize`), like the bar it hangs under, so the
+   * row is the same size on a phone as on a desktop.
+   */
+  drawPassiveMarks(top: number, k: number): void {
+    const marks: StructureMark[] = [];
+    for (const buff of this.buffs) {
+      if (buff.toRemove) continue;
+      const mark = buff.structureMark;
+      if (mark) marks.push(mark);
+    }
+    if (marks.length === 0) return;
+
+    const pip = 5 * k;
+    const gap = 2 * k;
+    const groupGap = 5 * k;
+    const width =
+      marks.reduce((sum, mark) => sum + mark.total * pip + (mark.total - 1) * gap, 0) +
+      (marks.length - 1) * groupGap;
+
+    push();
+    noStroke();
+    let x = this.position.x - width / 2;
+    for (const mark of marks) {
+      for (let slot = 0; slot < mark.total; slot++) {
+        // Unlit slots are drawn too, so a ramp at one of three reads as "one of
+        // three" rather than as a lone dot of unknown ceiling.
+        const lit = slot < mark.filled;
+        const [r, g, b] = mark.color;
+        fill(r, g, b, lit ? 235 : 60);
+        rect(x, top, pip, pip * 0.8, 1 * k);
+        x += pip + gap;
+      }
+      x += groupGap - gap;
+    }
     pop();
   }
 

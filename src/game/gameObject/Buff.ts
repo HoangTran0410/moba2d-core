@@ -18,6 +18,18 @@ export type BuffConstructor<TBuff extends Buff = Buff> = abstract new (
 ) => TBuff;
 export type BuffStackId = string | BuffConstructor;
 
+/**
+ * One passive's readout on the body carrying it. See `Buff.structureMark`.
+ */
+export interface StructureMark {
+  /** Lit segments — a stack count, or `1` for a passive that is simply on. */
+  filled: number;
+  /** How many segments there are at all. */
+  total: number;
+  /** The mark's own colour, so two passives on one turret stay tellable apart. */
+  color: readonly [number, number, number];
+}
+
 export default class Buff {
   name = this.constructor.name;
 
@@ -51,6 +63,44 @@ export default class Buff {
    * (a charge armed, a stack count climbing) stays visible.
    */
   hudVisible = true;
+
+  /**
+   * What a structure draws on itself to say this passive is doing something
+   * **right now** — or `null`, which is every buff in the game but three.
+   *
+   * ## Why structures need their own answer
+   *
+   * `hudVisible` puts a buff on the bar above the player's own champion. A
+   * turret has no such bar and never will: its passives belong to a building
+   * somebody is deciding whether to walk under, and that decision is made
+   * looking at the building. So the three turret passives shipped
+   * `hudVisible = false` and were invisible everywhere — a tower that is
+   * currently taking 20% damage looked exactly like one that is not, and the
+   * ramp that makes standing under it progressively lethal had no tell at all.
+   *
+   * ## Why a getter, and why segments
+   *
+   * A getter because the interesting ones *change*: the ramp climbs and cools,
+   * the armour floor arms and disarms with the wave. A field would be a
+   * snapshot from whenever the buff was built.
+   *
+   * Segments because that one shape covers both. A stacking passive lights
+   * `filled` of `total`; an on/off one is `1` of `1` and simply returns `null`
+   * while it is off. Nothing has to say which kind it is.
+   *
+   * **Returning `null` is how a passive says "not right now".** A passive that
+   * is always on — the turret's own ward — deliberately draws nothing: a mark
+   * that is never absent teaches nothing after the first glance, and the whole
+   * value here is the difference between the lit and unlit states.
+   *
+   * It is on `Buff` rather than on a turret-specific base class because a pack
+   * declaring `turretPassives` **replaces** core's list outright
+   * (`turretPassivesFor`), so a pack's own turret has to be able to draw
+   * without core having heard of its classes.
+   */
+  get structureMark(): StructureMark | null {
+    return null;
+  }
 
   buffAddType = BuffAddType.REPLACE_EXISTING;
   maxStacks = 1;

@@ -1,5 +1,5 @@
 import { Circle } from '@/libs/quadtree';
-import Buff from '@/game/gameObject/Buff';
+import Buff, { type StructureMark } from '@/game/gameObject/Buff';
 import StatAmp from '@/game/gameObject/buffs/StatAmp';
 import { createReveal } from '@/game/gameObject/buffs/TrueSight';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
@@ -84,6 +84,14 @@ const EYE_SWEEP_MS = 250;
 type TurretBody = AttackableUnit & { attackRange: number };
 
 /**
+ * The two marks' colours, and they are not decoration: one says "this is
+ * getting hotter" and the other "this is currently a wall", so they are the
+ * hot and the cold of the same palette rather than two arbitrary hues.
+ */
+const WARMING_UP_MARK = [255, 170, 70] as const;
+const REINFORCED_MARK = [150, 205, 255] as const;
+
+/**
  * The tower gets angrier the longer you stand under it.
  *
  * The ramp is a separate `StatAmp` swapped out on each change rather than a
@@ -101,6 +109,17 @@ class TurretWarmingUp extends Buff {
   private warmth = 0;
   private sinceHit = 0;
   private ramp: StatAmp | null = null;
+
+  /**
+   * The stacks, as pips on the tower. Absent at zero, which is the state the
+   * mark exists to be different from: a cold tower and a tower three hits into
+   * heating up are the same picture without this, and they are not the same
+   * decision.
+   */
+  get structureMark(): StructureMark | null {
+    if (this.warmth === 0) return null;
+    return { filled: this.warmth, total: WARMING_UP_MAX_STACKS, color: WARMING_UP_MARK };
+  }
 
   onDamageDealt(_swung: number, _landed: number, victim: unknown): void {
     if (!(victim instanceof Champion)) return;
@@ -152,6 +171,16 @@ class TurretReinforcedArmor extends Buff {
   hudVisible = false;
 
   private rearmMs = 0;
+
+  /**
+   * On only while the floor is actually up — the same predicate
+   * `modifyIncomingDamage` spends against, so the picture cannot claim a wall
+   * that is not there. This is the dive decision, drawn.
+   */
+  get structureMark(): StructureMark | null {
+    if (this.rearmMs > 0) return null;
+    return { filled: 1, total: 1, color: REINFORCED_MARK };
+  }
 
   onUpdate(): void {
     if (this.enemyMinionsNear()) this.rearmMs = REINFORCED_REARM_MS;
