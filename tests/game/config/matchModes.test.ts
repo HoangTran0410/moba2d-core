@@ -3,6 +3,7 @@ import {
   DEFAULT_MATCH_MODE_ID,
   MATCH_MODES,
   applyMode,
+  balancedBotTeams,
   describeMode,
   isMatchModeId,
   matchModeFor,
@@ -10,6 +11,7 @@ import {
   modeDrift,
 } from '../../../src/game/config/matchModes';
 import { DEFAULT_PREGAME_CONFIG, sanitizePregameConfig } from '../../../src/game/config/PregameConfig';
+import { MatchTeam } from '../../../src/game/config/MatchTeams';
 import { checkMapTuning } from '../../../src/content/validate';
 import type { MapTuning } from '../../../src/content/ContentPack';
 
@@ -79,6 +81,35 @@ describe('applyMode', () => {
     const before = { ...sanitizePregameConfig(DEFAULT_PREGAME_CONFIG) };
     before.ai = { ...before.ai, count: 7 };
     expect(applyMode(before, matchModeFor('urf')).ai.count).toBe(7);
+  });
+
+  it('deals the mode’s bots onto two even sides, the player counted', () => {
+    const blue = sanitizePregameConfig({ ...DEFAULT_PREGAME_CONFIG, playerTeam: MatchTeam.BLUE });
+    const war = applyMode(blue, matchModeFor('war'));
+    const dealt = war.ai.botTeams.slice(0, 9);
+    expect(dealt.filter(t => t === MatchTeam.RED)).toHaveLength(5);
+    expect(dealt.filter(t => t === MatchTeam.BLUE)).toHaveLength(4);
+    expect(dealt[0]).toBe(MatchTeam.RED);
+
+    const red = sanitizePregameConfig({ ...DEFAULT_PREGAME_CONFIG, playerTeam: MatchTeam.RED });
+    expect(applyMode(red, matchModeFor('duel')).ai.botTeams[0]).toBe(MatchTeam.BLUE);
+    expect(applyMode(red, matchModeFor('war')).ai.botTeams.slice(0, 9).filter(t => t === MatchTeam.BLUE)).toHaveLength(5);
+  });
+
+  it('keeps stored sides past the dealt count, and all of them for a mode with no bots', () => {
+    const lopsided = sanitizePregameConfig({
+      ...DEFAULT_PREGAME_CONFIG,
+      ai: { ...DEFAULT_PREGAME_CONFIG.ai, botTeams: Array(10).fill(MatchTeam.RED) },
+    });
+    const duel = applyMode(lopsided, matchModeFor('duel'));
+    expect(duel.ai.botTeams.slice(1)).toEqual(Array(9).fill(MatchTeam.RED));
+    expect(applyMode(lopsided, matchModeFor('urf')).ai.botTeams).toEqual(Array(10).fill(MatchTeam.RED));
+    expect(balancedBotTeams(MatchTeam.BLUE, 3, [MatchTeam.BLUE, MatchTeam.BLUE, MatchTeam.BLUE, MatchTeam.BLUE])).toEqual([
+      MatchTeam.RED,
+      MatchTeam.BLUE,
+      MatchTeam.RED,
+      MatchTeam.BLUE,
+    ]);
   });
 
   it('survives sanitising, which is what the source does to it', () => {

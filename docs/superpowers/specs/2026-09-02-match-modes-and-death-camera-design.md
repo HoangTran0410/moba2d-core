@@ -40,6 +40,19 @@ nhiên, **không hồi thành**, không rừng, vàng 1400, hồi sinh 8s) · Ta
 Mọi chế độ khai **đủ** `rules` và `world` (không patch): "URF nhưng giữ luật
 hồi thành của chế độ trước" không phải một trạng thái ai muốn.
 
+### Hai đội phải đều (sửa sau báo lỗi 7 chọi 3)
+Bản đầu, bot thêm giữa trận lấy phe từ slot đã lưu (`stored.ai.botTeams[i]`).
+Slot quá số bot đang chạy giữ nguyên thứ những buổi trước để lại, nên "Đại
+chiến" ra 7 chọi 3. Chế độ hứa một hình đội thì phải tự chia:
+- Ngoài trận: `balancedBotTeams(playerTeam, count, current)` chia `count`
+  slot đầu xen kẽ, bắt đầu từ phe **đối diện** người chơi (9 bot cạnh người
+  chơi Xanh = 5 Đỏ 4 Xanh; 1 bot là đối thủ, không phải đồng đội). Slot sau
+  `count` giữ nguyên.
+- Trong trận: bot đến lấy phe từ `teamForAddedBot` (phe ít hơn), rồi
+  `evenOutSides` dời bot từ phe đông sang phe ít cho tới khi lệch ≤ 1, dời từ
+  cuối roster để bot đầu (đã tuỳ chỉnh) giữ phe khi có thể. Đây là lý do Tay
+  đôi từ phòng 3 bot ra đúng một đối thủ chứ không phải một đồng đội.
+
 ### Luật mới: `rules.recall`
 Loạn đấu cần một luật thật: không có đường về nhà thì chết là cách duy nhất
 tới shop. `MatchRulesConfig.recall` (mặc định true, blob cũ → true),

@@ -1,5 +1,6 @@
 import type { MapTuning } from '@/content/ContentPack';
 import type { MatchRulesConfig, PregameConfig, WorldConfig } from './PregameConfig';
+import { MatchTeam, type MatchTeamId } from './MatchTeams';
 
 /**
  * Match modes: a name for a bundle of knobs the panel already has.
@@ -154,6 +155,33 @@ export function matchModeFor(id: MatchModeId | string | undefined): MatchMode {
   return MATCH_MODES.find(mode => mode.id === id) ?? MATCH_MODES[0];
 }
 
+const otherSide = (team: MatchTeamId): MatchTeamId =>
+  team === MatchTeam.BLUE ? MatchTeam.RED : MatchTeam.BLUE;
+
+/**
+ * The first `count` bot slots dealt so the two sides come out even *with the
+ * player counted*: the first bot goes opposite the player, then they
+ * alternate. Nine bots beside a Blue player is five Red and four Blue — 5v5;
+ * one bot is the opponent, not a teammate. Slots past `count` are kept as
+ * they were, the way every per-slot array in the config keeps what a lower
+ * count does not reach.
+ *
+ * This is what makes "Đại chiến" mean 5v5 rather than "nine bots on whatever
+ * sides the last few evenings left in storage" — the shape a mode promises
+ * is the mode's to deal, and a stale slot 7 is not a choice anyone made.
+ */
+export function balancedBotTeams(
+  playerTeam: MatchTeamId,
+  count: number,
+  current: readonly MatchTeamId[]
+): MatchTeamId[] {
+  const teams = [...current];
+  for (let i = 0; i < count && i < teams.length; i++) {
+    teams[i] = i % 2 === 0 ? otherSide(playerTeam) : playerTeam;
+  }
+  return teams;
+}
+
 /**
  * The knobs a mode owns, written into a config. Pure: a new object, the
  * input untouched. This is the whole of what picking a mode does outside a
@@ -165,7 +193,14 @@ export function applyMode(config: PregameConfig, mode: MatchMode): PregameConfig
     mode: mode.id,
     rules: { ...mode.rules },
     world: { ...mode.world },
-    ai: mode.bots === undefined ? config.ai : { ...config.ai, count: mode.bots },
+    ai:
+      mode.bots === undefined
+        ? config.ai
+        : {
+            ...config.ai,
+            count: mode.bots,
+            botTeams: balancedBotTeams(config.playerTeam, mode.bots, config.ai.botTeams),
+          },
   };
 }
 

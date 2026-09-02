@@ -12,7 +12,7 @@ import {
   loadPregameConfig,
   savePregameConfig,
 } from '../../../src/game/config/PregameConfig';
-import { MatchTeam } from '../../../src/game/config/MatchTeams';
+import { MatchTeam, type MatchTeamId } from '../../../src/game/config/MatchTeams';
 import { INVENTORY_SIZE } from '../../../src/game/items/Item';
 import { context as practiceContext } from '../practice/helpers';
 import { packIsInstalled } from '../../support/installedPacks';
@@ -439,6 +439,27 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       await source.setMode('duel');
       expect(source.botCount()).toBe(1);
       expect(loadPregameConfig().ai.count).toBe(1);
+    });
+
+    it('deals Đại chiến as 5v5 whatever the stored slots say, and puts the duel’s bot across the map', async () => {
+      // Poison the slots a lower count never reached: this is what the
+      // storage of a few evenings looks like, and the first cut read it back
+      // as the sides of a 5v5 — a player got 7 against 3.
+      const stored = loadPregameConfig();
+      savePregameConfig({
+        ...stored,
+        ai: { ...stored.ai, botTeams: Array(AI_COUNT_MAX).fill(MatchTeam.RED) },
+      });
+      await source.setMode('war');
+      const sides = (team: MatchTeamId) => source.roster().filter(row => row.team === team).length;
+      expect([sides(MatchTeam.BLUE), sides(MatchTeam.RED)]).toEqual([5, 5]);
+      expect(source.roster()).toHaveLength(10);
+
+      await source.setMode('duel');
+      const rows = source.roster();
+      expect(rows).toHaveLength(2);
+      expect(rows[0].isPlayer).toBe(true);
+      expect(rows[1].team).not.toBe(rows[0].team);
     });
 
     it('leaves the roster alone for a mode with no opinion on bots', async () => {

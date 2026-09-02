@@ -98,7 +98,7 @@ import type GameObject from './gameObject/GameObject';
 import type { GameObjectRuntimeContext } from './gameObject/GameObject';
 import type Monster from './gameObject/attackableUnits/Monster';
 import { createDebugFlags, type DebugFlags } from './debug/DebugOverlay';
-import { isMatchTeamId, teamForAddedBot, type MatchTeamId } from './config/MatchTeams';
+import { MatchTeam, isMatchTeamId, teamForAddedBot, type MatchTeamId } from './config/MatchTeams';
 import { DEFAULT_MATCH_MODE_ID, matchModeFor, type MatchModeId } from './config/matchModes';
 
 /**
@@ -907,20 +907,51 @@ export default class MatchDirector {
   }
 
   /**
-   * Bring the roster to `count`. Removals are the tail of the roster, so the
-   * player's first bots — the ones most likely to have been customised — are
-   * the ones that stay; arrivals read their slot's stored loadout and side,
-   * so the mode does not decide who the fourth bot is or which team it joins.
+   * Bring the roster to `count`, on two even sides.
+   *
+   * Removals are the tail of the roster, so the player's first bots — the
+   * ones most likely to have been customised — are the ones that stay.
+   * Arrivals read their slot's stored loadout, so the mode does not decide
+   * who the fourth bot is; but they take the side `teamForAddedBot` deals,
+   * *not* the slot's stored one. The first cut used the stored side and a
+   * player switching to "Đại chiến" mid-match got 7 against 3: slots past
+   * the live count hold whatever earlier evenings left there, and nine of
+   * those are not a 5v5. Then `evenOutSides`, for the bots that were already
+   * here — one bot left over from a three-bot room may be the player's
+   * teammate, and a duel against your own teammate is nobody's duel.
+   *
    * One at a time: `addBotLoaded` serialises through `pendingAdd` anyway.
    */
   private async reshapeBots(count: number): Promise<void> {
     const target = Math.max(AI_COUNT_MIN, Math.min(AI_COUNT_MAX, count));
     const bots = this.bots();
     for (let i = bots.length - 1; i >= target; i--) this.removeBot(bots[i]);
-    if (bots.length >= target) return;
-    const stored = loadPregameConfig();
-    for (let i = bots.length; i < target; i++) {
-      await this.addBotLoaded(stored.ai.bots[i], stored.ai.botTeams[i]);
+    if (bots.length < target) {
+      const stored = loadPregameConfig();
+      for (let i = bots.length; i < target; i++) await this.addBotLoaded(stored.ai.bots[i]);
+    }
+    this.evenOutSides();
+  }
+
+  /**
+   * Move bots from the fuller side until the two differ by at most one, the
+   * player counted. Later bots move first, so the roster's first bots — the
+   * customised ones — keep their side when a move suffices without them.
+   * `setTeam` does the switch and persists it; nothing is teleported (see its
+   * own comment).
+   */
+  private evenOutSides(): void {
+    const bots = this.bots();
+    const count = (team: MatchTeamId): number =>
+      [this.game.player, ...bots].filter(unit => unit.teamId === team).length;
+    for (let i = bots.length - 1; i >= 0; i--) {
+      const blue = count(MatchTeam.BLUE);
+      const red = count(MatchTeam.RED);
+      if (Math.abs(blue - red) <= 1) return;
+      const fuller = blue > red ? MatchTeam.BLUE : MatchTeam.RED;
+      const bot = bots[i];
+      if (bot.teamId !== fuller) continue;
+      this.setTeam(bot, fuller === MatchTeam.BLUE ? MatchTeam.RED : MatchTeam.BLUE);
     }
   }
 
