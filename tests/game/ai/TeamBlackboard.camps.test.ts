@@ -14,6 +14,7 @@ import {
   type CampState,
 } from '../../../src/game/ai/TeamBlackboard';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
+import { LANES } from '../../../src/game/lanes';
 
 /**
  * The jungle half of the blackboard: camps grouped inside the one object
@@ -184,7 +185,10 @@ describe('camps on the blackboard', () => {
     const view = blackboardFor(game, 0, sees).viewFor(BLUE);
     expect(view.jungler).toBe(bots[JUNGLER_MIN_BOTS - 1]);
     expect(view.laneAssignments.has(bots[JUNGLER_MIN_BOTS - 1])).toBe(false);
-    expect(view.laneAssignments.size).toBe(JUNGLER_MIN_BOTS - 1);
+    // A core-alone checkout installs no lanes, and a bot cannot be assigned a
+    // lane that does not exist — the jungler split is what this pins, not the
+    // lane table.
+    expect(view.laneAssignments.size).toBe(LANES.length > 0 ? JUNGLER_MIN_BOTS - 1 : 0);
   });
 
   it('keeps three bots on three lanes with nobody in the jungle', () => {
@@ -193,6 +197,6 @@ describe('camps on the blackboard', () => {
     indexObjects(game, bots);
     const view = blackboardFor(game, 0, sees).viewFor(BLUE);
     expect(view.jungler).toBeNull();
-    expect(view.laneAssignments.size).toBe(JUNGLER_MIN_BOTS - 1);
+    expect(view.laneAssignments.size).toBe(LANES.length > 0 ? JUNGLER_MIN_BOTS - 1 : 0);
   });
 });
