@@ -29,7 +29,13 @@ const data: Pick<ContentPackData, 'items' | 'champions' | 'spellDisplay'> = {
       name: 'Bùa',
       icon: 'item_charm',
       cost: 500,
-      stats: { maxHealth: 20 },
+      // The regen lives on the one item nothing builds out of, so the
+      // upgrade rule stays out of the way. It is here at all so the unit rule
+      // has something to walk: `0.05` per frame is 3/s, what a real sustain
+      // item grants. With no regen stat anywhere in this shop that case would
+      // loop over nothing and pass, which is the failure this fixture exists
+      // about.
+      stats: { maxHealth: 20, healthRegen: 0.05 },
       // Builds into nothing and out of nothing, and earns that by having an
       // ability — the one shape the dead-end rule allows.
       active: 'Item_Charm',

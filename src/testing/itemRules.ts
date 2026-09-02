@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentPackData, ItemDef } from '@/content/ContentPack';
 import { GRANT_SLOT, INVENTORY_SIZE } from '@/game/items/Item';
-import { MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
+import { FRAMES_PER_SECOND, MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
 
 /**
  * `@moba2d/core/testing/items` — the rules every pack's shop has to obey,
@@ -83,6 +83,29 @@ const RESTATES_STATS = /^Tăng /;
 /** Text a pack meant to come back to. */
 const PLACEHOLDER = /Chưa hoàn thiện|TODO|PLACEHOLDER/i;
 
+/**
+ * The most regeneration an item may grant, **per second**, before this is
+ * almost certainly a unit error rather than a strong item.
+ *
+ * `Stats.update()` adds `healthRegen` and `manaRegen` once per *frame*, so the
+ * stored number is per frame and a champion's own base is `0.1` — six mana a
+ * second. Nothing about the field says so, both units are plain numbers, and
+ * the shop card printed the stored figure raw for a long time, so it agreed
+ * with whoever wrote a per-second number into it. Three items in one pack were
+ * written that way and shipped: a 500-gold stone granting seventy-two mana a
+ * second against a base of six, refilling a full pool in seven seconds.
+ *
+ * Thirty a second is five times what a champion regenerates unaided and about
+ * as far past any real item as a ceiling can be while still catching the
+ * mistake — a per-second figure written into this field is off by sixty, so
+ * anything that trips this is out by a factor nobody chose on purpose.
+ *
+ * A heuristic, and the only shape available: `1.2` is a legal number, it is
+ * just an enormous one, and no scan can read the author's intent. So the
+ * message names the trap rather than asserting the value is wrong.
+ */
+export const MAX_ITEM_REGEN_PER_SECOND = 30;
+
 export interface ItemShopFixture {
   /**
    * The pack's data half — `data` from its own `pack.ts`. Only the three
@@ -161,6 +184,25 @@ export function describeItemShop(fixture: ItemShopFixture): void {
         expect(grants || Boolean(def.passive ?? def.active), `${key} does nothing at all`).toBe(
           true
         );
+      }
+    });
+
+    it('states regeneration in the unit the engine stores it in', () => {
+      // The one stat pair whose *unit* is not what a reader assumes, and the
+      // pack that got it wrong got it wrong three times in one shelf. See
+      // `MAX_ITEM_REGEN_PER_SECOND`.
+      for (const [key, def] of entries) {
+        for (const stat of ['healthRegen', 'manaRegen'] as const) {
+          const perFrame = def.stats?.[stat];
+          if (typeof perFrame !== 'number') continue;
+          const perSecond = perFrame * FRAMES_PER_SECOND;
+          expect(
+            perSecond,
+            `${key}: ${stat} ${perFrame} is ${perSecond}/s — ` +
+              '`Stats.update()` adds this every frame, so a per-second figure belongs here ' +
+              `divided by ${FRAMES_PER_SECOND}`
+          ).toBeLessThanOrEqual(MAX_ITEM_REGEN_PER_SECOND);
+        }
       }
     });
 
