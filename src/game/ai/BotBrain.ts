@@ -1,5 +1,6 @@
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
+import Monster from '@/game/gameObject/attackableUnits/Monster';
 import { canSee, type Seeable } from '@/game/combat/Vision';
 import { profileFor, type DifficultyProfile } from '@/game/ai/Difficulty';
 import {
@@ -13,6 +14,7 @@ import {
   type BlackboardHost,
   type SeenEnemy,
   type TeamView,
+  type CampState,
 } from '@/game/ai/TeamBlackboard';
 import { laneApproach } from '@/game/ai/LaneObjectives';
 import { clampToSafeApproach, escapePoint, insideThreat } from '@/game/ai/TurretThreat';
@@ -51,7 +53,23 @@ export const TARGET_LOW_HEALTH_WEIGHT = 12;
 export const TARGET_DISTANCE_DIVISOR = 100;
 
 export type Posture =
-  'RETREAT' | 'RECOVER' | 'DISENGAGE' | 'FIGHT' | 'SEARCH' | 'ENGAGE' | 'PUSH' | 'ROAM';
+  | 'RETREAT'
+  | 'RECOVER'
+  | 'DISENGAGE'
+  | 'FIGHT'
+  | 'SEARCH'
+  | 'ENGAGE'
+  | 'OBJECTIVE'
+  | 'PUSH'
+  | 'FARM'
+  | 'ROAM';
+
+/** How far from an `epic` pit a bot still answers the team's call to it. */
+export const OBJECTIVE_CALL_PX = 2600;
+/** A laner with nothing to push clears a camp this close; further is not a detour, it is leaving lane. */
+export const CAMP_DETOUR_PX = 700;
+/** The jungler's whole beat: any live camp within this of it. */
+export const JUNGLE_ROUTE_PX = 3200;
 
 /** How far from an ally a focus target counts as "a fight worth joining". */
 export const ASSIST_RANGE = 700;
@@ -751,11 +769,71 @@ export class BotBrain {
     const memory = this.rememberedTarget(view, nowMs);
     if (memory && !this.guardedByTurret(view, memory.unit)) return 'SEARCH';
     if (this.assistableFocus(view)) return 'ENGAGE';
+    // The team's call outranks the lane: a pit boss is worth more than a wave,
+    // and every rule that involves an enemy champion has already had its say.
+    if (this.objectiveCalled(view)) return 'OBJECTIVE';
     // Below every way of answering "is there a champion to deal with" and above
     // wandering: decision 2 of the lane layer. A bot only farms when there is
     // nobody to fight.
     if (this.pushApproach(view, nowMs)) return 'PUSH';
+    // Nothing to push: a camp in reach beats wandering. The jungler's reach is
+    // the whole jungle; a laner's is a detour.
+    const camp = this.campToFarm(view);
+    this.farmCamp = camp;
+    if (camp) return 'FARM';
     return 'ROAM';
+  }
+
+  /** The camp this bot is clearing while FARM stands; `decidePosture` writes it. */
+  private farmCamp: CampState | null = null;
+
+  private objectiveCalled(view: TeamView): boolean {
+    const call = view.objective;
+    if (!call || !this.profile.contestsObjectives) return false;
+    if (call.monster.isDead || call.monster.toRemove) return false;
+    const away = Math.hypot(
+      call.camp.camp.x - this.owner.position.x,
+      call.camp.camp.y - this.owner.position.y
+    );
+    return away <= OBJECTIVE_CALL_PX;
+  }
+
+  private campToFarm(view: TeamView): CampState | null {
+    if (!this.profile.farmsJungle || !view.camps) return null;
+    const reach = view.jungler === this.owner ? JUNGLE_ROUTE_PX : CAMP_DETOUR_PX;
+    let best: CampState | null = null;
+    let bestAway = reach;
+    for (const camp of view.camps) {
+      // Epics are the team's business (`objectiveCalled`), never a solo farm.
+      if (camp.tier !== 'camp' || camp.alive.length === 0) continue;
+      const away = Math.hypot(
+        camp.camp.x - this.owner.position.x,
+        camp.camp.y - this.owner.position.y
+      );
+      if (away <= bestAway) {
+        bestAway = away;
+        best = camp;
+      }
+    }
+    return best;
+  }
+
+  /** The standing body of `camp` nearest this bot, or null once it is cleared. */
+  private nearestStanding(camp: CampState): Monster | null {
+    let best: Monster | null = null;
+    let bestAway = Number.POSITIVE_INFINITY;
+    for (const body of camp.alive) {
+      if (body.isDead || body.toRemove) continue;
+      const away = Math.hypot(
+        body.position.x - this.owner.position.x,
+        body.position.y - this.owner.position.y
+      );
+      if (away < bestAway) {
+        bestAway = away;
+        best = body;
+      }
+    }
+    return best;
   }
 
   /** Half the body, which is what a turret's reach has to cover to hit it. */
@@ -1160,7 +1238,10 @@ export class BotBrain {
     target: AttackableUnit | null,
     view: TeamView
   ): number {
-    this.syncOpinion(view);
+    // Guarded: `src/testing/botRules.ts` calls this off the prototype against a
+    // stub carrying only the fields the arithmetic reads, and the opinion layer
+    // is deliberately not one of them.
+    if (this.opinion) this.syncOpinion(view);
     const healthPct = ratio(this.owner.stats.health.value, this.owner.stats.maxHealth.value);
     const distance = target
       ? Math.hypot(
@@ -1208,7 +1289,7 @@ export class BotBrain {
 
     // The champion's say, on the score *before* noise — so the difficulty knob
     // still applies to a champion with an opinion.
-    const opinion = this.opinion.scoreSpell(this.aiContext(view), {
+    const opinion = this.opinion?.scoreSpell(this.aiContext(view), {
       spell,
       slotIndex,
       mask,
@@ -1535,6 +1616,22 @@ export class BotBrain {
           owner.navigateTo(toward.x, toward.y);
         }
         return;
+      case 'OBJECTIVE': {
+        if (owner.basicAttack?.target) return;
+        const call = view.objective;
+        if (!call || call.monster.isDead) return;
+        const to = this.safely(view, null, call.monster.position);
+        owner.navigateTo(to.x, to.y);
+        return;
+      }
+      case 'FARM': {
+        if (owner.basicAttack?.target) return;
+        const body = this.farmCamp ? this.nearestStanding(this.farmCamp) : null;
+        if (!body) return;
+        const to = this.safely(view, null, body.position);
+        owner.navigateTo(to.x, to.y);
+        return;
+      }
       case 'PUSH': {
         // As in FIGHT: an order already running owns the walking, and stepping
         // in would fight the attack controller for the destination every tick.
@@ -2021,6 +2118,7 @@ export class BotBrain {
    * this comment is here so it is not rediscovered the hard way.
    */
   findObjectiveTarget(from?: TeamView): AttackableUnit | null {
+    if (this.posture === 'OBJECTIVE' || this.posture === 'FARM') return this.campTarget(from);
     // The posture test first, and only then the board: `AIChampion` calls this
     // on every attack scan, in every posture, and a default argument would ask
     // for a snapshot before finding out the answer is `null`.
@@ -2063,6 +2161,30 @@ export class BotBrain {
    * champion, so `easy` can still be broken line of sight with and the other
    * two tiers pay nothing for the question.
    */
+  /**
+   * What a farming or objective-bound bot swings at: the standing body it is
+   * walking to, once inside the tier's aggro range and in sight. The camp is
+   * chosen in `decidePosture` (`farmCamp` / `view.objective`), so this only
+   * answers "is it close enough yet" — the same division PUSH keeps between
+   * `pushApproach` and `nearestLaneMinion`.
+   */
+  private campTarget(from?: TeamView): Monster | null {
+    const view = from ?? this.currentView();
+    const body =
+      this.posture === 'OBJECTIVE'
+        ? (view.objective?.monster ?? null)
+        : this.farmCamp
+          ? this.nearestStanding(this.farmCamp)
+          : null;
+    if (!body || body.isDead || body.toRemove) return null;
+    const away = Math.hypot(
+      body.position.x - this.owner.position.x,
+      body.position.y - this.owner.position.y
+    );
+    if (away > this.profile.aggroRange) return null;
+    return this.sees(this.owner, body) ? body : null;
+  }
+
   private nearestLaneMinion(lane: string): Minion | null {
     const owner = this.owner;
     const found =

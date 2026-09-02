@@ -836,6 +836,7 @@ const bareMonsterBodyPreset = (
   name: member.name,
   avatar: member.avatar,
   camp: slot,
+  tier: monster.tier ?? 'camp',
   // Where this one body stands, which is a different question from where the
   // camp is: `camp` is the slot object itself, shared by reference across
   // every member so `alertCamp` can match on identity. `Monster` reads `home`

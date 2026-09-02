@@ -512,11 +512,22 @@ export interface MonsterBody {
  * specific pack's file. This pack's one boss monster is the first
  * and, as of this writing, only monster that supplies any.
  */
+/**
+ * How much a camp matters to a team. `'camp'` (the default) is farm — a bot
+ * clears it when it has nothing better to do. `'epic'` is an objective: one
+ * body a whole team is called to when the numbers are right, and the bot
+ * brain's `OBJECTIVE` posture exists for it. Core's word, not the source
+ * game's: which monster is the dragon is the pack's business.
+ */
+export type MonsterTier = 'camp' | 'epic';
+
 export interface MonsterDef {
   id: string;
   name: string;
   /** Slot roles this monster can occupy. Free strings; core only matches. */
   fills: string[];
+  /** Farm or objective — see `MonsterTier`. Absent means `'camp'`. */
+  tier?: MonsterTier;
   /** What this camp is made of. Never empty — a camp of one is one entry. */
   members: MonsterBody[];
 }

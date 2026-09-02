@@ -1,3 +1,4 @@
+import type { MonsterTier } from '@/content/ContentPack';
 import { withinRadius } from '@/utils/math.utils';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { canSee } from '@/game/combat/Vision';
@@ -220,6 +221,8 @@ export interface MonsterPresetData {
    * pit — which is a shape `speed === 0` cannot express.
    */
   anchored?: boolean;
+  /** Farm or objective — `MonsterDef.tier`, carried onto every body. Defaults to `'camp'`. */
+  tier?: MonsterTier;
   /** Defaults to `'aggressive'` — see the type. */
   temperament?: MonsterTemperament;
   /** Defaults to `{ kind: 'camp' }` — see the type. */
@@ -483,6 +486,8 @@ export default class Monster extends AttackableUnit {
   name: string;
   phase: MonsterPhase = Monster.PHASES.IDLE;
   camp: { x: number; y: number; r: number };
+  /** Farm or objective — see `MonsterTier`. What the bot brain's `OBJECTIVE` posture is for. */
+  tier: MonsterTier = 'camp';
   /** This body's own spot in the camp — see the preset's `home`. */
   home: { x: number; y: number };
   attackRange: number;
@@ -598,6 +603,7 @@ export default class Monster extends AttackableUnit {
     this.attackRange = preset.attackRange;
     this.reviveTime = preset.reviveTime;
     this.camp = preset.camp;
+    this.tier = preset.tier ?? 'camp';
     this.home = preset.home ?? { x: preset.camp.x, y: preset.camp.y };
     this.attackInterval = preset.attackInterval ?? 1500;
     this.damage = preset.damage ?? Math.min(25, Math.max(3, Math.round(preset.health / 25)));

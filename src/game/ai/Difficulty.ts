@@ -47,6 +47,15 @@ export interface DifficultyProfile {
    * position to walk to.
    */
   memoryTtlMs: number;
+  /**
+   * Whether a bot with nothing to push clears a nearby jungle camp, and
+   * whether a team of four or more sends its spare bot to live in the jungle.
+   * Off at `easy`: an easy bot that farms is an easy bot that is never where
+   * a new player expects it.
+   */
+  farmsJungle: boolean;
+  /** Whether a bot answers the team's call to an `epic` camp (`TeamView.objective`). */
+  contestsObjectives: boolean;
   /** 0 disables throwing an area spell at a last-known position entirely. */
   ghostCastWindowMs: number;
 }
@@ -73,6 +82,8 @@ const PROFILES: Readonly<Record<BotDifficulty, Readonly<DifficultyProfile>>> = O
     aggroRange: 360,
     memoryTtlMs: 1200,
     ghostCastWindowMs: 0,
+    farmsJungle: false,
+    contestsObjectives: false,
   }),
   normal: Object.freeze({
     castIntervalMs: 900,
@@ -87,6 +98,8 @@ const PROFILES: Readonly<Record<BotDifficulty, Readonly<DifficultyProfile>>> = O
     aggroRange: 420,
     memoryTtlMs: 2500,
     ghostCastWindowMs: 500,
+    farmsJungle: true,
+    contestsObjectives: true,
   }),
   hard: Object.freeze({
     castIntervalMs: 550,
@@ -101,6 +114,8 @@ const PROFILES: Readonly<Record<BotDifficulty, Readonly<DifficultyProfile>>> = O
     aggroRange: 480,
     memoryTtlMs: 4000,
     ghostCastWindowMs: 900,
+    farmsJungle: true,
+    contestsObjectives: true,
   }),
 });
 

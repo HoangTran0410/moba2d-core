@@ -1,3 +1,4 @@
+import type { MonsterTier } from '@/content/ContentPack';
 import {
   MINION_STYLES,
   MONSTER_ATTACK_STYLES,
@@ -823,6 +824,9 @@ function checkMonsterBehaviour(
   }
 }
 
+/** `MonsterDef.tier`'s two words. See `MonsterTier`. */
+export const MONSTER_TIERS: readonly MonsterTier[] = Object.freeze(['camp', 'epic']);
+
 function checkMonsters(pack: Record<string, unknown>, errors: string[]): void {
   if (pack.monsters === undefined) return;
   if (!isObject(pack.monsters)) {
@@ -841,6 +845,9 @@ function checkMonsters(pack: Record<string, unknown>, errors: string[]): void {
     // TypeError one layer downstream instead of a named error here.
     if (!isStringArray(value.fills)) {
       errors.push(`monsters.${id}: fills must be an array of strings`);
+    }
+    if (value.tier !== undefined && !MONSTER_TIERS.includes(value.tier as MonsterTier)) {
+      errors.push(`monsters.${id}.tier: must be one of ${MONSTER_TIERS.join(', ')}`);
     }
     // `Game.spawnJungle()` loops `members` unconditionally; an empty array
     // is a camp that fills its slot with nothing, the same silent-failure

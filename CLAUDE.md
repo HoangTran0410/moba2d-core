@@ -258,9 +258,9 @@ pack-dependent exclusion. Editing and re-running it proves nothing.
 
 | File | Role |
 |---|---|
-| `BotBrain.ts` | posture FSM (`RETREAT RECOVER DISENGAGE FIGHT SEARCH ENGAGE PUSH ROAM`), spell scoring, aiming, cast follow-through, kiting |
+| `BotBrain.ts` | posture FSM (`RETREAT RECOVER DISENGAGE FIGHT SEARCH ENGAGE OBJECTIVE PUSH FARM ROAM`), spell scoring, aiming, cast follow-through, kiting; asks the pack's `ChampionAI` (`ChampionAI.ts`) at four points |
 | `TurretThreat.ts` | pure ring maths: is this point in the guns, where is the nearest way out, where does this walk cross a ring |
-| `TeamBlackboard.ts` | one snapshot per game per 250ms — allies, enemies, focus target, memory, lane buckets and lane assignments |
+| `TeamBlackboard.ts` | one snapshot per game per 250ms — allies, enemies, focus target, memory, lane buckets and lane assignments, jungle camps (`camps`), the team's `objective` call to an `epic` camp, and the `jungler` a team of 4+ bots spares |
 | `LaneObjectives.ts` | pure lane maths: project a point onto a lane, score a lane's need, distribute bots across three |
 | `AimPredictor.ts` | leads a moving target by projectile flight time |
 | `Difficulty.ts` | three frozen profiles; every knob a tier changes lives here and nowhere else |

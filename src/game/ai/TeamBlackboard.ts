@@ -1,6 +1,8 @@
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
+import Monster from '@/game/gameObject/attackableUnits/Monster';
+import type { MonsterTier } from '@/content/ContentPack';
 import Turret from '@/game/gameObject/structures/Turret';
 import { effectiveHealth } from '@/game/combat/ExecuteTargeting';
 import { canTeamSee, type Seeable } from '@/game/combat/Vision';
@@ -54,6 +56,29 @@ export interface SeenEnemy {
   vel: Vec2;
 }
 
+/**
+ * One jungle camp as the team sees it this tick: every body that ever stood
+ * there, grouped by the slot they share (`Monster.camp` is the slot object
+ * itself, by reference), with the ones still standing and how long until the
+ * fallen come back. Team-independent — a camp is the same camp to both sides.
+ */
+export interface CampState {
+  camp: { x: number; y: number; r: number };
+  tier: MonsterTier;
+  /** The bodies still standing. Empty is a cleared camp. */
+  alive: readonly Monster[];
+  total: number;
+  /** Ms until the first fallen body returns; 0 while any body stands or none has ever died. */
+  respawnInMs: number;
+}
+
+/** The team's standing call to an `epic` camp — see `pickObjective`. */
+export interface ObjectiveCall {
+  camp: CampState;
+  /** The body to hit. The first still standing; a pit boss is a camp of one. */
+  monster: Monster;
+}
+
 export interface TeamView {
   allies: readonly Champion[];
   enemies: readonly Champion[];
@@ -80,7 +105,21 @@ export interface TeamView {
    * still shoots, and "may I stand here" has to be asked of all of them.
    */
   enemyTurrets: readonly Turret[];
+  /** Every camp on the map, from the same one pass. Optional so a hand-built view in a suite need not list them. */
+  camps?: readonly CampState[];
+  /** Where the team is going together, if anywhere. `null`/absent: no call. */
+  objective?: ObjectiveCall | null;
+  /** The bot living in the jungle — kept out of `laneAssignments`. Only a team of `JUNGLER_MIN_BOTS` bots has one. */
+  jungler?: Champion | null;
 }
+
+/** A team of this many bots or more spares one for the jungle. */
+export const JUNGLER_MIN_BOTS = 4;
+/** An enemy the team has seen within this of a pit, this recently, counts against going there. */
+export const OBJECTIVE_DANGER_PX = 900;
+export const OBJECTIVE_MEMORY_MS = 4_000;
+/** An ally below this share of health is not counted as fit to contest. */
+export const OBJECTIVE_HEALTH_PCT = 0.5;
 
 /**
  * Whether **any** of `observers` can see `target`.
@@ -166,10 +205,40 @@ export class TeamBlackboard {
       laneMinions.set(lane, []);
       laneTurrets.set(lane, []);
     }
+    // Camps, keyed by the slot object every member shares by reference.
+    const campsBySlot = new Map<object, { state: CampState; alive: Monster[] }>();
 
     for (const object of game.objectManager?.objects ?? []) {
       if (!(object instanceof AttackableUnit)) continue;
-      if (object.toRemove || object.isDead) continue;
+      if (object.toRemove) continue;
+
+      // Before the dead-skip below: a fallen camp still matters, because when
+      // it comes back is half of what a jungler wants to know.
+      if (object instanceof Monster) {
+        let entry = campsBySlot.get(object.camp);
+        if (!entry) {
+          const alive: Monster[] = [];
+          entry = {
+            alive,
+            state: { camp: object.camp, tier: object.tier, alive, total: 0, respawnInMs: 0 },
+          };
+          campsBySlot.set(object.camp, entry);
+        }
+        entry.state.total += 1;
+        // An `epic` anywhere in the camp makes the camp epic.
+        if (object.tier === 'epic') entry.state.tier = 'epic';
+        if (object.isDead) {
+          const left = object.deathData?.reviveAfter ?? 0;
+          if (entry.state.respawnInMs === 0 || left < entry.state.respawnInMs) {
+            entry.state.respawnInMs = left;
+          }
+        } else {
+          entry.alive.push(object);
+        }
+        continue;
+      }
+
+      if (object.isDead) continue;
 
       if (object instanceof Minion) {
         const bucket = laneMinions.get(object.lane);
@@ -208,6 +277,13 @@ export class TeamBlackboard {
       living.push(object);
     }
 
+    const camps: CampState[] = [];
+    for (const { state } of campsBySlot.values()) {
+      // A standing body means nobody is waiting on a timer.
+      if (state.alive.length > 0) state.respawnInMs = 0;
+      camps.push(state);
+    }
+
     const teams = new Set<unknown>();
     for (const champion of living) teams.add(champion.teamId);
 
@@ -237,15 +313,20 @@ export class TeamBlackboard {
         if (turret.teamId !== teamId) enemyTurrets.push(turret);
       }
       const lanes = this.buildLanes(teamId, enemies, laneOfChampion, laneMinions, laneTurrets);
+      const memory = this.refreshMemory(teamId, allies, enemies, nowMs, sees);
+      const { assignments, jungler } = this.refreshLaneAssignments(teamId, allies, lanes);
       this.views.set(teamId, {
         allies,
         enemies,
         enemyTurrets,
         focusTarget: pickFocus(allies, enemies),
         rally: centroid(allies),
-        memory: this.refreshMemory(teamId, allies, enemies, nowMs, sees),
+        memory,
         lanes,
-        laneAssignments: this.refreshLaneAssignments(teamId, allies, lanes),
+        laneAssignments: assignments,
+        camps,
+        objective: pickObjective(camps, allies, memory, nowMs),
+        jungler,
       });
     }
   }
@@ -340,7 +421,7 @@ export class TeamBlackboard {
     teamId: unknown,
     allies: readonly Champion[],
     lanes: ReadonlyMap<string, LaneState>
-  ): ReadonlyMap<Champion, string> {
+  ): { assignments: ReadonlyMap<Champion, string>; jungler: Champion | null } {
     // Roster order, which is spawn order — not a uuid, so the answer is the
     // same on every machine and a test can assert it. `filter` cannot narrow
     // here (see the note on the object pass above), so this is a plain loop.
@@ -348,6 +429,10 @@ export class TeamBlackboard {
     for (const ally of allies) {
       if (ally.isBot) bots.push(ally);
     }
+    // The last bot in roster order lives in the jungle once there are enough
+    // to spare one: three lanes hold three, and a fourth doubling a lane adds
+    // less than a jungler adds. Roster order, again, so it never flickers.
+    const jungler = bots.length >= JUNGLER_MIN_BOTS ? (bots.pop() ?? null) : null;
 
     const needs = new Map<string, number>();
     for (const [lane, state] of lanes) needs.set(lane, state.need);
@@ -361,7 +446,7 @@ export class TeamBlackboard {
     const assigned = assignLanes(bots, needs, remembered);
     remembered.clear();
     for (const [bot, lane] of assigned) remembered.set(bot, lane);
-    return assigned;
+    return { assignments: assigned, jungler };
   }
 
   private refreshMemory(
@@ -412,6 +497,52 @@ const boards = new WeakMap<object, TeamBlackboard>();
  * and must not carry one difficulty tier's privileges, because every tier reads
  * this same object.
  */
+/**
+ * The team's call, if any: an `epic` camp with a body standing, where the
+ * enemies the team has *seen* lately are outnumbered by the allies fit to go.
+ * Numbers, not bravado — one more fit body than enemies seen at the pit — and
+ * memory rather than a scan, so a pit nobody has looked at recently reads as
+ * empty, which is what a team without vision actually knows.
+ *
+ * Deliberately blind to whether anyone is mid-fight: each bot's own posture
+ * chain puts FIGHT above OBJECTIVE, so a bot with an enemy in front of it
+ * ignores the call and the rest go.
+ */
+export function pickObjective(
+  camps: readonly CampState[],
+  allies: readonly Champion[],
+  memory: ReadonlyMap<Champion, SeenEnemy>,
+  nowMs: number
+): ObjectiveCall | null {
+  let fit = 0;
+  for (const ally of allies) {
+    if (ally.isDead) continue;
+    const max = ally.stats.maxHealth.value;
+    if (max > 0 && ally.stats.health.value / max >= OBJECTIVE_HEALTH_PCT) fit++;
+  }
+  if (fit === 0) return null;
+
+  let best: ObjectiveCall | null = null;
+  let bestDanger = Number.POSITIVE_INFINITY;
+  for (const camp of camps) {
+    if (camp.tier !== 'epic' || camp.alive.length === 0) continue;
+    let danger = 0;
+    for (const seen of memory.values()) {
+      if (seen.unit.isDead || seen.unit.toRemove) continue;
+      if (nowMs - seen.atMs > OBJECTIVE_MEMORY_MS) continue;
+      if (Math.hypot(seen.pos.x - camp.camp.x, seen.pos.y - camp.camp.y) <= OBJECTIVE_DANGER_PX) {
+        danger++;
+      }
+    }
+    if (danger > fit - 1) continue;
+    if (danger < bestDanger) {
+      bestDanger = danger;
+      best = { camp, monster: camp.alive[0] };
+    }
+  }
+  return best;
+}
+
 export function blackboardFor(
   game: BlackboardHost,
   nowMs: number,
