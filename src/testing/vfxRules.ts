@@ -55,6 +55,31 @@ const isMissile = (source: string): boolean =>
   /extends (api\.)?(Missile|HomingMissile)SpellObject/.test(source);
 
 /**
+ * The body of every `name(` method in a file, brace-matched.
+ *
+ * A regex cannot answer "is this call inside `draw`" — the method runs to a
+ * closing brace that may be forty lines and six nested blocks away. Counting
+ * braces over comment-stripped source is exact for the shape packs actually
+ * write, and the alternative is a real parser for one rule.
+ */
+const bodiesOf = (source: string, name: string): string[] => {
+  const bodies: string[] = [];
+  const opener = new RegExp(`(?<![.\\w])${name}\\s*\\(`, 'g');
+  for (const match of source.matchAll(opener)) {
+    const open = source.indexOf('{', match.index + match[0].length);
+    if (open < 0) continue;
+    let depth = 0;
+    let end = open;
+    for (; end < source.length; end++) {
+      if (source[end] === '{') depth++;
+      else if (source[end] === '}' && --depth === 0) break;
+    }
+    bodies.push(source.slice(open, end));
+  }
+  return bodies;
+};
+
+/**
  * Every VFX rule broken under `spellsDir`, as a flat list.
  *
  * Exported separately from `describeVfxRules` so a pack can assert on the
@@ -108,6 +133,29 @@ export function vfxIssues(spellsDir: string): VfxIssue[] {
           file,
           rule: 'unstubbed-p5-global',
           detail: `uses \`${global}\`; write \`Math.PI\` — p5 globals only exist in a live sketch`,
+        });
+      }
+    }
+
+    // **A render pass may not move the world.** `ObjectManager` brackets
+    // `update`, `onAdded` and `onRemoved` in the object's own attribution and
+    // deliberately brackets `draw` in nothing — so damage dealt from there is
+    // not ability damage to `abilityPowerScales()`, and the caster's whole
+    // `Stats.abilityPower` silently vanishes from the number. The tooltip goes
+    // on promising it, because the tooltip reads the stat and the hit does not.
+    //
+    // That is only the half a scan can see. `draw` also runs once per rendered
+    // frame rather than once per simulation step: it is skipped for anything
+    // off-screen or culled by `RenderQuality`, and a hit that lands only when
+    // somebody is looking at it is not a hit. The two arguments point the same
+    // way, which is why this is a rule and not a lint.
+    for (const body of bodiesOf(source, 'draw')) {
+      const call = /\.(takeDamage|takeHeal)\s*\(/.exec(body);
+      if (call) {
+        issues.push({
+          file,
+          rule: 'damage-in-draw',
+          detail: `calls \`${call[1]}\` from \`draw\`; move it to \`update\`, which core attributes`,
         });
       }
     }

@@ -187,6 +187,86 @@ describe('damage attribution', () => {
       expect(victim.recentDamageLog.at(-1)?.source).toBe('Hỏa Cầu (Vera_Q)');
     });
 
+    /**
+     * `onRemoved` is where a missile that reached its range does its work —
+     * three abilities in the installed packs end that way, and each builds its
+     * blast object there. Outside the bracket that object is stamped
+     * `attributedTo: null`, so the blast it deals frames later is not ability
+     * damage and `Stats.abilityPower` never reaches it: a throw that hit
+     * somebody was amplified and the identical throw that landed on the ground
+     * was not.
+     */
+    it('names the damage a missile deals on the frame it is removed', () => {
+      const { victim, killer } = duo();
+      const spell = { name: 'Hỏa Cầu (Vera_Q)' };
+
+      const previous = beginAttribution(spell);
+      const missile = new SpellObject(killer);
+      endAttribution(previous);
+
+      missile.onRemoved = () => victim.takeDamage(20, killer, 'MAGIC');
+      missile.toRemove = true;
+      game.objectManager.addObject(missile);
+      game.objectManager.update();
+      game.objectManager.update();
+
+      expect(victim.recentDamageLog.at(-1)?.source).toBe('Hỏa Cầu (Vera_Q)');
+    });
+
+    /**
+     * And `onAdded`, where an effect that acts on arrival acts. A pack moving a
+     * bite from its update clock to its arrival — the fix for a 180ms gap
+     * between a burst and its number — took a champion from 449 damage to 31,
+     * with the tooltip still promising the 449.
+     */
+    it('and the damage an effect deals in the frame it arrives', () => {
+      const { victim, killer } = duo();
+      const spell = { name: 'Hỏa Cầu (Vera_Q)' };
+
+      const previous = beginAttribution(spell);
+      const blast = new SpellObject(killer);
+      endAttribution(previous);
+
+      blast.onAdded = () => victim.takeDamage(20, killer, 'MAGIC');
+      game.objectManager.addObject(blast);
+      game.objectManager.update();
+
+      expect(victim.recentDamageLog.at(-1)?.source).toBe('Hỏa Cầu (Vera_Q)');
+    });
+
+    /**
+     * The half a name cannot show: `abilityPowerScales()` is what `takeDamage`
+     * asks before multiplying by the caster's build, and it reads the same
+     * ambient. A callback outside the bracket answers `false` and the whole
+     * shop disappears from the number, silently.
+     */
+    it('and pays the caster’s ability power from every one of the three', () => {
+      for (const hook of ['update', 'onAdded', 'onRemoved'] as const) {
+        const { victim, killer } = duo();
+        killer.stats.abilityPower.baseValue = 1;
+        // Otherwise the pool ticks back up between the two passes and the
+        // subtraction measures regeneration as well as the hit.
+        victim.stats.healthRegen.baseValue = 0;
+        // The flag is what `abilityPowerScales()` actually reads; a `Spell`
+        // sets it true and an item's own ability sets it false.
+        const previous = beginAttribution({
+          name: 'Hỏa Cầu (Vera_Q)',
+          damageScalesWithAbilityPower: true,
+        });
+        const object = new SpellObject(killer);
+        endAttribution(previous);
+
+        const before = victim.stats.health.baseValue;
+        object[hook] = () => victim.takeDamage(20, killer, 'MAGIC');
+        if (hook === 'onRemoved') object.toRemove = true;
+        game.objectManager.addObject(object);
+        game.objectManager.update();
+        game.objectManager.update();
+
+        expect(before - victim.stats.health.baseValue, `${hook} dropped the build`).toBe(40);
+      }
+    });
+
     it('leaves the ambient clean afterwards, even when an update throws', () => {
       const { killer } = duo();
       const missile = new SpellObject(killer);

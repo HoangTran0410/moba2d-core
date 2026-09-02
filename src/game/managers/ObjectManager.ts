@@ -421,6 +421,54 @@ export default class ObjectManager {
     globalThis.objectManager = this;
   }
 
+  /**
+   * Runs one of an object's lifecycle callbacks under the cast it belongs to.
+   *
+   * Whatever this object belongs to owns the damage it deals without naming a
+   * source — a missile's `onHit` runs frames after the cast that built it.
+   * Save/restore rather than assign: a child object built during the call
+   * inherits the attribution, and a reflect re-enters `takeDamage` from inside
+   * it. See `combat/DamageAttribution.ts`.
+   *
+   * **All three callbacks, not just `update`.** For a long time this bracket
+   * was written inline around `o.update?.()` and nowhere else, which quietly
+   * made the other two lifecycle hooks a different kind of place to stand:
+   *
+   *   - `onRemoved` is where a **missile that reached its range** does its
+   *     work. Three abilities in the installed packs end that way — a Rasengan
+   *     thrown down an empty lane still bursts — and each builds its blast
+   *     object there. Built outside the bracket, that object's own
+   *     `attributedTo` is stamped `null` (`SpellObject`'s field initialiser
+   *     reads the ambient), so the blast it later deals is not ability damage
+   *     to `abilityPowerScales()` and `Stats.abilityPower` is dropped on the
+   *     floor. A throw that *hit* somebody was amplified and the identical
+   *     throw that landed on the ground was not.
+   *   - `onAdded` is where an effect that acts on arrival acts. Damage dealt
+   *     from there lost the same multiplier, in the same silence: a pack
+   *     moving a bite from its update clock to its arrival — a legitimate
+   *     change, and the fix for a 180ms gap between a burst and its number —
+   *     took a champion from 449 damage to 31 with the tooltip still promising
+   *     the 449.
+   *
+   * Neither had anything to do with what the pack wrote. The rule is a
+   * property of *where core calls in*, so it belongs on every door core opens,
+   * and having exactly one helper is what stops the next door from missing it.
+   *
+   * Phrasing note: `BaseObjectTypes.test.ts` scans this whole file for
+   * TypeScript's three-letter escape hatch and does not strip comments, so
+   * prose here cannot spell it either.
+   */
+  private attributed(object: unknown, run: () => void): void {
+    const previous = beginAttribution(
+      (object as { attributedTo?: DamageAttributable }).attributedTo
+    );
+    try {
+      run();
+    } finally {
+      endAttribution(previous);
+    }
+  }
+
   update(): void {
     // update
     for (const o of this.objects) {
@@ -429,21 +477,7 @@ export default class ObjectManager {
       // walk keeps this a field write, not a second pass over the list.
       o.renderOriginX = o.position.x;
       o.renderOriginY = o.position.y;
-      // Whatever this object belongs to owns the damage it deals without
-      // naming a source — a missile's `onHit` runs here, frames after the cast
-      // that built it. Save/restore rather than assign: a child object built
-      // during this call inherits the attribution, and a reflect re-enters
-      // `takeDamage` from inside it. See `combat/DamageAttribution.ts`.
-      //
-      // Phrasing note: `BaseObjectTypes.test.ts` scans this whole file for
-      // TypeScript's three-letter escape hatch and does not strip comments, so
-      // prose here cannot spell it either.
-      const previous = beginAttribution((o as { attributedTo?: DamageAttributable }).attributedTo);
-      try {
-        o.update?.();
-      } finally {
-        endAttribution(previous);
-      }
+      this.attributed(o, () => o.update?.());
     }
 
     // two-pass remove: collect dead, then filter once (avoids O(n²) splice)
@@ -453,7 +487,8 @@ export default class ObjectManager {
     if (this._deadBuffer.length > 0) {
       for (let i = this._deadBuffer.length - 1; i >= 0; i--) {
         const idx = this._deadBuffer[i];
-        this.objects[idx].onRemoved?.();
+        const dying = this.objects[idx];
+        this.attributed(dying, () => dying.onRemoved?.());
         this.objects.splice(idx, 1);
       }
       this._deadBuffer.length = 0;
@@ -463,7 +498,7 @@ export default class ObjectManager {
     if (this._objectToBeAdd.length > 0) {
       for (const o of this._objectToBeAdd) {
         this.objects.push(o);
-        o.onAdded?.();
+        this.attributed(o, () => o.onAdded?.());
       }
       // Truncate rather than rebind. `onAdded` may itself call `addObject`,
       // and a for..of re-reads `length` each step, so anything queued during
