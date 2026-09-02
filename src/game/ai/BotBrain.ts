@@ -1705,17 +1705,20 @@ export class BotBrain {
     }
 
     if (castSpec.activation !== 'RECAST') return;
-    // A recast that *ends* the ability is not a follow-through, and pressing
-    // it is not this bot's to do. `recastDelayMs` defaults to 0, so without
-    // this the second press landed on the next think tick and a transform
-    // lasted one frame — chosen, cast, and over before it drew. See
-    // `Spell.aiRecastEndsEarly`.
-    if ((choice.spell.constructor as { aiRecastEndsEarly?: boolean }).aiRecastEndsEarly) return;
+    // When the ability says the recast is the player's to time, honour it.
+    // `recastDelayMs` defaults to 0, so without this the second press landed
+    // on the next think tick — a transform lasted one frame, and a recast that
+    // reads a ramping value always read it at zero. See `Spell.aiRecastAfterMs`.
+    const aiAfterMs = (choice.spell.constructor as { aiRecastAfterMs?: number }).aiRecastAfterMs;
+    if (aiAfterMs !== undefined && !Number.isFinite(aiAfterMs)) return;
     // `recasts` defaults to 1 in the runtime, which is every recast spell here
     // bar the four-round ultimate: a detonation spell detonates, a slash lands, a second dash goes a second
     // time and that is the end of it.
     const remaining = castSpec.active?.recasts ?? 1;
     if (remaining < 1) return;
+    // `delayMs` is the *cadence* — what a four-round ultimate spaces its later
+    // rounds by — while the opening wait is whichever of the two is longer, so
+    // a spell that asks the bot to hold still keeps the runtime's own minimum.
     const delayMs = castSpec.active?.recastDelayMs ?? 0;
     this.pendingRecast = {
       choice,
@@ -1723,7 +1726,7 @@ export class BotBrain {
       target,
       remaining,
       delayMs,
-      nextAtMs: nowMs + delayMs,
+      nextAtMs: nowMs + Math.max(delayMs, aiAfterMs ?? 0),
     };
   }
 

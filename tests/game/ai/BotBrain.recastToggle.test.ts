@@ -10,10 +10,10 @@ const PRESET: ChampionPresetData = { name: 'T', spells: [], attack: { damage: 10
 const FRAME_MS = 16;
 
 /** A transform: press to enter, press again to leave early. */
-const makeToggle = (declaresItEndsEarly: boolean) => {
+const makeToggle = (recastAfterMs: number | undefined) => {
   class Stub {
     static aiRoles = roles(SpellRole.Buff, SpellRole.Burst);
-    static aiRecastEndsEarly = declaresItEndsEarly || undefined;
+    static aiRecastAfterMs = recastAfterMs;
     effectiveManaCost = 100;
     manaCost = 100;
     declaredRange: number | undefined = undefined;
@@ -76,9 +76,9 @@ describe('a recast that ends the ability instead of finishing it', () => {
 
   const stats = (toggle: unknown) => toggle as { presses: number; formUp: boolean };
 
-  it('is pressed once and left up, when the ability says the recast ends it', () => {
+  it('is pressed once and left up, when the ability says the recast is never the bot’s', () => {
     const { bot, brain } = setup();
-    const toggle = makeToggle(true);
+    const toggle = makeToggle(Infinity);
     bot.replaceSpells([toggle, toggle, toggle, toggle] as unknown as Spell[]);
 
     run(brain, 3_000);
@@ -92,7 +92,7 @@ describe('a recast that ends the ability instead of finishing it', () => {
     // says nothing, and every one of them must keep its follow-through —
     // a detonation that never detonates is the opposite regression.
     const { bot, brain } = setup();
-    const toggle = makeToggle(false);
+    const toggle = makeToggle(undefined);
     bot.replaceSpells([toggle, toggle, toggle, toggle] as unknown as Spell[]);
 
     run(brain, 3_000);
@@ -135,6 +135,29 @@ const makeStandingToggle = () => {
   }
   return new Stub() as unknown as Spell & { presses: number; on: boolean };
 };
+
+describe('a recast the ability wants pressed later, not never', () => {
+  beforeEach(() => stubGameGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stats = (toggle: unknown) => toggle as { presses: number; formUp: boolean };
+
+  it('waits the stated time and then presses', () => {
+    // The shape a boolean could not express: a recast that fires a payload
+    // *and* ends a window that was meant to run. Pressed at once the bot gets
+    // the payload and none of the window; never pressed, the payload never
+    // happens. Both are wrong, so the ability names a moment.
+    const { bot, brain } = setup();
+    const late = makeToggle(2_000);
+    bot.replaceSpells([late, late, late, late] as unknown as Spell[]);
+
+    run(brain, 1_000);
+    expect(stats(late).presses).toBe(1);
+
+    run(brain, 3_000, 2_000);
+    expect(stats(late).presses).toBe(2);
+  });
+});
 
 describe('a toggle the bot switched on', () => {
   beforeEach(() => stubGameGlobals());

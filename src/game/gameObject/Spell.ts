@@ -125,27 +125,34 @@ export default class Spell {
   static aiProjectileSpeed?: number;
 
   /**
-   * True when a second press **ends** this ability rather than completing it.
+   * When the bot may spend this ability's recast, in ms from activation.
    *
-   * `BotBrain.cast` schedules a follow-through for every `RECAST` activation,
-   * because that is what a recast has always meant here: a detonation
-   * detonates, a slash lands, a second dash goes a second time. Spend the
-   * recast and the ability has finished doing its job.
+   * `BotBrain.cast` schedules a follow-through press for every `RECAST`
+   * activation at `recastDelayMs`, which defaults to **0**. That is right when
+   * the recast is the payload — a detonation detonates, a queued shot fires,
+   * a second dash goes a second time — and wrong in two different ways when
+   * the recast is something the player is meant to *time*:
    *
-   * A transform inverts that. Its recast is the player putting the form
-   * *down*, and `recastDelayMs` defaults to 0 — so a bot pressed the ability,
-   * pressed it again on the very next think tick, and the fifteen-second form
-   * it had just paid a hundred chakra for lasted one frame. Nothing looked
-   * broken from outside: the ultimate was chosen, it was cast, and the player
-   * reported never seeing it used.
+   * - **Never.** A transform's recast puts the form down. The bot pressed it
+   *   on the next think tick, so a fifteen-second form lasted one frame and
+   *   the player reported never seeing the ultimate used at all. `Infinity`
+   *   says the recast is not the bot's to spend.
+   * - **Later.** Some recasts both fire a payload *and* end a window that was
+   *   supposed to run. One ultimate here launches a cone and tears down its
+   *   own nine-second buff in the same call; pressed at once the bot gets the
+   *   cone and none of the nine seconds, and never pressing it means the cone
+   *   never happens. Neither is right, and a boolean cannot say so — this is
+   *   the field's whole reason for being a number.
    *
-   * Declared rather than guessed, for `aiRoles`' reason. The shape a
-   * heuristic would key on — a long `maxDurationMs` with `cooldown.startAt:
-   * 'end'` — is also the shape of abilities whose recast really is the
-   * payload, and being wrong in that direction means an ability that never
-   * finishes. Absent, the follow-through behaves exactly as it always has.
+   * A third shape needs it too, with nothing being ended: an ability whose
+   * recast reads a value that is still ramping — a charge, a rotating card —
+   * gives the bot the weakest reading in the cycle at 0ms, every time.
+   *
+   * Omitted means today's behaviour, which is what every payload recast wants.
+   * The first press is delayed by `max(recastDelayMs, this)`; later recasts of
+   * a multi-shot ability keep their own cadence.
    */
-  static aiRecastEndsEarly?: boolean;
+  static aiRecastAfterMs?: number;
 
   id: string = uuidv4();
   owner: any;
