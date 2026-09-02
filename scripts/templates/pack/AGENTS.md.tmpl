@@ -112,6 +112,23 @@ export const FIREBOLT_DAMAGE = 22;
 
 Retuning damage must not mean editing a test.
 
+**A `description` describes the ability, and nothing else.** It is the tooltip
+a player reads mid-fight, not a design note and not a review. Three things do
+not belong in one, and each has shipped:
+
+- **claims about the roster** — "the only stun in the pack" was true for about
+  four hours, and a sentence that goes false when somebody adds a champion is
+  a sentence nobody will remember to delete;
+- **another champion's name**, which makes the text depend on a champion that
+  may not be installed, may be renamed, or may never have been read by this
+  player;
+- **the designer's reasoning** — "this is the escape button, not an attack".
+  Say what it does (`Không gây sát thương`) and let the player draw that.
+
+State the reach, the numbers, the durations, the effects, and any counterplay
+that is a *fact about the ability* ("it travels slowly", "the ring shows where
+it lands"). `tests/spellDescriptions.test.ts` scans for the first two.
+
 ## Remove an ability
 
 1. Delete `spells/<Champion>_<Slot>.ts` and its test.
