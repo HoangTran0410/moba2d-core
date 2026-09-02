@@ -2543,6 +2543,30 @@ button.practice-roster-item {
    the rings drawn under the champions. Four colour families say *what kind*
    of kill before the words do — crimson first blood, gold burst, fire run,
    violet shutdown — and a run is the one that must not look like a kill. */
+/* ============================ Dead tint (InGameHUD.vue, touch) ==============
+   The phone's stand-in for the desktop's canvas grayscale — see the script
+   comment in InGameHUD.vue for why a filter is the wrong tool there. One
+   translucent quad over the canvas, under every HUD element (z-index 0, first
+   in the tree), faded on opacity only. */
+.dead-tint {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #0a0d12;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.dead-tint-enter-active,
+.dead-tint-leave-active {
+  transition: opacity 400ms ease;
+}
+
+.dead-tint-enter-from,
+.dead-tint-leave-to {
+  opacity: 0;
+}
+
 /* ================================ Spectate bar (SpectateBar.vue) ============
    Bottom-centre, above the desktop ability bar and clear of the phone's
    joystick and spell fan, which own the two bottom corners. Fixed like the

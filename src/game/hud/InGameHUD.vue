@@ -62,17 +62,28 @@ provide('hud', props.hud);
 const state = ref<HudState | null>(null);
 
 /**
- * The world goes grey while the player is dead — `#game-scene.dead-view` in
- * `styles/game-scene.css` filters the canvas, not the HUD, so the spectate
- * pill and the recap stay in colour over a drained world. A class on the
- * scene element rather than a style here because the canvas is p5's, mounted
- * beside this app and not inside it. Cleared on unmount so a match left
- * while dead does not grey the menu.
+ * The world drains while the player is dead, two ways for two machines.
+ *
+ * **Desktop:** `#game-scene.dead-view` in `styles/game-scene.css` puts a
+ * `grayscale()` filter on the canvas — not the HUD, so the spectate pill and
+ * the recap stay in colour over a grey world. A class on the scene element
+ * rather than a style here because the canvas is p5's, mounted beside this
+ * app and not inside it. Cleared on unmount so a match left while dead does
+ * not grey the menu.
+ *
+ * **Touch:** no filter. A CSS filter over a full-screen canvas makes the GPU
+ * compile a shader and promote the canvas to its own layer on first use —
+ * the player reported the first death of a session hitching the phone — and
+ * then re-filters every frame for as long as the player is dead. The phone
+ * gets `.dead-tint` instead: one translucent quad over the canvas, under the
+ * HUD, composited for free, faded by a `<Transition>` on opacity, which is
+ * the one property a phone animates without repainting. Dimmer rather than
+ * grey, and that is the trade.
  */
 const sceneElement = (): HTMLElement | null => document.getElementById('game-scene');
 watch(
-  () => state.value?.isDead === true,
-  dead => sceneElement()?.classList.toggle('dead-view', dead)
+  () => state.value?.isDead === true && !props.hud.touchUi,
+  grey => sceneElement()?.classList.toggle('dead-view', grey)
 );
 onUnmounted(() => sceneElement()?.classList.remove('dead-view'));
 
@@ -135,6 +146,13 @@ defineExpose({
 </script>
 
 <template>
+  <!-- First in the tree on purpose: it is `position: fixed` with `z-index: 0`,
+       so every later sibling paints over it and it only ever covers the
+       canvas. Touch only — see the script's comment on the two machines. -->
+  <Transition name="dead-tint">
+    <div v-if="state && state.isDead && hud.touchUi" class="dead-tint" aria-hidden="true"></div>
+  </Transition>
+
   <!--
     The corner cluster: everything that opens a panel, in one row, all the same
     size and shape.

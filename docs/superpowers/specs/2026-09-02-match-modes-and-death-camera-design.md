@@ -97,7 +97,12 @@ gì để làm lại nhìn vào chỗ duy nhất không có gì xảy ra.
   (bấm = người tiếp); `HudInteractions.spectateNext`. Thế giới xám bằng
   `#game-scene.dead-view canvas { filter: grayscale(.8) brightness(.85) }`
   — chỉ canvas, HUD giữ màu để pill đọc là "đang xem" chứ không phải màn
-  hình hỏng. Class gạt từ `InGameHUD.vue`, gỡ khi unmount.
+  hình hỏng. Class gạt từ `InGameHUD.vue`, gỡ khi unmount. **Chỉ desktop:**
+  người chơi báo lần chết đầu trên điện thoại bị giật — filter trên canvas
+  toàn màn hình bắt GPU biên dịch shader và tách layer lần đầu, rồi lọc lại
+  mỗi frame suốt lúc chết. Cảm ứng dùng `.dead-tint`: một quad mờ tối phủ
+  canvas, dưới HUD, fade bằng opacity qua `<Transition>`. Tối đi thay vì xám,
+  đó là cái đổi.
 
 ### Bẫy đã gặp
 Test `DeathCamera` phải tick một lần lúc chết trước khi nhảy thời gian:
