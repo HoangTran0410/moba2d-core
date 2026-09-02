@@ -154,6 +154,33 @@ export default class Spell {
    */
   static aiRecastAfterMs?: number;
 
+  /**
+   * How long the bot holds this ability's charge before letting go, in ms.
+   *
+   * The default was `maxDurationMs / 2` — half, for every charged ability in
+   * every pack, with nothing saying why. So a bot threw a 18–48 skillshot at
+   * 33 and a 45–75 one at 60, forever, and a tap-or-hold ability never tapped.
+   *
+   * Charging to the top is the better default and it is *not* a safe blanket
+   * rule, which is why this field exists rather than a constant. Two reasons,
+   * both real in the shipped content:
+   *
+   * - **A charge that is not `releaseAtMax` is CANCELLED at max.**
+   *   `SpellRuntime.updateCharge` calls `cancelActivation('MAX_DURATION')`,
+   *   so holding to the number in `maxDurationMs` throws the whole ability
+   *   away — mana, cooldown and all. The default therefore stops short of it
+   *   by `CHARGE_CANCEL_MARGIN_MS`, and a declared value is clamped the same
+   *   way rather than trusted over the runtime.
+   * - **Most charges stop paying long before max.** One skillshot here maxes
+   *   its range at 1500ms and its damage at 1250ms against a 4000ms window:
+   *   the last 2.5 seconds buy nothing at all, and `advanceCharge` returns
+   *   `true` while holding, so the bot does not think or move for any of them.
+   *
+   * Where the ability stops improving is a fact about *that* ability, so it is
+   * stated on it. Omitted means charge to the top, safely.
+   */
+  static aiChargeReleaseAtMs?: number;
+
   id: string = uuidv4();
   owner: any;
   game: any;

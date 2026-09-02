@@ -17,6 +17,7 @@ import {
   isChargeActivation,
   requireChargeSpec,
   type CastContext,
+  type ChargeSpec,
   type Vec2,
 } from '@/game/spell/runtime/types';
 import {
@@ -231,6 +232,32 @@ export const SCORE_DASH_WASTED = -4;
 export const SCORE_BUFF = 5;
 export const SCORE_ZONE = 8;
 export const SCORE_ULTIMATE = 6;
+
+/**
+ * How far short of `maxDurationMs` a bot lets a charge go.
+ *
+ * Not politeness — `SpellRuntime.updateCharge` **cancels** a charge that is
+ * not `releaseAtMax` the moment its ratio reaches 1, so releasing *at* the
+ * number is a race with the runtime for the whole ability. Several frames of
+ * margin, and `advanceCharge` runs every frame rather than on the think tick,
+ * so this is a comfortable distance rather than a tight one.
+ */
+export const CHARGE_CANCEL_MARGIN_MS = 100;
+
+/**
+ * When to let go of `spell`'s charge.
+ *
+ * Charge to the top unless the ability names an earlier moment, and never past
+ * the point the runtime would cancel it — a declared value is clamped rather
+ * than trusted, because the runtime's rule is not the pack's to override.
+ */
+export function chargeReleaseAtMs(spell: Spell, charge: ChargeSpec): number {
+  const ceiling = charge.releaseAtMax
+    ? charge.maxDurationMs
+    : Math.max(0, charge.maxDurationMs - CHARGE_CANCEL_MARGIN_MS);
+  const declared = (spell.constructor as { aiChargeReleaseAtMs?: number }).aiChargeReleaseAtMs;
+  return declared === undefined ? ceiling : Math.max(0, Math.min(declared, ceiling));
+}
 
 /** Below this effective health, a target is worth spending a burst spell on. */
 export const BURST_TARGET_HEALTH = 40;
@@ -1694,7 +1721,7 @@ export class BotBrain {
         spell: choice.spell,
         context,
         elapsedMs: 0,
-        releaseAtMs: requireChargeSpec(castSpec).maxDurationMs / 2,
+        releaseAtMs: chargeReleaseAtMs(choice.spell, requireChargeSpec(castSpec)),
       };
       return;
     }
