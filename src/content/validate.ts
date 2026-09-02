@@ -93,6 +93,46 @@ function checkSpells(pack: Record<string, unknown>, errors: string[]): void {
  * is that it is a function at all — the same shallow-but-real discipline
  * `checkSpells` applies to a spell class/loader.
  */
+/**
+ * `ContentPackCode.championAI` — a pack's per-champion bot opinions. Shallow,
+ * like `checkMonsterAbilities`: each entry is an object whose hooks, where
+ * present, are functions. When the candidate carries `champions` too (the
+ * whole-pack path), every key must name one of them — the split path makes
+ * the same cross-check in `PackRegistry.verifyPairing`.
+ */
+const CHAMPION_AI_HOOKS = ['scoreSpell', 'aim', 'posture', 'onCast'] as const;
+
+function checkChampionAI(pack: Record<string, unknown>, errors: string[]): void {
+  if (pack.championAI === undefined) return;
+  if (!isObject(pack.championAI)) {
+    errors.push('championAI: must be an object');
+    return;
+  }
+  // A loop, not `.filter(isObject).map(...)`: this project's `filter` polyfill
+  // typing cannot narrow (see `src/types/global.d.ts`).
+  let championIds: Set<string> | null = null;
+  if (Array.isArray(pack.champions)) {
+    championIds = new Set<string>();
+    for (const entry of pack.champions as unknown[]) {
+      if (isObject(entry) && typeof entry.id === 'string') championIds.add(entry.id);
+    }
+  }
+  for (const [id, value] of Object.entries(pack.championAI)) {
+    if (!isObject(value)) {
+      errors.push(`championAI.${id}: must be an object`);
+      continue;
+    }
+    for (const hook of CHAMPION_AI_HOOKS) {
+      if (value[hook] !== undefined && typeof value[hook] !== 'function') {
+        errors.push(`championAI.${id}.${hook}: must be a function`);
+      }
+    }
+    if (championIds && !championIds.has(id)) {
+      errors.push(`championAI.${id}: no champion named ${id} in this pack`);
+    }
+  }
+}
+
 function checkMonsterAbilities(pack: Record<string, unknown>, errors: string[]): void {
   if (pack.monsterAbilities === undefined) return;
   if (!isObject(pack.monsterAbilities)) {
@@ -1569,6 +1609,7 @@ export function validatePack(candidate: unknown): ValidationResult {
   checkMonsterAbilities(candidate, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkChampionAI(candidate, errors);
   checkArchetypes(candidate, errors);
   checkItems(candidate, errors);
   checkMonsters(candidate, errors);
@@ -1600,6 +1641,7 @@ export function validatePackData(candidate: unknown): DataValidationResult {
   checkManifest(candidate.manifest, errors);
   checkSpellDisplay(candidate, errors);
   checkChampions(candidate, errors);
+  checkChampionAI(candidate, errors);
   checkArchetypes(candidate, errors);
   checkItems(candidate, errors);
   checkMonsters(candidate, errors);
@@ -1624,6 +1666,7 @@ export function validatePackCode(candidate: unknown): CodeValidationResult {
 
   checkSpells(candidate, errors);
   checkMonsterAbilities(candidate, errors);
+  checkChampionAI(candidate, errors);
 
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, code: candidate as unknown as ContentPackCode };

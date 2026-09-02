@@ -25,6 +25,7 @@ import { spellIdOfClass } from '@/game/spellRegistry';
 export const planFromPreset = (preset: ChampionPresetData & { avatar?: string }): KitPlan => {
   const passiveId = preset.passive ? spellIdOfClass(preset.passive) : null;
   return {
+    ...(preset.championId ? { championId: preset.championId } : {}),
     name: preset.name ?? 'Champion',
     avatar: preset.avatar ?? '',
     attack: preset.attack ?? DEFAULT_CHAMPION_ATTACK,
@@ -51,5 +52,6 @@ export const asKitPlan = (raw: unknown): KitPlan | null => {
   if (!Array.isArray(plan.spellIds) || plan.spellIds.length === 0) return null;
   if (!plan.spellIds.every(id => typeof id === 'string')) return null;
   if (plan.passiveId !== undefined && typeof plan.passiveId !== 'string') return null;
+  if (plan.championId !== undefined && typeof plan.championId !== 'string') return null;
   return plan as unknown as KitPlan;
 };

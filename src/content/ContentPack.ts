@@ -23,6 +23,9 @@ import type { GameObjectRuntimeContext } from '@/game/gameObject/GameObject';
 export type { MonsterAbility, MonsterAttackStyle, MonsterRoam, MonsterTemperament };
 
 /** Re-exported beside the monster vocabularies, and core's for the same reason. */
+import type { ChampionAI } from '@/game/ai/ChampionAI';
+/** A pack's per-champion bot opinions. See `ContentPackCode.championAI`. */
+export type { ChampionAI, AIContext, SpellSituation } from '@/game/ai/ChampionAI';
 export type { MinionStyle };
 
 /**
@@ -1245,6 +1248,13 @@ export interface ContentPackData {
  */
 export interface ContentPackCode {
   spells?: Record<string, SpellSource>;
+  /**
+   * A champion's own opinion for the bot brain, keyed by this pack's champion
+   * id (the same key as `champions[].id`; qualified at install). Optional per
+   * champion and per hook — see `ChampionAI`. A key that names no champion of
+   * this pack is rejected at install, like a `monsterAbilities` key would be.
+   */
+  championAI?: Record<string, ChampionAI>;
   /** Keyed by *local* monster id — the same keys as `ContentPackData.monsters`. */
   monsterAbilities?: Record<string, MonsterAbility[]>;
   /**

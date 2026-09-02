@@ -147,6 +147,8 @@ const classForId = (id: string): SpellClass => spellClassOfId(id) ?? BasicAttack
  * of what that type happens to allow.
  */
 export interface PlayableChampionKit {
+  /** The catalogue row's qualified id (`pack:Champion`) — what a bot's `ChampionAI` is looked up by. */
+  championId: string;
   name: string;
   image: string;
   spells: string[];
@@ -215,6 +217,7 @@ export const playableKits = (): PlayableChampionKit[] => {
     if (!champion.playable) continue;
     if (!champion.image) continue;
     out.push({
+      championId: champion.id,
       name: champion.name,
       image: champion.image,
       spells: champion.spells,
@@ -432,6 +435,8 @@ export { spellClassOfId } from './spellRegistry';
 
 /** One unit's kit, decided before a single spell module has been fetched. */
 export interface KitPlan {
+  /** The catalogue champion this kit is, or absent for a hand-built kit. See `Champion.championId`. */
+  championId?: string;
   name: string;
   /** A pack's own asset key — see `PlayableChampionKit`'s doc comment. */
   avatar: string;
@@ -531,6 +536,7 @@ export const planRandomKit = (summonerD?: string, summonerF?: string): KitPlan =
   const defaultD = ids[0] ?? '';
   const defaultF = ids[1] ?? defaultD;
   return {
+    championId: kit.championId,
     name: kit.name,
     avatar: kit.image,
     attack: kit.attack,
@@ -597,6 +603,7 @@ export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
   if (!kit) return planRandomKit(loadout.summonerD, loadout.summonerF);
 
   return {
+    championId: kit.championId,
     name: kit.name,
     avatar: kit.image,
     attack: kit.attack,
@@ -660,6 +667,7 @@ export const plannedSpellIds = (plan: MatchPlan): string[] => [
 
 /** A plan with its classes attached. Everything it names must already be loaded. */
 export const presetFromPlan = (plan: KitPlan): ChampionPresetData & { avatar: string } => ({
+  championId: plan.championId,
   name: plan.name,
   avatar: plan.avatar,
   attack: plan.attack,

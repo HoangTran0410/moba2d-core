@@ -20,6 +20,7 @@ import type {
   ArchetypeDef,
   ItemDef,
   MonsterDef,
+  ChampionAI,
   SlotObjectFactory,
   SpellClass,
   SpellDisplayData,
@@ -128,6 +129,8 @@ export class PackRegistry {
   private readonly turretPassiveList: TurretPassive[] = [];
   /** Keyed by neutral-slot role. See `ContentPackCode.slotObjects`. */
   private readonly slotObjectFactories = new Map<string, SlotObjectFactory>();
+  /** Keyed by qualified champion id. See `ContentPackCode.championAI`. */
+  private readonly championAIs = new Map<string, ChampionAI>();
   private readonly championList: QualifiedChampion[] = [];
   /** Installed items, by qualified id — the shop's whole catalogue. */
   private readonly itemsById = new Map<string, QualifiedItem>();
@@ -282,6 +285,16 @@ export class PackRegistry {
         errors.push(`monsterAbilities.${localId}: no monster named ${localId} in this pack`);
       }
     }
+    // Same pairing, one field over: an opinion about a champion this pack does
+    // not ship is a typo, and a typo that installs is one nobody finds.
+    const championIds = new Set(
+      this.championList.filter(champion => champion.packId === packId).map(champion => champion.id)
+    );
+    for (const localId of Object.keys(code.championAI ?? {})) {
+      if (!championIds.has(qualify(packId, localId))) {
+        errors.push(`championAI.${localId}: no champion named ${localId} in this pack`);
+      }
+    }
     if (errors.length > 0) {
       throw new Error(`content pack rejected:\n  ${errors.join('\n  ')}`);
     }
@@ -431,6 +444,9 @@ export class PackRegistry {
     }
     for (const [localId, abilities] of Object.entries(code.monsterAbilities ?? {})) {
       this.monsterAbilities.set(qualify(packId, localId), abilities);
+    }
+    for (const [localId, ai] of Object.entries(code.championAI ?? {})) {
+      this.championAIs.set(qualify(packId, localId), ai);
     }
   }
 
@@ -748,6 +764,11 @@ export class PackRegistry {
     return this.slotObjectFactories.get(role);
   }
 
+  /** The pack-written opinion for a champion, by qualified id — see `ContentPackCode.championAI`. */
+  championAIFor(championId: string): ChampionAI | undefined {
+    return this.championAIs.get(championId);
+  }
+
   reset(): void {
     this.revision += 1;
     this.packs.length = 0;
@@ -757,6 +778,7 @@ export class PackRegistry {
     this.monsterAbilities.clear();
     this.turretPassiveList.length = 0;
     this.slotObjectFactories.clear();
+    this.championAIs.clear();
     this.mapList.length = 0;
     this.sources.clear();
     this.display.clear();

@@ -116,6 +116,12 @@ export const DEFAULT_CHAMPION_DEFENCE: ChampionDefenceTuning = {
 };
 
 export interface ChampionPresetData {
+  /**
+   * The catalogue champion this preset is (`pack:Champion`), or absent for a
+   * hand-built kit. Identity for anything keyed by *champion* rather than by
+   * spell — today the bot brain's `ChampionAI` lookup.
+   */
+  championId?: string;
   name?: string;
   /** A cosmetic tail or cloak, or none. See `ContentPack`'s `ChampionTrailSpec`. */
   trail?: ChampionTrailSpec;
@@ -426,6 +432,7 @@ export default class Champion extends AttackableUnit {
    */
   applyPreset(preset: ChampionPresetData): void {
     this.name = preset.name;
+    this.championId = preset.championId;
     if (preset.avatar) this.avatar = packAssetOrPlaceholder(preset.avatar, preset.name ?? '');
     const previous = this.spells;
     this.replaceSpells(
@@ -439,6 +446,9 @@ export default class Champion extends AttackableUnit {
     this.applyDefenceTuning(preset.defence ?? DEFAULT_CHAMPION_DEFENCE);
     this.applyTrail(preset.trail);
   }
+
+  /** See `ChampionPresetData.championId`. Re-stamped by every `applyPreset`, so a re-rolled bot changes identity with its kit. */
+  championId?: string;
 
   /** The cosmetic tail, when the kit declared one. Render-only, always. */
   private trail?: Spine;

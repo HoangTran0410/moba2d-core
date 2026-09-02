@@ -1,7 +1,8 @@
 # AI riêng từng tướng — lớp ý kiến chồng lên bộ não chung
 
-Trạng thái: **design, chờ duyệt**. Nối tiếp
-`2026-08-19-bot-brain-design.md`, giả định nhánh `feat/bot-brain` đã vào.
+Trạng thái: **đã implement 2026-09-02**, với ba điều chỉnh so với bản nháp —
+xem mục cuối "Điều chỉnh khi implement". Nối tiếp
+`2026-08-19-bot-brain-design.md`.
 
 ## Vấn đề
 
@@ -218,3 +219,35 @@ chứ không phải `BotBrain` mọc thêm method mang tên một tướng.
 | Đổi tướng giữa trận | Mục riêng ở trên, cộng một test dành riêng |
 | Một tướng viết hỏng làm treo trận | `try/catch` + tự vô hiệu hoá |
 | Người viết tướng vô tình bỏ qua độ khó | `baseScore` là điểm trước nhiễu; nhiễu vẫn áp sau |
+
+## Điều chỉnh khi implement (2026-09-02)
+
+Ba điểm của bản nháp không còn đúng với repo sau khi tách pack, và được đổi
+như sau:
+
+1. **AI theo tướng sống trong pack, không trong core.** Bản nháp đặt
+   `src/game/ai/champions/Nasus.ts`; core nay cấm tên Riot
+   (`vocabularyBoundary.test.ts`). Core chỉ giữ interface `ChampionAI` +
+   `AIContext` + `SpellSituation` (`src/game/ai/ChampionAI.ts`, re-export qua
+   `@moba2d/core/content/ContentPack`) và registry: pack khai
+   `ContentPackCode.championAI: Record<localChampionId, ChampionAI>`,
+   `PackRegistry` qualify khoá lúc install và `verifyPairing` từ chối khoá
+   không trỏ tới tướng nào của pack (cùng luật với `monsterAbilities`). Không
+   có `registerChampionAI` toàn cục, không có `champions/index.ts`.
+2. **Khoá là id tướng qualified, không phải `Champion.name`.** Tên hiển thị
+   có thể trùng giữa hai pack. `PlayableChampionKit.championId` →
+   `KitPlan.championId` → `ChampionPresetData.championId` →
+   `Champion.championId`, đi cả qua `kitWire` cho LAN. Kit tự ghép không có
+   `championId` nên không có ý kiến — đúng ý bản nháp về việc không khoá
+   vai trò theo ô.
+3. **Bốn móc ở bốn chỗ đúng như bảng, nhưng bọc trong `ChampionOpinion`**:
+   `refresh(championId)` so một chuỗi mỗi lần hỏi (bẫy đổi tướng giữa trận),
+   `reset()` khi hồi sinh (BotBrain theo dõi `wasDead`), `guard` try/catch tự
+   vô hiệu hoá sau một `console.warn`, và lọc đáp án không dùng được
+   (`NaN`, điểm ngắm không hữu hạn) như "không có ý kiến". `scoreSpell` hỏi
+   ý kiến **trước** dòng nhân nhiễu, nên độ khó vẫn áp lên tướng có AI.
+
+Bảng test của bản nháp gộp lại trong `tests/game/ai/championAI.test.ts`
+(fallback, hooks, noise, respawn/đổi tướng, isolation, đáp án rác) và
+`tests/content/championAI.pairing.test.ts` (registry). Ví dụ Nasus chuyển
+sang pack `lol` — việc riêng của pack, khi pack ấy sẵn sàng.

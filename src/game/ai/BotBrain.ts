@@ -3,6 +3,12 @@ import Minion from '@/game/gameObject/attackableUnits/Minion';
 import { canSee, type Seeable } from '@/game/combat/Vision';
 import { profileFor, type DifficultyProfile } from '@/game/ai/Difficulty';
 import {
+  ChampionOpinion,
+  championAISource,
+  type AIContext,
+  type SpellSituation,
+} from '@/game/ai/ChampionAI';
+import {
   blackboardFor,
   type BlackboardHost,
   type SeenEnemy,
@@ -456,6 +462,33 @@ export class BotBrain {
     this.lastThinkAtMs = -Math.random() * THINK_INTERVAL_MS;
   }
 
+  /**
+   * The champion's own opinion, asked at four decision points — see
+   * `ChampionAI`. Re-resolved against `owner.championId` on every question,
+   * because a bot re-rolls its champion on respawn; the compare is one string.
+   */
+  private readonly opinion = new ChampionOpinion(id => championAISource.lookup(id));
+  /** The view the last decision saw, for the hooks that are asked without one (`aimFor`, `cast`). */
+  private lastView: TeamView | null = null;
+  /** A death seen; the next living tick empties the opinion's scratch state. */
+  private wasDead = false;
+
+  private aiContext(view: TeamView): AIContext {
+    return {
+      brain: this,
+      owner: this.owner,
+      view,
+      nowMs: this.nowMs,
+      state: this.opinion.state,
+      rng: this.rng,
+    };
+  }
+
+  private syncOpinion(view: TeamView | null): void {
+    this.opinion.refresh(this.owner.championId);
+    if (view) this.lastView = view;
+  }
+
   get profile(): Readonly<DifficultyProfile> {
     return profileFor(this.owner._difficulty);
   }
@@ -619,11 +652,13 @@ export class BotBrain {
     // the entry point the suites use and `turretIsHostile` reads `this.nowMs`
     // from paths that are handed no time at all (`findAttackTarget`).
     this.nowMs = nowMs;
+    this.syncOpinion(view);
     this.noteTurretFire(view);
     const chosen = target === undefined ? this.pickTarget(view) : target;
     const posture = this.decidePosture(view, nowMs, chosen);
-    this.posture = posture;
-    return posture;
+    // The champion's say, after the FSM and before anything reads `this.posture`.
+    this.posture = this.opinion.posture(this.aiContext(view), posture) ?? posture;
+    return this.posture;
   }
 
   private decidePosture(view: TeamView, nowMs: number, target: Champion | null): Posture {
@@ -1125,7 +1160,7 @@ export class BotBrain {
     target: AttackableUnit | null,
     view: TeamView
   ): number {
-    void slotIndex;
+    this.syncOpinion(view);
     const healthPct = ratio(this.owner.stats.health.value, this.owner.stats.maxHealth.value);
     const distance = target
       ? Math.hypot(
@@ -1170,6 +1205,17 @@ export class BotBrain {
     // range-less spell collected it, because `Infinity <= Infinity`.
     if (hasRole(mask, SpellRole.Zone) && inReach && knownReach) score += SCORE_ZONE;
     if (hasRole(mask, SpellRole.Ultimate)) score += SCORE_ULTIMATE;
+
+    // The champion's say, on the score *before* noise — so the difficulty knob
+    // still applies to a champion with an opinion.
+    const opinion = this.opinion.scoreSpell(this.aiContext(view), {
+      spell,
+      slotIndex,
+      mask,
+      target,
+      baseScore: score,
+    });
+    if (opinion !== undefined) score = opinion;
 
     // The randomness, and the only place it lives.
     //
@@ -1327,7 +1373,15 @@ export class BotBrain {
 
   private think(nowMs: number): void {
     const owner = this.owner;
-    if (owner.isDead) return;
+    if (owner.isDead) {
+      this.wasDead = true;
+      return;
+    }
+    if (this.wasDead) {
+      // A new life starts with an empty notebook — see `ChampionAI`'s `state`.
+      this.wasDead = false;
+      this.opinion.reset();
+    }
 
     const view = this.currentView();
     // One `pickTarget` per tick. It used to run twice — here and again inside
@@ -1670,6 +1724,11 @@ export class BotBrain {
   /** Where this spell should point. The replacement for the player's cursor. */
   private aimFor(choice: SpellChoice, target: AttackableUnit | null): Vec2 {
     const owner = this.owner;
+    if (this.lastView) {
+      this.syncOpinion(null);
+      const aimed = this.opinion.aim(this.aiContext(this.lastView), this.situationOf(choice, target));
+      if (aimed) return aimed;
+    }
     if (!target) return this.fallbackAim();
     if (choice.spell.castSpec.targeting === 'UNIT' || choice.spell.castSpec.targeting === 'SELF') {
       // The resolver picks the body; pointing at it is all this has to do.
@@ -1710,10 +1769,21 @@ export class BotBrain {
     return { x: owner.position.x + FALLBACK_AIM_PX, y: owner.position.y };
   }
 
+  private situationOf(choice: SpellChoice, target: AttackableUnit | null): SpellSituation {
+    return {
+      spell: choice.spell,
+      slotIndex: choice.slotIndex,
+      mask: choice.mask,
+      target,
+      baseScore: choice.score,
+    };
+  }
+
   private cast(choice: SpellChoice, aim: Vec2, nowMs: number, target: AttackableUnit | null): void {
     const context = this.contextFor(choice.spell, aim);
     if (!context || !choice.spell.press(context)) return;
     this.lastCastAtMs = nowMs;
+    if (this.lastView) this.opinion.onCast(this.aiContext(this.lastView), this.situationOf(choice, target));
 
     const castSpec = choice.spell.castSpec;
     if (isChargeActivation(castSpec.activation)) {
