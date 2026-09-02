@@ -77,6 +77,29 @@ opposite.
    a cast range draws that range; a spell with an area of effect draws that
    area, at the radius the damage really uses. If the player has to guess where
    the edge is, the effect has failed no matter how it looks.
+
+   **The reach is the easy half, and drawing only the reach is its own bug.**
+   An arc swept through a sector damages every body inside the sector, at any
+   distance — so an effect that paints a bright crescent at the far edge and
+   nothing behind it has drawn its range and hidden its area. Reported exactly
+   that way: *"quét 1 line, tầm khá gần, nhưng damage lại tính theo 1 hình
+   quạt => user tưởng chỉ gây damage ở đường tròn, ko biết gây damage cả trong
+   hình quạt"*. The player was reading the picture correctly; the picture was
+   wrong.
+
+   The check is mechanical, and it is the one to run before `draw()` is
+   finished: **name the shape the damage query tests** — a circle of radius R,
+   a sector of R and ±θ, a capsule along a segment — and then find that shape
+   filled in `draw()`. A stroke on one boundary of it is not that shape. If
+   the region the code tests is not on screen, the effect is lying about
+   itself, and the player will believe the effect over the tooltip every time.
+
+   No scan holds this one — `@moba2d/core/testing/vfx`'s header says why the
+   "does the picture match" family is eyes-only — but a *test* can pin the
+   half that matters: assert that a body **inside the region and away from
+   the drawn edge** takes the damage. That test is what makes narrowing the
+   hitbox to match a too-small picture a deliberate act instead of an
+   accident.
 2. **Every zone that behaves differently must look different.** An axe swing
    that deals full damage in an outer band and a fraction in the inner one —
    with a bleed that only the outer band applies — needs the two drawn as two

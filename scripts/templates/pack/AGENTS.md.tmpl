@@ -63,6 +63,16 @@ answer them.
 - **Would a stranger know where it hits?** Draw the real radius. If the front
   of the effect is deliberately ragged, put a thin rim on the true edge, or
   the player reads the longest spike as the reach and is wrong every time.
+- **Is the drawn shape the same shape as the hitbox?** Not just the same
+  *reach* — the same **area**. An arc swept through a sector damages
+  everything inside the sector, so drawing only the bright line at the far
+  edge is a picture that teaches the wrong ability: reported as "quét 1 line
+  ... nhưng damage lại tính theo 1 hình quạt => user tưởng chỉ gây damage ở
+  đường tròn". Fill the region the damage query really tests, and let the
+  moving part ride on top of it. The test for this is mechanical: write down
+  the shape the damage code checks — a circle, a sector, a capsule — and find
+  it in `draw()`. If it is not there, the effect is lying about itself, and
+  the player believes the effect.
 
 **One shape rule worth writing down, because it has cost time three times:**
 ridges, fingers, spikes — anything repeated — must be **rooted along a line
