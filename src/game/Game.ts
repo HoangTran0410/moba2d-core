@@ -55,6 +55,7 @@ import { drawExecuteMarks } from './combat/ExecuteMarks';
 import { drawDebugOverlay } from './debug/DebugOverlay';
 import { FpsMeter, drawFpsOverlay } from './debug/FpsOverlay';
 import EventManager from '@/managers/EventManager';
+import MatchAnnouncer from '@/game/combat/Announcer';
 import { uuidv4 } from '@/utils';
 import SpellInputController from './spell/input/SpellInputController';
 import TargetResolver, {
@@ -112,15 +113,19 @@ export {
   setRenderQualityPreference,
   renderFpsPreference,
   setRenderFpsPreference,
+  screenShakePreference,
+  setScreenShakePreference,
   type RenderFps,
 } from './config/renderPreferences';
 
-// A re-export does not bind the names locally; this file applies all four.
+// A re-export does not bind the names locally; this file applies all six.
 import {
   renderQualityPreference,
   setRenderQualityPreference,
   renderFpsPreference,
   setRenderFpsPreference,
+  screenShakePreference,
+  setScreenShakePreference,
   type RenderFps,
 } from './config/renderPreferences';
 
@@ -214,6 +219,8 @@ export default class Game {
   camera!: Camera;
   objectManager!: ObjectManager;
   eventManager!: EventManager;
+  /** Who killed whom, as the kill feed tells it. See `combat/Announcer.ts`. */
+  announcer!: MatchAnnouncer;
   terrainMap!: TerrainMap;
   navigation!: NavigationSystem;
   fogOfWar!: FogOfWar;
@@ -402,6 +409,7 @@ export default class Game {
 
     this.worldMouse = createVector(0, 0);
     this.camera = new Camera();
+    this.camera.setShakeEnabled(screenShakePreference());
     // Before anything reads a world position from the screen. `width`/`height`
     // are valid here: `Game` is constructed from `GameScene.enter()`, after
     // `createCanvas`.
@@ -412,6 +420,8 @@ export default class Game {
     this.camera.snapToScale();
     this.objectManager = new ObjectManager(this);
     this.eventManager = new EventManager();
+    this.announcer = new MatchAnnouncer(this.eventManager, () => this.matchTimeMs);
+    this.announcer.attach();
     this.terrainMap = new TerrainMap(this, map);
     // The map is static, so every unit's routing is derived from the wall layer
     // once here — about 7ms and 1.6MB for the whole game — rather than per unit
@@ -821,8 +831,12 @@ export default class Game {
     // (below, outside makeDraw) paints the camera box and has to move with the
     // smooth world too. Restored before returning, so the next fixedUpdate reads
     // the true camera through screenToWorld.
-    const interpolate = alpha < 1;
-    if (interpolate) this.camera.applyRenderOrigin(alpha);
+    //
+    // Unconditionally, not only when `alpha < 1`: the shake offset rides the
+    // same substitution (see `Camera.applyRenderOrigin`), and `blend(a, b, 1)`
+    // is `b`, so a frame with nothing to interpolate pays six assignments.
+    this.camera.advanceShake(deltaTime);
+    this.camera.applyRenderOrigin(alpha);
 
     this.camera.makeDraw(() => {
       this.terrainMap.draw();
@@ -858,7 +872,7 @@ export default class Game {
 
     // True camera back, for the next fixedUpdate's screenToWorld and the next
     // tick's lerp — which would otherwise start from a blended position.
-    if (interpolate) this.camera.restoreRenderOrigin();
+    this.camera.restoreRenderOrigin();
   }
 
   destroy() {
@@ -873,6 +887,7 @@ export default class Game {
     // lanes before anything that can throw means one bad teardown loses at
     // most its own cleanup, not every match after it.
     clearActiveLanes();
+    this.announcer?.detach();
     this.fogOfWar.destroy();
     this.minimap.destroy();
     this.inGameHUD.destroy();
@@ -1022,6 +1037,16 @@ export default class Game {
     this.renderFps = fps === 30 ? 30 : 60;
     frameRate(this.renderFps);
     setRenderFpsPreference(this.renderFps);
+  }
+
+  /** The camera-shake toggle — applied to the live camera and persisted. */
+  get screenShake(): boolean {
+    return this.camera.shakeEnabled;
+  }
+
+  setScreenShake(enabled: boolean): void {
+    this.camera.setShakeEnabled(enabled);
+    setScreenShakePreference(enabled);
   }
 
   /**
@@ -1286,6 +1311,38 @@ export default class Game {
     };
   }
 
+  /**
+   * Where the player is aiming this spell **right now**, mid-gesture.
+   *
+   * The opening press already gets this right: `createContext` above reads
+   * `touchAim.get(slot) ?? worldMouse`, so a tap or a flick casts where the
+   * thumb pointed. What had no answer was everything *after* the press — the
+   * frames while a `HOLD_RELEASE` charge grows, and the release itself — which
+   * `Spell.aimPoint` served from `worldMouse` alone.
+   *
+   * On a mouse that is correct and this method changes nothing: no slot has a
+   * touch aim, so it answers `undefined` and the cursor stands. On a phone
+   * `worldMouse` is where the finger is *pressing*, which for a spell being
+   * charged is its own button — so every charged ability fired at the corner
+   * of the screen. Reported as the ability pointing at the touch rather than
+   * at the direction chosen on the controls.
+   *
+   * Answers only for the player's own spells: a bot's aim is its cast context,
+   * and handing it the human's controls is the bug this shares a branch with.
+   */
+  liveAimFor(spell: Spell): Vec2 | undefined {
+    if (!this.player || spell.owner !== this.player) return undefined;
+
+    // Both rows index from 0, so the row has to be established by *identity*
+    // rather than by slot number — the same trap `setSlotAim` carries a `row`
+    // to avoid, where the kit's map would answer for item slot 2.
+    const kitSlot = this.player.spells.indexOf(spell);
+    if (kitSlot >= 0) return this.touchAim.get(kitSlot);
+
+    const itemSlot = this.player.items.findIndex(item => item?.active === spell);
+    return itemSlot >= 0 ? this.itemTouchAim.get(itemSlot) : undefined;
+  }
+
   createSpellContext(
     spell: Spell,
     caster: { readonly teamId?: unknown; readonly position: Vec2 },
@@ -1400,11 +1457,17 @@ export default class Game {
     // opening, because unlike the config panel the shop does not pause and a
     // player mid-fight needs one key back out.
     if (keyCode === HotKeys.P && !repeated) this.inGameHUD?.vueInstance?.hud.toggleShop();
+    // Held, not toggled: the board is up for exactly as long as the key is.
+    if (keyCode === HotKeys.TAB) {
+      if (!repeated) this.inGameHUD?.vueInstance?.hud.setScoreboard(true);
+      return;
+    }
     this.spellInputController.keyDown(keyCode, repeated);
     this.itemInputController.keyDown(keyCode, repeated);
   }
 
   keyReleased(keyCode: number) {
+    if (keyCode === HotKeys.TAB) this.inGameHUD?.vueInstance?.hud.setScoreboard(false);
     this.spellInputController.keyUp(keyCode);
     this.itemInputController.keyUp(keyCode);
   }

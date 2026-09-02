@@ -275,18 +275,29 @@ export default class Spell {
   }
 
   get aimPoint(): p5.Vector {
-    if (this.spellRuntime?.state === 'CHARGING') {
-      const liveAim = this.game?.worldMouse;
-      // The live cursor is the *player's* charge preview, and only theirs —
-      // the same owner check `onChargeUpdate` and `onRelease` below already
-      // make, which this branch was missing. A bot charging a HOLD_RELEASE
-      // spell read the human's pointer, which on a phone is wherever the thumb
-      // rests. Read after `liveAim` so a context without a player never has to
-      // answer for one. Below this, `_castContext.cursorWorld` comes first, so
-      // a bot on the `BotBrain.cast` path never reaches the cursor at all.
-      if (liveAim && this.owner === this.game.player) {
-        return createVector(liveAim.x, liveAim.y);
-      }
+    if (this.spellRuntime?.state === 'CHARGING' && this.owner === this.game?.player) {
+      // The live aim is the *player's* charge preview, and only theirs — the
+      // same owner check `onChargeUpdate` and `onRelease` below already make,
+      // which this branch was missing. A bot charging a HOLD_RELEASE spell
+      // read the human's pointer. Below this, `_castContext.cursorWorld` comes
+      // first, so a bot on the `BotBrain.cast` path never reaches it at all.
+      //
+      // **`worldMouse` is the desktop half of the answer, not the whole of
+      // it.** With a mouse the cursor *is* where the player is pointing; with
+      // a thumb it is where the finger is pressing, which while charging is
+      // the ability button in the corner of the screen. Reading it directly
+      // made every charged ability on a phone fire at its own button and
+      // ignore the drag entirely. `Game.liveAimFor` is the question
+      // `Game.createContext` already asks to build the opening press — the
+      // slot's drag aim, else the mouse — asked again for the two moments the
+      // opening press cannot answer: the charging frames, and the release.
+      //
+      // The release is the one that is easy to miss. `SpellRuntime.releaseCast`
+      // calls `onRelease` *before* it moves the state off `CHARGING`, so a
+      // hook aiming its projectile with `this.aimPoint` — which is how every
+      // charged ability in the shipped packs aims — takes this branch too.
+      const liveAim = this.game.liveAimFor?.(this) ?? this.game.worldMouse;
+      if (liveAim) return createVector(liveAim.x, liveAim.y);
     }
     const aim = this._castContext?.cursorWorld ?? this.game?.worldMouse;
     return createVector(aim ? aim.x : 0, aim ? aim.y : 0);
