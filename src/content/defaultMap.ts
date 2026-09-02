@@ -10,18 +10,31 @@
  * so the picker needs the same one" — two copies of a rule, which is how they
  * come to disagree.
  *
- * It used to be `maps[0]`, and that was right only by accident. The content
- * pack was bundled and installed first, so its map was index 0; once the pack
- * became a runtime install, core's own `reference` pack installed first and a
- * fresh player pressing Chơi landed in the 2400px test arena instead of the
- * 6400px map they had installed a pack to play. Install order is not a
- * preference.
+ * It used to be `maps[0]`, and that was right only by accident: the content
+ * pack was bundled and installed first, so its map was index 0. Once the pack
+ * became a runtime install the order flipped, and install order is not a
+ * preference — so the rule became "prefer a content pack's map, and let
+ * `reference` win only when it is the whole of what is installed".
  *
- * The rule is that `reference` is core's *fallback*, never its opinion: it
- * wins when it is the whole of what is installed, which is the case
- * `verify-core-alone.mjs` exists to protect. Between two content packs,
- * install order still decides — there is nothing better to go on, and a
- * player with two packs installed has a picker.
+ * ## Why that rule is now the other way round
+ *
+ * It was written when core's own map was Sân Thử Nghiệm: a 2400px navigation
+ * fixture with five terrain polygons, built to be *hostile to the pathfinder*
+ * rather than to be played. Landing a fresh player there instead of on the
+ * 6400px map they installed a pack to get was the bug, and "reference is
+ * core's fallback, never its opinion" was the right way to say it.
+ *
+ * Core does not ship that map any more. `reference:aram` is a real 4000px
+ * single-lane map drawn in core's own editor, and it is the map this game
+ * means when it has no other instruction — `config/PregameConfig.ts`'s
+ * `DEFAULT_MAP_ID` names it for exactly that reason. Preferring a pack's map
+ * here would have left two rules pointing opposite ways, which is the failure
+ * this module's own header exists about: the default a fresh player gets and
+ * the default a stale id falls to would be different maps.
+ *
+ * Install order still decides the rest, and only the rest: with the reference
+ * pack somehow absent, the first content pack's map wins, which is the same
+ * answer as before for the only case that ever reached it.
  */
 
 /** Core's own bundled pack. Its map exists so the game is playable with nothing installed. */
@@ -36,7 +49,7 @@ const isReference = (map: MapLike): boolean => map.id.startsWith(`${REFERENCE_PA
 
 /** `null` when nothing is installed, so a caller has to say what that means. */
 export function defaultMapId(maps: readonly MapLike[]): string | null {
-  return (maps.find(map => !isReference(map)) ?? maps[0])?.id ?? null;
+  return (maps.find(isReference) ?? maps[0])?.id ?? null;
 }
 
 /**

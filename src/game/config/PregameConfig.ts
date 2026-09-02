@@ -324,17 +324,35 @@ export const CDR_PERCENT_MIN = 0;
 export const CDR_PERCENT_MAX = 90;
 
 /**
- * `PackRegistry.qualify('lol', 'summoners-rift')` — the map every match
- * played on before this was configurable, restated as a literal because this
- * module cannot import `PackRegistry` (see `mapId`'s own doc comment: pure
- * data, no knowledge of the content-pack seam). A second, independent copy
- * of the same fact `game/ai/Difficulty.ts`'s `BOT_DIFFICULTIES` is to
- * `BOT_DIFFICULTY_ORDER` a few lines down — held in step by
- * `tests/game/config/PregameConfig.test.ts`, which imports both sides and
- * fails if the bundled pack's id or Summoner's Rift's own local id ever
- * changes without this literal moving with them.
+ * The map a player who has never opened the picker plays on.
+ *
+ * `PackRegistry.qualify('reference', referenceMap.id)`, restated as a literal
+ * because this module cannot import `PackRegistry` (see `mapId`'s own doc
+ * comment: pure data, no knowledge of the content-pack seam). A second,
+ * independent copy of the same fact `game/ai/Difficulty.ts`'s
+ * `BOT_DIFFICULTIES` is to `BOT_DIFFICULTY_ORDER` a few lines down — held in
+ * step by `tests/game/config/PregameConfig.test.ts`, which imports both sides
+ * and fails if the reference pack's id or ARAM's own local id ever changes
+ * without this literal moving with them.
+ *
+ * ## It used to name a map that cannot exist
+ *
+ * `'riot:summoners-rift'`, from when that pack was bundled. The pack left
+ * this tree, so the literal named nothing installable and *every* fresh
+ * config fell straight through `resolveMapId`'s stale-id path into
+ * `content/defaultMap.ts` — which answers by install order among content
+ * packs. So the game's default map was whichever optional pack sorted first
+ * by package name, it changed when a player installed a second pack, and the
+ * one cross-check test that would have caught the drift was `skipIf`-ed off
+ * for the same reason it broke: no riot pack to compare against.
+ *
+ * Naming the reference pack's map fixes both halves at once. It is the one id
+ * that is always resolvable — `content/install.ts` puts the reference pack
+ * last in install order precisely because it "cannot be uninstalled" — so the
+ * default resolves instead of falling through, and the cross-check test can
+ * run in every checkout rather than none.
  */
-export const DEFAULT_MAP_ID = 'riot:summoners-rift';
+export const DEFAULT_MAP_ID = 'reference:aram';
 
 /**
  * The value every bot slot starts at, and what a freed slot is refilled with

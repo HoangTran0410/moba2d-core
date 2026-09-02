@@ -544,8 +544,29 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       await expect(source.loadMapGeometry('khong-co:map')).resolves.toBeNull();
     });
 
-    it('persists a different choice through storage, as the qualified id', () => {
-      const other = source.availableMaps().find(map => map.id !== source.getMap())!;
+    /**
+     * Both cases below need a *second* map to move to, and a core-only
+     * checkout ships one. They used to find one by accident: `DEFAULT_MAP_ID`
+     * named the riot pack's map, so `getMap()` answered an id the catalogue
+     * did not contain and `find` returned the first entry — a "different"
+     * choice that was only different from a map nothing could install. Now
+     * that the default names the map that is actually there, the honest
+     * answer with nothing else installed is that there is no second choice,
+     * so these skip rather than assert something weaker.
+     */
+    const needsTwoMaps = (
+      ctx: { skip: () => void },
+      maps: readonly { id: string }[],
+      notThis: string
+    ): { id: string } | null => {
+      const other = maps.find(map => map.id !== notThis);
+      if (!other) ctx.skip();
+      return other ?? null;
+    };
+
+    it('persists a different choice through storage, as the qualified id', ctx => {
+      const other = needsTwoMaps(ctx, source.availableMaps(), source.getMap());
+      if (!other) return;
       source.setMap(other.id);
       expect(loadPregameConfig().mapId).toBe(other.id);
     });
@@ -554,9 +575,10 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       isPregame
         ? 'reports the newly chosen map immediately — there is no running world to disagree with it'
         : 'keeps reporting the running match’s own map — a live world cannot be swapped from under it',
-      () => {
+      ctx => {
         const before = source.getMap();
-        const other = source.availableMaps().find(map => map.id !== before)!;
+        const other = needsTwoMaps(ctx, source.availableMaps(), before);
+        if (!other) return;
 
         source.setMap(other.id);
 
@@ -854,9 +876,17 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
     });
 
     it('puts the stored map choice back to the default too', async () => {
-      const other = source.availableMaps().find(map => map.id !== DEFAULT_MAP_ID)!;
-      source.setMap(other.id);
-      expect(loadPregameConfig().mapId).toBe(other.id);
+      // Moving away first when there is somewhere to move to. A core-only
+      // checkout ships exactly one map and `DEFAULT_MAP_ID` now names it, so
+      // there is no second id — the reset still has to land on the default,
+      // which is what this asserts in both conditions. The `!` that used to
+      // stand here was safe only while the default named a map no checkout
+      // had.
+      const other = source.availableMaps().find(map => map.id !== DEFAULT_MAP_ID);
+      if (other) {
+        source.setMap(other.id);
+        expect(loadPregameConfig().mapId).toBe(other.id);
+      }
 
       await source.resetToDefaults();
 

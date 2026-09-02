@@ -720,32 +720,29 @@ describe('world', () => {
  * module cannot check whether an id names an *installed* map.
  */
 describe('mapId', () => {
-  it('defaults to the map every match played on before a second one shipped', () => {
+  it('defaults to the map a player who never opened the picker gets', () => {
     expect(DEFAULT_PREGAME_CONFIG.mapId).toBe(DEFAULT_MAP_ID);
   });
 
   /**
-   * `DEFAULT_MAP_ID`'s own doc comment restates
-   * `qualify(BUNDLED_PACK_ID, summonersRift.id)` as a literal, because this
-   * module cannot import `PackRegistry` (pure data, no knowledge of the
-   * content-pack seam). Holding the two in step is the same discipline
-   * `BOT_DIFFICULTY_ORDER`'s own cross-check test uses for its second,
-   * independent copy of `game/ai/Difficulty.ts`'s tiers.
+   * `DEFAULT_MAP_ID`'s own doc comment restates `qualify('reference',
+   * referenceMap.id)` as a literal, because this module cannot import
+   * `PackRegistry` (pure data, no knowledge of the content-pack seam).
+   * Holding the two in step is the same discipline `BOT_DIFFICULTY_ORDER`'s
+   * own cross-check test uses for its second, independent copy of
+   * `game/ai/Difficulty.ts`'s tiers.
+   *
+   * **No `skipIf` any more, and that is the point of the change it guards.**
+   * This case named the riot pack's map, so it was skipped in every checkout
+   * from the day that pack left the tree — while the literal it exists to
+   * pin went on naming a map nothing could install. The reference pack cannot
+   * be uninstalled (`content/install.ts`), so the pin is checkable everywhere.
    */
-  it.skipIf(!packIsInstalled('riot'))(
-    'names the real bundled pack and the real Summoner’s Rift id',
-    async () => {
-      const { qualify } = await import('../../../src/content/PackRegistry');
-      const { BUNDLED_PACK_ID } = await import('../../../src/content/install');
-      // Batch 4 task 6 moved Summoner's Rift's map out of `src/content/maps/`
-      // and into the pack. `skipIf` above, not a rewrite: `DEFAULT_MAP_ID` names
-      // that pack's map by construction, so with the pack uninstalled there is
-      // no id to agree with — and the other 61 cases in this file are about
-      // `sanitizePregameConfig` and are core's own either way.
-      const { summonersRift } = await import('../../../packs/riot/maps/summonersRift');
-      expect(DEFAULT_MAP_ID).toBe(qualify(BUNDLED_PACK_ID, summonersRift.id));
-    }
-  );
+  it('names the real reference pack and the real ARAM id', async () => {
+    const { qualify } = await import('../../../src/content/PackRegistry');
+    const { referenceMap } = await import('../../../packs/reference/map');
+    expect(DEFAULT_MAP_ID).toBe(qualify('reference', referenceMap.id));
+  });
 
   it('keeps a valid qualified id unchanged', () => {
     expect(sanitizePregameConfig({ mapId: 'reference:aram' }).mapId).toBe(
