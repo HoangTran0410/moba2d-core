@@ -199,7 +199,8 @@ const SPAN_TYPE: Record<string, DamageType> = {
 };
 
 /**
- * The figure at the front of such a span, which is the part a build changes.
+ * One flat figure: digits that are not a percentage and not the head of a
+ * longer number.
  *
  * A percentage is refused outright: `100%` of something is still `100%` of it
  * however much power you buy, and a description that reads "from 40% to 100%
@@ -215,7 +216,34 @@ const SPAN_TYPE: Record<string, DamageType> = {
  * was supposed to be left alone reads `120%`. Pinning the number's own end
  * before testing what follows it is what makes the refusal mean anything.
  */
-const LEADING_NUMBER = /^(\s*)(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/;
+const FIGURE = String.raw`(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)`;
+
+/**
+ * The figure at the front of such a span — **or the range at the front of it**,
+ * which is the same claim made about an ability whose damage is not one number.
+ *
+ * ## The half this used to miss
+ *
+ * A charged ability writes its two ends: `18–48`, `45–75`, `15 - 30`. Only the
+ * leading figure moved, so Rasengan under a finished hat printed
+ * `18 (+33.8)–48` — a sentence in which the number a player is actually reading
+ * for, the top of the range, is the one still showing its first-frame tuning.
+ * The floor was honest and the ceiling was off by the whole build: reported as
+ * "description ghi damage 18 (+33.8) - 48 ... nhưng đối phương ăn hơn 100
+ * damage", which was the ability working correctly and the tooltip under-
+ * reporting it by 90.
+ *
+ * ## Why a range and not simply every number in the span
+ *
+ * Because the other numbers in there are not damage. `4 sát thương phép mỗi
+ * 0.5 giây` is one flat figure and a period, and a blanket scaler would have
+ * amplified the period. A range is recognisable without reading a word of the
+ * pack's language: two flat figures with nothing between them but a dash. The
+ * second end is held to every rule the first is — a `5 - 10%` is still two
+ * percentages, so the optional half simply does not match and the span falls
+ * back to its leading figure alone.
+ */
+const LEADING_NUMBER = new RegExp(`^(\\s*)${FIGURE}(?:(\\s*[–—-]\\s*)${FIGURE})?`);
 
 /** At most one decimal, and no trailing `.0` — `45`, not `45.0`. */
 const printable = (value: number): string => (Math.round(value * 10) / 10).toString();
@@ -250,9 +278,10 @@ const withBonus = (base: number, multiplier: number): string => {
  * spell hits for and lose what the build is contributing, which is the
  * question being asked at the moment somebody is reading item text at all.
  *
- * Only the leading figure of a `damage` span moves, and only when it is a
- * flat one — a percentage, or a span whose text does not open with a number
- * at all, is left exactly as written rather than guessed at.
+ * Only the leading figure of a `damage` span moves — or both ends of the range
+ * it leads, for an ability that charges — and only when it is a flat one: a
+ * percentage, or a span whose text does not open with a number at all, is left
+ * exactly as written rather than guessed at.
  *
  * **`class="damage"` and `class="heal"` are a claim, and it is the pack's to
  * make**: each means "a flat number the engine will multiply by this caster's
@@ -297,10 +326,17 @@ export function amplifiedDamageText(
     if (!LEADING_NUMBER.test(inner)) return whole;
     const multiplier = abilityMultiplier(span ? SPAN_TYPE[span] : DEFAULT_DAMAGE_TYPE, source);
     if (multiplier === 1) return whole;
+    // Both ends of a range carry their own bonus — `18 (+33.8)–48 (+90)`,
+    // rather than one parenthetical after the pair. `(+33.8–90)` reads as a
+    // subtraction the moment a pack writes its range with a plain hyphen, and
+    // the number a player is checking is whichever end they are about to hit
+    // for, so each one says what it is worth where it stands.
     const scaled = inner.replace(
       LEADING_NUMBER,
-      (_match: string, space: string, digits: string) =>
-        space + withBonus(Number(digits), multiplier)
+      (_match: string, space: string, low: string, dash: string | undefined, high: string) =>
+        space +
+        withBonus(Number(low), multiplier) +
+        (dash === undefined ? '' : dash + withBonus(Number(high), multiplier))
     );
     return open + scaled + close;
   });

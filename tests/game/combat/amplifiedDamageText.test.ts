@@ -161,6 +161,48 @@ describe('scaling the printed damage', () => {
     expect(amplifiedDamageText(written, power(0.5))).toBe(written);
   });
 
+  it('scales both ends of a charged ability\'s range, not just the floor', () => {
+    // Rasengan, and the bug this pair of tests exists for. Only the leading
+    // figure used to move, so a finished hat printed `18 (+33.8)–48`: the
+    // floor honest, the ceiling still quoting the spell's first-frame tuning
+    // while the ability itself hit for 138.
+    const text = '<span class="damage magic">18–48</span> sát thương';
+
+    expect(amplifiedDamageText(text, power(1.875))).toBe(
+      '<span class="damage magic">18 (+33.8)–48 (+90)</span> sát thương'
+    );
+  });
+
+  it('and reads a range written with a plain hyphen the same way', () => {
+    // Packs write the separator three ways. Which one is not a claim about
+    // anything, so none of them may change the arithmetic.
+    const text = '<span class="damage magic">15 - 30 sát thương phép</span>';
+
+    expect(amplifiedDamageText(text, power(1))).toBe(
+      '<span class="damage magic">15 (+15) - 30 (+30) sát thương phép</span>'
+    );
+  });
+
+  it('does not mistake a period after the damage for the top of a range', () => {
+    // `4 ... mỗi 0.5 giây` is one flat figure and a duration. A blanket
+    // number-scaler would have promised damage every 1.5 seconds.
+    const text = '<span class="damage">4 sát thương</span> mỗi 0.5 giây';
+
+    expect(amplifiedDamageText(text, power(2))).toBe(
+      '<span class="damage">4 (+8) sát thương</span> mỗi 0.5 giây'
+    );
+  });
+
+  it('holds the second end of a range to the same percentage rule as the first', () => {
+    // `5 - 10%` is two percentages, so the range half simply does not match
+    // and the span falls back to the leading figure it was always allowed.
+    const text = '<span class="damage">40% - 100%</span> của <span class="damage">30</span>';
+
+    expect(amplifiedDamageText(text, power(1))).toBe(
+      '<span class="damage">40% - 100%</span> của <span class="damage">30 (+30)</span>'
+    );
+  });
+
   it('leaves a span that does not open with a number exactly as written', () => {
     // Guessing at "sát thương bằng 60% máu tối đa" would print a number the
     // spell never deals.
