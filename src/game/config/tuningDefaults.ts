@@ -103,6 +103,27 @@ export const ASSIST_WINDOW_MS = 10_000;
 export const ASSIST_GOLD_SHARE = 0.5;
 
 /**
+ * How long a champion's hit keeps its claim on the victim's death, when
+ * something that is not a champion lands the finishing blow.
+ *
+ * The rule this number serves: a champion who dies to a turret, a minion or a
+ * jungle camp while an enemy champion was on them hands that champion the
+ * kill. It is League's own rule and it exists because the alternative reads as
+ * a bug at the table — you burn every cooldown taking someone to 40 health,
+ * the caster minion behind you lands the last 30, and the scoreboard says
+ * nobody killed anybody. The last hit decides who *farms*; it does not decide
+ * who *won a fight*.
+ *
+ * Ten seconds, League's number and deliberately the same as
+ * `ASSIST_WINDOW_MS` — "long enough to still count as having been there" is
+ * one question, and answering it with two different numbers would be a
+ * distinction no player could feel. They are separate knobs because a map may
+ * want assists off (`assistWindowMs: 0`) without thereby handing kills back to
+ * minions, which is the opposite of a smaller reward.
+ */
+export const KILL_CREDIT_WINDOW_MS = 10_000;
+
+/**
  * How long a unit stays lit after giving itself away, and how much of the map
  * around it is lit too — League's own 2 seconds and 300 units.
  * `combat/AttackReveal.ts` quotes the sentence they come from and re-exports

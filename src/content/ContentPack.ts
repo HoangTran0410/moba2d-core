@@ -676,6 +676,17 @@ export interface EconomyTuning {
    * Clamped to 0…1 where it is resolved.
    */
   assistGoldShare?: number;
+  /**
+   * How long an enemy champion's hit still claims your death when something
+   * else finishes you. Default 10000. 0 turns the rule off, and the last hit
+   * decides every kill again.
+   *
+   * A champion who dies to a turret, a minion or a camp inside this window
+   * hands the kill and the bounty to the last enemy champion who hurt them —
+   * League's own rule. Separate from `assistWindowMs` so that turning assists
+   * off does not also hand kills back to minions.
+   */
+  killCreditWindowMs?: number;
 }
 
 /**

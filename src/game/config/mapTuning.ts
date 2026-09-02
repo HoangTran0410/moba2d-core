@@ -13,6 +13,7 @@ import {
   SELL_REFUND_FRACTION,
   ASSIST_WINDOW_MS,
   ASSIST_GOLD_SHARE,
+  KILL_CREDIT_WINDOW_MS,
   STARTING_GOLD,
   TURRET_BOUNTY,
 } from './tuningDefaults';
@@ -178,6 +179,7 @@ export const DEFAULT_ECONOMY: Readonly<Required<EconomyTuning>> = Object.freeze(
   sellRefund: SELL_REFUND_FRACTION,
   assistWindowMs: ASSIST_WINDOW_MS,
   assistGoldShare: ASSIST_GOLD_SHARE,
+  killCreditWindowMs: KILL_CREDIT_WINDOW_MS,
 });
 
 export type ResolvedEconomy = Required<EconomyTuning>;
@@ -215,6 +217,15 @@ export function resolveEconomy(tuning: MapTuning | undefined): ResolvedEconomy {
     assistGoldShare: Math.min(
       1,
       Math.max(0, num(own.assistGoldShare, DEFAULT_ECONOMY.assistGoldShare))
+    ),
+    // Floored only, like `assistWindowMs` above and not ceilinged against
+    // `MAX_ASSIST_WINDOW_MS`: that ceiling lives on `AttackableUnit`, which is
+    // in the `game` chunk, and this module is pinned to `pregame`. A map that
+    // asks for more than the participation ledger's own prune keeps simply
+    // gets the prune's answer, which is still a window.
+    killCreditWindowMs: Math.max(
+      0,
+      num(own.killCreditWindowMs, DEFAULT_ECONOMY.killCreditWindowMs)
     ),
   };
 }

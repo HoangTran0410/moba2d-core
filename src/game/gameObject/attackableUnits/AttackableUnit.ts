@@ -88,10 +88,14 @@ export interface HitPresentationOptions {
  * tell a champion's death from a minion's without knowing the classes.
  *
  * `creditedTo` is who the kill was actually *booked* to, which is not always
- * who swung: a summon's last hit belongs to whoever summoned it. It is a
- * separate field rather than a redefinition of `killer` because the two are
- * different questions and a listener may want either — the announcer names
- * the player, a damage log names the clone.
+ * who swung: a summon's last hit belongs to whoever summoned it, and a
+ * champion finished off by a turret, a minion or a camp is booked to the last
+ * enemy champion who hurt them (`creditForDeath`). It is a separate field
+ * rather than a redefinition of `killer` because the two are different
+ * questions and a listener may want either — the announcer names the player,
+ * a damage log names the turret. It can therefore be set on a death whose
+ * `killer` is absent, and a listener that wants "who gets this" should read
+ * `creditedTo ?? killer` rather than the other way round.
  */
 export interface UnitDeathEvent {
   unit: AttackableUnit;
@@ -138,12 +142,13 @@ export const DISPLACEMENT_GRACE_FRAMES = 2;
 export const RECENT_ATTACKER_MS = 1500;
 
 /**
- * The widest assist window a map may ask for, and the only thing the
- * per-hit prune measures against — `rememberParticipant` says why it is not
- * the map's own number.
+ * The widest window a map may ask the participation ledger for, and the only
+ * thing the per-hit prune measures against — `rememberParticipant` says why it
+ * is not the map's own number.
  *
  * A ceiling rather than the default, so a map that wants a thirty-second
- * window gets one and the ledger still cannot grow without bound.
+ * window gets one and the ledger still cannot grow without bound. Both readers
+ * of the ledger measure against it: `payAssists` and `creditForDeath`.
  */
 export const MAX_ASSIST_WINDOW_MS = 60_000;
 
@@ -1184,6 +1189,77 @@ export default class AttackableUnit extends GameObject {
     }
   }
 
+  /**
+   * Who this death is booked to, which is not always who landed the blow.
+   *
+   * Two corrections, applied in this order:
+   *
+   *   - **a summon's last hit belongs to whoever summoned it** — `creditFor`,
+   *     walking `killCreditedTo`;
+   *   - **a champion finished off by a turret, a minion or a camp was still
+   *     killed by whoever drove them under it.** You burn every cooldown
+   *     taking somebody to 40 health, the caster minion behind you lands the
+   *     last 30, and the scoreboard says nobody killed anybody — the kill, the
+   *     bounty and the spree all went to a unit with no wallet and no tally
+   *     that survives the wave. League hands the kill to the last enemy
+   *     champion who hurt the victim inside a window, and so does this.
+   *
+   * **Only a champion's death is ever taken off the last hitter.** Farm is the
+   * opposite rule and has to stay the opposite rule: last-hitting a minion is
+   * the skill the lane is made of, and a dragon stolen by the enemy's smite is
+   * the play, not a bug. So the correction is gated on the *victim* saying
+   * `killCredit === 'champion'`, which is the discriminator the rest of the
+   * codebase already uses for "is this a champion".
+   *
+   * Falls back to `direct` when nobody qualifies: a champion who walks into a
+   * turret with no enemy near them is still killed by the turret.
+   */
+  private creditForDeath(killer: AttackableUnit | undefined): AttackableUnit | undefined {
+    const direct = killer ? creditFor(killer) : undefined;
+    if (this.killCredit !== 'champion') return direct;
+    // A champion (or their summon, already walked up to them) landed it —
+    // there is nothing to correct, and a kill steal between champions is a
+    // real thing that happened.
+    if (direct && direct.killCredit === 'champion') return direct;
+    return this.lastChampionAttacker() ?? direct;
+  }
+
+  /**
+   * The enemy champion whose hit on this unit is the most recent one still
+   * inside the map's `killCreditWindowMs`, or null when none is.
+   *
+   * Read off the same ledger `payAssists` uses, which already holds the right
+   * thing: one entry per attacker, enemies only, and already booked through
+   * `killCreditedTo` so a clone's chip damage names the player who summoned
+   * it. `killCredit === 'champion'` is what filters the turrets and the
+   * minions back out of it.
+   *
+   * Scanned for the maximum rather than taken from the end: a `Map` keeps
+   * *insertion* order, and `rememberParticipant` re-`set`s an existing key
+   * without moving it, so the last entry is the first attacker to arrive, not
+   * the last one to swing.
+   *
+   * A dead candidate still counts, for `payAssists`' reason — somebody who
+   * committed to the fight and lost it still fought it. One that has left the
+   * world (`toRemove`) does not; there is nobody left to pay.
+   */
+  private lastChampionAttacker(): AttackableUnit | null {
+    const windowMs = resolveEconomy(this.game?.mapTuning).killCreditWindowMs;
+    if (windowMs <= 0) return null;
+    const cutoff = (this.game?.matchTimeMs ?? 0) - windowMs;
+    let best: AttackableUnit | null = null;
+    let bestSeen = -Infinity;
+    for (const [unit, seen] of this._assistLedger) {
+      if (seen < cutoff || seen <= bestSeen) continue;
+      if (unit === this || unit.toRemove) continue;
+      if (unit.killCredit !== 'champion') continue;
+      if (unit.teamId === this.teamId) continue;
+      best = unit;
+      bestSeen = seen;
+    }
+    return best;
+  }
+
   /** One recap entry, and the prune in the same breath — see `recentDamageLog`. */
   private recordDamageForRecap(
     landed: number,
@@ -1304,28 +1380,46 @@ export default class AttackableUnit extends GameObject {
     // `die` is reachable on a corpse — `Champion.die` runs cleanup that is safe
     // to repeat — so the ledger is only touched on the transition.
     const transition = !this.isDead;
+    // Worked out once, up here, because both halves of the transition need the
+    // same answer and the second half runs *after* the ledger it is read from
+    // has been cleared. Asking twice was how the ON_DIE event and the payout
+    // could have disagreed about who killed somebody.
+    let credited: AttackableUnit | undefined;
     if (transition) {
       this.tally.deaths++;
+      // Read here, at the top, because the recap headline below wants the same
+      // answer the payout does — and because the ledger it comes off is
+      // cleared at the bottom of this block.
+      credited = this.creditForDeath(deathData.attacker);
       // The recap is the ledger as it stood at the killing blow (which
       // `takeDamage` has already written). Snapshot on the transition only, or
       // a stray second `die` would publish an empty recap over the real one.
       this._deathSeq += 1;
       this.deathRecap = {
         seq: this._deathSeq,
-        killerName: unitDisplayName(deathData.attacker),
+        // The headline names whoever the kill was booked to, so it agrees with
+        // the kill feed rather than contradicting it: "Hạ gục bởi Trụ" over a
+        // feed row saying a champion did it is two screens disagreeing about
+        // the same death. What actually swung is still in `entries` below,
+        // line by line — that is the part that is a damage log.
+        killerName: unitDisplayName(credited ?? deathData.attacker),
         entries: this.recentDamageLog.slice(),
       };
       this.recentDamageLog.length = 0;
       // The player's own death is the one hit that always lands hardest —
       // and it lands on a LAN client too, whose `die` comes from the snapshot.
       if (isLocalPlayer(this.game, this)) feel(this.game, 'death', DEATH_SHAKE_TRAUMA);
-      const killer = deathData.attacker;
       // Who swung is not always who is paid: a summon's last hit is its
-      // owner's farm. Everything below books to `credited` and nothing to
-      // `killer` — the two differ for exactly one shape of unit today, and
-      // splitting them per line is how half of it would get fixed.
-      const credited = killer ? creditFor(killer) : undefined;
-      if (killer && credited && killer !== this && credited !== this) {
+      // owner's farm, and a champion executed by a turret was killed by
+      // whoever drove them under it. Everything below books to `credited` and
+      // nothing to `deathData.attacker` — see `creditForDeath` for both
+      // corrections.
+      //
+      // No attacker guard beside the `credited` one: a champion who dies with
+      // nothing named as the attacker — a self-inflicted cost, a nameless tick
+      // — still died to whoever was fighting them, and that is the same answer
+      // for the same reason.
+      if (credited && credited !== this) {
         if (this.killCredit === 'champion') {
           credited.tally.kills++;
           if (isLocalPlayer(this.game, credited)) feel(this.game, 'kill', KILL_SHAKE_TRAUMA);
@@ -1347,6 +1441,11 @@ export default class AttackableUnit extends GameObject {
           CombatText.show(credited, 'gold', this.goldBounty, [...GOLD_TEXT_COLOR]);
         }
       }
+      // The ledger is this life's. Cleared after everything that reads it, so
+      // a champion who respawns and dies again inside the window neither pays
+      // a second set of assists to the same helpers nor hands the new death to
+      // somebody who only ever fought the previous one.
+      this._assistLedger.clear();
     }
     this.deathData = deathData;
     this.pathAgent?.clear();
@@ -1356,7 +1455,6 @@ export default class AttackableUnit extends GameObject {
     if (transition) {
       const killer = deathData.attacker;
       const attributed = killer && killer !== this ? killer : undefined;
-      const credited = attributed ? creditFor(attributed) : undefined;
       this.game?.eventManager?.emit(EventType.ON_DIE, {
         unit: this,
         killer: attributed,

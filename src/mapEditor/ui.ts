@@ -2036,6 +2036,7 @@ export const UI = (() => {
     if (e.passiveGoldPerSecond != null) bits.push(`${n(e.passiveGoldPerSecond)} vàng/giây`);
     if (e.assistWindowMs != null) bits.push(`hỗ trợ trong ${n(e.assistWindowMs / 1000)}s`);
     if (e.assistGoldShare != null) bits.push(`hỗ trợ ${n(e.assistGoldShare * 100)}% tiền mạng`);
+    if (e.killCreditWindowMs != null) bits.push(`ăn mạng trong ${n(e.killCreditWindowMs / 1000)}s`);
     for (const [key, label] of [
       ["minionBounty", "lính"],
       ["monsterBounty", "quái"],

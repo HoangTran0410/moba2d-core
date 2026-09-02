@@ -1198,6 +1198,7 @@ const ECONOMY_KEYS = [
   'sellRefund',
   'assistWindowMs',
   'assistGoldShare',
+  'killCreditWindowMs',
 ] as const;
 
 /**

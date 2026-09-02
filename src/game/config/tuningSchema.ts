@@ -130,6 +130,10 @@ const SCHEMA = [
       // chia ra từ tiền mạng, nên chỉnh cái này không làm solo kill yếu đi.
       { key: "assistWindowMs", label: "Cửa sổ hỗ trợ", unit: "ms", ph: "10000", hint: "0 để tắt hẳn" },
       { key: "assistGoldShare", label: "Tiền hỗ trợ", unit: "×", ph: "0.5", hint: "phần của tiền mạng, 0…1" },
+      // Đánh tướng địch xuống máu rồi để trụ/lính/quái kết liễu thì mạng vẫn
+      // là của người đánh, miễn là cú đánh cuối của họ nằm trong cửa sổ này.
+      // Để 0 nghĩa là ai chạm cuối người đó ăn mạng, kể cả con lính.
+      { key: "killCreditWindowMs", label: "Cửa sổ ăn mạng", unit: "ms", ph: "10000", hint: "0 để last hit quyết định" },
     ],
   },
   {
