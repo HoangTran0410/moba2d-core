@@ -379,6 +379,23 @@ export class BotBrain {
    * ask the blackboard for a snapshot at whatever time it last thought.
    */
   private nowMs = 0;
+  /**
+   * Toggles this bot has switched on and owes a second press to.
+   *
+   * `cast` returns early for `TOGGLE`, correctly — there is no follow-through
+   * to schedule, because the second press is not the payload. What nothing
+   * did was ever press it *again*: `SpellRuntime` ends a toggle only through
+   * `recast()` or an `active.maxDurationMs`, and a standing toggle declares
+   * neither. So a bot switched one on and walked the rest of the match with
+   * it running.
+   *
+   * The two that ship are both paid for by the second: one bleeds its owner
+   * and slows him, the other eats mana until the pool is empty. Neither can
+   * kill him — both have floors — which is exactly why it never looked like a
+   * bug and never got reported. It just made the bot worse, permanently.
+   */
+  private activeToggles: Spell[] = [];
+
   private pendingCharge?: {
     spell: Spell;
     context: CastContext;
@@ -1296,7 +1313,71 @@ export class BotBrain {
     // Going home is a movement decision, not a cast one, whatever the trip is
     // implemented as: a bot the panel has parked stays where it was parked.
     if (owner._autoMove) this.manageRecall(posture, view, nowMs);
+    if (owner._autoCast) this.releaseToggles();
     if (owner._autoCast) this.maybeCast(posture, view, target, nowMs);
+  }
+
+  /**
+   * Switch off a toggle once the fight it was switched on for is over.
+   *
+   * A toggle costs its owner something every second it runs — that is what
+   * makes it a toggle rather than a passive — so leaving one on while walking
+   * to lane is paying for an ability nobody is standing in.
+   *
+   * The rule is the posture, and deliberately nothing cleverer: FIGHT, ENGAGE
+   * and PUSH are the postures with something in front of the bot to hurt, and
+   * a wave counts, so this does not switch off a toggle mid-waveclear. Every
+   * other posture — roaming, searching, recovering, running — turns it off.
+   *
+   * `press` rather than any dedicated call: ending a toggle *is* pressing the
+   * key, the same way it is for the player, and `SpellRuntime.recast` is what
+   * both go through.
+   */
+  private releaseToggles(): void {
+    if (this.activeToggles.length === 0) return;
+    // A toggle the runtime has already ended — mana ran out, the caster died,
+    // the duration lapsed — is forgotten rather than pressed at. Pressing one
+    // of those would switch the ability back *on*.
+    this.activeToggles = this.activeToggles.filter(spell => spell.state === 'ACTIVE');
+
+    const staying: Spell[] = [];
+    for (const spell of this.activeToggles) {
+      if (this.somethingToHurtWithin(this.reachOf(spell, null))) {
+        staying.push(spell);
+        continue;
+      }
+      const context = this.contextFor(spell, this.owner.position);
+      if (context) spell.press(context);
+      else staying.push(spell);
+    }
+    this.activeToggles = staying;
+  }
+
+  /**
+   * Is anything this bot may damage standing inside `radius`?
+   *
+   * Deliberately not `pickTarget`, and deliberately not the posture. A wave is
+   * a reason to keep an aura running and is neither a champion nor a posture
+   * this bot is in — the first version of this rule kept toggles on for the
+   * whole of PUSH, which is "walking at the enemy turret" and mostly means an
+   * empty lane. Presence is the honest question, so presence is what is asked.
+   *
+   * Minions count, turrets count, monsters count: anything the damage filter
+   * says this bot could hit.
+   */
+  private somethingToHurtWithin(radius: number): boolean {
+    const owner = this.owner;
+    // Optional call for `findAttackTarget`'s reason: a spell test's object
+    // manager stub only knows how to collect added objects.
+    const found =
+      owner.game.objectManager.queryObjects?.({
+        area: new Circle({ x: owner.position.x, y: owner.position.y, r: radius }),
+        filters: [
+          PredefinedFilters.canTakeDamageFromTeam(owner.teamId),
+          PredefinedFilters.excludeStealthed,
+        ],
+      }) ?? [];
+    return found.length > 0;
   }
 
   /**
@@ -1615,6 +1696,11 @@ export class BotBrain {
         elapsedMs: 0,
         releaseAtMs: requireChargeSpec(castSpec).maxDurationMs / 2,
       };
+      return;
+    }
+
+    if (castSpec.activation === 'TOGGLE') {
+      this.activeToggles.push(choice.spell);
       return;
     }
 

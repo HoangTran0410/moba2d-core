@@ -49,7 +49,7 @@ const setup = () => {
   (game as unknown as { createSpellContext: () => unknown }).createSpellContext = () => ({ cursorWorld: { x: 0, y: 0 } });
   const brain = new BotBrain(bot);
   brain.rng = () => 0.5;
-  return { bot, brain };
+  return { bot, brain, enemy, game };
 };
 
 const run = (brain: BotBrain, ms: number, from = 1_000): void => {
@@ -98,5 +98,97 @@ describe('a recast that ends the ability instead of finishing it', () => {
     run(brain, 3_000);
 
     expect(stats(toggle).presses).toBeGreaterThan(1);
+  });
+});
+
+/**
+ * A standing toggle: on until pressed again, and paid for every second.
+ *
+ * `SpellRuntime` ends a `TOGGLE` only through a second press or an
+ * `active.maxDurationMs`, and a standing toggle declares neither — so before
+ * `releaseToggles` nothing ever switched one off. Both that ship are paid for
+ * by the second, and neither can kill its owner, which is why this never
+ * looked like a bug: it only ever made the bot quietly worse.
+ */
+const makeStandingToggle = () => {
+  class Stub {
+    static aiRoles = roles(SpellRole.Damage, SpellRole.Zone);
+    effectiveManaCost = 30;
+    manaCost = 30;
+    declaredRange: number | undefined = 300;
+    state = 'READY';
+    presses = 0;
+    get on() {
+      return this.state === 'ACTIVE';
+    }
+    get isCastableNow() {
+      return this.state === 'READY';
+    }
+    castSpec = { activation: 'TOGGLE' as const, targeting: 'SELF' as const };
+    press = vi.fn(function (this: Stub) {
+      this.presses += 1;
+      this.state = this.state === 'ACTIVE' ? 'READY' : 'ACTIVE';
+      return true;
+    });
+    hold = vi.fn();
+    release = vi.fn();
+  }
+  return new Stub() as unknown as Spell & { presses: number; on: boolean };
+};
+
+describe('a toggle the bot switched on', () => {
+  beforeEach(() => stubGameGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stats = (spell: unknown) => spell as { presses: number; on: boolean };
+
+  it('is switched on while there is someone to fight', () => {
+    const { bot, brain } = setup();
+    const rot = makeStandingToggle();
+    bot.replaceSpells([rot, rot, rot, rot] as unknown as Spell[]);
+
+    run(brain, 2_000);
+
+    expect(stats(rot).on).toBe(true);
+  });
+
+  it('is switched off once the enemy is gone', () => {
+    // The whole failure, in one line: a bot walked the rest of the match
+    // bleeding and slowed because nothing ever pressed the key a second time.
+    const { bot, brain, enemy, game } = setup();
+    const rot = makeStandingToggle();
+    bot.replaceSpells([rot, rot, rot, rot] as unknown as Spell[]);
+    run(brain, 2_000);
+    expect(stats(rot).on).toBe(true);
+
+    // Walked away rather than killed: the posture has to stop being FIGHT,
+    // and moving is the cheaper way to say so than a real death. Re-indexed
+    // because the bot asks the quadtree, not the object, where anyone is.
+    enemy.position.set(6_000, 6_000);
+    indexObjects(game, [bot, enemy]);
+    run(brain, 8_000, 4_000);
+
+    expect(stats(rot).on).toBe(false);
+  });
+
+  it('does not press at a toggle the runtime already ended', () => {
+    // Mana ran out, the caster died, a duration lapsed — the ability is over
+    // and pressing the key would start it again, which is the opposite of
+    // switching it off.
+    const { bot, brain, enemy, game } = setup();
+    const rot = makeStandingToggle();
+    bot.replaceSpells([rot, rot, rot, rot] as unknown as Spell[]);
+    run(brain, 2_000);
+    const pressedWhileFighting = stats(rot).presses;
+
+    (rot as unknown as { state: string }).state = 'COOLDOWN';
+    // Walked away rather than killed: the posture has to stop being FIGHT,
+    // and moving is the cheaper way to say so than a real death. Re-indexed
+    // because the bot asks the quadtree, not the object, where anyone is.
+    enemy.position.set(6_000, 6_000);
+    indexObjects(game, [bot, enemy]);
+    run(brain, 8_000, 4_000);
+
+    expect(stats(rot).presses).toBe(pressedWhileFighting);
   });
 });
