@@ -124,6 +124,29 @@ export default class Spell {
    */
   static aiProjectileSpeed?: number;
 
+  /**
+   * True when a second press **ends** this ability rather than completing it.
+   *
+   * `BotBrain.cast` schedules a follow-through for every `RECAST` activation,
+   * because that is what a recast has always meant here: a detonation
+   * detonates, a slash lands, a second dash goes a second time. Spend the
+   * recast and the ability has finished doing its job.
+   *
+   * A transform inverts that. Its recast is the player putting the form
+   * *down*, and `recastDelayMs` defaults to 0 — so a bot pressed the ability,
+   * pressed it again on the very next think tick, and the fifteen-second form
+   * it had just paid a hundred chakra for lasted one frame. Nothing looked
+   * broken from outside: the ultimate was chosen, it was cast, and the player
+   * reported never seeing it used.
+   *
+   * Declared rather than guessed, for `aiRoles`' reason. The shape a
+   * heuristic would key on — a long `maxDurationMs` with `cooldown.startAt:
+   * 'end'` — is also the shape of abilities whose recast really is the
+   * payload, and being wrong in that direction means an ability that never
+   * finishes. Absent, the follow-through behaves exactly as it always has.
+   */
+  static aiRecastEndsEarly?: boolean;
+
   id: string = uuidv4();
   owner: any;
   game: any;

@@ -1619,6 +1619,12 @@ export class BotBrain {
     }
 
     if (castSpec.activation !== 'RECAST') return;
+    // A recast that *ends* the ability is not a follow-through, and pressing
+    // it is not this bot's to do. `recastDelayMs` defaults to 0, so without
+    // this the second press landed on the next think tick and a transform
+    // lasted one frame — chosen, cast, and over before it drew. See
+    // `Spell.aiRecastEndsEarly`.
+    if ((choice.spell.constructor as { aiRecastEndsEarly?: boolean }).aiRecastEndsEarly) return;
     // `recasts` defaults to 1 in the runtime, which is every recast spell here
     // bar the four-round ultimate: a detonation spell detonates, a slash lands, a second dash goes a second
     // time and that is the end of it.
