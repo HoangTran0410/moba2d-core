@@ -1091,6 +1091,90 @@
   letter-spacing: 1px;
 }
 
+/* ------------------------------------------- Folding sections (PanelSection.vue)
+   A tab is a stack of these. The header is the fold's handle and, while
+   folded, a one-line summary of the controls inside — the tab reads as an
+   overview until something is opened. Same gold uppercase as the old
+   `.practice-section-title`, which these replaced on the two busiest tabs. */
+.panel-section {
+  margin: 0.4rem 0 0;
+  border: 1px solid var(--hextech-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.panel-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+  border: none;
+  background: none;
+  color: var(--hextech-gold);
+  font: inherit;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.panel-section-head:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.panel-section-head:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: -2px;
+}
+
+.panel-section-chevron {
+  flex: none;
+  font-size: 0.85em;
+  opacity: 0.8;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.panel-section.open .panel-section-chevron {
+  transform: none;
+}
+
+.panel-section-title {
+  flex: none;
+}
+
+/* The values, right-aligned and lower-case, so the row reads "LUẬT ...... CDR
+   80% · không mana" — a label and its value, not two labels. */
+.panel-section-summary {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  color: var(--hextech-muted);
+  font-size: 1.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-section-body {
+  padding: 0 0.7rem 0.6rem;
+}
+
+/* The first control in a body needs no top margin of its own: the header is
+   the gap. `.mode-field` / `.map-field` carry a bottom margin for the row
+   that used to follow them; inside a body nothing does. */
+.panel-section-body > .mode-field,
+.panel-section-body > .map-field,
+.panel-section-body > .history-field {
+  margin: 0;
+}
+
 /* The panel's own footer, and only outside a match: "Bắt Đầu" is the one
    control the menu opened this panel to reach, so it does not live in a tab.
    In a match there is no footer — closing the panel resumes play. */

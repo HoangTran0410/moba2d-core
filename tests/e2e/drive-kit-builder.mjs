@@ -291,6 +291,10 @@ const setCdr = async percent => {
   // The rules live on Trận đấu and the roster on Đội — one panel, but not one
   // tab; the setup screen's two tabs were Tướng / Cấu hình.
   await page.click('#practice-tab-rules');
+  // Unfold the tab's sections: a folded control is v-show'n away (PanelSection.vue).
+  await page.evaluate(() => {
+    for (const head of document.querySelectorAll('.panel-section-head[aria-expanded="false"]')) head.click();
+  });
   await page.waitForSelector('#practice-cdr', { state: 'visible' });
   await evaluate(value => {
     const range = document.querySelector('#practice-cdr');
@@ -837,6 +841,10 @@ try {
   await dismissLoadoutModal();
   await page.waitForSelector('.loadout-modal', { state: 'detached' });
   await page.click('#practice-tab-rules');
+  // Unfold the tab's sections: a folded control is v-show'n away (PanelSection.vue).
+  await page.evaluate(() => {
+    for (const head of document.querySelectorAll('.panel-section-head[aria-expanded="false"]')) head.click();
+  });
   await page.waitForSelector('#practice-cdr', { state: 'visible' });
   report.legacyV1BlobLoaded = {
     ...legacyEditorState,

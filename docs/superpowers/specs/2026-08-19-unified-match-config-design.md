@@ -346,3 +346,24 @@ bot count, CDR reaching a real spell, URF making a cast free) moved into
    else in this change goes near. Kept to a separate step with its own test.
 3. **e2e churn** is wide but shallow; keeping the `practice-*` ids is what
    bounds it.
+
+
+## Bổ sung 2026-09-02: gập theo section
+
+Người chơi: "tab Trận đấu với Cài đặt nhiều field quá, mới vô nhìn rối". Hai tab
+đó giờ là một chồng `PanelSection.vue` (`src/game/hud/config/`):
+
+- Header là tay cầm gập và, khi gập, là **một dòng tóm tắt giá trị bên trong**
+  ("Luật · CDR 80% · không mana", "Hiển thị · Tự động · 60 FPS · rung màn
+  hình"), nên tab đọc như một bảng tổng quan cho tới khi mở một mục. Mở ra thì
+  tóm tắt lùi đi vì control chính là giá trị.
+- Trận đấu: Chế độ (mở mặc định — nó là hình dáng buổi tối), Bản đồ, Luật, Thế
+  giới, Trận gần đây. Cài đặt: Điều khiển, Ưu tiên mục tiêu, Hiển thị, Gỡ lỗi,
+  tất cả gập mặc định.
+- Trạng thái mở nhớ trong `moba2d:panelSections:v1` (`panelSections.ts`) dưới
+  dạng **override** trên default của từng section: tab là màn cài đặt, người
+  hay kéo CDR không phải mở "Luật" lần thứ hai.
+- `v-show`, không `v-if`: control giữ id và state khi gập, e2e vẫn tìm thấy.
+  Nhưng control gập thì không bấm được, nên harness có `openPanelSections(page)`
+  và bốn script động tới hai tab này gọi nó sau khi chuyển tab
+  (drive-practice-panel gọi trong `selectTab`).

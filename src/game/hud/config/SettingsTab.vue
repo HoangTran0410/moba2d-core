@@ -27,6 +27,7 @@
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { CONFIG_PANEL } from './panelState';
+import PanelSection from './PanelSection.vue';
 import { vTap } from '../tapGuard';
 import DomUtils from '@/utils/dom.utils';
 import { DEBUG_LAYER_KEYS, type DebugLayerConfig } from '@/game/config/PregameConfig';
@@ -210,6 +211,32 @@ const DEBUG_LABELS: Record<keyof DebugLayerConfig, string> = {
   fps: 'FPS',
 };
 
+/**
+ * The folded headers' one line each — see `PanelSection.vue`. Computed over
+ * the same refs the controls edit, so a change is on the header the moment
+ * its section folds.
+ */
+const QUALITY_LABELS: Record<RenderQuality, string> = { auto: 'Tự động', low: 'Thấp', high: 'Cao' };
+const controlsSummary = computed(() => {
+  const mode = INPUT_MODES.find(option => option.value === inputMode.value)?.label ?? inputMode.value;
+  const parts = [`${mode} (${touchUi.value ? 'cảm ứng' : 'chuột'})`];
+  if (hapticsAvailable && haptics.value) parts.push('rung máy');
+  return parts.join(' · ');
+});
+const targetSummary = computed(() => (targetPriority.value === 'nearest' ? 'Gần nhất' : 'Ít máu nhất'));
+const displaySummary = computed(() => {
+  const parts = [QUALITY_LABELS[renderQuality.value] ?? renderQuality.value, `${renderFps.value} FPS`];
+  if (screenShake.value) parts.push('rung màn hình');
+  if (live) parts.push(`zoom ${Math.round(zoom.value * 100)}%`);
+  return parts.join(' · ');
+});
+const debugSummary = computed(() => {
+  const on: string[] = [];
+  if (cheats.value.revealMap) on.push('hiện bản đồ');
+  for (const key of DEBUG_LAYER_KEYS) if (cheats.value.debug[key]) on.push(DEBUG_LABELS[key].toLowerCase());
+  return on.length ? on.join(' · ') : 'tắt';
+});
+
 const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
   source.setCheats({
     debug: { ...cheats.value.debug, [key]: (event.target as HTMLInputElement).checked },
@@ -220,157 +247,158 @@ const onDebugChange = (key: keyof DebugLayerConfig, event: Event): void => {
 
 <template>
   <div class="practice-tab-body">
-    <h3 class="practice-section-title">Điều khiển</h3>
-    <div class="input-mode-row" role="group" aria-label="Chế độ điều khiển">
-      <button
-        v-for="option of INPUT_MODES"
-        :key="option.value"
-        type="button"
-        :id="'pregame-input-mode-' + option.value"
-        class="input-mode-btn"
-        :class="{ selected: inputMode === option.value }"
-        :aria-pressed="inputMode === option.value"
-        @click="setInputMode(option.value)"
-      >
-        <i :class="option.icon"></i> {{ option.label }}
-      </button>
-    </div>
-    <p class="pregame-hint">
-      <template v-if="inputMode === 'auto'">
-        Đang tự nhận diện theo thiết bị, và hiện dùng giao diện
-        <strong>{{ touchUi ? 'cảm ứng' : 'chuột &amp; bàn phím' }}</strong
-        >.
-      </template>
-      <template v-else>
-        Bạn đang <strong>tự chọn</strong> giao diện
-        <strong>{{ touchUi ? 'cảm ứng' : 'chuột &amp; bàn phím' }}</strong
-        >. Lựa chọn này được ghi nhớ cho mọi lần vào sau — chọn <strong>Tự động</strong> để trả lại
-        cho thiết bị quyết định.
-      </template>
-    </p>
-
-    <!-- Only where the device can buzz at all: iOS Safari has no vibrate. -->
-    <label v-if="hapticsAvailable" class="pregame-toggle">
-      <input type="checkbox" id="pregame-haptics" :checked="haptics" @change="onHapticsChange" />
-      <span>Rung máy khi bấm nút, trúng đòn nặng, hạ gục, hoặc chết</span>
-    </label>
-
-    <h3 class="practice-section-title">Ưu tiên mục tiêu khi chạm nhanh</h3>
-    <div class="input-mode-row" role="group" aria-label="Ưu tiên mục tiêu">
-      <button
-        id="pregame-target-priority-nearest"
-        type="button"
-        class="input-mode-btn"
-        :class="{ selected: targetPriority === 'nearest' }"
-        :aria-pressed="targetPriority === 'nearest'"
-        @click="setTargetPriority('nearest')"
-      >
-        <i class="fa-solid fa-location-crosshairs"></i> Gần nhất
-      </button>
-      <button
-        id="pregame-target-priority-lowest-health"
-        type="button"
-        class="input-mode-btn"
-        :class="{ selected: targetPriority === 'lowest-health' }"
-        :aria-pressed="targetPriority === 'lowest-health'"
-        @click="setTargetPriority('lowest-health')"
-      >
-        <i class="fa-solid fa-heart-crack"></i> Ít máu nhất
-      </button>
-    </div>
-
-    <h3 class="practice-section-title">Hiển thị</h3>
-    <div class="practice-render-settings">
-      <label class="pregame-field">
-        <span>Chất lượng hình ảnh</span>
-        <select id="practice-render-quality" :value="renderQuality" @change="onRenderQualityChange">
-          <option value="auto">Tự động</option>
-          <option value="low">Thấp — mượt hơn</option>
-          <option value="high">Cao — đẹp hơn</option>
-        </select>
-      </label>
-
-      <label class="pregame-field">
-        <span>Giới hạn FPS</span>
-        <select id="practice-render-fps" :value="renderFps" @change="onRenderFpsChange">
-          <option :value="30">30 FPS — tiết kiệm pin</option>
-          <option :value="60">60 FPS — mượt hơn</option>
-        </select>
-      </label>
-    </div>
-
-    <label class="pregame-toggle">
-      <input
-        type="checkbox"
-        id="practice-screen-shake"
-        :checked="screenShake"
-        @change="onScreenShakeChange"
-      />
-      <span>Rung màn hình khi trúng đòn nặng, hạ gục, hoặc chết</span>
-    </label>
-
-    <!-- Needs a camera to act on, so it is not offered before a match exists. -->
-    <label v-if="live" class="pregame-field">
-      <span
-        >Thu phóng: <strong id="practice-zoom-value">{{ Math.round(zoom * 100) }}%</strong></span
-      >
-      <input
-        type="range"
-        id="practice-zoom"
-        :min="ZOOM_FACTOR_MIN"
-        :max="ZOOM_FACTOR_MAX"
-        :step="ZOOM_STEP"
-        :value="zoom"
-        @input="onZoomInput"
-        @change="persistZoom"
-        @pointerdown="onZoomPointerDown"
-        @pointerup="onZoomPointerUp"
-        @pointercancel="onZoomPointerCancel"
-      />
-    </label>
-
-    <button
-      v-if="fullscreenSupported"
-      type="button"
-      class="practice-fullscreen"
-      id="practice-fullscreen"
-      @click="toggleFullscreen"
-      v-tap="toggleFullscreen"
-    >
-      <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'" aria-hidden="true"></i>
-      <span>{{ isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</span>
-    </button>
-
-    <h3 class="practice-section-title">Gỡ lỗi</h3>
-    <label class="pregame-toggle">
-      <input
-        type="checkbox"
-        id="practice-cheat-reveal-map"
-        :checked="cheats.revealMap"
-        @change="onRevealMapChange"
-      />
-      <span>Hiện toàn bản đồ</span>
-    </label>
-
-    <!-- Two columns because five full-width rows would push the content off a
-         landscape phone on their own. -->
-    <div class="practice-debug">
-      <span class="practice-debug-title">Lớp gỡ lỗi</span>
-      <div class="practice-debug-grid">
-        <label
-          v-for="key of DEBUG_LAYER_KEYS"
-          :key="key"
-          class="pregame-toggle practice-debug-toggle"
+    <!-- Four folding sections, each header a one-line summary of what is
+         inside (`PanelSection.vue`), all starting folded: this tab is the
+         device's settings, visited to change one thing, and a wall of every
+         control was the complaint. -->
+    <PanelSection id="settings-controls" title="Điều khiển" :summary="controlsSummary">
+      <div class="input-mode-row" role="group" aria-label="Chế độ điều khiển">
+        <button
+          v-for="option of INPUT_MODES"
+          :key="option.value"
+          type="button"
+          :id="'pregame-input-mode-' + option.value"
+          class="input-mode-btn"
+          :class="{ selected: inputMode === option.value }"
+          :aria-pressed="inputMode === option.value"
+          @click="setInputMode(option.value)"
         >
-          <input
-            type="checkbox"
-            :id="`practice-debug-${key}`"
-            :checked="cheats.debug[key]"
-            @change="onDebugChange(key, $event)"
-          />
-          <span>{{ DEBUG_LABELS[key] }}</span>
+          <i :class="option.icon"></i> {{ option.label }}
+        </button>
+      </div>
+      <p class="pregame-hint">
+        <template v-if="inputMode === 'auto'">
+          Đang tự nhận diện theo thiết bị, và hiện dùng giao diện
+          <strong>{{ touchUi ? 'cảm ứng' : 'chuột &amp; bàn phím' }}</strong
+          >.
+        </template>
+        <template v-else>
+          Bạn đang <strong>tự chọn</strong> giao diện
+          <strong>{{ touchUi ? 'cảm ứng' : 'chuột &amp; bàn phím' }}</strong
+          >. Lựa chọn này được ghi nhớ cho mọi lần vào sau — chọn <strong>Tự động</strong> để trả lại
+          cho thiết bị quyết định.
+        </template>
+      </p>
+      <!-- Only where the device can: a switch for a motor the phone does not
+           have would be a lie either way it sat. -->
+      <label v-if="hapticsAvailable" class="pregame-toggle">
+        <input type="checkbox" id="pregame-haptics" :checked="haptics" @change="onHapticsChange" />
+        <span>Rung máy khi bấm nút, trúng đòn nặng, hạ gục, hoặc chết</span>
+      </label>
+    </PanelSection>
+
+    <PanelSection id="settings-target" title="Ưu tiên mục tiêu khi chạm nhanh" :summary="targetSummary">
+      <div class="input-mode-row" role="group" aria-label="Ưu tiên mục tiêu">
+        <button
+          id="pregame-target-priority-nearest"
+          type="button"
+          class="input-mode-btn"
+          :class="{ selected: targetPriority === 'nearest' }"
+          :aria-pressed="targetPriority === 'nearest'"
+          @click="setTargetPriority('nearest')"
+        >
+          <i class="fa-solid fa-location-crosshairs"></i> Gần nhất
+        </button>
+        <button
+          id="pregame-target-priority-lowest-health"
+          type="button"
+          class="input-mode-btn"
+          :class="{ selected: targetPriority === 'lowest-health' }"
+          :aria-pressed="targetPriority === 'lowest-health'"
+          @click="setTargetPriority('lowest-health')"
+        >
+          <i class="fa-solid fa-heart-crack"></i> Ít máu nhất
+        </button>
+      </div>
+    </PanelSection>
+
+    <PanelSection id="settings-display" title="Hiển thị" :summary="displaySummary">
+      <div class="practice-render-settings">
+        <label class="pregame-field">
+          <span>Chất lượng hình ảnh</span>
+          <select id="practice-render-quality" :value="renderQuality" @change="onRenderQualityChange">
+            <option value="auto">Tự động</option>
+            <option value="low">Thấp — mượt hơn</option>
+            <option value="high">Cao — đẹp hơn</option>
+          </select>
+        </label>
+        <label class="pregame-field">
+          <span>Giới hạn FPS</span>
+          <select id="practice-render-fps" :value="renderFps" @change="onRenderFpsChange">
+            <option :value="30">30 FPS — tiết kiệm pin</option>
+            <option :value="60">60 FPS — mượt hơn</option>
+          </select>
         </label>
       </div>
-    </div>
+      <label class="pregame-toggle">
+        <input
+          type="checkbox"
+          id="practice-screen-shake"
+          :checked="screenShake"
+          @change="onScreenShakeChange"
+        />
+        <span>Rung màn hình khi trúng đòn nặng, hạ gục, hoặc chết</span>
+      </label>
+      <!-- Only in a match: there is no camera to zoom before one. -->
+      <label v-if="live" class="pregame-field">
+        <span
+          >Thu phóng: <strong id="practice-zoom-value">{{ Math.round(zoom * 100) }}%</strong></span
+        >
+        <input
+          type="range"
+          id="practice-zoom"
+          :min="ZOOM_FACTOR_MIN"
+          :max="ZOOM_FACTOR_MAX"
+          :step="ZOOM_STEP"
+          :value="zoom"
+          @input="onZoomInput"
+          @change="persistZoom"
+          @pointerdown="onZoomPointerDown"
+          @pointerup="onZoomPointerUp"
+          @pointercancel="onZoomPointerCancel"
+        />
+      </label>
+      <button
+        v-if="fullscreenSupported"
+        type="button"
+        class="practice-fullscreen"
+        id="practice-fullscreen"
+        @click="toggleFullscreen"
+        v-tap="toggleFullscreen"
+      >
+        <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'" aria-hidden="true"></i>
+        <span>{{ isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</span>
+      </button>
+    </PanelSection>
+
+    <PanelSection id="settings-debug" title="Gỡ lỗi" :summary="debugSummary">
+      <label class="pregame-toggle">
+        <input
+          type="checkbox"
+          id="practice-cheat-reveal-map"
+          :checked="cheats.revealMap"
+          @change="onRevealMapChange"
+        />
+        <span>Hiện toàn bản đồ</span>
+      </label>
+      <div class="practice-debug">
+        <span class="practice-debug-title">Lớp gỡ lỗi</span>
+        <div class="practice-debug-grid">
+          <label
+            v-for="key of DEBUG_LAYER_KEYS"
+            :key="key"
+            class="pregame-toggle practice-debug-toggle"
+          >
+            <input
+              type="checkbox"
+              :id="`practice-debug-${key}`"
+              :checked="cheats.debug[key]"
+              @change="onDebugChange(key, $event)"
+            />
+            <span>{{ DEBUG_LABELS[key] }}</span>
+          </label>
+        </div>
+      </div>
+    </PanelSection>
   </div>
 </template>

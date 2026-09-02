@@ -96,6 +96,24 @@ export const openSetup = async (page, { timeout = 30_000 } = {}) => {
  * `openSetup` plus the one press that leaves it, because a script that wants a
  * *match* should not have to know that the panel is on the way there.
  */
+/**
+ * Unfold every section of the config panel's current tab.
+ *
+ * The Trận đấu and Cài đặt tabs fold their controls into `PanelSection`s
+ * (`src/game/hud/config/PanelSection.vue`), most of them closed by default,
+ * and a folded control is `v-show`n away — present, so a selector resolves,
+ * but not clickable. Scripts that drive those controls call this right after
+ * switching to the tab. The opened state is remembered in `localStorage`, so
+ * calling it twice in one run is harmless.
+ */
+export const openPanelSections = async page => {
+  await page.evaluate(() => {
+    for (const head of document.querySelectorAll('.panel-section-head[aria-expanded="false"]')) {
+      head.click();
+    }
+  });
+};
+
 export const startMatch = async (page, { timeout = 30_000 } = {}) => {
   await openSetup(page, { timeout });
   await page.click('#pregame-start-btn');

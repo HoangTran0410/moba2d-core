@@ -53,6 +53,7 @@ import {
 } from '@/game/config/matchHistory';
 import { vTap } from '../tapGuard';
 import MapPickerModal from './MapPickerModal.vue';
+import PanelSection from './PanelSection.vue';
 import { mapRuleCount, mapRuleGroups } from './mapRuleLines';
 
 const emit = defineEmits<{ close: [] }>();
@@ -186,6 +187,25 @@ const clearHistory = (): void => {
   history.value = [];
 };
 
+/**
+ * ## The folded headers' one line each
+ *
+ * What a section's controls currently say, for `PanelSection`'s summary —
+ * the tab reads as five lines until something is opened. Every one is a
+ * computed over the same refs the controls edit, so a change inside a section
+ * is on its header the moment it folds.
+ */
+const modeSummary = computed(() => `${mode.value.name}${modeDrifted.value ? ' · đã chỉnh' : ''}`);
+const rulesSummary = computed(() => {
+  const parts = [`CDR ${rules.value.cooldownReductionPercent}%`];
+  if (rules.value.manaFree) parts.push('không mana');
+  if (!rules.value.recall) parts.push('không hồi thành');
+  return parts.join(' · ');
+});
+const worldSummary = computed(() =>
+  [world.value.jungle ? 'rừng' : 'không rừng', world.value.minions ? 'lính' : 'không lính'].join(' · ')
+);
+
 const CDR_PERCENT_STEP = 10;
 
 /**
@@ -311,6 +331,10 @@ const selectedMapMeta = computed(() => {
  * editor.
  */
 const selectedMapRuleCount = computed(() => mapRuleCount(selectedMap.value?.tuning));
+const mapSummary = computed(
+  () =>
+    `${selectedMapName.value}${selectedMapRuleCount.value ? ` · ${selectedMapRuleCount.value} luật riêng` : ''}`
+);
 
 /**
  * The map the running match is on, read once.
@@ -413,170 +437,158 @@ const resetLabel = computed(() =>
       Trận đấu mạng: chỉ <strong>chủ phòng</strong> đổi được cài đặt trận.
     </p>
 
-    <!-- Cards, not a `<select>` — see the script's own comment on what a
-         player could not see before. A `<select>` was also the one control on
-         this tab that needed no touch handler, because `@change` fires under
-         a thumb; a button does not, so each card carries `v-tap` beside its
-         `@click` like every other control in this panel — the tap guard, not
-         a bare `@touchend`, which also fired for the touchend of a scroll.
+    <!-- Five folding sections, each header a one-line summary of what is
+         inside (`PanelSection.vue`). The mode leads and starts open: it is
+         the shape of the evening, and the other four are what it can be tuned
+         into. Everything else starts folded — the player asked for a tab that
+         does not read as a wall on first open. -->
+    <PanelSection id="match-mode" title="Chế độ" :summary="modeSummary" default-open>
+      <!-- Pills rather than cards — a mode is a word. -->
+      <div class="mode-field">
+        <div class="mode-chips" role="group" aria-label="Chế độ">
+          <button
+            v-for="option in MATCH_MODES"
+            :key="option.id"
+            type="button"
+            class="mode-chip"
+            :id="`practice-mode-${option.id}`"
+            :class="{ selected: option.id === modeId }"
+            :aria-pressed="option.id === modeId"
+            :disabled="!canEdit || switchingMode"
+            @click="pickMode(option.id)"
+            v-tap="() => pickMode(option.id)"
+          >
+            {{ option.name }}
+          </button>
+        </div>
+        <p class="mode-blurb" id="practice-mode-blurb">
+          {{ mode.blurb }}<template v-if="modeDrifted"> · <em>đã chỉnh</em></template>
+        </p>
+        <ul v-if="modeLines.length" class="mode-lines" id="practice-mode-lines">
+          <li v-for="line in modeLines" :key="line">{{ line }}</li>
+        </ul>
 
-         Not wrapped in `.pregame-field`: that rule sets `display: block` on
-         every descendant `span`, which is right for a one-line label and
-         wrong for the three stacked lines inside a card. -->
-    <!-- Before the map: a mode is the shape of the evening, the map is where
-         it happens, and the controls under both are what either can be
-         tuned into afterwards. Pills rather than cards — a mode is a word. -->
-    <div class="mode-field">
-      <span class="map-field-label">Chế độ</span>
-      <div class="mode-chips" role="group" aria-label="Chế độ">
-        <button
-          v-for="option in MATCH_MODES"
-          :key="option.id"
-          type="button"
-          class="mode-chip"
-          :id="`practice-mode-${option.id}`"
-          :class="{ selected: option.id === modeId }"
-          :aria-pressed="option.id === modeId"
-          :disabled="!canEdit || switchingMode"
-          @click="pickMode(option.id)"
-          v-tap="() => pickMode(option.id)"
-        >
-          {{ option.name }}
-        </button>
-      </div>
-      <p class="mode-blurb" id="practice-mode-blurb">
-        {{ mode.blurb }}<template v-if="modeDrifted"> · <em>đã chỉnh</em></template>
-      </p>
-      <ul v-if="modeLines.length" class="mode-lines" id="practice-mode-lines">
-        <li v-for="line in modeLines" :key="line">{{ line }}</li>
-      </ul>
-
-      <!-- Only in a match, only for a mode with a pending half, and only for
-           whoever can restart it. Same gold as the map's pending note: it is
-           the same fact — the room you picked is not the room you are in. -->
-      <p v-if="live && canEdit && modePending" class="practice-note practice-note-pending">
-        <i class="fas fa-clock" aria-hidden="true"></i>
-        <span class="mode-pending-text">
-          <template v-if="live.canRestart">
-            <button type="button" class="mode-restart" id="practice-mode-restart"
-              :class="{ confirming: confirmingModeRestart }" @click="restartForMode"
-              v-tap="restartForMode">{{ confirmingModeRestart ? 'Chắc chưa?' : 'Chơi lại' }}</button>
-            để áp dụng {{ modePending }} của chế độ này — luật và bot đã đổi ngay.
-          </template>
-          <template v-else>
-            {{ modePending }} của chế độ này áp dụng cho trận sau — luật và bot đã đổi ngay.
-          </template>
-        </span>
-      </p>
-    </div>
-
-    <div class="map-field">
-      <span class="map-field-label">Bản đồ</span>
-      <!--
-        A summary row that opens the picker, rather than the picker itself.
-
-        The row of cards said a name, a size and a faction count, and none of
-        those is why anyone picks one map over another — the shape and the
-        rules are, and neither fits in a card. Both live in the modal now,
-        which is also the only place with room for a preview.
-
-        Not disabled on a locked tab: a LAN client should still be able to look
-        at the map it is about to play on. The modal refuses the *commit*, which
-        is the half that was ever a permission.
-      -->
-      <button type="button" id="practice-map-open" class="map-summary" @click="showMapPicker = true"
-        v-tap="() => (showMapPicker = true)">
-        <span class="map-summary-main">
-          <strong>{{ selectedMapName }}</strong>
-          <span class="map-summary-meta">
-            {{ selectedMapMeta }}
-            <template v-if="selectedMapRuleCount"> · {{ selectedMapRuleCount }} luật riêng</template>
+        <!-- Only in a match, only for a mode with a pending half, and only for
+             whoever can restart it. Same gold as the map's pending note: it is
+             the same fact — the room you picked is not the room you are in. -->
+        <p v-if="live && canEdit && modePending" class="practice-note practice-note-pending">
+          <i class="fas fa-clock" aria-hidden="true"></i>
+          <span class="mode-pending-text">
+            <template v-if="live.canRestart">
+              <button type="button" class="mode-restart" id="practice-mode-restart"
+                :class="{ confirming: confirmingModeRestart }" @click="restartForMode"
+                v-tap="restartForMode">{{ confirmingModeRestart ? 'Chắc chưa?' : 'Chơi lại' }}</button>
+              để áp dụng {{ modePending }} của chế độ này — luật và bot đã đổi ngay.
+            </template>
+            <template v-else>
+              {{ modePending }} của chế độ này áp dụng cho trận sau — luật và bot đã đổi ngay.
+            </template>
           </span>
-        </span>
-        <i class="fas fa-chevron-right" aria-hidden="true"></i>
-      </button>
+        </p>
+      </div>
+    </PanelSection>
 
-      <!-- Only in a match, and only for the map: a live match cannot swap its
-         own world out from under itself — see `MatchConfigSource.getMap`.
-         Not on a locked tab: "sẽ áp dụng cho trận tiếp theo" promises a next
-         match this device does not choose, and the lock note above already
-         said who does.
+    <PanelSection id="match-map" title="Bản đồ" :summary="mapSummary">
+      <!-- A summary row that opens the picker, rather than the picker itself:
+           the shape and the rules are why anyone picks a map, and neither
+           fits in a card. Not disabled on a locked tab — a LAN client should
+           still be able to look at the map it is about to play on; the modal
+           refuses the *commit*, which is the half that was ever a permission.
+           Not wrapped in `.pregame-field`: that rule sets `display: block` on
+           every descendant `span`, wrong for the stacked lines in the row. -->
+      <div class="map-field">
+        <button type="button" id="practice-map-open" class="map-summary" @click="showMapPicker = true"
+          v-tap="() => (showMapPicker = true)">
+          <span class="map-summary-main">
+            <strong>{{ selectedMapName }}</strong>
+            <span class="map-summary-meta">
+              {{ selectedMapMeta }}
+              <template v-if="selectedMapRuleCount"> · {{ selectedMapRuleCount }} luật riêng</template>
+            </span>
+          </span>
+          <i class="fas fa-chevron-right" aria-hidden="true"></i>
+        </button>
 
-         And only once the two actually differ. It used to show throughout a
-         match, so it read as boilerplate under a row that agreed with it —
-         and boilerplate is what a player stops seeing. It is the standing
-         reminder after "Để sau" in the picker now, which is the one moment it
-         is describing something real. -->
-      <p v-if="live && canEdit && selectedMapId !== liveMapId" class="practice-note practice-note-pending">
-        <i class="fas fa-clock" aria-hidden="true"></i>
-        Đã chọn <strong>{{ selectedMapName }}</strong> cho trận sau — trận đang chạy
-        vẫn trên <strong>{{ liveMapName }}</strong>.
+        <!-- Only in a match, only once the pick and the running map differ,
+             and never on a locked tab: "cho trận sau" promises a next match
+             this device does not choose. -->
+        <p v-if="live && canEdit && selectedMapId !== liveMapId" class="practice-note practice-note-pending">
+          <i class="fas fa-clock" aria-hidden="true"></i>
+          Đã chọn <strong>{{ selectedMapName }}</strong> cho trận sau — trận đang chạy
+          vẫn trên <strong>{{ liveMapName }}</strong>.
+        </p>
+      </div>
+    </PanelSection>
+
+    <PanelSection id="match-rules" title="Luật" :summary="rulesSummary">
+      <label class="pregame-field" :class="{ locked: !canEdit }">
+        <span>Giảm hồi chiêu:
+          <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span>
+        <input type="range" id="practice-cdr" :min="CDR_PERCENT_MIN" :max="CDR_PERCENT_MAX" :step="CDR_PERCENT_STEP"
+          :disabled="!canEdit" :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange"
+          @pointerdown="onCdrPointerDown" @pointerup="onCdrPointerUp" @pointercancel="onCdrPointerCancel" />
+      </label>
+
+      <label class="pregame-toggle" :class="{ locked: !canEdit }">
+        <input type="checkbox" id="practice-urf" :disabled="!canEdit" :checked="rules.manaFree" @change="onUrfChange" />
+        <span>URF (không tốn mana)</span>
+      </label>
+
+      <label class="pregame-toggle" :class="{ locked: !canEdit }">
+        <input type="checkbox" id="practice-recall" :disabled="!canEdit" :checked="rules.recall" @change="onRecallChange" />
+        <span>Hồi thành</span>
+      </label>
+    </PanelSection>
+
+    <PanelSection id="match-world" title="Thế giới" :summary="worldSummary">
+      <label class="pregame-toggle" :class="{ locked: !canEdit }">
+        <input type="checkbox" id="practice-jungle" :disabled="!canEdit" :checked="world.jungle" @change="onJungleChange" />
+        <span>Quái rừng</span>
+      </label>
+
+      <label class="pregame-toggle" :class="{ locked: !canEdit }">
+        <input type="checkbox" id="practice-minions" :disabled="!canEdit" :checked="world.minions" @change="onMinionsChange" />
+        <span>Lính</span>
+      </label>
+
+      <!-- Scoped to the two switches above it: CDR and URF are immediate. And
+           only in a match — outside one there is no paused loop for anything
+           to be waiting on. -->
+      <p v-if="live && canEdit" class="practice-note">
+        Quái rừng và lính: thay đổi có hiệu lực khi bạn đóng bảng và trận chạy tiếp.
       </p>
-    </div>
-
-    <label class="pregame-field" :class="{ locked: !canEdit }">
-      <span>Giảm hồi chiêu:
-        <strong id="practice-cdr-value">{{ rules.cooldownReductionPercent }}%</strong></span>
-      <input type="range" id="practice-cdr" :min="CDR_PERCENT_MIN" :max="CDR_PERCENT_MAX" :step="CDR_PERCENT_STEP"
-        :disabled="!canEdit" :value="rules.cooldownReductionPercent" @input="onCdrInput" @change="onCdrChange"
-        @pointerdown="onCdrPointerDown" @pointerup="onCdrPointerUp" @pointercancel="onCdrPointerCancel" />
-    </label>
-
-    <label class="pregame-toggle" :class="{ locked: !canEdit }">
-      <input type="checkbox" id="practice-urf" :disabled="!canEdit" :checked="rules.manaFree" @change="onUrfChange" />
-      <span>URF (không tốn mana)</span>
-    </label>
-
-    <label class="pregame-toggle" :class="{ locked: !canEdit }">
-      <input type="checkbox" id="practice-recall" :disabled="!canEdit" :checked="rules.recall" @change="onRecallChange" />
-      <span>Hồi thành</span>
-    </label>
-
-    <label class="pregame-toggle" :class="{ locked: !canEdit }">
-      <input type="checkbox" id="practice-jungle" :disabled="!canEdit" :checked="world.jungle" @change="onJungleChange" />
-      <span>Quái rừng</span>
-    </label>
-
-    <label class="pregame-toggle" :class="{ locked: !canEdit }">
-      <input type="checkbox" id="practice-minions" :disabled="!canEdit" :checked="world.minions" @change="onMinionsChange" />
-      <span>Lính</span>
-    </label>
-
-    <!-- Scoped to the two switches above it, not to the whole tab: CDR and URF
-         are immediate. And only in a match — outside one there is no paused
-         loop for anything to be waiting on. -->
-    <p v-if="live && canEdit" class="practice-note">
-      Quái rừng và lính: thay đổi có hiệu lực khi bạn đóng bảng và trận chạy tiếp.
-    </p>
+    </PanelSection>
 
     <!-- What the evenings added up to. After the controls, before the way
          out: it is about matches, not about this one. -->
-    <div v-if="history.length" class="history-field" id="practice-history">
-      <div class="history-head">
-        <span class="map-field-label">Trận gần đây <span class="history-count">{{ history.length }}</span></span>
-        <button type="button" class="history-clear" :class="{ confirming: confirmingClearHistory }"
-          id="practice-history-clear" @click="clearHistory" v-tap="clearHistory">
-          {{ confirmingClearHistory ? 'Chắc chưa?' : 'Xoá lịch sử' }}
+    <PanelSection v-if="history.length" id="match-history" title="Trận gần đây" :summary="`${history.length} trận`">
+      <div class="history-field" id="practice-history">
+        <div class="history-head">
+          <span class="history-count">{{ history.length }} trận</span>
+          <button type="button" class="history-clear" :class="{ confirming: confirmingClearHistory }"
+            id="practice-history-clear" @click="clearHistory" v-tap="clearHistory">
+            {{ confirmingClearHistory ? 'Chắc chưa?' : 'Xoá lịch sử' }}
+          </button>
+        </div>
+        <ul class="history-list">
+          <li v-for="row in shownHistory" :key="row.id" class="history-row">
+            <span class="history-champ">{{ row.championName }}</span>
+            <span class="history-kda">
+              <strong>{{ row.kills }}</strong>/<strong class="history-deaths">{{ row.deaths }}</strong>/<strong>{{ row.assists }}</strong>
+              <span class="history-cs">· {{ row.cs }} CS</span>
+            </span>
+            <span class="history-meta">
+              {{ matchModeFor(row.mode).name }} · {{ mapNameOf(row.mapId) }} · {{ formatDuration(row.durationMs) }}
+            </span>
+            <span class="history-when">{{ formatWhen(row.endedAt, historyNow) }}</span>
+          </li>
+        </ul>
+        <button v-if="history.length > historyShown" type="button" class="history-more" id="practice-history-more"
+          @click="historyShown += HISTORY_PAGE" v-tap="() => (historyShown += HISTORY_PAGE)">
+          Xem thêm
         </button>
       </div>
-      <ul class="history-list">
-        <li v-for="row in shownHistory" :key="row.id" class="history-row">
-          <span class="history-champ">{{ row.championName }}</span>
-          <span class="history-kda">
-            <strong>{{ row.kills }}</strong>/<strong class="history-deaths">{{ row.deaths }}</strong>/<strong>{{ row.assists }}</strong>
-            <span class="history-cs">· {{ row.cs }} CS</span>
-          </span>
-          <span class="history-meta">
-            {{ matchModeFor(row.mode).name }} · {{ mapNameOf(row.mapId) }} · {{ formatDuration(row.durationMs) }}
-          </span>
-          <span class="history-when">{{ formatWhen(row.endedAt, historyNow) }}</span>
-        </li>
-      </ul>
-      <button v-if="history.length > historyShown" type="button" class="history-more" id="practice-history-more"
-        @click="historyShown += HISTORY_PAGE" v-tap="() => (historyShown += HISTORY_PAGE)">
-        Xem thêm
-      </button>
-    </div>
+    </PanelSection>
 
     <!-- Last in the flow and visually apart: the irreversible controls. See the
          file comment on why each is here and why both confirm. -->

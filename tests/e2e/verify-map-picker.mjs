@@ -78,7 +78,7 @@
  *   node tests/e2e/verify-map-picker.mjs
  *   MOBA2D_CHROME_CHANNEL= node tests/e2e/verify-map-picker.mjs   # bundled Chromium
  */
-import { CFG_KEY, openSetup, startHarness, startMatch } from './harness.mjs';
+import { CFG_KEY, openSetup, startHarness, startMatch, openPanelSections } from './harness.mjs';
 
 const SUMMONERS_RIFT_ID = 'lol:summoners-rift';
 const PROVING_GROUNDS_ID = 'reference:proving-grounds';
@@ -225,6 +225,7 @@ await harness.guard(async () => {
   await seedAndLoad(baseConfig(undefined));
   await openSetup(page);
   await page.click('#practice-tab-rules');
+  await openPanelSections(page);
   // The picker moved into a modal of its own: the tab now carries a one-line
   // summary that opens it, because the shape and the rules of a map are what
   // anyone actually chooses between and neither fits on a card. The selectors

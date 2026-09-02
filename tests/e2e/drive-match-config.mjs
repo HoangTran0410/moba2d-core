@@ -34,7 +34,7 @@
  *
  *   node tests/e2e/drive-match-config.mjs [outPrefix]
  */
-import { CFG_KEY, DESKTOP_VIEWPORT, openSetup, startHarness } from './harness.mjs';
+import { CFG_KEY, DESKTOP_VIEWPORT, openSetup, startHarness, openPanelSections } from './harness.mjs';
 
 const OUT = process.argv[2] ?? '/tmp/moba2d-match-config';
 
@@ -166,6 +166,7 @@ check('and the row shows it without the drawer', await page.isVisible(`${botRow}
 
 // ------------------------------------------------------- 5. Cài đặt tab
 await page.click('#practice-tab-settings');
+await openPanelSections(page);
 await page.waitForSelector('#pregame-input-mode-auto');
 const settings = await Promise.all([
   page.isVisible('#pregame-input-mode-auto'),
@@ -194,6 +195,8 @@ check('a debug layer lit before the match is stored', storedDebug === true);
 // that a config edited *with no match running* is the match you get.
 
 await page.click('#practice-tab-rules');
+
+await openPanelSections(page);
 await page.waitForSelector('#practice-cdr');
 await page.$eval('#practice-cdr', input => {
   input.value = '90';
@@ -326,11 +329,15 @@ await page.click(firstAbility);
 await page.waitForSelector('.practice-spell-card', { state: 'detached', timeout: 5_000 });
 
 await page.click('#practice-tab-rules');
+
+await openPanelSections(page);
 await page.waitForSelector('#practice-cdr');
 check('the match tab carries the live-only exit', await page.isVisible('#practice-exit'));
 check('and no "Về menu" in its place', !(await page.isVisible('#pregame-back-btn')));
 
 await page.click('#practice-tab-settings');
+
+await openPanelSections(page);
 await page.waitForSelector('#practice-zoom');
 check('the zoom slider appears only in a match', await page.isVisible('#practice-zoom'));
 check('and the input-mode row is reachable mid-match', await page.isVisible('#pregame-input-mode-auto'));

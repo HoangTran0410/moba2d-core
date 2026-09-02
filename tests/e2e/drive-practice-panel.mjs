@@ -203,6 +203,11 @@ const openPanel = async (useTouch = false) => {
 const selectTab = async (id, useTouch = false) => {
   if (useTouch) await tapSelector(`#practice-tab-${id}`);
   else await page.click(`#practice-tab-${id}`);
+  // Unfold the tab's sections: a folded control is v-show'n away (PanelSection.vue),
+  // and both a thumb and a click need it on screen.
+  await page.evaluate(() => {
+    for (const head of document.querySelectorAll('.panel-section-head[aria-expanded="false"]')) head.click();
+  });
   await page.waitForTimeout(180);
 };
 
