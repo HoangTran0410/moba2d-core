@@ -266,11 +266,45 @@ const codeWithCoreSpells =
     return { ...code, spells };
   };
 
-export const BUNDLED_PACK_DATA: ContentPackData[] = packsInInstallOrder.map((pack, index) =>
-  index === 0 ? dataWithCoreSpells(pack.data) : pack.data
+/**
+ * **Every pack, not only the first.**
+ *
+ * These two used to fold core's spells onto `index === 0` alone, and the
+ * argument for it was about *bare ids* — which pack an unqualified
+ * `'BasicAttack'` resolves against at lookup time. That is a real question and
+ * it is still index 0's (see `BUNDLED_PACK_ID` above). It is not this
+ * question. `PackRegistry.writeData` qualifies a bare id in a pack's own data
+ * against **the pack that declared it**, so a champion in *any* pack whose
+ * slot 0 names `'BasicAttack'` asks the registry for `<that pack>:BasicAttack`
+ * — and `verifyPairing` then rejects the whole code half because the pack's
+ * own `spells` map has never heard of a spell that lives in core.
+ *
+ * That went unnoticed for as long as there was one optional pack to be first.
+ * `src/generated/installedPacks.ts` sorts by package name and its own header
+ * says the ordering "stops being theoretical the moment a third pack exists";
+ * with `dota`, `lol` and `naruto` installed together it does, `dota` sorts
+ * first, and the League pack — 67 champions, every one of them naming a bare
+ * `'BasicAttack'` and a bare `'Recall'` — fails to install at all:
+ *
+ *   content pack rejected:
+ *     champions.lol:Đánh Thường: spell lol:BasicAttack is not in this pack
+ *     champions.lol:Đánh Thường: recall lol:Recall is not in this pack
+ *
+ * `installRuntimePack` below already applies both folds unconditionally, to
+ * any pack, at any position — so before this change the *same pack* installed
+ * over the network worked and installed as a bundled one at index 1 did not.
+ * Neither fold ever assumed anything about index (both say so in their own
+ * doc comments); only these two lines did.
+ *
+ * Core-last in both, so content cannot shadow the one spell every kit
+ * presupposes, and idempotent per pack — a pack that somehow shipped its own
+ * `BasicAttack` gets core's.
+ */
+export const BUNDLED_PACK_DATA: ContentPackData[] = packsInInstallOrder.map(pack =>
+  dataWithCoreSpells(pack.data)
 );
-export const BUNDLED_PACKS: ContentPackFactory[] = packsInInstallOrder.map((pack, index) =>
-  index === 0 ? codeWithCoreSpells(pack.code) : pack.code
+export const BUNDLED_PACKS: ContentPackFactory[] = packsInInstallOrder.map(pack =>
+  codeWithCoreSpells(pack.code)
 );
 
 if (BUNDLED_PACK_DATA.length !== BUNDLED_PACKS.length) {

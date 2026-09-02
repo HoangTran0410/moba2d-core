@@ -295,13 +295,24 @@ export function botRoleIssues(fixture: BotRoleFixture): BotRoleIssue[] {
         );
       }
 
+      // A **declared** `Heal`/`Shield` is the author saying, in the one place
+      // the scorer reads, "this is for when I am losing" — and the two rules
+      // below are about abilities that only *behave* that way by accident.
+      // A real one exists in the shipped content: a flat shield plus a
+      // tenacity buff, whose own header calls it a panic button. It scores 0
+      // in a fight because it should, and a gate that could not tell it from
+      // an untagged transform would push authors to mislabel it. Inference
+      // producing the same mask is not the same claim, so this licence is
+      // only ever granted to a spell that says it out loud.
+      const declaredPanicButton = tagged && hasRole(mask, roles(SpellRole.Heal, SpellRole.Shield));
+
       if (best(scores, [...FIGHTING, ...DEFENSIVE]) <= 0) {
         add(
           'unreachable',
           `${label} ${id} scores <= 0 in every scene, and \`chooseSpell\` drops those — ` +
             'the bot can never press it at all.'
         );
-      } else if (best(scores, FIGHTING) <= 0) {
+      } else if (best(scores, FIGHTING) <= 0 && !declaredPanicButton) {
         add(
           'dead-in-combat',
           `${label} ${id} scores <= 0 in every fighting scene (best ` +
@@ -310,7 +321,11 @@ export function botRoleIssues(fixture: BotRoleFixture): BotRoleIssue[] {
         );
       }
 
-      if (slot === ULTIMATE_SLOT && best(scores, FIGHTING) < best(scores, DEFENSIVE)) {
+      if (
+        slot === ULTIMATE_SLOT &&
+        !declaredPanicButton &&
+        best(scores, FIGHTING) < best(scores, DEFENSIVE)
+      ) {
         add(
           'panic-ultimate',
           `${label} ${id} scores ${best(scores, FIGHTING)} fighting against ` +

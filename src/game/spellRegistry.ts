@@ -48,15 +48,63 @@ export type SpellClass = any;
 let everythingRequested = false;
 
 /**
- * A bare id means the bundled pack.
+ * A bare id means **the first installed pack that declares it**.
  *
- * Loadouts persisted before content became packs hold `"<Champion>_Q"`, and a
- * player's saved kit is not something to throw away over a prefix. A pack id
- * is `[A-Za-z0-9][A-Za-z0-9._-]*` and a colon appears in no local id, so the
- * test is unambiguous.
+ * Loadouts persisted before content became packs hold `"<Champion>_Q"`, and
+ * `PregameConfig`'s own summoner defaults are bare *today* (`summonerD:
+ * 'Flash'`). A pack id is `[A-Za-z0-9][A-Za-z0-9._-]*` and a colon appears in
+ * no local id, so telling the two apart is unambiguous.
+ *
+ * It used to mean `BUNDLED_PACK_ID` — the first installed pack, full stop —
+ * and that is a different sentence in a way nothing noticed until a third
+ * pack existed. `src/generated/installedPacks.ts` sorts by package name, so
+ * installing `dota`, `lol` and `naruto` together put `dota` first; only the
+ * League pack ships `Flash`, `Ghost`, `Heal`, `Ignite` and `StealthWard`, and
+ * every bare `'Flash'` began qualifying to `dota:Flash`, which exists
+ * nowhere. Nothing threw. The summoner slot simply came back empty — the same
+ * shape of failure as the install rejection this shipped beside, and the
+ * quieter half of it.
+ *
+ * `BUNDLED_PACK_ID` remains the fallback, so an id **no** pack declares
+ * resolves exactly where it always did and the failure keeps its old shape.
  */
-export const qualifySpellId = (id: string): string =>
-  id.includes(':') ? id : `${BUNDLED_PACK_ID}:${id}`;
+/**
+ * Cache for the loop below. Keyed by the registry *object* as well as its
+ * content revision: `resetContentRegistryForTests` builds a fresh registry
+ * whose revision restarts at 0, so a revision check alone would answer a new
+ * registry from the old one's entries.
+ */
+let bareIdCache = new Map<string, string>();
+let bareIdCacheRevision = -1;
+let bareIdCacheOwner: object | null = null;
+
+export const qualifySpellId = (id: string): string => {
+  if (id.includes(':')) return id;
+
+  const registry = contentRegistry();
+  const revision = registry.contentRevision;
+  if (revision !== bareIdCacheRevision || registry !== bareIdCacheOwner) {
+    bareIdCache = new Map();
+    bareIdCacheRevision = revision;
+    bareIdCacheOwner = registry;
+  }
+  const cached = bareIdCache.get(id);
+  if (cached !== undefined) return cached;
+
+  // The first installed pack that actually declares it — data half or code
+  // half, because `Recall` is declared with no display entry and a summoner
+  // spell is declared with one.
+  let resolved = `${BUNDLED_PACK_ID}:${id}`;
+  for (const packId of registry.packIds()) {
+    const qualified = `${packId}:${id}`;
+    if (registry.hasSpell(qualified) || registry.hasDisplayFor(qualified)) {
+      resolved = qualified;
+      break;
+    }
+  }
+  bareIdCache.set(id, resolved);
+  return resolved;
+};
 
 /**
  * Every id this build can offer a player, loaded or not. Cheap — a name and a

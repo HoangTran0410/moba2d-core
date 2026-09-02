@@ -475,6 +475,20 @@ export class PackRegistry {
     return this.installedIds.has(id);
   }
 
+  /**
+   * Every installed pack's id, **in install order**.
+   *
+   * Order is the whole point of publishing this: "where several packs answer
+   * the same question, install order decides" is a rule the registry already
+   * keeps internally (`monstersFilling`), and `qualifySpellId` needs to apply
+   * the same rule to a bare spell id. `hasPack` answers about one id and
+   * cannot be walked; `champions()` carries the order but not the packs that
+   * declared nothing.
+   */
+  packIds(): readonly string[] {
+    return this.packs.map(pack => pack.manifest.id);
+  }
+
   champions(): readonly QualifiedChampion[] {
     return [...this.championList];
   }

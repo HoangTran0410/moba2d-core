@@ -16,13 +16,20 @@ import { SpellRole, roles } from '../../src/game/ai/SpellRole';
  * *constructor*, so two stubs sharing a class would share a verdict.
  */
 const spellClass = (
-  over: Partial<{ targeting: string; manaCost: number; range: number | undefined; aiRoles: number }>
+  over: Partial<{
+    targeting: string;
+    targetTeam: string;
+    manaCost: number;
+    range: number | undefined;
+    aiRoles: number;
+  }>
 ) => {
   const cls = class {
     static aiRoles: number | undefined = over.aiRoles;
     manaCost = over.manaCost ?? 50;
     declaredRange: number | undefined = 'range' in over ? over.range : 450;
     castSpec = { targeting: over.targeting ?? 'DIRECTION' };
+    targetingRequest = over.targetTeam ? { targetTeam: over.targetTeam } : undefined;
   };
   return cls;
 };
@@ -49,15 +56,14 @@ describe('bot role rules', () => {
 
   it('flags the panic-button shape by its score, not by its targeting', () => {
     // `Buff | Shield` is what `inferRoles` hands every costed SELF cast, and
-    // it comes to exactly 0 in a fight against 20 while hurt. Declared here
-    // by hand so the rule is shown catching the *mask*, not the tag's absence.
+    // it comes to exactly 0 in a fight against 20 while hurt. A `UNIT` spell
+    // aimed at an ally infers the same shape without being `SELF` at all —
+    // which is the point: the rule reads what the ability *scores*, not how
+    // it is aimed, so `self-cast-untagged` stays quiet while the behavioural
+    // rule still fires.
     const spells = {
       Q: OK_Q,
-      W: spellClass({
-        targeting: 'DIRECTION',
-        manaCost: 60,
-        aiRoles: roles(SpellRole.Buff, SpellRole.Shield),
-      }),
+      W: spellClass({ targeting: 'UNIT', targetTeam: 'ALLY', manaCost: 60, range: 450 }),
     };
     const found = sweep(spells, ['Q', 'W', 'Q', 'Q']);
     expect(found).toContain('dead-in-combat');
@@ -81,9 +87,14 @@ describe('bot role rules', () => {
   });
 
   it('flags an ultimate whose best moment is nearly dying', () => {
+    // Untagged, which is the case that matters: this is what `inferRoles`
+    // hands every costed self-cast transform in the three shipped packs, and
+    // 33 ultimates were sitting on it. An author who *declares* the same mask
+    // has said the ability is a last resort, and is left alone — the suite
+    // below this one.
     const spells = {
       Q: OK_Q,
-      R: spellClass({ targeting: 'SELF', manaCost: 100, range: undefined, aiRoles: roles(SpellRole.Buff, SpellRole.Shield) }),
+      R: spellClass({ targeting: 'SELF', manaCost: 100, range: undefined }),
     };
     const found = sweep(spells, ['Q', 'Q', 'Q', 'R']);
     expect(found).toContain('panic-ultimate');
@@ -112,5 +123,49 @@ describe('bot role rules', () => {
     const spells = { Q: OK_Q, W: spellClass({ targeting: 'SELF', manaCost: 60, range: undefined }) };
     const issues = botRoleIssues({ spells, champions: [{ id: 'stub', spells: ['Q', 'W', 'Q', 'Q'] }] });
     expect(issues.map(issue => issue.key)).toContain('self-cast-untagged:W');
+  });
+});
+
+describe('a spell that means to be a panic button', () => {
+  const OK = spellClass({ targeting: 'DIRECTION', manaCost: 30, range: 450 });
+
+  it('is left alone once it declares itself one', () => {
+    // The shape a real shipped ability has: a flat shield with a header
+    // calling it a panic button. It scores 0 in a fight because it should,
+    // and a gate that cannot tell that from an untagged transform would push
+    // authors to mislabel it.
+    const spells = {
+      Q: OK,
+      W: spellClass({
+        targeting: 'SELF',
+        manaCost: 60,
+        range: undefined,
+        aiRoles: roles(SpellRole.Buff, SpellRole.Shield),
+      }),
+    };
+    expect(sweep(spells, ['Q', 'W', 'Q', 'Q'])).toEqual([]);
+  });
+
+  it('still flags the identical mask when nobody declared it', () => {
+    // The licence is the declaration, not the mask. Inference hands
+    // `Buff | Shield` to every costed SELF cast; that is a guess, and a guess
+    // is exactly what this gate exists to stop trusting.
+    const spells = { Q: OK, W: spellClass({ targeting: 'SELF', manaCost: 60, range: undefined }) };
+    const found = sweep(spells, ['Q', 'W', 'Q', 'Q']);
+    expect(found).toContain('self-cast-untagged');
+    expect(found).toContain('dead-in-combat');
+  });
+
+  it('lets an ultimate be a genuine last resort', () => {
+    const spells = {
+      Q: OK,
+      R: spellClass({
+        targeting: 'SELF',
+        manaCost: 100,
+        range: undefined,
+        aiRoles: roles(SpellRole.Heal, SpellRole.Shield),
+      }),
+    };
+    expect(sweep(spells, ['Q', 'Q', 'Q', 'R'])).toEqual([]);
   });
 });
