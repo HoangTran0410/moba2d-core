@@ -169,3 +169,22 @@ describe('a spell that means to be a panic button', () => {
     expect(sweep(spells, ['Q', 'Q', 'Q', 'R'])).toEqual([]);
   });
 });
+
+describe('a declared escape', () => {
+  it('is allowed to be worth nothing in a fight, because that is the ability', () => {
+    // `scoreSpell` prices `Escape` at −10 outside a retreat, so an honest tag
+    // scores below zero in every fighting scene by construction. The flag
+    // cannot arrive by inference — core refuses to guess it — so its presence
+    // is always a declaration.
+    const spells = {
+      Q: spellClass({ targeting: 'DIRECTION', manaCost: 30, range: 450 }),
+      W: spellClass({
+        targeting: 'SELF',
+        manaCost: 40,
+        range: undefined,
+        aiRoles: roles(SpellRole.Buff, SpellRole.Escape),
+      }),
+    };
+    expect(sweep(spells, ['Q', 'W', 'Q', 'Q'])).toEqual([]);
+  });
+});

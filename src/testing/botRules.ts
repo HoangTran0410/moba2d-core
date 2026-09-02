@@ -304,7 +304,15 @@ export function botRoleIssues(fixture: BotRoleFixture): BotRoleIssue[] {
       // an untagged transform would push authors to mislabel it. Inference
       // producing the same mask is not the same claim, so this licence is
       // only ever granted to a spell that says it out loud.
-      const declaredPanicButton = tagged && hasRole(mask, roles(SpellRole.Heal, SpellRole.Shield));
+      //
+      // `Escape` joins them, and it is the sharpest case of the three:
+      // `scoreSpell` prices it at −10 outside a retreat, so a stealth-and-run
+      // ability tagged honestly scores below zero in every fighting scene by
+      // construction. That is the ability working. `inferRoles` never
+      // produces `Escape` — core refuses to guess it — so the flag can only
+      // ever arrive by hand, which makes it a declaration and nothing else.
+      const declaredPanicButton =
+        tagged && hasRole(mask, roles(SpellRole.Heal, SpellRole.Shield, SpellRole.Escape));
 
       if (best(scores, [...FIGHTING, ...DEFENSIVE]) <= 0) {
         add(
