@@ -34,6 +34,7 @@ import {
   type MatchRulesConfig,
   type WorldConfig,
 } from '@/game/config/PregameConfig';
+import type { MatchModeId } from '@/game/config/matchModes';
 import type { MatchTeamId } from '@/game/config/MatchTeams';
 import { isNetClient } from '@/game/net/netRole';
 import { setZoomFactorPreference } from '@/game/gameObject/map/Camera';
@@ -505,6 +506,15 @@ export default class MatchDirectorSource implements MatchConfigSource {
     if (!this.canEditMatchSettings) return;
     if (world.jungle !== undefined) this.director.jungleEnabled = world.jungle;
     if (world.minions !== undefined) this.director.minionsEnabled = world.minions;
+  }
+
+  getMode(): MatchModeId {
+    return this.director.mode;
+  }
+
+  async setMode(id: MatchModeId): Promise<void> {
+    if (!this.canEditMatchSettings) return;
+    await this.director.setMode(id);
   }
 
   // --------------------------------------------------------------------- map

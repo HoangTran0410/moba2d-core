@@ -383,25 +383,74 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
   describe('rules', () => {
     it('applies and persists a rules change', () => {
-      source.setRules({ cooldownReductionPercent: 40, manaFree: true }, true);
-      expect(source.getRules()).toEqual({ cooldownReductionPercent: 40, manaFree: true });
+      source.setRules({ cooldownReductionPercent: 40, manaFree: true, recall: true }, true);
+      expect(source.getRules()).toEqual({
+        cooldownReductionPercent: 40,
+        manaFree: true,
+        recall: true,
+      });
       expect(loadPregameConfig().rules.cooldownReductionPercent).toBe(40);
       expect(source.matchRules.cooldownMultiplier).toBeCloseTo(0.6);
       expect(source.matchRules.manaFree).toBe(true);
     });
 
     it('clamps out-of-range CDR the same way in both sources', () => {
-      source.setRules({ cooldownReductionPercent: 999, manaFree: false }, true);
+      source.setRules({ cooldownReductionPercent: 999, manaFree: false, recall: true }, true);
       expect(source.getRules().cooldownReductionPercent).toBe(90);
     });
 
     it('does not write storage mid-drag', () => {
-      source.setRules({ cooldownReductionPercent: 10, manaFree: false }, true);
+      source.setRules({ cooldownReductionPercent: 10, manaFree: false, recall: true }, true);
       const before = localStorage.getItem('moba2d:pregameConfig:v1');
-      source.setRules({ cooldownReductionPercent: 70, manaFree: false }, false);
+      source.setRules({ cooldownReductionPercent: 70, manaFree: false, recall: true }, false);
       expect(localStorage.getItem('moba2d:pregameConfig:v1')).toBe(before);
       // …but the label still reads the value being dragged.
       expect(source.getRules().cooldownReductionPercent).toBe(70);
+    });
+  });
+
+  describe('mode', () => {
+    it('starts classic and reads back the mode it was given, persisted', async () => {
+      expect(source.getMode()).toBe('classic');
+      await source.setMode('urf');
+      expect(source.getMode()).toBe('urf');
+      expect(loadPregameConfig().mode).toBe('urf');
+    });
+
+    it('writes the mode’s rules and world through the match, and persists them', async () => {
+      await source.setMode('urf');
+      expect(source.getRules()).toEqual({ cooldownReductionPercent: 80, manaFree: true, recall: true });
+      expect(source.matchRules.cooldownMultiplier).toBeCloseTo(0.2);
+      expect(source.matchRules.manaFree).toBe(true);
+
+      await source.setMode('brawl');
+      expect(source.getRules().recall).toBe(false);
+      expect(source.matchRules.recall).toBe(false);
+      expect(source.getWorld()).toEqual({ jungle: false, minions: true });
+      expect(loadPregameConfig().world.jungle).toBe(false);
+      expect(loadPregameConfig().rules.recall).toBe(false);
+    });
+
+    it('reshapes the roster to the mode’s bot count, and persists the count', async () => {
+      expect(source.botCount()).toBe(1);
+      await source.setMode('classic');
+      expect(source.botCount()).toBe(3);
+      expect(loadPregameConfig().ai.count).toBe(3);
+      await source.setMode('duel');
+      expect(source.botCount()).toBe(1);
+      expect(loadPregameConfig().ai.count).toBe(1);
+    });
+
+    it('leaves the roster alone for a mode with no opinion on bots', async () => {
+      await source.setMode('urf');
+      expect(source.botCount()).toBe(1);
+    });
+
+    it('goes back to classic with everything else on reset', async () => {
+      await source.setMode('brawl');
+      await source.resetToDefaults();
+      expect(source.getMode()).toBe('classic');
+      expect(source.getRules().recall).toBe(true);
     });
   });
 
@@ -770,7 +819,7 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
   describe('reset', () => {
     it('puts the config back to the defaults', async () => {
-      source.setRules({ cooldownReductionPercent: 50, manaFree: true }, true);
+      source.setRules({ cooldownReductionPercent: 50, manaFree: true, recall: true }, true);
       source.setTeam(source.roster()[0].id, MatchTeam.RED);
       source.setInvulnerable(source.roster()[0].id, true);
 

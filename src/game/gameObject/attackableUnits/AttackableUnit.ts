@@ -950,6 +950,11 @@ export default class AttackableUnit extends GameObject {
     if (attacker && attacker !== this && attacker.teamId !== this.teamId) {
       this.recentAttacker = attacker;
       this._recentAttackerTtl = RECENT_ATTACKER_MS;
+      // Both sides of the exchange are "in a fight" from now — what the death
+      // camera (`render/deathCamera.ts`) reads to pick which ally to watch.
+      const now = this.game?.matchTimeMs ?? 0;
+      this.lastCombatMs = now;
+      attacker.lastCombatMs = now;
       // Written from `swung` rather than from what got through, for the same
       // reason the turret's aggro above is: a shield eating the whole hit does
       // not make it not a hit, and somebody who spent an ability on a target
@@ -1077,6 +1082,13 @@ export default class AttackableUnit extends GameObject {
    * every hit and reading the map's tuning per hit to throw the answer away is
    * work for nothing. The real window is applied once, by `die()`.
    */
+  /**
+   * Match time of this unit's last exchange of damage with an enemy, dealt or
+   * taken; `-Infinity` for never. Stamped in `takeDamage` on both units, so
+   * "is this ally fighting" is one subtraction rather than a ledger walk.
+   */
+  lastCombatMs = -Infinity;
+
   private rememberParticipant(attacker: AttackableUnit): void {
     const atMs = this.game?.matchTimeMs ?? 0;
     this._assistLedger.set(attacker, atMs);

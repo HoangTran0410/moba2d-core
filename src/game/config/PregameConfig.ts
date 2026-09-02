@@ -66,6 +66,7 @@
  * possible.
  */
 import { initialBotTeam, isMatchTeamId, MatchTeam, type MatchTeamId } from './MatchTeams';
+import { isMatchModeId, type MatchModeId } from './matchModes';
 import type { BotDifficulty } from '../ai/Difficulty';
 
 /**
@@ -208,6 +209,17 @@ export interface MatchRulesConfig {
   cooldownReductionPercent: number;
   /** URF: every ability costs no mana. Off reproduces today's costs exactly. */
   manaFree: boolean;
+  /**
+   * Whether Recall exists in this match. On reproduces today's game exactly.
+   *
+   * Off is the all-random brawl's one real rule: with no trip home, a death
+   * is the only way back to the shop, so every fight is taken with what you
+   * walked out with. Read at cast time like the two above (`Recall.ts`), so
+   * the switch in the panel takes effect on the next press; the bots read it
+   * too (`BotBrain.manageRecall`), or a RECOVER posture would stand still
+   * pressing a spell that refuses.
+   */
+  recall: boolean;
 }
 
 /**
@@ -273,6 +285,19 @@ export interface PregameConfig {
   rules: MatchRulesConfig;
   world: WorldConfig;
   cheats: CheatConfig;
+  /**
+   * The match mode last picked — `config/matchModes.ts`'s table.
+   *
+   * A mode is a **macro, not a layer**: picking one writes its knobs into
+   * `rules`, `world` and `ai.count` right here, and those fields stay the
+   * truth afterwards — a player who picks URF and then drags CDR down to 40%
+   * has a 40% match, and the panel says "URF · đã chỉnh". What the id itself
+   * still decides at boot is the part no existing knob can hold: the mode's
+   * tuning overlay (`Game.mapTuning`) and whether every kit is rolled at
+   * random (`planMatchKits`). An old blob without it is `classic`, which
+   * declares nothing beyond the defaults.
+   */
+  mode: MatchModeId;
   /**
    * The qualified id (`<packId>:<localId>`, `PackRegistry.qualify`) of the
    * map the next match boots onto. Task 10 of the content-pack extraction:
@@ -406,11 +431,13 @@ export const DEFAULT_PREGAME_CONFIG: Readonly<PregameConfig> = Object.freeze({
   rules: Object.freeze({
     cooldownReductionPercent: 0,
     manaFree: false,
+    recall: true,
   }),
   world: Object.freeze({
     jungle: true,
     minions: true,
   }),
+  mode: 'classic',
   cheats: Object.freeze({
     revealMap: false,
     debug: Object.freeze({
@@ -612,12 +639,16 @@ export const sanitizePregameConfig = (raw: unknown): PregameConfig => {
         DEFAULT_PREGAME_CONFIG.rules.cooldownReductionPercent
       ),
       manaFree: asBoolean(rules.manaFree, DEFAULT_PREGAME_CONFIG.rules.manaFree),
+      recall: asBoolean(rules.recall, DEFAULT_PREGAME_CONFIG.rules.recall),
     },
     world: {
       jungle: asBoolean(world.jungle, DEFAULT_PREGAME_CONFIG.world.jungle),
       minions: asBoolean(world.minions, DEFAULT_PREGAME_CONFIG.world.minions),
     },
     cheats: sanitizeCheatConfig(source.cheats),
+    // A mode nothing knows — a blob from before modes existed, or a typo —
+    // is the mode that declares nothing, not a refusal to load the match.
+    mode: isMatchModeId(source.mode) ? source.mode : DEFAULT_PREGAME_CONFIG.mode,
     // Non-empty string only — see `mapId`'s own doc comment for why "is this
     // an installed map" is a question `GameScene.startGame()` answers, never
     // this function. A blob saved before this field existed (or naming a map
@@ -658,10 +689,16 @@ export const savePregameConfig = (config: PregameConfig): void => {
 export interface MatchRules {
   cooldownMultiplier: number;
   manaFree: boolean;
+  /** False and `Recall` refuses every press — see `MatchRulesConfig.recall`. */
+  recall: boolean;
 }
 
 export const toMatchRules = (rules: MatchRulesConfig): MatchRules => ({
   cooldownMultiplier:
     1 - clampInt(rules.cooldownReductionPercent, CDR_PERCENT_MIN, CDR_PERCENT_MAX, 0) / 100,
   manaFree: rules.manaFree,
+  // `!== false` rather than `!!`: a `MatchRulesConfig` built by hand before
+  // this field existed (a test's literal, a stale director) means "recall on",
+  // which is what every match did.
+  recall: rules.recall !== false,
 });

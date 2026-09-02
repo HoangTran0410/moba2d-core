@@ -37,9 +37,16 @@ import { computed, inject, ref } from 'vue';
 import { resolveMapId } from '@/content/defaultMap';
 import { CONFIG_PANEL } from './panelState';
 import { CDR_PERCENT_MAX, CDR_PERCENT_MIN } from '@/game/config/PregameConfig';
+import {
+  MATCH_MODES,
+  describeMode,
+  matchModeFor,
+  modeDrift,
+  type MatchModeId,
+} from '@/game/config/matchModes';
 import { vTap } from '../tapGuard';
 import MapPickerModal from './MapPickerModal.vue';
-import { mapRuleCount } from './mapRuleLines';
+import { mapRuleCount, mapRuleGroups } from './mapRuleLines';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -62,6 +69,88 @@ const canEdit = source.canEditMatchSettings;
  */
 const rules = ref(source.getRules());
 const world = ref(source.getWorld());
+
+/**
+ * ## The mode chips
+ *
+ * A mode is a macro over the controls under it (`config/matchModes.ts`), so
+ * picking one re-reads `rules` and `world` the way `resetDefaults` does: the
+ * slider and the switches move to where the mode put them, in front of the
+ * player, which is also how they learn what "URF" meant. The chip stays lit
+ * afterwards even when a knob is dragged away — the id is a stored fact — and
+ * `modeDrift` is what keeps that honest by appending "đã chỉnh".
+ *
+ * Async because a mode with a bot count reshapes a running roster, and a bot
+ * arriving fetches its kit. `switchingMode` disables the chips meanwhile so a
+ * second tap cannot race the first through `MatchDirector.pendingAdd`.
+ *
+ * Re-picking the lit chip is allowed only when it has drifted: that is the
+ * one press that means "put URF back", and refusing it would leave the player
+ * choosing another mode and coming back, which is two presses to say one
+ * thing.
+ */
+const modeId = ref<MatchModeId>(source.getMode());
+const mode = computed(() => matchModeFor(modeId.value));
+const switchingMode = ref(false);
+
+const modeDrifted = computed(() =>
+  modeDrift(mode.value, { rules: rules.value, world: world.value, botCount: source.botCount() })
+);
+
+const pickMode = async (id: MatchModeId): Promise<void> => {
+  if (!canEdit || switchingMode.value) return;
+  if (id === modeId.value && !modeDrifted.value) return;
+  switchingMode.value = true;
+  try {
+    await source.setMode(id);
+    modeId.value = source.getMode();
+    rules.value = source.getRules();
+    world.value = source.getWorld();
+    panel.invalidate();
+  } finally {
+    switchingMode.value = false;
+  }
+};
+
+/**
+ * What the lit mode does, as short lines: its knobs from `describeMode`, then
+ * its tuning through the same formatter the map picker uses for a map's own
+ * rules — one vocabulary for "this number is not core's", whoever moved it.
+ */
+const modeLines = computed(() => [
+  ...describeMode(mode.value),
+  ...mapRuleGroups(mode.value.tuning).flatMap(group =>
+    group.lines.map(line => `${line.label} ${line.value}`)
+  ),
+]);
+
+/**
+ * The half of a mode a running match cannot take: its numbers are merged at
+ * boot and its random roster is rolled there. Named plainly, and only the
+ * parts this mode actually has, so "Tay đôi" — which is one bot and nothing
+ * pending — shows no note at all.
+ */
+const modePending = computed(() => {
+  const parts: string[] = [];
+  if (mode.value.allRandom) parts.push('tướng ngẫu nhiên');
+  if (mode.value.tuning) parts.push('các con số (vàng, hồi sinh, tốc chạy)');
+  return parts.join(' và ');
+});
+
+/**
+ * "Chơi lại" beside the pending note — the press that makes the pending half
+ * real. Two-step like the exit below, and for the same reason: it throws a
+ * match away.
+ */
+const confirmingModeRestart = ref(false);
+const restartForMode = (): void => {
+  if (!confirmingModeRestart.value) {
+    confirmingModeRestart.value = true;
+    return;
+  }
+  confirmingModeRestart.value = false;
+  live?.restart();
+};
 
 const CDR_PERCENT_STEP = 10;
 
@@ -105,6 +194,17 @@ const onCdrPointerCancel = (event: Event): void => {
 
 const onUrfChange = (event: Event): void => {
   source.setRules({ ...rules.value, manaFree: (event.target as HTMLInputElement).checked }, true);
+  rules.value = source.getRules();
+};
+
+/**
+ * The brawl's rule as its own switch, so a knob a mode writes is also a knob
+ * a player can see and move — a mode is a macro over the controls on this
+ * tab, and a rule with no control would be one the tab could not admit
+ * having changed.
+ */
+const onRecallChange = (event: Event): void => {
+  source.setRules({ ...rules.value, recall: (event.target as HTMLInputElement).checked }, true);
   rules.value = source.getRules();
 };
 
@@ -258,6 +358,7 @@ const resetDefaults = async (): Promise<void> => {
     // this moved must be re-read instead of showing the old match.
     rules.value = source.getRules();
     world.value = source.getWorld();
+    modeId.value = source.getMode();
     panel.invalidate();
   } finally {
     resetting.value = false;
@@ -288,6 +389,53 @@ const resetLabel = computed(() =>
          Not wrapped in `.pregame-field`: that rule sets `display: block` on
          every descendant `span`, which is right for a one-line label and
          wrong for the three stacked lines inside a card. -->
+    <!-- Before the map: a mode is the shape of the evening, the map is where
+         it happens, and the controls under both are what either can be
+         tuned into afterwards. Pills rather than cards — a mode is a word. -->
+    <div class="mode-field">
+      <span class="map-field-label">Chế độ</span>
+      <div class="mode-chips" role="group" aria-label="Chế độ">
+        <button
+          v-for="option in MATCH_MODES"
+          :key="option.id"
+          type="button"
+          class="mode-chip"
+          :id="`practice-mode-${option.id}`"
+          :class="{ selected: option.id === modeId }"
+          :aria-pressed="option.id === modeId"
+          :disabled="!canEdit || switchingMode"
+          @click="pickMode(option.id)"
+          v-tap="() => pickMode(option.id)"
+        >
+          {{ option.name }}
+        </button>
+      </div>
+      <p class="mode-blurb" id="practice-mode-blurb">
+        {{ mode.blurb }}<template v-if="modeDrifted"> · <em>đã chỉnh</em></template>
+      </p>
+      <ul v-if="modeLines.length" class="mode-lines" id="practice-mode-lines">
+        <li v-for="line in modeLines" :key="line">{{ line }}</li>
+      </ul>
+
+      <!-- Only in a match, only for a mode with a pending half, and only for
+           whoever can restart it. Same gold as the map's pending note: it is
+           the same fact — the room you picked is not the room you are in. -->
+      <p v-if="live && canEdit && modePending" class="practice-note practice-note-pending">
+        <i class="fas fa-clock" aria-hidden="true"></i>
+        <span class="mode-pending-text">
+          <template v-if="live.canRestart">
+            <button type="button" class="mode-restart" id="practice-mode-restart"
+              :class="{ confirming: confirmingModeRestart }" @click="restartForMode"
+              v-tap="restartForMode">{{ confirmingModeRestart ? 'Chắc chưa?' : 'Chơi lại' }}</button>
+            để áp dụng {{ modePending }} của chế độ này — luật và bot đã đổi ngay.
+          </template>
+          <template v-else>
+            {{ modePending }} của chế độ này áp dụng cho trận sau — luật và bot đã đổi ngay.
+          </template>
+        </span>
+      </p>
+    </div>
+
     <div class="map-field">
       <span class="map-field-label">Bản đồ</span>
       <!--
@@ -343,6 +491,11 @@ const resetLabel = computed(() =>
     <label class="pregame-toggle" :class="{ locked: !canEdit }">
       <input type="checkbox" id="practice-urf" :disabled="!canEdit" :checked="rules.manaFree" @change="onUrfChange" />
       <span>URF (không tốn mana)</span>
+    </label>
+
+    <label class="pregame-toggle" :class="{ locked: !canEdit }">
+      <input type="checkbox" id="practice-recall" :disabled="!canEdit" :checked="rules.recall" @change="onRecallChange" />
+      <span>Hồi thành</span>
     </label>
 
     <label class="pregame-toggle" :class="{ locked: !canEdit }">

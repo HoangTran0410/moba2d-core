@@ -125,6 +125,16 @@ function __buildRecall(api: ContentApi) {
     _healthAtCast = 0;
     _pad: RecallPad | null = null;
 
+    /**
+     * The one spell a match rule can switch off — `MatchRules.recall`, the
+     * brawl's rule. Read at press time like CDR and URF are, so the panel's
+     * switch takes effect on the next press without touching the spell. A
+     * missing `matchRules` (a bare test world) means on.
+     */
+    get isCastableNow(): boolean {
+      return this.game?.matchRules?.recall !== false && super.isCastableNow;
+    }
+
     get castSpec(): Readonly<CastSpec> {
       return {
         activation: 'PRESS',

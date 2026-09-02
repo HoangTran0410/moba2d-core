@@ -29,6 +29,7 @@ import {
 import type { ChampionTrailSpec } from '@/content/ContentPack';
 import type { ChampionPresetData } from './gameObject/attackableUnits/Champion';
 import type { ChampionLoadout, MatchRules, SlotChoice } from './config/PregameConfig';
+import { matchModeFor, type MatchModeId } from './config/matchModes';
 import { SLOT_COUNT } from './config/PregameConfig';
 import {
   BASIC_ATTACK_ID,
@@ -341,7 +342,7 @@ export const spellGroups = (): {
 // ---------------------------------------------------------------------------
 
 /** No cooldown reduction, no URF — what a spell shows outside any pregame context. */
-const NO_MATCH_RULES: MatchRules = { cooldownMultiplier: 1, manaFree: false };
+const NO_MATCH_RULES: MatchRules = { cooldownMultiplier: 1, manaFree: false, recall: true };
 
 export type { SpellDisplay } from '@/game/config/spellCatalog';
 
@@ -470,6 +471,14 @@ export interface KitPlan {
 export interface MatchPlan {
   player: KitPlan;
   bots: KitPlan[];
+  /**
+   * The match mode these kits were planned under — `config/matchModes.ts`.
+   * On the plan rather than read again from storage because a net client's
+   * plan comes from the *host's* `hello`, and its own stored config knows
+   * nothing about the room it is joining. `Game` lays the mode's tuning over
+   * the map from this; absent means classic, i.e. the map's own numbers.
+   */
+  mode?: MatchModeId;
 }
 
 const randomSpellId = (): string => random(allSpellIds());
@@ -619,15 +628,32 @@ export const planLoadout = (loadout: ChampionLoadout): KitPlan => {
 };
 
 /** Every unit's kit for one match, with all randomness already resolved. */
+/**
+ * The brawl's "everyone random", as a loadout: the pick is set aside, the
+ * summoners are kept. Kept, because a random *champion* is the mode's point
+ * and a random Flash is nobody's — and because the player's two summoner
+ * choices are the one part of a loadout they still get to own in that room.
+ */
+const randomised = (loadout: ChampionLoadout): ChampionLoadout => ({
+  ...loadout,
+  mode: 'champion',
+  championName: 'random',
+});
+
 export const planMatchKits = (config: {
   player: ChampionLoadout;
   ai: { count: number; bots: readonly ChampionLoadout[] };
-}): MatchPlan => ({
-  player: planLoadout(config.player),
-  bots: Array.from({ length: config.ai.count }, (_, i) =>
-    planLoadout(config.ai.bots[i] ?? config.player)
-  ),
-});
+  mode?: MatchModeId;
+}): MatchPlan => {
+  const mode = matchModeFor(config.mode);
+  const plan = (loadout: ChampionLoadout): KitPlan =>
+    planLoadout(mode.allRandom ? randomised(loadout) : loadout);
+  return {
+    player: plan(config.player),
+    bots: Array.from({ length: config.ai.count }, (_, i) => plan(config.ai.bots[i] ?? config.player)),
+    mode: mode.id,
+  };
+};
 
 /**
  * The loadout the in-game editor should open on, reconstructed from a plan.

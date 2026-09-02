@@ -17,6 +17,7 @@ import {
   toMatchRules,
   type ChampionLoadout,
   type PregameConfig,
+  type MatchRulesConfig,
 } from '../../../src/game/config/PregameConfig';
 import { BOT_DIFFICULTIES, DEFAULT_DIFFICULTY } from '../../../src/game/ai/Difficulty';
 import TeamId from '../../../src/game/enums/TeamId';
@@ -61,7 +62,12 @@ describe('DEFAULT_PREGAME_CONFIG', () => {
     expect(DEFAULT_PREGAME_CONFIG.ai.autoMove).toBe(true);
     expect(DEFAULT_PREGAME_CONFIG.ai.autoAttack).toBe(true);
     expect(DEFAULT_PREGAME_CONFIG.ai.autoCast).toBe(true);
-    expect(DEFAULT_PREGAME_CONFIG.rules).toEqual({ cooldownReductionPercent: 0, manaFree: false });
+    expect(DEFAULT_PREGAME_CONFIG.rules).toEqual({
+      cooldownReductionPercent: 0,
+      manaFree: false,
+      recall: true,
+    });
+    expect(DEFAULT_PREGAME_CONFIG.mode).toBe('classic');
   });
 
   it('gives every AI bot slot the same random-champion default as the player', () => {
@@ -87,6 +93,7 @@ describe('DEFAULT_PREGAME_CONFIG', () => {
     expect(toMatchRules(DEFAULT_PREGAME_CONFIG.rules)).toEqual({
       cooldownMultiplier: 1,
       manaFree: false,
+      recall: true,
     });
   });
 });
@@ -253,7 +260,7 @@ describe('sanitizePregameConfig', () => {
           difficulty: 'hard' as const,
         })),
       },
-      rules: { cooldownReductionPercent: 40, manaFree: true },
+      rules: { cooldownReductionPercent: 40, manaFree: true, recall: false },
       world: { jungle: false, minions: true },
       cheats: {
         revealMap: true,
@@ -268,6 +275,7 @@ describe('sanitizePregameConfig', () => {
         playerInvulnerable: true,
         botInvulnerable: Array.from({ length: AI_COUNT_MAX }, (_, index) => index === 1),
       },
+      mode: 'urf',
       mapId: 'reference:proving-grounds',
     };
     expect(sanitizePregameConfig(custom)).toEqual(custom);
@@ -311,19 +319,19 @@ describe('sanitizePregameConfig', () => {
 
 describe('toMatchRules', () => {
   it('turns a percentage into a multiplier', () => {
-    expect(toMatchRules({ cooldownReductionPercent: 0, manaFree: false }).cooldownMultiplier).toBe(
+    expect(toMatchRules({ cooldownReductionPercent: 0, manaFree: false, recall: true }).cooldownMultiplier).toBe(
       1
     );
-    expect(toMatchRules({ cooldownReductionPercent: 50, manaFree: false }).cooldownMultiplier).toBe(
+    expect(toMatchRules({ cooldownReductionPercent: 50, manaFree: false, recall: true }).cooldownMultiplier).toBe(
       0.5
     );
     expect(
-      toMatchRules({ cooldownReductionPercent: 90, manaFree: false }).cooldownMultiplier
+      toMatchRules({ cooldownReductionPercent: 90, manaFree: false, recall: true }).cooldownMultiplier
     ).toBeCloseTo(0.1);
   });
 
   it('passes manaFree through unchanged', () => {
-    expect(toMatchRules({ cooldownReductionPercent: 0, manaFree: true }).manaFree).toBe(true);
+    expect(toMatchRules({ cooldownReductionPercent: 0, manaFree: true, recall: true }).manaFree).toBe(true);
   });
 });
 
@@ -366,7 +374,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
           difficulty: i === 0 ? ('easy' as const) : ('normal' as const),
         })),
       },
-      rules: { cooldownReductionPercent: 30, manaFree: true },
+      rules: { cooldownReductionPercent: 30, manaFree: true, recall: true },
       world: { jungle: true, minions: false },
       cheats: {
         revealMap: false,
@@ -381,6 +389,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
         playerInvulnerable: false,
         botInvulnerable: Array.from({ length: AI_COUNT_MAX }, (_, index) => index === 3),
       },
+      mode: 'urf',
       mapId: 'reference:proving-grounds',
     };
     savePregameConfig(custom);
@@ -434,7 +443,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
     const legacyV1Blob = {
       player: { championName: 'Zed', summonerD: 'Ghost', summonerF: 'Ignite' },
       ai: { count: 7, autoMove: true, autoAttack: false, autoCast: true },
-      rules: { cooldownReductionPercent: 20, manaFree: true },
+      rules: { cooldownReductionPercent: 20, manaFree: true, recall: true },
     };
     const storage = new MemoryStorage();
     storage.setItem('moba2d:pregameConfig:v1', JSON.stringify(legacyV1Blob));
@@ -613,7 +622,7 @@ describe('ai.botBehaviours[].difficulty', () => {
         autoCast: false,
         botBehaviours: [{ autoMove: true, autoAttack: false, autoCast: true }],
       },
-      rules: { cooldownReductionPercent: 40, manaFree: true },
+      rules: { cooldownReductionPercent: 40, manaFree: true, recall: false },
     });
 
     expect(result.ai.botBehaviours[0]).toEqual({
@@ -632,7 +641,7 @@ describe('ai.botBehaviours[].difficulty', () => {
       autoCast: false,
       difficulty: 'normal',
     });
-    expect(result.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true });
+    expect(result.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: false });
   });
 
   it('keeps a per-bot tier, and only that bot’s', () => {
@@ -866,5 +875,29 @@ describe('cheats', () => {
     expect(back.playerInvulnerable).toBe(true);
     expect(back.botInvulnerable[2]).toBe(true);
     expect(back.botInvulnerable[0]).toBe(false);
+  });
+});
+
+describe('mode and the recall rule', () => {
+  it('reads a stored rules blob from before the recall rule as recall on', () => {
+    const result = sanitizePregameConfig({ rules: { cooldownReductionPercent: 40, manaFree: true } });
+    expect(result.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: true });
+  });
+
+  it('keeps recall off when a blob says so', () => {
+    expect(sanitizePregameConfig({ rules: { recall: false } }).rules.recall).toBe(false);
+  });
+
+  it('keeps a known mode and falls back to classic for one nothing knows', () => {
+    expect(sanitizePregameConfig({ mode: 'brawl' }).mode).toBe('brawl');
+    expect(sanitizePregameConfig({ mode: 'ranked' }).mode).toBe('classic');
+    expect(sanitizePregameConfig({}).mode).toBe('classic');
+  });
+
+  it('derives the recall rule, treating an absent field as on', () => {
+    expect(toMatchRules({ cooldownReductionPercent: 0, manaFree: false, recall: false }).recall).toBe(false);
+    expect(
+      toMatchRules({ cooldownReductionPercent: 0, manaFree: false, recall: true } as unknown as MatchRulesConfig).recall
+    ).toBe(true);
   });
 });

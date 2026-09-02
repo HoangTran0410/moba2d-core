@@ -1705,8 +1705,12 @@ export class BotBrain {
     const recall = this.owner.recall;
     if (!recall) return;
 
+    // A match with recall switched off (`MatchRules.recall`) has no trip
+    // home for a bot either: the spell would refuse, and a RECOVER posture
+    // that kept pressing it would stand in lane doing nothing until it died.
     const wanted =
       posture === 'RECOVER' &&
+      (this.owner.game as { matchRules?: { recall?: boolean } }).matchRules?.recall !== false &&
       !this.atOwnFountain() &&
       this.homeFountain() !== null &&
       this.safeToRecall(view, nowMs);

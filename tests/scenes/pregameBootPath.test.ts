@@ -68,6 +68,10 @@ const ALLOWED_GAME_MODULES = [
   // residents to importing nothing from `src/game/` but each other. This file
   // is the outside view of that promise; that one is the inside view.
   '@/game/config/mapTuning',
+  // The mode table: pure data over the config's own types, read by the match
+  // tab for its chips and by `PregameConfigSource` to apply one. Same
+  // directory, same carve-out, same purity check as `mapTuning` above.
+  '@/game/config/matchModes',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

@@ -11,6 +11,7 @@ import { contentRegistry } from '@/content/registry';
 import { randomMatchSeed } from './matchSeed';
 import { freshRenderStress, nextStressState } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
+import { matchModeFor, mergeTuning, type MatchModeId } from './config/matchModes';
 import { clearActiveLanes, setActiveLanes } from './lanes';
 import AttackableUnit from './gameObject/attackableUnits/AttackableUnit';
 import Champion from './gameObject/attackableUnits/Champion';
@@ -56,6 +57,7 @@ import { drawDebugOverlay } from './debug/DebugOverlay';
 import { FpsMeter, drawFpsOverlay } from './debug/FpsOverlay';
 import EventManager from '@/managers/EventManager';
 import MatchAnnouncer from '@/game/combat/Announcer';
+import { DeathCamera, type SpectateCandidate } from './render/deathCamera';
 import { uuidv4 } from '@/utils';
 import SpellInputController from './spell/input/SpellInputController';
 import TargetResolver, {
@@ -159,6 +161,13 @@ export default class Game {
    */
   readonly mapTuning?: MapTuning;
   /**
+   * The mode this match booted under — `config/matchModes.ts`. What it
+   * decided is already folded into `mapTuning` and the kits; this is kept so
+   * the host can tell a joining client (`hello.mode`) and the director can
+   * report it back to the panel.
+   */
+  readonly matchMode: MatchModeId;
+  /**
    * What a sale pays back in this match — `EconomyTuning.sellRefund`.
    *
    * A field on `Game` because `Game` *is* the `ShopHost` every shop call is
@@ -221,6 +230,8 @@ export default class Game {
   eventManager!: EventManager;
   /** Who killed whom, as the kill feed tells it. See `combat/Announcer.ts`. */
   announcer!: MatchAnnouncer;
+  /** Where the camera goes while the player is dead. See `render/deathCamera.ts`. */
+  deathCamera!: DeathCamera<Champion>;
   terrainMap!: TerrainMap;
   navigation!: NavigationSystem;
   fogOfWar!: FogOfWar;
@@ -386,8 +397,23 @@ export default class Game {
   constructor(map: ActiveMap, plan?: MatchPlan) {
     this.mapSize = map.size;
     this.activeMapId = map.id;
-    this.mapTuning = map.tuning;
-    this.sellRefund = resolveEconomy(map.tuning).sellRefund;
+    // Read once, before anything that might construct a Champion or a Spell:
+    // `matchRules` has to be in place the moment the player's own kit is
+    // built further down, and the mode's tuning has to be merged before the
+    // first `resolveEconomy` below. Validated/defaulted by `loadPregameConfig`
+    // itself, so a corrupt or missing stored blob never reaches this
+    // constructor as anything other than a playable config.
+    const pregameConfig = loadPregameConfig();
+    const kits = plan ?? planMatchKits(pregameConfig);
+    // The plan's mode wins over storage: a net client's plan is the host's
+    // room, and its own stored mode is somebody else's evening.
+    const mode = matchModeFor(kits.mode ?? pregameConfig.mode);
+    this.matchMode = mode.id;
+    // The map's numbers with the mode's laid over them. Every reader resolves
+    // `game.mapTuning` at the moment it needs it, so this one merge is the
+    // whole of how a mode changes the economy, respawn or champion speed.
+    this.mapTuning = mergeTuning(map.tuning, mode.tuning);
+    this.sellRefund = resolveEconomy(this.mapTuning).sellRefund;
     this.minionMuster = minionMusterSlotsFrom(map.slots.minion, map.factions);
     this.neutralSlots = map.slots.neutral;
     // Before anything queues a wave or builds a blackboard: `MinionSpawner`,
@@ -397,13 +423,6 @@ export default class Game {
     // `lanes[]` at all — spec §7's laneless case — which empties both and
     // leaves PUSH nothing to fall through from ROAM/FIGHT for.
     setActiveLanes(map.lanes);
-    // Read once, before anything that might construct a Champion or a Spell:
-    // `matchRules` has to be in place the moment the player's own kit is
-    // built a few lines down. Validated/defaulted by `loadPregameConfig`
-    // itself, so a corrupt or missing stored blob never reaches this
-    // constructor as anything other than a playable config.
-    const pregameConfig = loadPregameConfig();
-    const kits = plan ?? planMatchKits(pregameConfig);
     this.matchRules = toMatchRules(pregameConfig.rules);
     this.touchUi = touchControlsPreference();
 
@@ -421,6 +440,13 @@ export default class Game {
     this.objectManager = new ObjectManager(this);
     this.eventManager = new EventManager();
     this.announcer = new MatchAnnouncer(this.eventManager, () => this.matchTimeMs);
+    this.deathCamera = new DeathCamera<Champion>({
+      isDead: () => this.player.isDead,
+      deathPoint: () => this.player.position,
+      allies: () => this.spectateCandidates(),
+      nowMs: () => this.matchTimeMs,
+      follow: target => this.followForDeathCamera(target),
+    });
     this.announcer.attach();
     this.terrainMap = new TerrainMap(this, map);
     // The map is static, so every unit's routing is derived from the wall layer
@@ -592,6 +618,7 @@ export default class Game {
     // Re-derives the same numbers line 114 already wrote, so this changes no
     // behaviour; it only tells the director what the match started with.
     this.director.seedRules(pregameConfig.rules);
+    this.director.seedMode(this.matchMode);
     for (const { unit, loadout } of loadoutsInPlay) this.director.seedLoadout(unit, loadout);
     // And the world the config asked for. `seed*` rather than the public
     // setters throughout: those persist, and a match *booting* has nothing to
@@ -736,6 +763,9 @@ export default class Game {
   }
 
   fixedUpdate() {
+    // Before the camera lerps, so the tick a target changes is the tick the
+    // journey there starts.
+    this.deathCamera.tick();
     this.camera.update();
     this.worldMouse = this.camera.screenToWorld(mouseX, mouseY);
     // before objectManager.update(), so a minion released this frame is added
@@ -1155,9 +1185,45 @@ export default class Game {
    * `spells[]`. Null for a unit that has no recall at all, which is how the
    * touch layer decides whether to draw the button.
    */
+  /**
+   * The player's living and dead teammates, for the death camera. One walk of
+   * the world, once per tick while dead and never while alive — `DeathCamera`
+   * only asks after the linger. A net client's allies are the host's
+   * replicated champions, which are `Champion` instances too.
+   */
+  private spectateCandidates(): SpectateCandidate<Champion>[] {
+    const out: SpectateCandidate<Champion>[] = [];
+    for (const object of this.objectManager.objects) {
+      if (!(object instanceof Champion) || object === this.player || object.toRemove) continue;
+      if (object.teamId !== this.player.teamId) continue;
+      out.push({
+        unit: object,
+        x: object.position.x,
+        y: object.position.y,
+        alive: !object.isDead,
+        lastCombatMs: object.lastCombatMs,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * The death camera's one hand on the camera. Respects the free camera: a
+   * `null` target is Space's "leave it where it is", and a player who asked
+   * for that is not overruled by dying. `null` back means the player is alive
+   * again — or nobody is left to watch — and the camera returns to them.
+   */
+  private followForDeathCamera(target: Champion | null): void {
+    if (this.camera.target === null) return;
+    this.camera.target = target ? target.position : this.player.position;
+  }
+
   private touchRecallView(): TouchSpellView | null {
     const spell = this.player?.recall;
-    return spell ? this.touchViewOf(spell, String.fromCharCode(HotKeys.B)) : null;
+    // No button in a match without recall — the same absence `buildRecall`
+    // gives the desktop HUD.
+    if (!spell || !this.matchRules.recall) return null;
+    return this.touchViewOf(spell, String.fromCharCode(HotKeys.B));
   }
 
   private touchViewOf(spell: Spell, label: string): TouchSpellView {
@@ -1423,6 +1489,10 @@ export default class Game {
   recall(): void {
     const spell = this.player?.recall;
     if (!spell) return;
+    // The brawl's rule. Checked here as well as in the spell so a net client
+    // — whose press goes to the host below, not to its own spell — does not
+    // send an order the host will only refuse.
+    if (!this.matchRules.recall) return;
 
     // A net client asks the host to go home; the channel it watches is the
     // host's, via snapshots.

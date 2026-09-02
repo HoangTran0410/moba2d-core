@@ -182,6 +182,7 @@ export class ClientSession implements NetGameHooks {
     game.matchTimeMs = hello.tm;
     game.matchRules.cooldownMultiplier = hello.rules.cooldownMultiplier;
     game.matchRules.manaFree = hello.rules.manaFree;
+    game.matchRules.recall = hello.rules.recall !== false;
 
     // The units both sides built from the same map data, matched by
     // construction order — the host names them the same way (`HostSession.

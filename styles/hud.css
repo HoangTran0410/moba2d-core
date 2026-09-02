@@ -2543,6 +2543,71 @@ button.practice-roster-item {
    the rings drawn under the champions. Four colour families say *what kind*
    of kill before the words do — crimson first blood, gold burst, fire run,
    violet shutdown — and a run is the one that must not look like a kill. */
+/* ================================ Spectate bar (SpectateBar.vue) ============
+   Bottom-centre, above the desktop ability bar and clear of the phone's
+   joystick and spell fan, which own the two bottom corners. Fixed like the
+   other overlays so it does not scroll with anything. `pointer-events` stays
+   on: the name is a button. */
+.spectate-bar {
+  position: fixed;
+  bottom: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 105;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #ffffff2e;
+  background: #0b0f14d9;
+  color: #d8dee6;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+/* The phone has no ability bar at the bottom centre. */
+.spectate-bar.touch {
+  bottom: 18px;
+}
+
+.spectate-revive strong {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.spectate-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #5fd3c766;
+  background: #10242699;
+  color: #9ee7dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.spectate-next:hover {
+  border-color: #5fd3c7;
+  color: #fff;
+}
+
+.spectate-next .fa-forward {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+.spectate-name {
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .kill-callouts {
   position: fixed;
   /* under the score strip */

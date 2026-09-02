@@ -34,6 +34,7 @@ import {
   type PregameConfig,
   type WorldConfig,
 } from '@/game/config/PregameConfig';
+import { applyMode, matchModeFor, type MatchModeId } from '@/game/config/matchModes';
 import type { MatchTeamId } from '@/game/config/MatchTeams';
 import {
   renderFpsPreference,
@@ -314,6 +315,15 @@ export default class PregameConfigSource implements MatchConfigSource {
 
   setWorld(world: Partial<WorldConfig>): void {
     this.config = { ...this.config, world: { ...this.config.world, ...world } };
+    this.persist();
+  }
+
+  getMode(): MatchModeId {
+    return this.config.mode;
+  }
+
+  async setMode(id: MatchModeId): Promise<void> {
+    this.config = sanitizePregameConfig(applyMode(this.config, matchModeFor(id)));
     this.persist();
   }
 

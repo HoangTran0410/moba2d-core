@@ -69,6 +69,7 @@ import type Buff from './gameObject/Buff';
 import Invulnerable from './gameObject/buffs/Invulnerable';
 import {
   AI_COUNT_MAX,
+  AI_COUNT_MIN,
   CDR_PERCENT_MAX,
   CDR_PERCENT_MIN,
   DEFAULT_CHAMPION_LOADOUT,
@@ -98,6 +99,7 @@ import type { GameObjectRuntimeContext } from './gameObject/GameObject';
 import type Monster from './gameObject/attackableUnits/Monster';
 import { createDebugFlags, type DebugFlags } from './debug/DebugOverlay';
 import { isMatchTeamId, teamForAddedBot, type MatchTeamId } from './config/MatchTeams';
+import { DEFAULT_MATCH_MODE_ID, matchModeFor, type MatchModeId } from './config/matchModes';
 
 /**
  * A bot's three "does it act on its own" switches, plus the tier it plays at.
@@ -187,7 +189,11 @@ export default class MatchDirector {
    * seed this by calling `setRules(config.rules)` — otherwise the panel would
    * open showing 0% over a match running at 40%.
    */
-  private _rules: MatchRulesConfig = { cooldownReductionPercent: CDR_PERCENT_MIN, manaFree: false };
+  private _rules: MatchRulesConfig = {
+    cooldownReductionPercent: CDR_PERCENT_MIN,
+    manaFree: false,
+    recall: true,
+  };
 
   /**
    * What the *next* match boots onto, the qualified id the panel's map picker
@@ -206,6 +212,15 @@ export default class MatchDirector {
    * `seedWorld`).
    */
   private _mapChoice: string = DEFAULT_MAP_ID;
+
+  /**
+   * The mode this match was booted under, or the one picked since. Seeded
+   * from `Game.matchMode` like `_rules` is from the config, and carried into
+   * `toPregameConfig` like `_mapChoice`: it has no live counterpart to derive
+   * from, because what the id decides at boot (the tuning overlay, the random
+   * roster) is already folded into the match by the time this exists.
+   */
+  private _mode: MatchModeId = DEFAULT_MATCH_MODE_ID;
 
   /**
    * Which `ChampionLoadout` each unit is currently carrying.
@@ -415,6 +430,7 @@ export default class MatchDirector {
       rules: this.getRules(),
       world: { jungle: this.jungleEnabled, minions: this.minionsEnabled },
       cheats: this.getCheats(stored),
+      mode: this._mode,
       // `this._mapChoice`, not `this.game.activeMapId` — the same split
       // `rules` above takes with `_rules` versus `game.matchRules`. There is
       // no live fact "which map do you want next time"; only "which map is
@@ -847,11 +863,65 @@ export default class MatchDirector {
     this._rules = {
       cooldownReductionPercent: clampPercent(rules.cooldownReductionPercent),
       manaFree: !!rules.manaFree,
+      recall: rules.recall !== false,
     };
 
     const derived = toMatchRules(this._rules);
     this.game.matchRules.cooldownMultiplier = derived.cooldownMultiplier;
     this.game.matchRules.manaFree = derived.manaFree;
+    this.game.matchRules.recall = derived.recall;
+  }
+
+  get mode(): MatchModeId {
+    return this._mode;
+  }
+
+  /** What the match booted as. A seed, like `seedRules`: nothing is saved. */
+  seedMode(id: MatchModeId): void {
+    this._mode = id;
+  }
+
+  /**
+   * Pick a mode in a running match: the same three things `applyMode` writes
+   * into a stored config, done to the live one. The rules take effect on the
+   * next cast, the jungle and minions on the next unpaused tick (through the
+   * setters' own machinery), and the roster is reshaped the way the roster
+   * tab would do it by hand — the last bots go, missing ones arrive with the
+   * loadout and side their slot has stored. Async for the arrivals, which
+   * fetch kits.
+   *
+   * What the id itself decides — the tuning overlay, the random roster — is
+   * for the next match, and the panel says so. Persisted once at the end, on
+   * top of whatever the setters persisted on the way: every one of them
+   * writes the full derived config, so the extra writes are the same bytes.
+   */
+  async setMode(id: MatchModeId): Promise<void> {
+    const mode = matchModeFor(id);
+    this.invalidatePendingReset();
+    this._mode = mode.id;
+    this.seedRules(mode.rules);
+    this.jungleEnabled = mode.world.jungle;
+    this.minionsEnabled = mode.world.minions;
+    if (mode.bots !== undefined) await this.reshapeBots(mode.bots);
+    this.persist();
+  }
+
+  /**
+   * Bring the roster to `count`. Removals are the tail of the roster, so the
+   * player's first bots — the ones most likely to have been customised — are
+   * the ones that stay; arrivals read their slot's stored loadout and side,
+   * so the mode does not decide who the fourth bot is or which team it joins.
+   * One at a time: `addBotLoaded` serialises through `pendingAdd` anyway.
+   */
+  private async reshapeBots(count: number): Promise<void> {
+    const target = Math.max(AI_COUNT_MIN, Math.min(AI_COUNT_MAX, count));
+    const bots = this.bots();
+    for (let i = bots.length - 1; i >= target; i--) this.removeBot(bots[i]);
+    if (bots.length >= target) return;
+    const stored = loadPregameConfig();
+    for (let i = bots.length; i < target; i++) {
+      await this.addBotLoaded(stored.ai.bots[i], stored.ai.botTeams[i]);
+    }
   }
 
   /**
@@ -954,6 +1024,7 @@ export default class MatchDirector {
     }
 
     this.seedRules(config.rules);
+    this._mode = config.mode;
     if (this._jungleEnabled !== config.world.jungle) {
       this._jungleEnabled = config.world.jungle;
       if (config.world.jungle) {

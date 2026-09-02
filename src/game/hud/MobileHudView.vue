@@ -25,10 +25,10 @@
  *     with a second timer on top of the icon that already fades when the
  *     buff ends.
  *   - the revive countdown: the same method's dead branch draws
- *     "Hồi Sinh Sau Ns..." at the corpse position, and the camera keeps
- *     following `player.position` (dead or alive) since there is no
- *     keyboard to reach the desktop's follow-toggle in touch mode. It stays
- *     on screen the whole time.
+ *     "Hồi Sinh Sau Ns..." at the corpse position. The camera leaves the
+ *     corpse for a living ally after a short linger (`render/deathCamera.ts`),
+ *     so the countdown that stays on screen is `SpectateBar.vue`'s — the
+ *     same pill that names the ally being watched and cycles to the next.
  *   - the avatar: every unit's on-map body *is* its avatar image
  *     (`AttackableUnit.drawAvatar()`); the strip's square portrait was a
  *     second copy of the same picture the player is already looking at,

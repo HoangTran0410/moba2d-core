@@ -1,0 +1,50 @@
+<script setup lang="ts">
+/**
+ * The dead player's pill: how long until respawn, and whose eyes they are
+ * borrowing meanwhile.
+ *
+ * The countdown used to live on the corpse (`AttackableUnit.drawAvatar`'s dead
+ * branch) and on the desktop portrait. The corpse leaves the screen once the
+ * death camera (`render/deathCamera.ts`) moves to an ally, and the phone has
+ * no portrait, so this is the one place both layouts can be sure to find it.
+ *
+ * One control: the ally's name is the button, and pressing it goes to the
+ * next living ally. Not a row of portraits — the roster can be nine and the
+ * pill is 40px tall on a phone — and not a separate arrow, because "the thing
+ * you are looking at" and "the thing you press to look elsewhere" being the
+ * same object is what makes it need no label.
+ */
+import { inject } from 'vue';
+import type { HudInteractions } from './hudInteractions';
+import { vTap } from './tapGuard';
+
+defineProps<{
+  reviveAfter: number;
+  /** The ally on screen, or null while the camera lingers on the corpse. */
+  spectating: string | null;
+  touch: boolean;
+}>();
+
+const hud = inject<HudInteractions>('hud')!;
+</script>
+
+<template>
+  <div class="spectate-bar" :class="{ touch }" id="spectate-bar">
+    <span class="spectate-revive">
+      Hồi sinh sau <strong id="spectate-revive-seconds">{{ reviveAfter }}</strong>s
+    </span>
+    <button
+      v-if="spectating"
+      type="button"
+      class="spectate-next"
+      id="spectate-next"
+      title="Xem đồng minh tiếp theo"
+      @click="hud.spectateNext()"
+      v-tap="() => hud.spectateNext()"
+    >
+      <i class="fas fa-eye" aria-hidden="true"></i>
+      <span class="spectate-name">{{ spectating }}</span>
+      <i class="fas fa-forward" aria-hidden="true"></i>
+    </button>
+  </div>
+</template>

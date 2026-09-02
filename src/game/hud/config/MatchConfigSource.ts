@@ -54,6 +54,7 @@ import type {
   MatchRulesConfig,
   WorldConfig,
 } from '@/game/config/PregameConfig';
+import type { MatchModeId } from '@/game/config/matchModes';
 import type { TouchModePreference } from '@/game/input/touchPreferences';
 import type { RenderFps } from '@/game/Game';
 import type { RenderQuality } from '@/game/managers/ObjectManager';
@@ -381,6 +382,18 @@ export interface MatchConfigSource {
 
   getWorld(): WorldConfig;
   setWorld(world: Partial<WorldConfig>): void;
+
+  // -------------------------------------------------------------------- mode
+  /** The mode last picked — `config/matchModes.ts`. A label once its knobs move; see `modeDrift`. */
+  getMode(): MatchModeId;
+  /**
+   * Pick a mode: its rules, world and bot count are written through the same
+   * paths the controls above use, so the tab re-reads them afterwards. Async
+   * because in a match the roster is reshaped, and a bot arriving fetches its
+   * kit. The mode's tuning overlay and random roster wait for the next match
+   * — the tab says so — which is the map picker's shape exactly.
+   */
+  setMode(id: MatchModeId): Promise<void>;
 
   // --------------------------------------------------------------------- map
   /**

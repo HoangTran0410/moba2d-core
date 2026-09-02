@@ -5,6 +5,7 @@ import { readInstalledPacks } from '@/content/installedPackStore';
 import { fetchPackManifest } from '@/content/packSource';
 import { installPackNow } from '@/content/runtimePacks';
 import type { KitPlan, MatchPlan } from '@/game/preset';
+import { isMatchModeId } from '@/game/config/matchModes';
 import type { ActiveMap } from '@/content/ContentPack';
 import type Game from '@/game/Game';
 import { setNetRole, type NetUrlRequest } from './netRole';
@@ -126,7 +127,10 @@ export const startNetClientMatch = async (request: NetUrlRequest): Promise<NetCl
 
   return {
     activeMap: activeMapOf(summary, geometry),
-    plan: { player: yourPlan, bots: [] },
+    // The host's mode rides on the plan so `Game` lays the same tuning over
+    // the map — see `MatchPlan.mode`. An id this build does not know (a newer
+    // host) falls back to the map's own numbers rather than refusing to join.
+    plan: { player: yourPlan, bots: [], mode: isMatchModeId(hello.mode) ? hello.mode : undefined },
     attach: game => new ClientSession(game, channel, hello),
   };
 };

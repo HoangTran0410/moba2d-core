@@ -232,7 +232,15 @@ export type NetMessage =
       t: 'hello';
       tm: number;
       mapId: string;
-      rules: { cooldownMultiplier: number; manaFree: boolean };
+      /** `recall` absent — a host from before the brawl existed — means on. */
+      rules: { cooldownMultiplier: number; manaFree: boolean; recall?: boolean };
+      /**
+       * The host's match mode id (`config/matchModes.ts`). The client lays
+       * the same tuning over the same map from it, so the numbers it shows —
+       * respawn on the scoreboard, gold in the shop — are the room it is in
+       * and not the one its own stored config describes. Absent means classic.
+       */
+      mode?: string;
       you: { id: string; team: string; plan: unknown };
       roster: NetEvent[];
       /**

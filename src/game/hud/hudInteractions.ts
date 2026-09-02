@@ -227,6 +227,12 @@ export interface HudInteractions {
    */
   recall(): void;
   /**
+   * The next living ally for the death camera — the spectate pill's press.
+   * A move in the match like `recall`, not a way into the panel: it does not
+   * pause. `Game.deathCamera.next()`, one line.
+   */
+  spectateNext(): void;
+  /**
    * The shop is open over the match.
    *
    * A separate layer from `showSpellsPicker`, and the two are mutually
@@ -700,6 +706,10 @@ export function createHudInteractions(game: Game): HudInteractions {
     /** See the interface: one line, on purpose. */
     recall(): void {
       game.recall();
+    },
+
+    spectateNext(): void {
+      game.deathCamera?.next();
     },
 
     mouseover(spellProxy: any, event: any): void {

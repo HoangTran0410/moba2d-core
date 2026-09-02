@@ -38,11 +38,12 @@
  * mounted, so it lives in local state and is pushed in through `setState`,
  * exposed below for the lifecycle wrapper to call.
  */
-import { markRaw, onUnmounted, provide, ref, shallowRef } from 'vue';
+import { markRaw, onUnmounted, provide, ref, shallowRef, watch } from 'vue';
 import type { HudInteractions } from './hudInteractions';
 import type { HudState } from './hudState';
 import { vTap } from './tapGuard';
 import DeathRecapPanel from './DeathRecapPanel.vue';
+import SpectateBar from './SpectateBar.vue';
 import KillFeed from './KillFeed.vue';
 import Scoreboard from './Scoreboard.vue';
 import ScoreStrip from './ScoreStrip.vue';
@@ -59,6 +60,21 @@ const props = defineProps<{ hud: HudInteractions }>();
 provide('hud', props.hud);
 
 const state = ref<HudState | null>(null);
+
+/**
+ * The world goes grey while the player is dead — `#game-scene.dead-view` in
+ * `styles/game-scene.css` filters the canvas, not the HUD, so the spectate
+ * pill and the recap stay in colour over a drained world. A class on the
+ * scene element rather than a style here because the canvas is p5's, mounted
+ * beside this app and not inside it. Cleared on unmount so a match left
+ * while dead does not grey the menu.
+ */
+const sceneElement = (): HTMLElement | null => document.getElementById('game-scene');
+watch(
+  () => state.value?.isDead === true,
+  dead => sceneElement()?.classList.toggle('dead-view', dead)
+);
+onUnmounted(() => sceneElement()?.classList.remove('dead-view'));
 
 /**
  * ## The config panel is mounted here, not in the two layout views
@@ -196,6 +212,15 @@ defineExpose({
     v-if="state && state.deathRecap"
     :recap="state.deathRecap"
     :is-dead="state.isDead"
+  />
+  <!-- The countdown and the ally being watched, while dead. Bottom-centre:
+       the recap owns the top, the callouts own the space under the strip, and
+       the corpse's own countdown is off screen once the camera has left it. -->
+  <SpectateBar
+    v-if="state && state.isDead && !hud.showSpellsPicker && !hud.showShop"
+    :revive-after="state.reviveAfter"
+    :spectating="state.spectating"
+    :touch="hud.touchUi"
   />
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />

@@ -1029,7 +1029,9 @@ export class HostSession implements NetGameHooks {
       rules: {
         cooldownMultiplier: this.game.matchRules.cooldownMultiplier,
         manaFree: this.game.matchRules.manaFree,
+        recall: this.game.matchRules.recall,
       },
+      mode: this.game.matchMode,
       you: { id, team, plan },
       roster,
       packs: installedManifestUrls(),

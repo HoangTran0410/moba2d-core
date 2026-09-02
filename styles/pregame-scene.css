@@ -321,6 +321,109 @@
   margin-bottom: 0.35rem;
 }
 
+/* ------------------------------------------------- Mode chips (MatchTab.vue)
+   Pills rather than `.map-option` cards: a mode is a word, a map is three
+   facts. Same unselected/selected language — a line round it, teal when lit —
+   so the two rows above the controls read as one family. */
+.mode-field {
+  margin-bottom: 0.8rem;
+  font-size: 0.85em;
+}
+
+.mode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mode-chip {
+  min-height: 32px;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  background: var(--hextech-panel);
+  border: 2px solid var(--hextech-line);
+  color: #bbb;
+  font: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mode-chip:hover:not(:disabled) {
+  border-color: var(--hextech-gold-dim);
+}
+
+.mode-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mode-chip.selected {
+  border-color: var(--hextech-teal);
+  background: #102426;
+  color: var(--hextech-text);
+}
+
+.mode-chip:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+.mode-blurb {
+  margin: 0.45rem 0 0;
+  color: var(--hextech-muted);
+  font-size: 0.92em;
+}
+
+/* "đã chỉnh": the label admitting its knobs moved. Gold and upright, the
+   pending-note colour, because it states a fact about the match rather than
+   an aside. */
+.mode-blurb em {
+  color: rgba(226, 190, 120, 0.9);
+  font-style: normal;
+}
+
+.mode-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.7rem;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: #bbb;
+  font-size: 0.85em;
+}
+
+.mode-lines li::before {
+  content: '· ';
+  color: var(--hextech-muted);
+}
+
+/* The restart inside the pending note — a link-shaped button, not a third
+   block button: it is one clause of a sentence. Arms to gold on the first
+   press like `.practice-exit`. */
+/* The sentence around the restart button, so the button and its clause wrap
+   as one line of text rather than the button dropping under the icon. */
+.mode-pending-text {
+  display: inline;
+}
+
+.mode-restart {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid rgba(226, 190, 120, 0.7);
+  color: rgba(226, 190, 120, 0.95);
+  font: inherit;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.mode-restart.confirming {
+  background: rgba(226, 190, 120, 0.9);
+  color: #1a1408;
+}
+
 /* `auto-fill` with a floor rather than a fixed column count: this panel is
    390px wide on a phone and 720px on a desktop, and the list is however many
    maps the installed packs happen to bring. */

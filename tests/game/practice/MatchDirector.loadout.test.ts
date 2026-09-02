@@ -287,7 +287,7 @@ describe('MatchDirector.matchRules', () => {
     const { context: ctx } = context();
     const director = new MatchDirector(ctx);
 
-    director.setRules({ cooldownReductionPercent: 40, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 40, manaFree: true, recall: true });
 
     expect(director.matchRules).toBe(ctx.matchRules);
     expect(director.matchRules.cooldownMultiplier).toBeCloseTo(0.6);

@@ -128,11 +128,11 @@ describe('a host (or a match with no network at all)', () => {
   it('may edit the match settings', () => {
     expect(source.canEditMatchSettings).toBe(true);
 
-    source.setRules({ cooldownReductionPercent: 40, manaFree: true }, true);
+    source.setRules({ cooldownReductionPercent: 40, manaFree: true, recall: true }, true);
     source.setWorld({ jungle: false, minions: false });
     source.setMap(OTHER_MAP_ID);
 
-    expect(source.getRules()).toEqual({ cooldownReductionPercent: 40, manaFree: true });
+    expect(source.getRules()).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: true });
     expect(source.getWorld()).toEqual({ jungle: false, minions: false });
     expect(director.mapChoice).toBe(OTHER_MAP_ID);
   });
@@ -166,10 +166,10 @@ describe('a LAN client', () => {
   it('cannot change the rules — CDR or URF', () => {
     const before = source.getRules();
 
-    source.setRules({ cooldownReductionPercent: 90, manaFree: true }, true);
+    source.setRules({ cooldownReductionPercent: 90, manaFree: true, recall: true }, true);
     // The mid-drag path too: `persist: false` still applies the value to the
     // running match, which is exactly what must not happen here.
-    source.setRules({ cooldownReductionPercent: 90, manaFree: true }, false);
+    source.setRules({ cooldownReductionPercent: 90, manaFree: true, recall: true }, false);
 
     expect(source.getRules()).toEqual(before);
   });
@@ -231,14 +231,23 @@ describe('a LAN client', () => {
     expect(source.roster().some(row => row.id === bot.id)).toBe(true);
   });
 
+  it('cannot pick a mode — that is the host’s room', async () => {
+    setNetRole('client', { playerTeam: MatchTeam.BLUE });
+
+    await source.setMode('urf');
+
+    expect(source.getMode()).toBe('classic');
+    expect(source.getRules().cooldownReductionPercent).toBe(0);
+  });
+
   it('cannot reset the match to defaults — the one press that undoes every other refusal', async () => {
     // Seeded by a host-side path, so there is something a reset would move.
-    director.setRules({ cooldownReductionPercent: 30, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 30, manaFree: true, recall: true });
     setNetRole('client', { playerTeam: MatchTeam.BLUE });
 
     await source.resetToDefaults();
 
-    expect(source.getRules()).toEqual({ cooldownReductionPercent: 30, manaFree: true });
+    expect(source.getRules()).toEqual({ cooldownReductionPercent: 30, manaFree: true, recall: true });
   });
 
   // ------------------------------------------------------------ still allowed

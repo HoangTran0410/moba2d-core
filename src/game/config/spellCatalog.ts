@@ -85,7 +85,7 @@ export type SpellCatalogId = string;
 export const BASIC_ATTACK_ID = 'BasicAttack';
 
 /** No cooldown reduction, no URF — what a spell shows outside any pregame context. */
-const NO_MATCH_RULES: MatchRules = { cooldownMultiplier: 1, manaFree: false };
+const NO_MATCH_RULES: MatchRules = { cooldownMultiplier: 1, manaFree: false, recall: true };
 
 export interface SpellDisplay {
   /**

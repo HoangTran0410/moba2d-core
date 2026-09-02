@@ -143,7 +143,7 @@ describe('MatchDirector rules', () => {
     const { context: ctx } = context();
     const director = new MatchDirector(ctx);
 
-    director.setRules({ cooldownReductionPercent: 40, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 40, manaFree: true, recall: true });
 
     expect(ctx.matchRules.cooldownMultiplier).toBeCloseTo(0.6);
     expect(ctx.matchRules.manaFree).toBe(true);
@@ -153,9 +153,9 @@ describe('MatchDirector rules', () => {
     const { context: ctx } = context();
     const director = new MatchDirector(ctx);
 
-    director.setRules({ cooldownReductionPercent: 25, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 25, manaFree: true, recall: true });
 
-    expect(director.getRules()).toEqual({ cooldownReductionPercent: 25, manaFree: true });
+    expect(director.getRules()).toEqual({ cooldownReductionPercent: 25, manaFree: true, recall: true });
   });
 
   it('starts from the no-rules default, which reproduces an untouched match', () => {
@@ -165,6 +165,7 @@ describe('MatchDirector rules', () => {
     expect(director.getRules()).toEqual({
       cooldownReductionPercent: CDR_PERCENT_MIN,
       manaFree: false,
+      recall: true,
     });
   });
 
@@ -173,7 +174,7 @@ describe('MatchDirector rules', () => {
     const rules = ctx.matchRules;
     const director = new MatchDirector(ctx);
 
-    director.setRules({ cooldownReductionPercent: 10, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 10, manaFree: true, recall: true });
 
     expect(ctx.matchRules).toBe(rules);
     // The reference surviving is only half of it: every spell context Game
@@ -186,11 +187,11 @@ describe('MatchDirector rules', () => {
     const { context: ctx } = context();
     const director = new MatchDirector(ctx);
 
-    director.setRules({ cooldownReductionPercent: 999, manaFree: false });
+    director.setRules({ cooldownReductionPercent: 999, manaFree: false, recall: true });
     expect(director.getRules().cooldownReductionPercent).toBe(CDR_PERCENT_MAX);
     expect(ctx.matchRules.cooldownMultiplier).toBeCloseTo(0.1);
 
-    director.setRules({ cooldownReductionPercent: -50, manaFree: false });
+    director.setRules({ cooldownReductionPercent: -50, manaFree: false, recall: true });
     expect(director.getRules().cooldownReductionPercent).toBe(CDR_PERCENT_MIN);
     expect(ctx.matchRules.cooldownMultiplier).toBe(1);
   });
@@ -211,7 +212,7 @@ describe('MatchDirector rules', () => {
    */
   it('an unseeded director does not know what the match was booted with', () => {
     const { context: ctx } = context();
-    ctx.matchRules = toMatchRules({ cooldownReductionPercent: 40, manaFree: true });
+    ctx.matchRules = toMatchRules({ cooldownReductionPercent: 40, manaFree: true, recall: true });
 
     const director = new MatchDirector(ctx);
 
@@ -219,6 +220,7 @@ describe('MatchDirector rules', () => {
     expect(director.getRules()).toEqual({
       cooldownReductionPercent: CDR_PERCENT_MIN,
       manaFree: false,
+      recall: true,
     });
   });
 
@@ -249,14 +251,14 @@ describe('MatchDirector rules', () => {
   it('a seeded director opens on the rules the match is actually running', () => {
     const { context: ctx } = context();
     const config = sanitizePregameConfig({
-      rules: { cooldownReductionPercent: 40, manaFree: true },
+      rules: { cooldownReductionPercent: 40, manaFree: true, recall: true },
     });
     ctx.matchRules = toMatchRules(config.rules);
 
     const director = new MatchDirector(ctx);
     director.setRules(config.rules);
 
-    expect(director.getRules()).toEqual({ cooldownReductionPercent: 40, manaFree: true });
+    expect(director.getRules()).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: true });
     // The panel's percentages and the numbers the match is actually casting at
     // have to be the same statement in two units, or the panel is lying about
     // a match it can also retune.
@@ -273,8 +275,9 @@ describe('MatchDirector rules', () => {
     expect(director.getRules()).toEqual({
       cooldownReductionPercent: CDR_PERCENT_MIN,
       manaFree: false,
+      recall: true,
     });
-    expect(ctx.matchRules).toEqual({ cooldownMultiplier: 1, manaFree: false });
+    expect(ctx.matchRules).toEqual({ cooldownMultiplier: 1, manaFree: false, recall: true });
   });
 
   it('a spell built before the change reports the new cooldown and cost', () => {
@@ -285,7 +288,7 @@ describe('MatchDirector rules', () => {
     expect(spell.effectiveManaCost).toBe(100);
 
     const director = new MatchDirector(ctx);
-    director.setRules({ cooldownReductionPercent: 50, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 50, manaFree: true, recall: true });
 
     expect(spell.effectiveCoolDownMs).toBe(500);
     expect(spell.effectiveManaCost).toBe(0);

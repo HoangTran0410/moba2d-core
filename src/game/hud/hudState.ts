@@ -307,6 +307,11 @@ export interface HudState {
   avatar: string;
   isDead: boolean;
   reviveAfter: number;
+  /**
+   * The ally the camera is on while dead — `Game.deathCamera.watching`'s
+   * name — or null on the corpse and while alive. The spectate pill's label.
+   */
+  spectating: string | null;
   stats: StatsDisplay;
   spells: SpellDisplay[];
   buffs: BuffDisplay[];
@@ -618,6 +623,9 @@ function buildBuffs(player: any): BuffDisplay[] {
 function buildRecall(player: any): RecallDisplay | null {
   const recall = player.recall;
   if (!recall) return null;
+  // A match without recall (`MatchRules.recall`) has no button for it either:
+  // a greyed-out B that never works reads as broken, an absent one as a rule.
+  if (player.game?.matchRules?.recall === false) return null;
 
   const durationMs = recall.castSpec?.channel?.durationMs ?? 0;
   const progress = Math.min(1, Math.max(0, recall.channelProgress ?? 0));
@@ -878,6 +886,7 @@ export function computeHudState(game: Game | undefined | null): HudState | null 
     avatar: player.avatar?.path || '',
     isDead: player.isDead,
     reviveAfter: ~~((player.deathData?.reviveAfter ?? 0) / 1000),
+    spectating: player.isDead ? ((game as any)?.deathCamera?.watching?.name ?? null) : null,
     stats: buildStats(player),
     spells: buildSpells(player),
     buffs: buildBuffs(player),

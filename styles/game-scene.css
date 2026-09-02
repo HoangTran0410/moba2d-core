@@ -6,3 +6,16 @@
     touch-action: none;
 }
 
+/* The world drained of colour while the player is dead — `InGameHUD.vue`
+   toggles the class off `HudState.isDead`. On the canvas only: the HUD over it
+   keeps its colour, which is what makes the spectate pill read as "you are
+   watching" rather than "the screen is broken". The transition is the cut
+   from dying to watching; the same easing back is the respawn. */
+#game-scene.dead-view canvas {
+    filter: grayscale(0.8) brightness(0.85);
+}
+
+#game-scene canvas {
+    transition: filter 600ms ease;
+}
+

@@ -103,7 +103,7 @@ describe('MatchDirector persistence', () => {
       // "set") map choice must ride along rather than reverting to the
       // module default `toPregameConfig()` would fall back to if
       // `_mapChoice` had never been told what the match actually booted on.
-      director.setRules({ cooldownReductionPercent: 20, manaFree: false });
+      director.setRules({ cooldownReductionPercent: 20, manaFree: false, recall: true });
 
       expect(loadPregameConfig().mapId).toBe('reference:proving-grounds');
     });
@@ -118,7 +118,7 @@ describe('MatchDirector persistence', () => {
 
     const bot = director.addBot(loadoutNamed('Ahri'))!;
     director.setBotBehaviour(bot, { autoMove: true });
-    director.setRules({ cooldownReductionPercent: 40, manaFree: true });
+    director.setRules({ cooldownReductionPercent: 40, manaFree: true, recall: true });
     director.jungleEnabled = false;
     director.minionsEnabled = false;
 
@@ -133,7 +133,7 @@ describe('MatchDirector persistence', () => {
       autoCast: true,
       difficulty: 'normal',
     });
-    expect(stored.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true });
+    expect(stored.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: true });
     expect(stored.world).toEqual({ jungle: false, minions: false });
   });
 
@@ -198,7 +198,7 @@ describe('MatchDirector persistence', () => {
 
   it('does not write storage when a team switch changes nothing', () => {
     const { director, ctx } = bench();
-    director.setRules({ cooldownReductionPercent: 20, manaFree: false });
+    director.setRules({ cooldownReductionPercent: 20, manaFree: false, recall: true });
     const before = storage.getItem(STORAGE_KEY);
 
     // The player is already Blue; asking for Blue again must be a no-op.
@@ -273,7 +273,7 @@ describe('MatchDirector persistence', () => {
   describe('cheats and debug flags persist', () => {
     it('writes the config when a cheat is switched on, with nothing else moving', () => {
       const { director, ctx } = bench();
-      director.setRules({ cooldownReductionPercent: 20, manaFree: false });
+      director.setRules({ cooldownReductionPercent: 20, manaFree: false, recall: true });
       const before = JSON.parse(storage.getItem(STORAGE_KEY)!) as Record<string, unknown>;
 
       director.setInvulnerable(ctx.player, true);
@@ -313,16 +313,17 @@ describe('MatchDirector persistence', () => {
       expect(loadPregameConfig().cheats.playerInvulnerable).toBe(false);
     });
 
-    it('writes the six sections and no more', () => {
+    it('writes the seven sections and no more', () => {
       const { director, ctx } = bench();
       director.setInvulnerable(ctx.player, true);
-      director.setRules({ cooldownReductionPercent: 10, manaFree: false });
+      director.setRules({ cooldownReductionPercent: 10, manaFree: false, recall: true });
 
       const raw = storedRaw()!;
       expect(Object.keys(raw).sort()).toEqual([
         'ai',
         'cheats',
         'mapId',
+        'mode',
         'player',
         'playerTeam',
         'rules',
@@ -338,7 +339,7 @@ describe('MatchDirector persistence', () => {
 
     it('still stores nothing for refill, clearCooldowns or stacks', () => {
       const { director, ctx } = bench();
-      director.setRules({ cooldownReductionPercent: 20, manaFree: false });
+      director.setRules({ cooldownReductionPercent: 20, manaFree: false, recall: true });
       const before = storage.getItem(STORAGE_KEY);
 
       director.refill(ctx.player);
@@ -363,7 +364,7 @@ describe('MatchDirector persistence', () => {
       });
       const { director } = bench();
 
-      director.setRules({ cooldownReductionPercent: 50, manaFree: false });
+      director.setRules({ cooldownReductionPercent: 50, manaFree: false, recall: true });
 
       const stored = loadPregameConfig();
       expect(stored.ai.autoMove).toBe(true);
@@ -449,7 +450,7 @@ describe('MatchDirector persistence', () => {
       const bot = director.addBot(loadoutNamed('Ahri'))!;
       director.setBotBehaviour(bot, { autoMove: true });
       director.applyLoadout(ctx.player, loadoutNamed('Zed'));
-      director.setRules({ cooldownReductionPercent: 90, manaFree: true });
+      director.setRules({ cooldownReductionPercent: 90, manaFree: true, recall: true });
       director.jungleEnabled = false;
       director.minionsEnabled = false;
 
@@ -491,7 +492,7 @@ describe('MatchDirector persistence', () => {
   it('survives localStorage being unavailable rather than breaking the match', () => {
     vi.unstubAllGlobals();
     const { director } = bench();
-    expect(() => director.setRules({ cooldownReductionPercent: 30, manaFree: true })).not.toThrow();
+    expect(() => director.setRules({ cooldownReductionPercent: 30, manaFree: true, recall: true })).not.toThrow();
     expect(director.getRules().cooldownReductionPercent).toBe(30);
   });
 });
