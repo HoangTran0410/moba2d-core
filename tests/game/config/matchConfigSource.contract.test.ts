@@ -511,7 +511,7 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
       // test is actually about is that ids come back *qualified*, which is
       // batch 2's last bug (a picker that stored the bare local id and then
       // rerolled to something random at match start).
-      expect(ids).toContain('reference:proving-grounds');
+      expect(ids).toContain('reference:aram');
       if (packIsInstalled('riot')) expect(ids).toContain('riot:summoners-rift');
       expect(ids.length).toBe(packIsInstalled('riot') ? 2 : 1);
       for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*:.+$/);
@@ -531,7 +531,7 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
      * not in a match would be the exact divergence this file exists to stop.
      */
     it('loads a map’s geometry, on both sources', async () => {
-      const geometry = await source.loadMapGeometry('reference:proving-grounds');
+      const geometry = await source.loadMapGeometry('reference:aram');
 
       expect(geometry, 'the bundled map resolved to nothing').toBeTruthy();
       expect(geometry!.terrain.wall.length).toBeGreaterThan(0);

@@ -103,7 +103,7 @@ const { waitForHostToStart, takeHeldRoom, releaseHeldRoom } =
 const HELLO = JSON.stringify({
   t: 'hello',
   tm: 0,
-  mapId: 'reference:proving-grounds',
+  mapId: 'reference:aram',
   rules: { cooldownMultiplier: 1, manaFree: false },
   you: { id: 'c1', team: 'blue', plan: { championName: 'X', spellIds: [] } },
   roster: [],
@@ -296,7 +296,7 @@ describe('waiting in the lobby for the host to start', () => {
     const held = takeHeldRoom(request());
     expect(held).not.toBeNull();
     expect(held!.channel, 'the match got a different channel').toBe(nextChannel);
-    expect(held!.hello.mapId).toBe('reference:proving-grounds');
+    expect(held!.hello.mapId).toBe('reference:aram');
     expect(held!.channel.closed).toBe(false);
     // Exactly one dial: the whole point is that `startNetClientMatch` does not
     // open a second connection the host has no second hello for.

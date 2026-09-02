@@ -47,7 +47,27 @@ const EXEMPT: Record<string, string> = {
   // (`mapRules.js`), not a body that got stuck.
   Turret: 'anchored map furniture — nothing can move it',
   Fountain: 'anchored map furniture — nothing can move it',
+  HealthRelic: 'anchored map furniture — nothing can move it',
+  // Not furniture and not a body: a burst that lands on the pad's own point
+  // and removes itself under a second. There is nothing to strand.
+  HealthRelicBeam: 'a burst on a fixed point, gone within a second',
 };
+
+/**
+ * Bases that are not bodies, however deep the chain.
+ *
+ * The two directories scanned hold more than bodies now — a turret's passives
+ * are `Buff`s and every unit's swing is a `SpellObject` — and neither has a
+ * `position` a wall could strand. Named as *bases* rather than as individual
+ * classes on purpose: `EXEMPT` is a list of claims about specific bodies, and
+ * filling it with "this is a buff" thirteen times would bury the three entries
+ * that are actually a decision.
+ *
+ * A body is still anything reaching `GameObject` by another route, so
+ * `class X extends AttackableUnit` and `class X extends GameObject` both still
+ * fail here until they are swept or written into `EXEMPT` with a reason.
+ */
+const NOT_A_BODY: readonly string[] = ['Buff', 'SpellObject', 'MissileSpellObject', 'BasicAttackBolt'];
 
 interface Body {
   file: string;
@@ -70,12 +90,33 @@ const bodies = (): Body[] => {
   for (const dir of BODY_DIRS) {
     for (const file of sourceFiles(resolve(ROOT, dir))) {
       const source = readFileSync(file, 'utf8');
-      for (const match of source.matchAll(/^\s*(?:export\s+default\s+)?class\s+(\w+)\s+extends\s+(\w+)/gm)) {
+      // `export class X extends Y` counted too. It did not, for as long as
+      // every body in these directories happened to be a default export — so
+      // the two halves of `HealthRelic.ts` walked straight past this gate on
+      // the day they arrived, which is exactly the silence this file exists to
+      // break.
+      for (const match of source.matchAll(
+        /^\s*(?:export\s+(?:default\s+)?)?class\s+(\w+)\s+extends\s+(\w+)/gm
+      )) {
         found.push({ file: relative(ROOT, file), name: match[1], parent: match[2] });
       }
     }
   }
-  return found;
+  return found.filter(body => !reaches(body.name, found, NOT_A_BODY));
+};
+
+/** Walks `extends` upward looking for any of `roots`. */
+const reaches = (
+  name: string,
+  all: Body[],
+  roots: readonly string[],
+  seen = new Set<string>()
+): boolean => {
+  if (roots.includes(name)) return true;
+  if (seen.has(name)) return false;
+  seen.add(name);
+  const body = all.find(entry => entry.name === name);
+  return body ? reaches(body.parent, all, roots, seen) : false;
 };
 
 /** Walks `extends` upward until it reaches a swept root, or runs out. */

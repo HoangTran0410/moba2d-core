@@ -1280,18 +1280,23 @@ export interface ContentPackCode {
   /** Keyed by *local* monster id — the same keys as `ContentPackData.monsters`. */
   monsterAbilities?: Record<string, MonsterAbility[]>;
   /**
-   * What this pack's turrets are built carrying — the source game's named
-   * passives (an armour-piercing ramp, a damage floor while the lane is empty,
-   * true sight over the lane) as real buffs rather than branches inside
-   * `Turret`.
+   * What this pack's turrets are built carrying, **in place of core's own**.
+   *
+   * Core ships three (`gameObject/structures/turretPassives.ts`): an
+   * armour-piercing ramp, a damage floor while the lane is empty, and true
+   * sight over the lane — real buffs rather than branches inside `Turret`.
+   * Declaring this field replaces that list wholesale; declaring nothing gets
+   * it. Replacing rather than adding, because a pack with a different idea of
+   * a tower wants *its* tower, and two half-towers stacked is not a third
+   * opinion. `Game.spawnStructures` is where the two meet.
    *
    * Not keyed: turrets have no ids and every one on a map is the same kit, so
    * this is a plain list where `monsterAbilities` is a record.
    *
-   * What deliberately stays in core is the half that is a *rule* rather than a
-   * passive — which body a turret shoots first, and how far it will answer for
-   * an ally. A pack that declares nothing gets a plain tower, which is what
-   * every pack got before this field existed.
+   * What is not a passive at all, and so is not here: which body a turret
+   * shoots first, and how far it will answer for an ally. Those are rules about
+   * how the engine picks a target, and a pack that could redefine them would be
+   * changing what "a turret" means for everybody who plays against it.
    */
   turretPassives?: TurretPassive[];
 
@@ -1316,9 +1321,16 @@ export interface ContentPackCode {
    * `kind` is `'object'` is never a camp; one that says nothing is a camp
    * first and falls back to here. See `preset.ts`'s `neutralSlotFill`.
    *
+   * **A pack registered here always wins.** Core answers a short list of
+   * roles itself now (`gameObject/structures/slotObjects.ts` — the relic, and
+   * that is deliberately almost all of it), and this is consulted first, so a
+   * pack that ships its own relic replaces core's. Core's table is a floor
+   * under a map that names a furniture role, never a competitor.
+   *
    * Silently ignored by a core too old to know the field, like every other
-   * optional half of this interface — the slot simply stays empty. A pack
-   * that ships one states the floor in its manifest's `coreRange`.
+   * optional half of this interface — the slot falls back to core's own answer
+   * for that role, or stays empty. A pack that ships one states the floor in
+   * its manifest's `coreRange`.
    */
   slotObjects?: Record<string, SlotObjectFactory>;
 }

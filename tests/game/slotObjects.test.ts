@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { contentRegistry, resetContentRegistryForTests } from '../../src/content/registry';
 import { neutralSlotFill } from '../../src/game/preset';
+import { coreSlotObjectFor } from '../../src/game/gameObject/structures/slotObjects';
 import type { ContentPack, NeutralSlot } from '../../src/content/ContentPack';
 
 /**
@@ -14,8 +15,15 @@ import type { ContentPack, NeutralSlot } from '../../src/content/ContentPack';
  * altar, a shrine, a capture point, a decoration. There was no field for it.
  *
  * `ContentPackCode.slotObjects` is that field, and this is the whole of what
- * core decides about it — what stands on a slot. The object itself is entirely
- * the pack's, which is the point: core learns no relic.
+ * core decides about it — what stands on a slot.
+ *
+ * The object was, at first, *entirely* the pack's: core learned no relic. It
+ * has learned exactly one since (`gameObject/structures/slotObjects.ts`), and
+ * the reason is the map editor: a role is furniture when a map author drawing
+ * the point in core's own editor would be surprised to find nothing on it, and
+ * "nothing unless you also installed a particular pack" is that surprise. The
+ * seam did not move — a pack registering the same role still wins, which the
+ * cases below are what prove.
  */
 
 const slot = (role: string): NeutralSlot => ({ role, x: 1_000, y: 1_000, r: 120 });
@@ -55,7 +63,25 @@ describe('what fills a neutral slot', () => {
     expect(neutralSlotFill(slot('nobody-ships-this'))).toBeNull();
   });
 
-  it('is the pack’s own object for a role it claims', () => {
+  /**
+   * Core's own short list, with nothing installed at all. `relic` is on it;
+   * the point of asserting it here rather than in the relic's own tests is the
+   * *lookup*, not the object — a map may name the role and get an answer with
+   * no pack in the world.
+   */
+  it('is core’s own object for a furniture role no pack claims', () => {
+    const fill = neutralSlotFill(slot('relic'));
+
+    expect(fill?.kind).toBe('object');
+    expect(coreSlotObjectFor('relic'), 'the relic left core’s table').toBeTypeOf('function');
+  });
+
+  it('leaves a role off core’s short list to the packs', () => {
+    expect(coreSlotObjectFor('shrine')).toBeUndefined();
+    expect(coreSlotObjectFor('wolves')).toBeUndefined();
+  });
+
+  it('is the pack’s own object for a role it claims, over core’s', () => {
     contentRegistry().install(
       pack('relics', { slotObjects: { relic: () => marker as never } })
     );
@@ -64,6 +90,9 @@ describe('what fills a neutral slot', () => {
     expect(fill?.kind).toBe('object');
     // Built lazily, by the caller: `Game.spawnJungle` hands it the slot and
     // the running game, so the object can stand exactly where the map put it.
+    //
+    // `relic` is also the one role core answers itself, so this is the
+    // override in one assertion: the pack's marker, not core's relic.
     expect(fill?.kind === 'object' && fill.build(slot('relic'), {} as never)).toBe(marker);
   });
 

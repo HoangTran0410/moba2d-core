@@ -12,6 +12,7 @@ import type {
 } from '@/content/ContentPack';
 import TeamId from './enums/TeamId';
 import type { MonsterPresetData } from './gameObject/attackableUnits/Monster';
+import { coreSlotObjectFor } from './gameObject/structures/slotObjects';
 import type { FountainPresetData } from './gameObject/structures/Fountain';
 import type { TurretPresetData } from './gameObject/structures/Turret';
 import {
@@ -774,6 +775,12 @@ export const monsterFillingSlot = (slot: NeutralSlot): QualifiedMonster | null =
  * no camp answers still gets its object, so a forgotten `kind` costs a slot
  * drawn wrong in the editor and never a relic that fails to appear.
  *
+ * **"An object" is a pack's first and core's second.** Core answers a short
+ * list of furniture roles on its own (`structures/slotObjects.ts`), so a map
+ * drawn in core's own editor can name `role: 'relic'` and get one without
+ * knowing which packs the player has installed. A pack that registers the same
+ * role replaces core's answer; it never has to out-argue it.
+ *
  * Stated here rather than inside `Game.spawnJungle`'s loop because that loop
  * cannot be tested: nothing in this codebase constructs a real `Game` (see
  * `tests/game/fixtures.ts`), which is exactly why `fountainsFromSlots` and
@@ -785,7 +792,12 @@ export type NeutralSlotFill =
   | null;
 
 export const neutralSlotFill = (slot: NeutralSlot): NeutralSlotFill => {
-  const build = contentRegistry().slotObjectFor(slot.role);
+  // A pack first, core's own table second. The order is the whole of the rule:
+  // `slotObjects` is still how a pack claims a role core has never heard of,
+  // and a pack that ships its own relic replaces core's rather than fighting
+  // it. See `gameObject/structures/slotObjects.ts` for what core answers and
+  // why the list is short.
+  const build = contentRegistry().slotObjectFor(slot.role) ?? coreSlotObjectFor(slot.role);
   // The map's own word, and the only way to say "never a camp here" — which is
   // what a point drawn for a relic needs, and what the editor draws it as.
   if (slot.kind === 'object') return build ? { kind: 'object', build } : null;

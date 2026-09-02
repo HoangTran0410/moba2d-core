@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeTerrain, mergeTerrains } from '@/mapEditor/state';
 import { installEditorVendorGlobals } from './editorVendor';
-import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeometry';
+import { aramGeometry } from '../../packs/reference/aramGeometry';
 
 /**
  * `mergeTerrains` — the half of the editor's "gộp polygon" command that has no
@@ -124,13 +124,13 @@ describe('mergeTerrains', () => {
   });
 
   it('never returns more shapes than it was given', () => {
-    // Outer rings nest. Proving Grounds' boundary band and the corridor across
+    // Outer rings nest. The reference map's boundary band and the walls across
     // it union into a ring *with a hole* whose outline covers nearly the whole
     // map — so "the first outer ring containing this piece" claimed all six
     // jungle blocks too. Those got merged into new shapes *and* handed back
     // untouched as part of the holed group: twelve pieces in, eighteen out.
     // A merge that grows the map is never right, whatever else it got right.
-    const walls = provingGroundsGeometry.terrain.wall.map(poly => {
+    const walls = aramGeometry.terrain.wall.map(poly => {
       const cx = Math.round(poly.reduce((sum, p) => sum + p.x, 0) / poly.length);
       const cy = Math.round(poly.reduce((sum, p) => sum + p.y, 0) / poly.length);
       return editor.make(

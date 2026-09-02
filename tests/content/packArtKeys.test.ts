@@ -20,7 +20,7 @@ import type { ContentPackData } from '../../src/content/ContentPack';
  * `assets/images/reference/` held Vera's portrait and her four spell icons and
  * nothing else. Nobody had noticed because a default match boots Summoner's
  * Rift, which has no warden; with the riot pack moved out of the tree the
- * default map becomes Proving Grounds, whose one neutral slot is that camp,
+ * default map becomes the reference pack's own, whose neutral slots name that camp's role,
  * and `world.jungle` is `true` in `DEFAULT_PREGAME_CONFIG`. The first thing a
  * player would have seen of "core, alone" was a thrown `Unknown asset key`.
  *

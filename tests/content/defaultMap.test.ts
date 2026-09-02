@@ -21,19 +21,19 @@ const map = (id: string) => ({ id, name: id });
 
 describe('defaultMapId', () => {
   it('prefers a content pack’s map over core’s reference arena', () => {
-    expect(defaultMapId([map('reference:proving-grounds'), map('lol:summoners-rift')])).toBe(
+    expect(defaultMapId([map('reference:aram'), map('lol:summoners-rift')])).toBe(
       'lol:summoners-rift'
     );
   });
 
   it('does not depend on install order', () => {
-    expect(defaultMapId([map('lol:summoners-rift'), map('reference:proving-grounds')])).toBe(
+    expect(defaultMapId([map('lol:summoners-rift'), map('reference:aram')])).toBe(
       'lol:summoners-rift'
     );
   });
 
   it('falls back to the reference arena when it is all there is', () => {
-    expect(defaultMapId([map('reference:proving-grounds')])).toBe('reference:proving-grounds');
+    expect(defaultMapId([map('reference:aram')])).toBe('reference:aram');
   });
 
   it('keeps install order between two content packs', () => {

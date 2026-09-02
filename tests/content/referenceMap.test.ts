@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { referenceMap } from '../../packs/reference/map';
 import { data as referenceData } from '../../packs/reference/pack';
 import { validatePack } from '../../src/content/validate';
@@ -6,13 +8,29 @@ import { PackRegistry } from '../../src/content/PackRegistry';
 import NavigationSystem from '../../src/game/nav/NavigationSystem';
 import { NAV_CELL_SIZE } from '../../src/game/nav/NavGrid';
 import type { MapGeometry, StructureSlot } from '../../src/content/ContentPack';
+import { coreSlotObjectFor } from '../../src/game/gameObject/structures/slotObjects';
 
 /**
- * Task 9's fixture map — small, point-symmetric like a real MOBA map, and
- * deliberately hostile in one way (the 60-90px corridor `NavGrid` clearance
- * needs a stress fixture for). See `packs/reference/map.ts` and
- * `packs/reference/provingGroundsGeometry.ts` for what it is; this file is
- * what proves it is that, rather than merely looking like it on paper.
+ * The reference pack's own map, and what it is for beyond being playable.
+ *
+ * It is core's second, independent map fixture: twelve nav/lane/muster tests
+ * lean on one big pack map's polygon soup, and the `NavGrid` clearance bug this
+ * project shipped once only ever surfaced because a jungle had 60-90px gaps. So
+ * what is asserted here is not decoration — a corridor in that same hostile
+ * band, walls on all four edges, and a route across the whole map for a body of
+ * real radius.
+ *
+ * The map behind it changed (a hand-drawn ARAM replaced a hand-*written*
+ * Proving Grounds), and the fixture value had to survive that, so the cases
+ * below **measure** rather than restate numbers somebody chose:
+ * `wallGapWidths` finds the narrowest corridors the rasteriser will actually
+ * see, and the symmetry case carries a tolerance because a map drawn by hand is
+ * near-symmetric, not exactly so. A case that asserted "the gap is 80" would
+ * have been a case that could only ever be deleted.
+ *
+ * See `packs/reference/map.ts` and `packs/reference/aramGeometry.ts` for what
+ * it is; this file is what proves it is that, rather than merely looking like
+ * it on paper.
  */
 
 /** `referenceMap.geometry` is a loader — resolve it once per test that needs it. */
@@ -127,45 +145,53 @@ const spawnOf = (map: MapGeometry, faction: string): Point => {
 // body trying to cross it is a real one.
 const CHAMPION_RADIUS = 27.5;
 
-describe('Proving Grounds, the reference pack’s own map', () => {
+/**
+ * How far a slot may sit from its own mirror image, in pixels. See the
+ * symmetry case for why this is a tolerance and not zero.
+ */
+const MIRROR_TOLERANCE = 120;
+
+describe('ARAM, the reference pack’s own map', () => {
   it('has a corridor between 60 and 90 px, which is what exercises NavGrid clearance', async () => {
     const { terrain } = await geometry();
     const gaps = wallGapWidths(terrain.wall, referenceMap.size);
     expect(gaps.some(g => g >= 60 && g <= 90)).toBe(true);
   });
 
-  it('is point-symmetric: every slot mirrors onto a slot of the other faction', async () => {
-    // `mirror(p) = (size - x, size - y)` — the 180° rotation about the map's
-    // centre that makes the two sides a fair fight. The map was deliberately
-    // asymmetric while the muster rule derived the muster point from the two
-    // turrets nearest the fountain; that rule is a declared-slot lookup now
-    // (`MinionSpawner.musterSlotFor`), so symmetry is what the shipped map
-    // promises instead.
+  /**
+   * `mirror(p) = (size - x, size - y)` — the 180° rotation about the map's
+   * centre that makes the two sides a fair fight, the symmetry a real MOBA map
+   * has across its diagonal.
+   *
+   * **Within a tolerance, and the tolerance is the honest part.** The map this
+   * replaced was written out by hand and mirrored to the pixel; this one was
+   * drawn with a mouse and lands within 85px of its own mirror on a 4000px map,
+   * a shade over 2%. `MIRROR_TOLERANCE` is set just above that — wide enough
+   * that nudging a turret does not fail the build, and nowhere near wide enough
+   * to accept the thing this case exists to catch: a side with a structure the
+   * other does not have, which misses by thousands.
+   */
+  it('is near point-symmetric: every slot mirrors onto one of the other faction', async () => {
     const { slots, lanes } = await geometry();
     const size = referenceMap.size;
-    const mirrored = (x: number, y: number, list: readonly { x: number; y: number }[]) =>
-      list.some(s => s.x === size - x && s.y === size - y);
+    const nearest = (x: number, y: number, list: readonly { x: number; y: number }[]) =>
+      Math.min(...list.map(s => Math.hypot(s.x - (size - x), s.y - (size - y))));
 
-    for (const s of slots.structure) {
-      expect(mirrored(s.x, s.y, slots.structure), `structure at ${s.x},${s.y}`).toBe(true);
-    }
-    for (const s of slots.spawn) {
-      expect(mirrored(s.x, s.y, slots.spawn), `spawn at ${s.x},${s.y}`).toBe(true);
-    }
-    for (const s of slots.minion) {
-      expect(mirrored(s.x, s.y, slots.minion), `minion muster at ${s.x},${s.y}`).toBe(true);
-    }
-    for (const s of slots.neutral) {
-      expect(mirrored(s.x, s.y, slots.neutral), `neutral at ${s.x},${s.y}`).toBe(true);
+    for (const group of ['structure', 'spawn', 'minion', 'neutral'] as const) {
+      for (const s of slots[group]) {
+        expect(nearest(s.x, s.y, slots[group]), `${group} at ${s.x},${s.y}`).toBeLessThanOrEqual(
+          MIRROR_TOLERANCE
+        );
+      }
     }
     // The lane both teams walk is the same path: the waypoint list is a
-    // palindrome under the mirror.
+    // palindrome under the mirror, to the same tolerance.
     for (const lane of lanes ?? []) {
       const points = lane.waypoints;
       for (let i = 0; i < points.length; i++) {
         const other = points[points.length - 1 - i];
-        expect(other.x).toBe(size - points[i].x);
-        expect(other.y).toBe(size - points[i].y);
+        const off = Math.hypot(other.x - (size - points[i].x), other.y - (size - points[i].y));
+        expect(off, `lane waypoint ${i}`).toBeLessThanOrEqual(MIRROR_TOLERANCE);
       }
     }
   });
@@ -227,17 +253,37 @@ describe('Proving Grounds, the reference pack’s own map', () => {
     }
   });
 
-  it('fills every neutral slot with the reference pack’s own monster, not the bundled pack’s', async () => {
-    // Two mirrored camps, one warden definition — the same
-    // one-definition-many-slots reuse Summoner's Rift's wolf pits established.
+  /**
+   * Its two neutral points are answered from two different places, on purpose,
+   * and between them they are the whole of what a neutral slot can mean.
+   *
+   * `relic` is **furniture**: core answers it with no pack installed at all
+   * (`gameObject/structures/slotObjects.ts`), which is why the map can draw the
+   * pad and count on something being on it. `dragon` is **content**: this pack
+   * ships no monster that fills it, so the pit is empty in a checkout with only
+   * core and holds whatever a content pack answers `dragon` with when one is
+   * installed. That is `MonsterDef.fills`' cross-pack match seen from the map's
+   * side, and asserting the *absence* is what keeps it a real seam rather than
+   * something the bundled pack quietly does to its own slots.
+   */
+  it('draws one neutral point core answers and one only a pack can', async () => {
     const { slots } = await geometry();
-    expect(slots.neutral).toHaveLength(2);
-    const monsters = referenceData.monsters ?? {};
-    for (const slot of slots.neutral) {
-      const filler = Object.values(monsters).find(monster => monster.fills.includes(slot.role));
-      expect(filler, `no monster fills role ${slot.role}`).toBeDefined();
-      expect(filler?.members.length).toBeGreaterThan(0);
-    }
+    const roles = slots.neutral.map(slot => slot.role).sort();
+    expect(roles).toEqual(['dragon', 'relic']);
+
+    const relic = slots.neutral.find(slot => slot.role === 'relic')!;
+    expect(coreSlotObjectFor(relic.role), 'core stopped answering the relic').toBeTypeOf(
+      'function'
+    );
+    // And the map drew it as an object, which is the only way to say "never a
+    // camp here" — see `NeutralSlot.kind`.
+    expect(relic.kind).toBe('object');
+
+    const monsters = Object.values(referenceData.monsters ?? {});
+    expect(
+      monsters.some(monster => monster.fills.includes('dragon')),
+      'this pack started filling its own pit, which deletes the cross-pack case'
+    ).toBe(false);
   });
 
   it('passes validation as part of a pack, geometry included', async () => {
@@ -257,10 +303,42 @@ describe('Proving Grounds, the reference pack’s own map', () => {
       manifest: { id: 'p', version: '1.0.0', coreRange: '^1' },
       maps: [referenceMap],
     });
-    await expect(registry.loadMapGeometry('p:proving-grounds')).resolves.toBeTruthy();
+    await expect(registry.loadMapGeometry('p:aram')).resolves.toBeTruthy();
   });
 
   it('is carried in the reference pack’s own data', () => {
     expect(referenceData.maps).toContain(referenceMap);
+  });
+
+  /**
+   * The summary and the geometry are the same map, and the editor's own
+   * bookkeeping is not shipped as gameplay.
+   *
+   * There is only one copy of the geometry to check — `aramGeometry.ts` reads
+   * `maps/aram.json` with `?raw` rather than transcribing it — so what is left
+   * worth asserting is the seam between the two halves of a `MapDefinition`:
+   * the summary's numbers are hand-written in `map.ts` and could drift from the
+   * export, and `authoring` must not reach the runtime.
+   *
+   * `id` is deliberately *not* compared. It is the one field a re-export must
+   * never be able to change: it becomes `Game.activeMapId` and the `mapId` in a
+   * LAN hello, and an editor's working name reaching that made a host
+   * unjoinable once already.
+   */
+  it('ships the summary the editor export declares, and none of its bookkeeping', async () => {
+    const source = JSON.parse(
+      readFileSync(resolve(__dirname, '../../packs/reference/maps/aram.json'), 'utf8')
+    ) as Record<string, unknown>;
+
+    expect(referenceMap.size).toBe(source.size);
+    expect(referenceMap.name).toBe(source.name);
+    expect(referenceMap.factions).toEqual(source.factions);
+
+    const shipped = await geometry();
+    expect(shipped).not.toHaveProperty('authoring');
+    expect(
+      source,
+      'the export lost its authoring block — the map is now uneditable'
+    ).toHaveProperty('authoring');
   });
 });

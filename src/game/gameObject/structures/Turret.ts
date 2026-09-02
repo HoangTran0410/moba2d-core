@@ -61,7 +61,11 @@ export interface TurretPresetData {
   repairDelay: number;
   /** health per frame once repairing. */
   repairRate: number;
-  /** Built-in passives — see `TurretPassive`. A pack's, never core's. */
+  /**
+   * Built-in passives — see `TurretPassive`. Core's own three by default
+   * (`turretPassives.ts`), or a pack's list in place of them when one declares
+   * any. `Game.spawnStructures` is where the two meet.
+   */
   passives?: readonly TurretPassive[];
 }
 

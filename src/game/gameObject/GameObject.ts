@@ -1,5 +1,6 @@
 import { Circle, Line, Rectangle } from '@/libs/quadtree';
 import type { MapTuning } from '@/content/ContentPack';
+import type { MatchRules } from '@/content/types';
 import { uuidv4 } from '@/utils/index';
 import type { CastContext, Vec2 } from '@/game/spell/runtime/types';
 import type EventManager from '@/managers/EventManager';
@@ -10,6 +11,26 @@ import type NavigationSystem from '@/game/nav/NavigationSystem';
 
 export interface GameObjectGameContext {
   objectManager: Pick<ObjectManager, 'queryObjects'> & Partial<Pick<ObjectManager, 'addObject'>>;
+  /**
+   * The match's own rules — cooldown reduction, URF, whether recall exists.
+   * `Game.matchRules`, which `MatchDirector.setRules` mutates in place, so
+   * this is a live reference and never a copy: read it at the moment a
+   * duration starts, the way `Spell.reducedCooldown` does, and a slider drag
+   * mid-match reaches objects that already exist.
+   *
+   * Here on the **base** context rather than beside `matchTimeMs` and
+   * `mapTuning` on `GameObjectRuntimeContext`, and the difference is the
+   * point: those are things the world can answer, this is a rule the *match*
+   * declares, and the objects that most want it are plain `GameObject`s — a
+   * pack's relic pad, a shrine, anything on a timer that is not a `Spell` and
+   * so cannot go through `reducedCooldown`. On the runtime context it would
+   * be invisible to exactly those.
+   *
+   * Optional, like every other match-scoped field: a headless test context has
+   * no match, so a reader owes `undefined` an answer (`?? 1`) rather than
+   * asserting it away.
+   */
+  matchRules?: Readonly<MatchRules>;
 }
 
 export interface GameObjectRuntimeContext extends GameObjectGameContext {

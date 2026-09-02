@@ -100,7 +100,7 @@ describe('fountains and turrets built from a map slot', () => {
  * with `summonersRiftGeometry`, whose own faction ids happen to *be*
  * `'blue'`/`'red'`, so none of them can tell the real positional bridge
  * apart from the old hard-coded `{blue: BLUE, red: RED}` table it replaced.
- * `packs/reference/map.ts`'s Proving Grounds names its sides `'amber'`/
+ * `packs/reference/map.ts`'s own map names its sides `'amber'`/
  * `'jade'` for exactly this reason (see that file's own header) — reused
  * here rather than invented fresh, so this test is checking the bridge
  * against the same faction ids the shipped second map actually declares.
@@ -152,7 +152,7 @@ describe('the faction -> team bridge is positional, not a blue/red allowlist', (
 
   /**
    * The gameplay consequence, not just the translation: with the bridge
-   * broken, `fountain.teamId` was `undefined` for both of Proving Grounds'
+   * broken, `fountain.teamId` was `undefined` for both of the reference map's
    * fountains, so `MinionSpawner.queueWave`'s `teamId !== BLUE && teamId
    * !== RED` guard skipped every one of them and no wave ever formed up —
    * confirmed in the built bundle before this fix (see the batch's own

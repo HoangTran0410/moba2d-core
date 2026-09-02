@@ -88,7 +88,7 @@ function sourceFilesUnder(dir: string): string[] {
  * `{x:400,y:6075}`, or a destructured `x: 400,\n  y: 6075` across a
  * reasonable span all match, which is every shape this codebase's own map
  * literals are written in (`lanes.ts`, `mapPresets.ts`,
- * `provingGroundsGeometry.ts`). A bare "400" and "6075" appearing anywhere
+ * `packs/reference/aramGeometry.ts`). A bare "400" and "6075" appearing anywhere
  * in a file unrelated to each other would not — that is deliberately not
  * what this scan flags, or two-digit and three-digit unrelated constants a
  * few lines apart would false-positive.

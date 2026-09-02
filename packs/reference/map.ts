@@ -1,48 +1,54 @@
 import type { MapDefinition } from '@moba2d/core/content/ContentPack';
 
 /**
- * The reference pack's own map — Task 9 of the content-pack extraction.
+ * The reference pack's own map — core's proof that it ships a real world of
+ * its own rather than existing only to host somebody else's.
  *
- * Spec §8.2's reasoning, restated because it is the whole design: a second
- * pack that only proves the seam works ("the scan found nothing") does not
- * prove *coverage* — twelve nav/lane/muster tests use Summoner's Rift's own
- * polygon soup as a stress fixture, and the `NavGrid` clearance bug this
- * project shipped once only ever surfaced because SR's jungle has 60-90px
- * gaps. So this map is not decoration; it is a second, independent fixture
- * with a corridor in that same hostile 60-90px band
- * (`tests/content/referenceMap.test.ts`'s `wallGapWidths` measures it the
- * way `NavGrid.fromPolygons` would). It used to be hostile in a second way
- * too — a structure row that was not symmetric across factions, so a muster
- * rule that derived the muster point from the buildings could not pass by
- * assuming symmetry. That rule is gone (muster points are declared
- * `slots.minion` entries now, validated at install), so the map is
- * point-symmetric like a real MOBA map — see the geometry module's own
- * header — and the same test file asserts the symmetry instead.
+ * ## What it is
  *
- * It is also deliberately small and legible, and deliberately **not** Riot's
- * — two factions, one lane, a handful of walls, one neutral camp filled by
- * this pack's own monster. Batch 4 moves the Riot map out of core entirely;
- * this is what proves core can already ship a world that is not that one.
+ * A single-lane bridge map: two bases in opposite corners, one lane between
+ * them, brush along its length, a relic pad off to one side and a pit for a
+ * neutral objective in the middle. Drawn in `src/mapEditor/` and kept as that
+ * editor's own export (`maps/aram.json`); `aramGeometry.ts` is the shipped
+ * copy, and a test pins the two together — see that module's header for why
+ * both exist.
  *
- * Split the same way `packs/riot/maps/summonersRift.ts` splits, for the
- * same reason: this module is the cheap summary a picker lists, and the
- * heavy half — walls, slots, the lane — sits behind `geometry`'s dynamic
- * import so it never rides along in the `pregame` chunk the menu loads.
- * `vite.config.ts`'s `map-<id>` `manualChunks` rule matches this file's
- * geometry module by its `<Name>Geometry.ts` basename the same way it
- * matches Summoner's Rift's, extended to also look under any `packs/<name>/` —
- * `npm run chunks:check` and a real `vite build` are what confirm that
- * still holds; a `manualChunks` *path* rule silently defeats a dynamic
- * import if nothing carves out the target ahead of the blanket
- * `/packs/reference/` -> `pregame` rule.
+ * It replaced a hand-written fixture map (Proving Grounds) whose job was to be
+ * *hostile* to the pathfinder: a corridor in the 60-90px band `NavGrid`'s
+ * clearance pass is fragile in, and a point-symmetric structure row. What that
+ * map bought is now bought differently — `tests/content/referenceMap.test.ts`
+ * measures this map's own narrowest corridor rather than asserting a number
+ * somebody chose, so the fixture value survives the map that carried it
+ * changing. What it does not buy any more is the symmetry: this map is drawn
+ * by hand and is *near*-symmetric, not exactly so, and the test says which.
+ *
+ * ## Why the neutral slots are not all this pack's own
+ *
+ * Its `slots.neutral` names two roles. `relic` is core's own furniture and is
+ * answered without any pack at all (`gameObject/structures/slotObjects.ts`).
+ * `dragon` is nobody's here: this pack ships no monster that fills it, so the
+ * pit is empty in a checkout with only core installed and holds whatever a
+ * content pack answers `dragon` with when one is. That is the cross-pack match
+ * `MonsterDef.fills` exists for, seen from the map's side.
+ *
+ * ## The split
+ *
+ * This module is the cheap summary a picker lists — a name, a size, two
+ * factions, never polygons — and the heavy half sits behind `geometry`'s
+ * dynamic import. `vite.config.ts`'s `map-<id>` `manualChunks` rule matches
+ * `aramGeometry.ts` by basename ahead of the blanket `/packs/reference/` ->
+ * `pregame` rule, which is what keeps the walls off the menu; `npm run
+ * chunks:check` and a real `vite build` are what confirm it still holds.
+ *
+ * The **id is hand-written here and never read off the export**, which is the
+ * one field a re-export must not be able to change: it becomes
+ * `Game.activeMapId` and the `mapId` in a LAN hello, and an editor's working
+ * name reaching that made a host unjoinable once already.
  */
 export const referenceMap: MapDefinition = {
-  id: 'proving-grounds',
-  name: 'Sân Thử Nghiệm',
-  // 2416, not a rounder 2400, so the map's centre lands on a `NavGrid` cell
-  // centre — see the geometry module's header for why the centred corridor
-  // gap needs that.
-  size: 2416,
+  id: 'aram',
+  name: 'ARAM',
+  size: 4000,
   factions: [{ id: 'amber' }, { id: 'jade' }],
-  geometry: () => import('./provingGroundsGeometry').then(module => module.provingGroundsGeometry),
+  geometry: () => import('./aramGeometry').then(module => module.aramGeometry),
 };

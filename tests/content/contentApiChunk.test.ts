@@ -95,7 +95,7 @@ describe('the data half of the pack contract', () => {
    * `f.includes('/content/maps/')`: `catalog.ts`'s closure already crosses
    * out of `src/` into `packs/reference/` (`install.ts`'s static import of
    * `packs/reference/pack.ts`, which this walk's `resolveSpecifier` follows
-   * same as any relative import), so `provingGroundsGeometry.ts` living
+   * same as any relative import), so `aramGeometry.ts` living
    * under `packs/reference/` rather than `src/content/maps/` would have
    * passed the old, path-anchored filter even if pulled in statically.
    * `isGeometryModule` below is exercised directly, against a synthetic
@@ -106,7 +106,7 @@ describe('the data half of the pack contract', () => {
 
   it('the offender test itself catches a geometry module under packs/, not just src/content/maps/', () => {
     expect(isGeometryModule('src/content/maps/summonersRiftGeometry.ts')).toBe(true);
-    expect(isGeometryModule('packs/reference/provingGroundsGeometry.ts')).toBe(true);
+    expect(isGeometryModule('packs/reference/aramGeometry.ts')).toBe(true);
     expect(isGeometryModule('packs/some-other-pack/ArenaGeometry.ts')).toBe(true);
     expect(isGeometryModule('src/content/maps/summonersRift.ts')).toBe(false);
   });

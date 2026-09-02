@@ -24,6 +24,7 @@ import TerrainMap from './gameObject/map/TerrainMap';
 import Minimap, { hitTest, type MinimapBlip, type MinimapHost } from './gameObject/map/Minimap';
 import Fountain from './gameObject/structures/Fountain';
 import Turret from './gameObject/structures/Turret';
+import { turretPassivesFor } from './gameObject/structures/turretPassives';
 import InGameHUD from './hud/InGameHUD';
 import {
   attachRecall,
@@ -741,16 +742,23 @@ export default class Game {
   ) {
     const economy = resolveEconomy(tuning);
     for (const { x, y, teamId, preset } of turretsFromSlots(structureSlots, factions, tuning)) {
-      // The pack's turret kit, folded on at construction. `resolveTurretPreset`
+      // The turret's kit, folded on at construction. `resolveTurretPreset`
       // answers with numbers only — core's, then the map's, then the slot's —
-      // and the *code* half comes from the registry, the same crossing
-      // `monsterBodyPreset` makes for a camp's abilities. A pack that declares
-      // none gets a plain tower, which is every pack before this existed.
+      // and the *code* half is a passive list, the same crossing
+      // `monsterBodyPreset` makes for a camp's abilities.
+      //
+      // **A pack's list replaces core's; it does not add to it.** Core owns
+      // the three (`structures/turretPassives.ts`) because a tower's behaviour
+      // decides whether a dive is a play or a coin flip, and a map drawn in
+      // core's own editor must not need a particular pack installed to get
+      // that. A pack with a different idea of a tower declares its own list and
+      // gets exactly that list — two half-towers stacked is not a third
+      // opinion.
       const turret = new Turret({
         game: this,
         position: createVector(x, y),
         teamId,
-        preset: { ...preset, passives: contentRegistry().turretPassives() },
+        preset: { ...preset, passives: turretPassivesFor(contentRegistry().turretPassives()) },
       });
       // What a turret is *worth* is a statement about the economy, so it comes
       // from that group rather than from `TurretStats` beside its other

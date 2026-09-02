@@ -539,17 +539,33 @@ export default defineConfig({
            * reference pack's) both get the same carve-out without this rule
            * growing a third alternative per pack.
            */
-          if (
-            /\/(?:src\/content\/maps|packs\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)\/([A-Za-z0-9]+)Geometry\.ts$/.test(
+          const mapChunk =
+            /\/(?:src\/content\/maps|packs\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)\/([A-Za-z0-9]+)Geometry\.ts$/.exec(
               id
-            )
-          ) {
-            const match =
-              /\/(?:src\/content\/maps|packs\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)\/([A-Za-z0-9]+)Geometry\.ts$/.exec(
-                id
-              );
-            return `map-${match![1].toLowerCase()}`;
-          }
+            ) ??
+            // And the editor export a geometry module reads its numbers out of.
+            // A map drawn in `src/mapEditor/` ships as its own JSON — one copy
+            // of the map rather than a transcription of it into TypeScript —
+            // and *that file* is where the polygons actually are. Matched by
+            // basename the same way, so `maps/aram.json` joins
+            // `aramGeometry.ts` in `map-aram` instead of falling through to
+            // the blanket `/packs/reference/` -> `pregame` rule below and
+            // putting every wall back on the menu.
+            //
+            // **The `?\w+` tail is load-bearing.** These files are read with
+            // `?raw` (`assetsInclude` claims `.json` ahead of Vite's JSON
+            // plugin — see this file's own header), so the id Rollup asks
+            // about ends `aram.json?raw` and a pattern anchored on `.json$`
+            // misses it silently. Measured, not reasoned: without it the
+            // `map-aram` chunk came out 241 bytes and `pregame` grew by
+            // exactly the size of the export. `chunks:check` did not catch
+            // that — 18KB is well under the pregame ceiling — which is the
+            // second half of why this rule is confirmed by reading the built
+            // manifest rather than by the regex looking right.
+            /\/(?:src\/content\/maps|packs\/[A-Za-z0-9_-]+\/maps)\/([A-Za-z0-9]+)(?:_map)?\.json(?:\?\w+)?$/.exec(
+              id
+            );
+          if (mapChunk) return `map-${mapChunk[1].toLowerCase()}`;
           if (id.includes('/src/content/') || id.includes('/packs/reference/')) return 'pregame';
           /**
            * The pregame screen's data layer, carved out of `src/game/` ahead of

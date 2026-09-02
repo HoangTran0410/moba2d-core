@@ -35,11 +35,12 @@ import makeVeraR, { VERA_R_COOLDOWN_MS, VERA_R_DAMAGE, VERA_R_MANA } from './spe
  * nothing more. The default export stays the code half, still a factory,
  * because a pack's spells are still real engine classes and still need it.
  *
- * `monsters` and `maps` are Task 9's own addition: a second, deliberately
- * hostile map (`./map.ts`) with one neutral slot, filled by `warden` below
- * rather than by anything the bundled pack declares — proof that a monster
+ * `monsters` and `maps` are Task 9's own addition: a second map (`./map.ts`)
+ * that is core's own rather than a pack's, and a camp declared here rather
+ * than by whatever pack a player has installed — proof that a monster
  * "filling a role" (Task 7's split) is a real cross-pack match, not just
- * something the bundled pack does to its own slots.
+ * something the bundled pack does to its own slots. See `warden` below for
+ * what happened to the slot it used to fill.
  */
 export const data: ContentPackData = {
   manifest: { id: 'reference', version: '1.0.0', coreRange: '^1' },
@@ -96,9 +97,18 @@ export const data: ContentPackData = {
       spells: ['Vera_Q', 'Vera_W', 'Vera_E', 'Vera_R'],
     },
   ],
-  // `provingGroundsGeometry.ts`'s one neutral slot names `role: 'warden'`;
-  // this is what fills it. A camp of one body, `offset: {0, 0}` — see
-  // `MonsterBody`'s own doc comment for why a multi-body camp needs more.
+  // A camp of one body, `offset: {0, 0}` — see `MonsterBody`'s own doc comment
+  // for why a multi-body camp needs more.
+  //
+  // **No map here places it.** It filled the one neutral slot of the map this
+  // pack shipped before ARAM, whose two neutral points are `relic` (core's own
+  // furniture) and `dragon` (nobody's here — the pit is empty until a content
+  // pack answers that role). It stays because it is the second half of what
+  // this pack is *for*: `fills` is a cross-pack match, and a monster declared
+  // by one pack and placed by another map's slot is the case that keeps the
+  // seam honest. A pack that declares a camp no bundled map draws costs
+  // nothing until a map names its role — the same shape the health relic had
+  // before it became core's.
   monsters: {
     warden: {
       id: 'warden',

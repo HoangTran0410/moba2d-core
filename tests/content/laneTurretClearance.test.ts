@@ -8,7 +8,7 @@
  * Summoner's Rift's own waypoints. `referenceMap.test.ts` never checked a
  * lane against a turret at all.
  *
- * `packs/reference/provingGroundsGeometry.ts` shipped exactly that bug:
+ * `packs/reference/aramGeometry.ts` shipped exactly that bug:
  * its one lane's waypoints included `{700,1700}` and `{1700,700}` — the
  * amber and a jade turret's own centres, verbatim. It was masked by finding
  * 1 (the faction bridge leaving every fountain unaffiliated, so no wave
@@ -26,7 +26,7 @@ import { laneIssues } from '@/seams/index';
 // Batch 4 task 6 moved Summoner's Rift's map out of `src/content/maps/` and
 // into the pack.
 import { summonersRiftGeometry } from '../../packs/riot/maps/summonersRiftGeometry';
-import { provingGroundsGeometry } from '../../packs/reference/provingGroundsGeometry';
+import { aramGeometry } from '../../packs/reference/aramGeometry';
 
 type Point = { x: number; y: number };
 
@@ -78,7 +78,7 @@ describe('every shipped map keeps its lanes off its own turrets', () => {
     checkMapLanesClearTurrets("Summoner's Rift", summonersRiftGeometry);
   });
 
-  it('Proving Grounds', () => {
-    checkMapLanesClearTurrets('Proving Grounds', provingGroundsGeometry);
+  it('ARAM', () => {
+    checkMapLanesClearTurrets('ARAM', aramGeometry);
   });
 });

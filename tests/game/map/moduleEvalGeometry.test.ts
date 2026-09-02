@@ -27,7 +27,7 @@ const ROOT = join(__dirname, '../../..');
 
 /**
  * `packs/riot/maps/summonersRiftGeometry.ts` and
- * `packs/reference/provingGroundsGeometry.ts` — a content pack's own map
+ * `packs/reference/aramGeometry.ts` — a content pack's own map
  * geometry — landed after this scan's original three-file list and were
  * never added to it, even though both assemble a `MapGeometry` (`lanes`
  * included) at their own module scope, exactly the shape this scan exists
@@ -57,7 +57,7 @@ const FILES = [
   'src/game/ai/LaneObjectives.ts',
   'src/game/Game.ts',
   ...(packIsInstalled('riot') ? ['packs/riot/maps/summonersRiftGeometry.ts'] : []),
-  'packs/reference/provingGroundsGeometry.ts',
+  'packs/reference/aramGeometry.ts',
 ];
 
 const stripComments = (source: string): string =>

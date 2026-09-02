@@ -140,7 +140,8 @@ export interface ContentApi {
   /**
    * The base every drawn thing in the world extends, for the one case that is
    * not a spell's: an object a pack stands on a map slot
-   * (`ContentPackCode.slotObjects`) — a relic, an altar, a shrine.
+   * (`ContentPackCode.slotObjects`) — an altar, a shrine, a capture point, or
+   * a pack's own replacement for one of the few core answers itself.
    *
    * `SpellObject` below is the base for everything a *cast* produces, and it
    * takes an owner and reads its `game`, `position` and `teamId` off it. A

@@ -276,7 +276,7 @@ describe('sanitizePregameConfig', () => {
         botInvulnerable: Array.from({ length: AI_COUNT_MAX }, (_, index) => index === 1),
       },
       mode: 'urf',
-      mapId: 'reference:proving-grounds',
+      mapId: 'reference:aram',
     };
     expect(sanitizePregameConfig(custom)).toEqual(custom);
   });
@@ -390,7 +390,7 @@ describe('loadPregameConfig / savePregameConfig', () => {
         botInvulnerable: Array.from({ length: AI_COUNT_MAX }, (_, index) => index === 3),
       },
       mode: 'urf',
-      mapId: 'reference:proving-grounds',
+      mapId: 'reference:aram',
     };
     savePregameConfig(custom);
     expect(loadPregameConfig()).toEqual(custom);
@@ -748,8 +748,8 @@ describe('mapId', () => {
   );
 
   it('keeps a valid qualified id unchanged', () => {
-    expect(sanitizePregameConfig({ mapId: 'reference:proving-grounds' }).mapId).toBe(
-      'reference:proving-grounds'
+    expect(sanitizePregameConfig({ mapId: 'reference:aram' }).mapId).toBe(
+      'reference:aram'
     );
   });
 
@@ -767,8 +767,8 @@ describe('mapId', () => {
 
   it('round-trips a chosen map through storage', () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    savePregameConfig({ ...DEFAULT_PREGAME_CONFIG, mapId: 'reference:proving-grounds' });
-    expect(loadPregameConfig().mapId).toBe('reference:proving-grounds');
+    savePregameConfig({ ...DEFAULT_PREGAME_CONFIG, mapId: 'reference:aram' });
+    expect(loadPregameConfig().mapId).toBe('reference:aram');
   });
 });
 
