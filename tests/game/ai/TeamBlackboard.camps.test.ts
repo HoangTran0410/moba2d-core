@@ -4,9 +4,13 @@ import AIChampion from '../../../src/game/gameObject/attackableUnits/AIChampion'
 import Monster, { type MonsterPresetData } from '../../../src/game/gameObject/attackableUnits/Monster';
 import {
   blackboardFor,
+  fightOdds,
   JUNGLER_MIN_BOTS,
   OBJECTIVE_DANGER_PX,
+  OBJECTIVE_MAX_TTK_MS,
+  OBJECTIVE_RISK_SHARE,
   pickObjective,
+  worthFighting,
   type CampState,
 } from '../../../src/game/ai/TeamBlackboard';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
@@ -138,6 +142,39 @@ describe('camps on the blackboard', () => {
     ];
     const fit = spawnBot(game, 0);
     expect(pickObjective(camps, [fit], new Map(), 0)).toBeNull();
+  });
+
+  it('lượng sức mình: does not call a team that cannot finish the boss, or would be shredded', () => {
+    const pit = { x: 3000, y: 3000, r: 250 };
+    const bot = spawnBot(game, 0);
+    game.setPlayer(bot);
+    // Ten damage at one swing a second against a thousand health: a hundred
+    // seconds of fighting. Nobody calls that.
+    const wall = new Monster({ game, preset: { ...campPreset(pit, 'epic'), health: 1000, damage: 1 } });
+    indexObjects(game, [wall, bot]);
+    expect(blackboardFor(game, 0, sees).viewFor(BLUE).objective).toBeNull();
+    const odds = fightOdds([bot], [wall]);
+    expect(odds.ttkMs).toBeGreaterThan(OBJECTIVE_MAX_TTK_MS);
+
+    // Killable in time, but it hits for the bot's whole pool before it falls.
+    const shredder = new Monster({
+      game,
+      preset: { ...campPreset(pit, 'epic'), health: 100, damage: 200, attackInterval: 1000 },
+    });
+    const other = createGame();
+    const bot2 = spawnBot(other, 0);
+    other.setPlayer(bot2);
+    indexObjects(other, [shredder, bot2]);
+    const shredOdds = fightOdds([bot2], [shredder]);
+    expect(shredOdds.ttkMs).toBeLessThanOrEqual(OBJECTIVE_MAX_TTK_MS);
+    expect(shredOdds.costShare).toBeGreaterThan(OBJECTIVE_RISK_SHARE);
+    expect(worthFighting(shredOdds, OBJECTIVE_MAX_TTK_MS, OBJECTIVE_RISK_SHARE)).toBe(false);
+
+    // Items move the answer: a hundred damage a swing and the same boss is a call.
+    bot.stats.attackDamage.baseValue = 100;
+    const board = blackboardFor(game, 1_000, sees);
+    board.refreshIfStale(game, 1_000, sees);
+    expect(board.viewFor(BLUE).objective?.monster).toBe(wall);
   });
 
   it('spares the last bot for the jungle once a team has enough of them', () => {

@@ -74,3 +74,25 @@ thương, jungler ở 4 và không ở 3), `BotBrain.jungle.test.ts` (FARM trong
 jungler với xa, không farm epic/camp trống, easy tắt, quỹ đạo tới camp không
 pacing, chỉ đánh trong aggroRange; OBJECTIVE trong tầm gọi, quá xa, easy, boss
 đã chết), `tests/content/monsterTier.test.ts`.
+
+## Lượng sức mình (bổ sung cùng ngày, sau trận thử của user)
+
+Báo từ trận thật: vừa vào trận, chưa có đồ, cả đội bot đã kéo tới đánh epic và
+bị hành. Lời gọi chỉ mới xét số địch và máu đồng minh, chưa xét *đội có giết
+được không*. Farm kiếm tiền mua đồ vẫn phải là ưu tiên cho tới khi con số nói
+khác.
+
+`fightOdds(attackers, bodies)` (TeamBlackboard.ts, thuần): thời gian hạ = máu
+còn đứng của quái / tổng DPS đánh thường (`attackDamage × attackSpeed`) của
+những người đi; chi phí = DPS của quái (`damage / attackInterval`) × thời gian
+đó, chia cho máu gộp hiện tại. Cố tình bỏ chiêu hai phía — ước lượng bi quan,
+và một bot chưa mua gì phải đọc ra đúng như vậy. Mua đồ là cách con số đổi.
+
+- `pickObjective`: epic chỉ được gọi khi `ttk ≤ 30s` và `cost ≤ 60%` máu gộp
+  của những người ≥ 50% máu.
+- `campToFarm`: camp thường chỉ được farm khi bot **một mình** có `ttk ≤ 20s`
+  và `cost ≤ 50%` máu hiện tại. Camp quá cứng là camp để quay lại khi có đồ.
+
+Test: camps test "lượng sức mình" (tường 1000 máu không gọi; đánh 100 một
+phát thì gọi; quái xé thịt không gọi dù hạ kịp), jungle test (camp 5000 máu:
+ROAM cho tới khi damage 500).

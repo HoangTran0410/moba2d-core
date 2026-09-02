@@ -15,6 +15,10 @@ import {
   type SeenEnemy,
   type TeamView,
   type CampState,
+  CAMP_MAX_TTK_MS,
+  CAMP_RISK_SHARE,
+  fightOdds,
+  worthFighting,
 } from '@/game/ai/TeamBlackboard';
 import { laneApproach } from '@/game/ai/LaneObjectives';
 import { clampToSafeApproach, escapePoint, insideThreat } from '@/game/ai/TurretThreat';
@@ -810,10 +814,12 @@ export class BotBrain {
         camp.camp.x - this.owner.position.x,
         camp.camp.y - this.owner.position.y
       );
-      if (away <= bestAway) {
-        bestAway = away;
-        best = camp;
-      }
+      if (away > bestAway) continue;
+      // Lượng sức mình, alone: a camp this body cannot clear quickly, or would
+      // bleed half its health on, is a camp to come back to with items.
+      if (!worthFighting(fightOdds([this.owner], camp.alive), CAMP_MAX_TTK_MS, CAMP_RISK_SHARE)) continue;
+      bestAway = away;
+      best = camp;
     }
     return best;
   }

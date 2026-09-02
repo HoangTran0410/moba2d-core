@@ -120,6 +120,53 @@ export const OBJECTIVE_DANGER_PX = 900;
 export const OBJECTIVE_MEMORY_MS = 4_000;
 /** An ally below this share of health is not counted as fit to contest. */
 export const OBJECTIVE_HEALTH_PCT = 0.5;
+/** A fight the fit allies cannot finish inside this is not one they are ready for. */
+export const OBJECTIVE_MAX_TTK_MS = 30_000;
+/** ...and one that would cost them more than this share of their pooled health is not either. */
+export const OBJECTIVE_RISK_SHARE = 0.6;
+/** The same two questions for a lone bot at an ordinary camp, tighter: it has nobody to lean on. */
+export const CAMP_MAX_TTK_MS = 20_000;
+export const CAMP_RISK_SHARE = 0.5;
+
+/**
+ * "Lượng sức mình": what a fight against `bodies` would cost `attackers`,
+ * from basic-attack numbers alone. Time to kill is the bodies' standing
+ * health over the attackers' summed swing DPS; the cost is the bodies' summed
+ * DPS over that time, as a share of the attackers' pooled current health.
+ * Abilities are ignored on both sides on purpose — the estimate is meant to
+ * be pessimistic, and a bot that has not bought anything yet should read as
+ * exactly that. Buying is how the number moves.
+ */
+export interface FightOdds {
+  /** Infinity when nobody swings. */
+  ttkMs: number;
+  /** Share of pooled health lost by the time the last body falls. */
+  costShare: number;
+}
+
+export function fightOdds(attackers: readonly Champion[], bodies: readonly Monster[]): FightOdds {
+  let dps = 0;
+  let pooled = 0;
+  for (const ally of attackers) {
+    dps += Math.max(0, ally.stats.attackDamage.value) * Math.max(0, ally.stats.attackSpeed.value);
+    pooled += Math.max(0, ally.stats.health.value);
+  }
+  let health = 0;
+  let incomingDps = 0;
+  for (const body of bodies) {
+    if (body.isDead || body.toRemove) continue;
+    health += Math.max(0, body.stats.health.value);
+    if (body.attackInterval > 0) incomingDps += (Math.max(0, body.damage) * 1000) / body.attackInterval;
+  }
+  if (!(dps > 0)) return { ttkMs: Number.POSITIVE_INFINITY, costShare: Number.POSITIVE_INFINITY };
+  const ttkMs = (health / dps) * 1000;
+  const costShare = pooled > 0 ? (incomingDps * ttkMs) / 1000 / pooled : Number.POSITIVE_INFINITY;
+  return { ttkMs, costShare };
+}
+
+/** Whether `odds` is a fight worth starting under the given ceilings. */
+export const worthFighting = (odds: FightOdds, maxTtkMs: number, riskShare: number): boolean =>
+  odds.ttkMs <= maxTtkMs && odds.costShare <= riskShare;
 
 /**
  * Whether **any** of `observers` can see `target`.
@@ -514,18 +561,24 @@ export function pickObjective(
   memory: ReadonlyMap<Champion, SeenEnemy>,
   nowMs: number
 ): ObjectiveCall | null {
-  let fit = 0;
+  const fitAllies: Champion[] = [];
   for (const ally of allies) {
     if (ally.isDead) continue;
     const max = ally.stats.maxHealth.value;
-    if (max > 0 && ally.stats.health.value / max >= OBJECTIVE_HEALTH_PCT) fit++;
+    if (max > 0 && ally.stats.health.value / max >= OBJECTIVE_HEALTH_PCT) fitAllies.push(ally);
   }
+  const fit = fitAllies.length;
   if (fit === 0) return null;
 
   let best: ObjectiveCall | null = null;
   let bestDanger = Number.POSITIVE_INFINITY;
   for (const camp of camps) {
     if (camp.tier !== 'epic' || camp.alive.length === 0) continue;
+    // Lượng sức mình: a team that cannot finish the boss quickly, or would be
+    // shredded doing it, farms instead — buying is what changes this answer.
+    if (!worthFighting(fightOdds(fitAllies, camp.alive), OBJECTIVE_MAX_TTK_MS, OBJECTIVE_RISK_SHARE)) {
+      continue;
+    }
     let danger = 0;
     for (const seen of memory.values()) {
       if (seen.unit.isDead || seen.unit.toRemove) continue;

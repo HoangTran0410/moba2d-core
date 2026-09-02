@@ -108,6 +108,21 @@ describe('FARM', () => {
     expect(new BotBrain(bot).evaluatePosture(view({ camps: [epic.state, emptied] }), 0)).toBe('ROAM');
   });
 
+  it('lượng sức mình: leaves a camp it cannot clear quickly, until it can', () => {
+    const bot = spawnBot(game);
+    const slot = { x: 300, y: 0, r: 100 };
+    // A wall, not a shredder: `damage: 1` keeps the cost side quiet so this is
+    // the time-to-kill ceiling alone deciding.
+    const brute = new Monster({ game, preset: { ...campPreset(slot), health: 5000, damage: 1 } });
+    const state: CampState = { camp: slot, tier: 'camp', alive: [brute], total: 1, respawnInMs: 0 };
+    game.setPlayer(bot);
+    indexObjects(game, [bot, brute]);
+    const brain = new BotBrain(bot);
+    expect(brain.evaluatePosture(view({ camps: [state] }), 0)).toBe('ROAM');
+    bot.stats.attackDamage.baseValue = 500;
+    expect(brain.evaluatePosture(view({ camps: [state] }), 250)).toBe('FARM');
+  });
+
   it('is an easy bot’s blind spot, by the tier table', () => {
     expect(profileFor('easy').farmsJungle).toBe(false);
     expect(profileFor('normal').farmsJungle).toBe(true);
