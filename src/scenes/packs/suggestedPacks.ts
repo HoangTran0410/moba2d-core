@@ -91,4 +91,15 @@ export const SUGGESTED_PACKS: SuggestedPack[] = [
     repoUrl: 'https://github.com/moba2d-packs/dota',
     icon: 'https://moba2d-packs.github.io/dota/icon.png',
   },
+  {
+    id: 'naruto',
+    name: 'Naruto',
+    description:
+      'Naruto và Sasuke, mỗi người 4 chiêu cộng một dạng biến hình đổi luôn Q/W/E: Kurama Mode và Susanoo. Chưa có bản đồ riêng. Bản fan-made, không liên kết với Shueisha.',
+    manifestUrl: 'https://moba2d-packs.github.io/naruto/manifest.json',
+    repoUrl: 'https://github.com/moba2d-packs/naruto',
+    // No `icon` — this pack's build does not publish an `icon.png` yet, and
+    // the field is optional precisely so a shelf entry can wear a monogram
+    // until it has artwork of its own.
+  },
 ];
