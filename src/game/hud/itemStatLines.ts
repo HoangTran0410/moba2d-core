@@ -1,5 +1,6 @@
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
 import type { ItemDef } from '@/content/ContentPack';
+import { FRAMES_PER_SECOND } from '@/game/gameObject/Stats';
 
 /**
  * What an item grants, as lines a player reads — one stat per line.
@@ -80,6 +81,26 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
  * points on purpose, and 25 of them is not 25% off anything (`Stats.ts`'s
  * `hasteCooldownMultiplier`).
  */
+/**
+ * Stats stored per *frame* and read by humans per second.
+ *
+ * `Stats.ts` adds the whole regen stat once per frame, so `manaRegen: 1.2` is
+ * 72 mana a second — and its own comment says it outright: "every place that
+ * shows regeneration to a human has to multiply by this". Two of the three
+ * places did. `practice/participantStats.ts` divides by nothing and prints
+ * `x / giây`, `buffs/describeBuff.ts` prints `+x/giây`, and this file — the
+ * shop card, the one a player reads *before* spending gold — printed the
+ * stored number raw.
+ *
+ * So a card promising "Hồi năng lượng +1.2" delivered 72/s against a base of
+ * 6, and the panel two clicks away said 78 / giây about the same item. It is
+ * also how the wrong number gets *written*: a pack author picks a per-second
+ * figure, the card agrees with them, and nothing anywhere says otherwise until
+ * somebody notices a 500-gold stone refilling a 500 pool in seven seconds —
+ * "sao mấy item hồi năng lượng, nó hồi nhanh vl vậy?".
+ */
+export const AS_PER_SECOND = new Set<ItemStatKey>(['healthRegen', 'manaRegen']);
+
 export const AS_PERCENT = new Set<ItemStatKey>([
   'critChance',
   'critDamage',
@@ -104,6 +125,12 @@ export interface StatLine {
 const formatAmount = (key: ItemStatKey, amount: number): string => {
   const sign = amount < 0 ? '' : '+';
   if (AS_PERCENT.has(key)) return `${sign}${Math.round(amount * 100)}%`;
+  // The unit the stat is *stored* in is not the unit it is read in. One
+  // decimal and no trailing `.0`, the same shape `participantStats.ts` prints,
+  // so the card and the panel are recognisably the same number.
+  if (AS_PER_SECOND.has(key)) {
+    return `${sign}${Number((amount * FRAMES_PER_SECOND).toFixed(1))}/giây`;
+  }
   return `${sign}${Math.round(amount * 100) / 100}`;
 };
 
