@@ -51,7 +51,7 @@ class ChargedBolt extends Spell {
   aimWhileCharging: { x: number; y: number } | null = null;
   aimAtRelease: { x: number; y: number } | null = null;
 
-  protected get castSpec(): CastSpec {
+  get castSpec(): CastSpec {
     return {
       activation: 'HOLD_RELEASE',
       targeting: 'DIRECTION',
