@@ -15,6 +15,9 @@
  *
  *   node tests/e2e/shoot-new-champion-vfx.mjs [outDir] [championFilter]
  *
+ * A content pack points it at its own roster with
+ * `MOBA2D_VFX_CASTS=<sheet.json>`; see `SHEET` below.
+ *
  * The filter is a substring of the champion name, and it is the point of the
  * argument: a full run costs real minutes, which is far more than a change
  * to one kit needs.
@@ -32,7 +35,7 @@
  *
  * Requires a system Chrome install.
  */
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
@@ -42,10 +45,34 @@ const VIEWPORT = { width: 1280, height: 900 };
 
 mkdirSync(OUT, { recursive: true });
 
+/**
+ * A content pack's own cast sheet, when one is named.
+ *
+ * `MOBA2D_VFX_CASTS=<file>` points this rig at a JSON sheet of the shape
+ * `{ "championName": "…", "casts": [ { champion, slot, aim, frames, label? } ] }`
+ * and everything below runs unchanged. Without it the rig shoots the
+ * reference pack exactly as it always has.
+ *
+ * This exists because the rig is the *only* answer to the questions no test
+ * can hold — "does this read as an ultimate", "does it pop in", "does it
+ * vanish on contact" — and every one of those was found by a player in a
+ * pack, which is the half of the roster it could not be pointed at. The
+ * script's own header always said to grow `ALL_CASTS` for a second champion;
+ * a pack cannot edit a file in this repository, so the sheet moves out
+ * instead of the list growing.
+ *
+ * Deliberately a file rather than flags: a cast sheet is four numbers per
+ * ability and it belongs in the pack that owns those numbers, beside the
+ * spells whose tuning constants they were derived from.
+ */
+const SHEET = process.env.MOBA2D_VFX_CASTS
+  ? JSON.parse(readFileSync(process.env.MOBA2D_VFX_CASTS, 'utf8'))
+  : null;
+
 const MATCH_CONFIG = {
   player: {
     mode: 'champion',
-    championName: 'Vera',
+    championName: SHEET?.championName ?? 'Vera',
     summonerD: 'Flash',
     summonerF: 'Heal',
     customSlots: Array(7).fill('random'),
@@ -71,12 +98,14 @@ const MATCH_CONFIG = {
  *   - R (point AoE, `VERA_R_RANGE`=500, the ring's own `lifeTime`=500):
  *     cast, the ring at its widest, and the fade.
  */
-const ALL_CASTS = [
+const REFERENCE_CASTS = [
   { champion: 'Vera', slot: 'Q', aim: [300, 0], frames: [80, 200, 500] },
   { champion: 'Vera', slot: 'W', aim: [0, 0], frames: [80, 1500, 2900] },
   { champion: 'Vera', slot: 'E', aim: [260, 0], frames: [60, 150, 400] },
   { champion: 'Vera', slot: 'R', aim: [400, 0], frames: [80, 250, 550] },
 ];
+
+const ALL_CASTS = SHEET?.casts ?? REFERENCE_CASTS;
 
 // Substring match, so a filter still works once this roster grows.
 const ONLY = process.argv[3];
