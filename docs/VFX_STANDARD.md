@@ -122,6 +122,39 @@ The test for all five: at minimum zoom, in a fight, could a player who has never
 seen this champion tell where it hits and who it hit? If not, simplify until
 they can.
 
+## Weight: why a correct effect can still read as "phèn"
+
+An ability can obey every rule above — three phases, the right radius, the
+right colour, the impact on the victim — and still be reported as *"ko có tý
+vật lý nào ... chỉ thấy hình quạt hiện lên rồi đẩy+gây damage"*. That report
+is not about beauty. It is about **force**, and force is three specific things
+that are cheap to add and easy to leave out.
+
+1. **Something has to be fast.** Every effect needs one element that moves
+   much faster than the rest — a shockwave leaving the impact, a leading edge,
+   a tip. Without it the whole thing is a diagram that fades, however many
+   layers it has. The fast element is usually gone inside 200ms, which is also
+   why it costs nothing.
+2. **Overshoot, then settle.** A shape that arrives at its final size has no
+   weight. Push it 30–50% past where it ends up and let it drop back over a
+   tenth of a second. This is the difference between "the floor broke" and "a
+   wedge appeared", and it is one multiplier.
+3. **Debris follows the verb.** A burst throws grit in a ring; a *blow* throws
+   it the way the blow went. Spraying particles symmetrically out of a
+   directional hit is the fourth legibility rule broken — the art telling the
+   player the opposite of what the game did — and it is the single most common
+   way a hit ends up feeling like a status effect.
+
+And the smear: an edge that moves between frames **teleports** unless
+something is left behind it. Three fading after-images of where it just was
+is what makes a swing read as a swing. It is the same trick a missile's trail
+plays, applied to a rotation instead of a translation.
+
+The worked pair in the content packs is one champion's Q and E: a punch whose
+crack races out, whose slabs overshoot and whose dust flies forward, beside a
+blade that leaves three ghosts and a mark drawn on the body it opened. Both
+were shipped without any of it first, and the report above is what they got.
+
 ## Color is a language, and the numbers already speak it
 
 Adapted from Riot's public VFX style guide (the 2017 League of Legends one —
