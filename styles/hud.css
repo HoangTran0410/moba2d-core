@@ -1,4 +1,31 @@
+/* The HUD is above the world, and `position` is what makes that sentence true.
+   `z-index` is ignored on a `position: static` element, so for a long time this
+   rule was a comment: the HUD floated over the canvas only because the canvas
+   was an unpositioned, unfiltered box painting in the background layer, below
+   every `position: fixed` child in here.
+
+   `#game-scene.dead-view canvas` breaks that by accident. A `filter` makes an
+   element a stacking context, and a stacking context on a non-positioned
+   element paints with the `z-index: 0` group — the same group as this HUD's
+   `z-index: auto` children, and the canvas is appended *after* `#InGameHUD`
+   (`GameScene.createCanvas(...).parent('game-scene')`), so it won the tie. The
+   whole bottom bar, the practice panel and the shop were painted over by the
+   greyed canvas the moment the player died: present in the DOM, clickable by a
+   script, invisible to the person playing.
+
+   Fixing it here rather than on the canvas because this is the invariant the
+   rest of the file already assumes. Pinned per-element z-indexes (the feed at
+   110, the corner cluster at 120) would each have to out-climb whatever the
+   canvas is doing this frame, and the next overlay added without one would
+   disappear again on the next death.
+
+   `relative` and not `fixed`: `fixed` would make this the containing block for
+   the `position: fixed` children too, which are all laid out against
+   `#game-scene` (transformed — see `.center-page-container > div`). `relative`
+   is invisible to them and only reaches `position: absolute` descendants, of
+   which this subtree has exactly one at top level: see `.death-recap`. */
 #InGameHUD {
+  position: relative;
   z-index: 100;
 }
 
@@ -2370,11 +2397,22 @@ body.touch-ui .corner-btn {
    their damage type's own colour, the same language the floating combat
    text speaks (`DAMAGE_TEXT_COLOR`). */
 .death-recap {
-  position: absolute;
+  /* `fixed`, not `absolute`: `#InGameHUD` is `position: relative` now (see its
+     own rule), and it is a zero-height box at the top of the scene — an
+     absolute `top: 12%` against it resolves to 12% of nothing and pins the
+     panel to the ceiling. `fixed` inside `#game-scene`'s transform lands on
+     `#game-scene`, which is the full-viewport box this was measuring against
+     all along. */
+  position: fixed;
   top: 12%;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 30;
+  /* Deliberately unranked. It used to carry `z-index: 30` to climb over the
+     canvas; `#InGameHUD` owns that job now, and a rank here only bought the
+     recap the right to sit on top of the practice panel and the shop — two
+     modals it has no business covering. Unranked, tree order in
+     `InGameHUD.vue` puts it under both and over `.dead-tint`, which is the
+     order it wants. */
   width: min(340px, 86vw);
   max-height: 55vh;
   overflow-y: auto;
