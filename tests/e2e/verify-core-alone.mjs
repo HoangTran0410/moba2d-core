@@ -17,9 +17,9 @@
  *
  * It is deliberately runnable in *both* conditions, and asserts different
  * things in each — with the riot pack present the default map is Summoner's
- * Rift, without it the reference pack's Proving Grounds. A script that only
- * ran in the stripped state would be a script nobody ever ran by accident,
- * and so a script that had quietly stopped working.
+ * Rift, without it the reference pack's ARAM. A script that only ran in the
+ * stripped state would be a script nobody ever ran by accident, and so a
+ * script that had quietly stopped working.
  *
  * ## What "playable" means here, and why each check is in the list
  *
@@ -43,11 +43,22 @@
  *      fold were broken. What this does catch is a kit that came back with
  *      holes in it — which is what a roster resolved against a pack that is
  *      not installed looks like.
- *   5. **the world is a world** — terrain, the map's own neutral camps actually
- *      spawned, a fountain belonging to the player's own team, and a queued
+ *   5. **the world is a world** — terrain, the map's own neutral slots actually
+ *      filled, a fountain belonging to the player's own team, and a queued
  *      wave that actually produces minions.
  *      Straight out of `verify-map-picker.mjs`, whose own header explains why
  *      polygon counts alone certified a map nobody could play on.
+ *
+ *      It reads **relics and not monsters**, and the swap is the map changing
+ *      rather than the check weakening. ARAM's two neutral points are `relic`
+ *      and `dragon`; the pit is nobody's until a pack declares a monster that
+ *      fills it, so `monsters` is legitimately 0 in exactly the condition this
+ *      script exists to run in, and asserting it was above zero simply asserted
+ *      that Proving Grounds was still the map. The relic is the point that
+ *      *is* answered without a pack — core's own furniture, through
+ *      `preset.ts`'s `neutralSlotFill` and `structures/slotObjects.ts` — which
+ *      makes it both the honest thing to require here and the only look this
+ *      suite gets at that path in a real browser.
  *   6. **the player can act** — one right-click issues a move order the
  *      champion's destination reflects. The cheapest possible proof that the
  *      input path, the nav grid and the match loop are all live, and the one
@@ -61,12 +72,13 @@
  * from its models on purpose: `DEFAULT_PREGAME_CONFIG` is "a full jungle and
  * lane minions", so turning the jungle off here would mean the drill only ever
  * booted a configuration no player starts in. It would also have hidden the
- * one real bug this script found — `packs/reference/pack.ts`'s warden camp
+ * one real bug this script found — the reference pack's old warden camp
  * declaring an `avatar` key nothing in core's manifest held, which throws from
- * `Monster`'s constructor the moment that camp spawns, and which only spawns
- * on the map you get when the riot pack is *not* installed. See
- * `tests/content/packArtKeys.test.ts`, the cheap scan that now closes the
- * class.
+ * `Monster`'s constructor the moment that camp spawns, and which only spawned
+ * on the map you get when the riot pack is *not* installed. That camp left the
+ * tree with Proving Grounds, so the guard against its whole class is now
+ * `tests/content/packArtKeys.test.ts`, the cheap scan, rather than anything
+ * this script spawns.
  *
  * Check 5 still forces its wave through `MinionSpawner` directly
  * (`queueWave()` then `releaseQueued()`, the seam `drive-game.mjs` uses)
@@ -81,7 +93,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const riotInstalled = contentPackInstalled(root, 'riot');
 
 /** The map the fallback is expected to land on, per condition. */
-const EXPECTED_MAP = riotInstalled ? 'riot:summoners-rift' : 'reference:proving-grounds';
+const EXPECTED_MAP = riotInstalled ? 'riot:summoners-rift' : 'reference:aram';
 
 const harness = await startHarness();
 const { url, page, report, check } = harness;
@@ -152,8 +164,20 @@ const matchFacts = () =>
       // The map's own neutral camps, spawned by `Game` from the geometry's
       // `slots.neutral` and filled by whichever installed pack declares a
       // monster for each slot's `role`. Zero here means either no camps or a
-      // camp that could not be built.
+      // camp that could not be built — and on ARAM with no pack installed it
+      // means the first of those, which is why the check below reads `relics`
+      // and this stays in the report as context rather than as a gate.
       monsters: game.monsters?.length ?? 0,
+      // What ARAM's `slots.neutral` actually resolves to in a core-only
+      // checkout. Its two points are `relic` and `dragon`: the pit is nobody's
+      // until a pack declares a monster that fills it, and the pad is core's
+      // own furniture — `CORE_SLOT_OBJECTS`, reached through `preset.ts`'s
+      // `neutralSlotFill`. So this is the one neutral slot that must be
+      // standing here, and the only end-to-end look at that path in a real
+      // browser.
+      relics: (game.objectManager?.objects ?? []).filter(
+        object => object?.constructor?.name === 'HealthRelic'
+      ).length,
     };
   });
 
@@ -196,9 +220,10 @@ await harness.guard(async () => {
   // ------------------------------------------------- 5. the world is a world
   check('the map has terrain', (facts?.terrainPolygons ?? 0) > 0, `${facts?.terrainPolygons}`);
   check(
-    "the map's own neutral camps spawned",
-    (facts?.monsters ?? 0) > 0,
-    `${facts?.monsters} monsters — a camp whose pack declares art nothing resolves throws here`
+    "the map's own neutral slots were filled",
+    (facts?.relics ?? 0) > 0,
+    `${facts?.relics} relics, ${facts?.monsters} monsters — a slot object or camp that` +
+      ' cannot be built throws here rather than coming back empty'
   );
   check(
     "the player's own fountain belongs to their team",
