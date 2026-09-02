@@ -317,6 +317,13 @@ first.** Four rules bind it:
 One line each; **`docs/TRAPS.md` carries the measurement and the bug for every
 one.** None is visible from the file you are editing.
 
+This list is a summary and **never the only copy**. Because it is loaded every
+session it is the cheap place to add a lesson and the easy place to forget to
+carry one over — which is how the deep file quietly ended up the *smaller* of
+the two on healing reduction and on penetration, with nothing saying so.
+`tests/docs/trapsSuperset.test.ts` now refuses that: every symbol named here
+must be findable there. Add to `docs/TRAPS.md` first, summarise here second.
+
 **Rendering and VFX** → `docs/TRAPS.md` § *Rendering, VFX and z-index*
 
 - **`GameScene` calls `preventDefault()` on every touch on the page**, so
