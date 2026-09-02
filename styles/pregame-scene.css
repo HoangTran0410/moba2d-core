@@ -1039,15 +1039,30 @@
    column of one tile. `KitRoster` renders a `<template>` per group for the same
    reason. Rendered only when there is more than one pack to tell apart — see
    `showPackHeadings`. */
-.kit-pack-heading {
+.kit-pack-row {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.25));
+}
+
+/* A pack out of the random pool reads dimmer as a whole row — the die is
+   the switch, the row is the state. */
+.kit-pack-row.out-of-pool .kit-pack-heading {
+  opacity: 0.6;
+}
+
+.kit-pack-heading {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0 0 0.3rem;
   border: none;
-  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.25));
   background: none;
   font: inherit;
   font-size: 0.8em;
@@ -1060,10 +1075,51 @@
 }
 
 /* The first heading sits under the Ngẫu Nhiên card and needs no gap of its own.
-   (Adjacency, not :first-of-type: the heading is a <button> now and the random
+   (Adjacency, not :first-of-type: the row wraps a <button> and the random
    card above it is one too.) */
-.catalog-random-card + .kit-pack-heading {
+.catalog-random-card + .kit-pack-row {
   margin-top: 0.15rem;
+}
+
+/* The pool switch beside the heading: a die that is lit while the pack is in
+   the random draw. Small on purpose — it is a setting, the heading is the
+   thing being read. */
+.kit-pack-pool {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 0.3rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--hextech-line);
+  background: none;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.72em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.kit-pack-pool.on {
+  border-color: var(--hextech-teal);
+  color: var(--hextech-teal);
+}
+
+.kit-pack-pool:hover {
+  border-color: var(--hextech-gold-dim);
+}
+
+.kit-pack-pool:focus-visible {
+  outline: 2px solid var(--hextech-gold);
+  outline-offset: 2px;
+}
+
+/* "2/3 pack" on the random card once a pack is out. */
+.catalog-random-pool {
+  margin-left: 0.4rem;
+  font-size: 0.8em;
+  opacity: 0.75;
 }
 
 .kit-pack-heading-chevron {

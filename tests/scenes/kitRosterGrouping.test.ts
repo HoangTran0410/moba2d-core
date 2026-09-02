@@ -180,4 +180,18 @@ describe('the roster grid honours the fold', () => {
   it('hides with CSS and never hides an open shelf', () => {
     expect(css).toMatch(/\.kit-shelf\.pack-collapsed:not\(\.open\)\s*\{\s*display:\s*none/);
   });
+
+  it('starts with every pack folded — no pack is seeded open on mount', () => {
+    // The set is created empty and only `togglePack` and the open-shelf watch
+    // ever write it; the "biggest pack" seed the player asked to be rid of is
+    // gone, and this is what keeps it gone.
+    expect(source).toMatch(/const expandedPacks = ref\(new Set<string>\(\)\);/);
+    expect(source).not.toMatch(/expandedPacks\.value = new Set\(\[/);
+  });
+
+  it('puts the random-pool switch beside every heading, with its state readable', () => {
+    expect(source).toMatch(/kit-pack-pool[\s\S]*?:aria-pressed="inPool\(heading\.pack\.id\)"/);
+    // The row, not the heading, spans the grid now — two buttons side by side.
+    expect(css).toMatch(/\.kit-pack-row\s*\{[^}]*grid-column:\s*1 \/ -1/);
+  });
 });

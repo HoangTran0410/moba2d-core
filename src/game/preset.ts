@@ -30,6 +30,7 @@ import type { ChampionTrailSpec } from '@/content/ContentPack';
 import type { ChampionPresetData } from './gameObject/attackableUnits/Champion';
 import type { ChampionLoadout, MatchRules, SlotChoice } from './config/PregameConfig';
 import { matchModeFor, type MatchModeId } from './config/matchModes';
+import { poolOf, readChampionPool } from './config/championPool';
 import { SLOT_COUNT } from './config/PregameConfig';
 import {
   BASIC_ATTACK_ID,
@@ -148,6 +149,8 @@ const classForId = (id: string): SpellClass => spellClassOfId(id) ?? BasicAttack
  * of what that type happens to allow.
  */
 export interface PlayableChampionKit {
+  /** The installed pack this champion came from — `QualifiedChampion.packId`. What the random pool filters on. */
+  packId: string;
   /** The catalogue row's qualified id (`pack:Champion`) — what a bot's `ChampionAI` is looked up by. */
   championId: string;
   name: string;
@@ -218,6 +221,7 @@ export const playableKits = (): PlayableChampionKit[] => {
     if (!champion.playable) continue;
     if (!champion.image) continue;
     out.push({
+      packId: champion.packId,
       championId: champion.id,
       name: champion.name,
       image: champion.image,
@@ -234,7 +238,14 @@ export const playableKits = (): PlayableChampionKit[] => {
   return playableCache;
 };
 
-const randomChampionKit = (): PlayableChampionKit => random(playableKits());
+/**
+ * A random champion, from the packs the player left in the pool
+ * (`config/championPool.ts`). Every random anything in a match — a 'random'
+ * pick, a bot with no pick, the brawl's whole roster, a custom kit's avatar —
+ * comes through here, so the pool is one filter and not four.
+ */
+const randomChampionKit = (): PlayableChampionKit =>
+  random([...poolOf(playableKits(), readChampionPool().disabledPacks)]);
 const randomAvatar = (): string => randomChampionKit().image;
 
 /**

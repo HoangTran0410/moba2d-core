@@ -59,6 +59,7 @@ import { packAsset, spellDisplayOf, type SpellCatalogEntry } from '@/game/config
 import type { MatchRules } from '@/game/config/PregameConfig';
 import type { SavedKit } from '@/game/config/savedKits';
 import { groupShelvesByPack, packShelvesVisible, type KitShelf, type PackLabel } from './pregameCatalog';
+import { packInPool, readChampionPool, setPackInPool } from '@/game/config/championPool';
 import SpellIcon from './SpellIcon.vue';
 import type { SpellPeek } from './useSpellPeek';
 
@@ -173,18 +174,15 @@ const rosterRows = computed(() => {
  * Which packs are unfolded. Session state of this mount, deliberately not
  * persisted — the fold is a navigation aid, not a setting.
  *
- * **Seeded with the biggest pack, because an empty roster is not a fold.**
- * Starting with nothing expanded is right the moment there are several large
- * packs and wrong in the case the game actually ships: one content pack plus
- * core's own single example champion is two groups, so the champion picker
- * opened with sixty-six shelves in it and *none* of them on screen — two
- * headings and a blank grid, every time, since the set is rebuilt on every
- * mount. The fold was doing its job on a roster that had nothing to bury.
- *
- * The biggest one rather than all of them keeps what the fold is for: a second
- * pack's rows still do not push the first pack's off the screen. A player can
- * collapse this one like any other — the seed is where the set starts, not a
- * rule about where it stays.
+ * **Starts empty: every pack folded.** It used to seed the biggest pack open,
+ * on the argument that two headings over a blank grid is not a fold. The
+ * player asked for the opposite — with three packs installed, the picker
+ * opening on sixty tiles of one game is the thing to scroll past every time,
+ * and a row of headings is a table of contents. What keeps the grid from
+ * being blank is the shelf the editor opened on: `.pack-collapsed:not(.open)`
+ * is the CSS rule, so the current champion's shelf shows through its pack's
+ * fold, and the watch below unfolds a pack only when the *player* opens a
+ * shelf in it (the slot bar, a saved kit) — never on mount.
  */
 const expandedPacks = ref(new Set<string>());
 const togglePack = (packId: string): void => {
@@ -193,19 +191,27 @@ const togglePack = (packId: string): void => {
   else next.add(packId);
   expandedPacks.value = next;
 };
-{
-  // One pack needs no heading and no fold (`packShelvesVisible` short-circuits
-  // on `groupCount <= 1`), so there is nothing to seed and nothing to open.
-  const groups = new Map<string, number>();
-  for (const row of rosterRows.value.rows) {
-    if (row.packId === null) continue;
-    groups.set(row.packId, (groups.get(row.packId) ?? 0) + 1);
-  }
-  if (groups.size > 1) {
-    const biggest = [...groups.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    expandedPacks.value = new Set([biggest]);
-  }
-}
+
+/**
+ * The random pool — which packs a 'random' pick may land on
+ * (`config/championPool.ts`). A setting, unlike the fold above, so it is read
+ * from storage on mount and written on every press. Lives on the pack heading
+ * because that is the one place a pack is a thing a player can point at.
+ */
+const pool = ref(readChampionPool());
+const inPool = (packId: string): boolean => packInPool(pool.value, packId);
+const togglePool = (packId: string): void => {
+  pool.value = setPackInPool(packId, !inPool(packId));
+};
+/** "2/3 pack" under the random card once any pack is out; nothing while all are in. */
+const poolHint = computed(() => {
+  const { groupCount } = rosterRows.value;
+  if (groupCount <= 1) return '';
+  const packIds = new Set<string>();
+  for (const row of rosterRows.value.rows) if (row.packId !== null) packIds.add(row.packId);
+  const enabled = [...packIds].filter(id => inPool(id)).length;
+  return enabled === packIds.size ? '' : `${enabled}/${packIds.size} pack`;
+});
 
 const packOpen = (packId: string): boolean =>
   packShelvesVisible(packId, expandedPacks.value, props.searchActive, rosterRows.value.groupCount);
@@ -317,7 +323,10 @@ watch(
 
     <button type="button" class="catalog-random-card" :class="{ selected: selectedChampion === 'random' }"
       @click="emit('pickRandom')">
-      <i class="fas fa-random"></i> Ngẫu Nhiên Tất Cả
+      <i class="fas fa-random"></i> Ngẫu Nhiên
+      <!-- Which bag the roll draws from, once the player has narrowed it — the
+           dice on each pack heading below are the switches. -->
+      <span v-if="poolHint" class="catalog-random-pool">{{ poolHint }}</span>
     </button>
 
     <!-- One heading per pack, so a tile says where it came from without
@@ -327,20 +336,37 @@ watch(
          make each one a single-column cell. The heading spans the row from CSS
          (`grid-column: 1 / -1`). -->
     <template v-for="{ shelf, heading, packId } in rosterRows.rows" :key="shelf.name">
-    <!-- The heading is the fold's handle: tap to open one pack's rows, tap
-         again to put them away. `aria-expanded` is the state the e2e drives
-         and a screen reader both read. -->
-    <button v-if="heading" type="button" class="kit-pack-heading"
-      :class="{ folded: !packOpen(heading.pack.id) }" :aria-expanded="packOpen(heading.pack.id)"
-      :title="packOpen(heading.pack.id) ? `Thu gọn ${heading.pack.name}` : `Mở ${heading.pack.name}`"
-      @click="togglePack(heading.pack.id)">
-      <i class="fas fa-chevron-down kit-pack-heading-chevron" aria-hidden="true"></i>
-      <img crossorigin="anonymous" v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
-        alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
-        @error="onPackIconError(heading.pack)" />
-      <span class="kit-pack-heading-name">{{ heading.pack.name }}</span>
-      <span class="kit-pack-heading-count">{{ heading.count }} tướng</span>
-    </button>
+    <!-- One row per pack: the fold's handle and, beside it, the pool switch.
+         Two buttons side by side rather than one inside the other — a button
+         cannot contain a button — so the row is the element that spans the
+         grid and the heading keeps its class, which is what the e2e drives
+         (`.kit-pack-heading[aria-expanded]`). -->
+    <div v-if="heading" class="kit-pack-row" :class="{ 'out-of-pool': !inPool(heading.pack.id) }">
+      <!-- The heading is the fold's handle: tap to open one pack's rows, tap
+           again to put them away. `aria-expanded` is the state the e2e drives
+           and a screen reader both read. -->
+      <button type="button" class="kit-pack-heading"
+        :class="{ folded: !packOpen(heading.pack.id) }" :aria-expanded="packOpen(heading.pack.id)"
+        :title="packOpen(heading.pack.id) ? `Thu gọn ${heading.pack.name}` : `Mở ${heading.pack.name}`"
+        @click="togglePack(heading.pack.id)">
+        <i class="fas fa-chevron-down kit-pack-heading-chevron" aria-hidden="true"></i>
+        <img crossorigin="anonymous" v-if="packIcon(heading.pack)" class="kit-pack-heading-icon" :src="packIcon(heading.pack)"
+          alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+          @error="onPackIconError(heading.pack)" />
+        <span class="kit-pack-heading-name">{{ heading.pack.name }}</span>
+        <span class="kit-pack-heading-count">{{ heading.count }} tướng</span>
+      </button>
+      <!-- In or out of the random pool. A die, lit while the pack is in: the
+           same glyph as the Ngẫu Nhiên card above, so the two read as one
+           mechanism. -->
+      <button type="button" class="kit-pack-pool" :class="{ on: inPool(heading.pack.id) }"
+        :aria-pressed="inPool(heading.pack.id)" :data-pack="heading.pack.id"
+        :title="inPool(heading.pack.id) ? `Bỏ ${heading.pack.name} khỏi vòng ngẫu nhiên` : `Cho ${heading.pack.name} vào vòng ngẫu nhiên`"
+        @click="togglePool(heading.pack.id)">
+        <i class="fas fa-dice" aria-hidden="true"></i>
+        <span class="kit-pack-pool-label">{{ inPool(heading.pack.id) ? 'random' : 'bỏ' }}</span>
+      </button>
+    </div>
 
     <!-- `pack-collapsed` hides with CSS rather than dropping the shelf from
          the DOM: the e2e drives count `.kit-shelf` expecting the whole

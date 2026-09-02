@@ -72,6 +72,9 @@ const ALLOWED_GAME_MODULES = [
   // tab for its chips and by `PregameConfigSource` to apply one. Same
   // directory, same carve-out, same purity check as `mapTuning` above.
   '@/game/config/matchModes',
+  // The random pool: `localStorage` and nothing else, read by the picker's
+  // pack headings. Same directory, same carve-out.
+  '@/game/config/championPool',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

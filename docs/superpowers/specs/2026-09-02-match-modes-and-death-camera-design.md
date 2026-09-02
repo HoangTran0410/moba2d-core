@@ -108,6 +108,27 @@ gì để làm lại nhìn vào chỗ duy nhất không có gì xảy ra.
 Test `DeathCamera` phải tick một lần lúc chết trước khi nhảy thời gian:
 `deathAtMs` được ghi ở tick chết đầu tiên, không phải lúc `isDead` đổi.
 
+## 3. Vòng ngẫu nhiên theo pack, và bảng chọn tướng gập hết
+
+Người chơi yêu cầu sau khi hai mục trên lên: bật/tắt tướng của từng pack để
+"random" chỉ bốc trong pack mình muốn, và bảng chọn tướng đừng tự mở danh
+sách nào.
+
+- `config/championPool.ts` (`moba2d:championPool:v1`) lưu **ngoại lệ**
+  (`disabledPacks`): pack cài ngày mai tự có trong vòng. `poolOf(kits,
+  disabled)` không bao giờ trả rỗng — tắt hết thì bốc trong tất cả, vì một cú
+  roll bị từ chối là một trận không mở được vì một setting không thấy từ menu.
+- Một cửa: `preset.ts`'s `randomChampionKit` là nơi mọi thứ ngẫu nhiên đi
+  qua (pick 'random', bot không pick, cả bàn Loạn đấu, avatar kit tự ghép), nên
+  lọc ở đó là lọc hết. `PlayableChampionKit` thêm `packId`.
+- UI: nút xúc xắc bên cạnh mỗi tiêu đề pack trong `KitRoster.vue`
+  (`.kit-pack-pool`, `aria-pressed`), hàng `.kit-pack-row` bọc hai nút vì
+  button không được lồng button; thẻ "Ngẫu Nhiên" ghi "2/3 pack" khi đã bớt.
+- Gập mặc định: bỏ seed "mở pack lớn nhất" trong `KitRoster.vue`;
+  `expandedPacks` khởi tạo rỗng. Shelf của tướng đang chọn vẫn hiện xuyên qua
+  fold (`.pack-collapsed:not(.open)`), và watch chỉ mở pack khi *người chơi*
+  mở một shelf (slot bar, bộ đã lưu), không phải lúc mount.
+
 ## Kiểm chứng
 `matchModes.test.ts` (bảng, applyMode, drift, describe, mergeTuning kể cả
 nested và thay roster lính nguyên khối, tuning mỗi chế độ qua
