@@ -63,6 +63,18 @@ export default class SpellObject extends GameObject {
    * Call it when the effect latches on, not before: a projectile still in
    * flight is cast into the world and is allowed to outlive its caster.
    */
+  /**
+   * An effect glued to a body is seen exactly when that body is.
+   *
+   * Reading `attachTo`'s own anchor rather than a second field: "which unit
+   * does this ride" is a question this class already answers, and a separate
+   * `visionAnchor` to set would be one more thing to forget on the effect
+   * that most needs it.
+   */
+  override get visionAnchor(): AttackableUnit | null {
+    return this._anchorUnit;
+  }
+
   attachTo(unit: AttackableUnit, buff?: Buff | null): this {
     this._anchorUnit = unit;
     this._anchorWatchesBuff = buff !== undefined;

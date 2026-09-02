@@ -93,6 +93,27 @@ export default class GameObject {
    */
   alwaysVisible = false;
 
+  /**
+   * The body whose visibility decides whether this object is drawn at all.
+   *
+   * `ObjectManager.draw` applies the fog to `AttackableUnit` and to nothing
+   * else, which was right while every other drawable was a projectile, a
+   * decal or a burst — none of which say where anybody is. It stopped being
+   * right the moment effects started *riding* bodies: a cloak, a shell, an
+   * eye, a burning victim. The unit went dark behind a wall and its aura kept
+   * painting, so the one thing fog exists to hide was drawn a hundred pixels
+   * across. Reported from a real match: "đứng trong vùng tối... vẫn thấy vfx
+   * + ko thấy người".
+   *
+   * `null` here, so nothing changes for an object that is not glued to
+   * anybody. `SpellObject` answers with whatever `attachTo` was given, which
+   * makes this free for every effect that already rides a body and impossible
+   * to forget for the next one.
+   */
+  get visionAnchor(): { visibleToPlayerTeam: boolean } | null {
+    return null;
+  }
+
   game?: GameObjectGameContext;
   position: p5.Vector;
   collisionRadius: number;

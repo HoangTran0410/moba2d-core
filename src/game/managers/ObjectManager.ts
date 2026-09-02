@@ -536,8 +536,17 @@ export default class ObjectManager {
           if (!o.getCollideBoundingBox().intersect(visualBound)) continue;
           attackableCount++;
           dead = o.isDead;
-        } else if (o instanceof ParticleSystem) {
-          particleCount += o.particles.length;
+        } else {
+          // The same fog, for the things that ride a body. A cloak, a shell,
+          // an eye or a burning victim drew straight through a wall before
+          // this, because the check above is an `instanceof` and a spell
+          // object is not one. One property read, only for drawables that are
+          // not units, and `null` for everything that is not glued to anybody
+          // — so a projectile, a decal and a burst all cost the same as they
+          // did. See `GameObject.visionAnchor`.
+          const anchor = o.visionAnchor;
+          if (anchor && !anchor.visibleToPlayerTeam) continue;
+          if (o instanceof ParticleSystem) particleCount += o.particles.length;
         }
         // zIndexOf does a Map lookup + Object.hasOwn — computed once here
         // rather than repeatedly by the sort comparator below.
