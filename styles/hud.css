@@ -2039,8 +2039,13 @@ body.touch-ui .spell-info img {
    different systems and this number is how they stay out of each other's way. */
 .corner-cluster {
   position: fixed;
-  top: 6px;
-  right: 6px;
+  /* The 6px is clearance from the viewport edge; the inset is how much of that
+     edge the device has already taken for its own furniture. Added, not maxed:
+     the gap is a thing the design wants and the inset is ground that is not
+     there, so a pinned control wants both. Zero on anything without a notch or
+     a translucent status bar, which is what makes it free to add here. */
+  top: calc(6px + var(--safe-top));
+  right: calc(6px + var(--safe-right));
   z-index: 120;
 
   display: flex;
@@ -2756,8 +2761,9 @@ button.practice-roster-item {
 
 .kill-callouts {
   position: fixed;
-  /* under the score strip */
-  top: 40px;
+  /* Under the score strip, so it carries the same inset — otherwise the strip
+     moves down past the status bar and this stays put, on top of it. */
+  top: calc(40px + var(--safe-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 110;
@@ -3436,7 +3442,9 @@ body.touch-ui .kill-banner-sub {
    still be tapped; the player's side is on the left, as on the scoreboard. */
 .score-strip {
   position: fixed;
-  top: 6px;
+  /* See `.corner-cluster`. Only the top: it is centred horizontally, so a left
+     or right inset moves it off centre rather than out of the way. */
+  top: calc(6px + var(--safe-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 112;

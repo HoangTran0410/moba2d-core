@@ -38,6 +38,7 @@ import { VirtualJoystick, type JoystickVector } from './VirtualJoystick';
 import { resolveSpellAim, type AimCandidate, type SpellAimResult } from './SpellAim';
 import type { ActivationPattern, TargetingMode, Vec2 } from '@/game/spell/runtime/types';
 import type { AttackTargetPriority } from '@/game/combat/AttackTargeting';
+import { safeAreaInsets } from '@/game/render/safeArea';
 
 /** One finger, in canvas coordinates. */
 export interface TouchPoint {
@@ -265,7 +266,10 @@ export class TouchControls {
     const viewport = host.viewport();
     this.viewportWidth = viewport.width;
     this.viewportHeight = viewport.height;
-    this.layout = computeTouchLayout(viewport, host.slotCount());
+    this.layout = computeTouchLayout(
+      { ...viewport, safeTop: safeAreaInsets().top },
+      host.slotCount()
+    );
   }
 
   get enabled(): boolean {
@@ -305,7 +309,10 @@ export class TouchControls {
     if (width === this.viewportWidth && height === this.viewportHeight) return;
     this.viewportWidth = width;
     this.viewportHeight = height;
-    this.layout = computeTouchLayout({ width, height }, this.host.slotCount());
+    this.layout = computeTouchLayout(
+      { width, height, safeTop: safeAreaInsets().top },
+      this.host.slotCount()
+    );
     // Buttons have moved under the fingers holding them; the gestures they
     // belong to no longer mean anything.
     this.releaseEverything();

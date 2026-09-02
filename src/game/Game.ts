@@ -58,6 +58,7 @@ import { drawDebugOverlay } from './debug/DebugOverlay';
 import { FpsMeter, drawFpsOverlay } from './debug/FpsOverlay';
 import EventManager from '@/managers/EventManager';
 import MatchAnnouncer from '@/game/combat/Announcer';
+import { invalidateSafeArea } from '@/game/render/safeArea';
 import { DeathCamera, type SpectateCandidate } from './render/deathCamera';
 import { MatchRecorder } from './combat/MatchRecorder';
 import { uuidv4 } from '@/utils';
@@ -988,6 +989,9 @@ export default class Game {
   resize(w: number, h: number) {
     // First: both of the others derive from the camera's view of the world.
     this.camera.fitTo(w, h);
+    // A rotation or a split-screen change is exactly when the device furniture
+    // moves, and it is also what got us here. See `render/safeArea.ts`.
+    invalidateSafeArea();
     this.fogOfWar.resize(w, h);
     this.minimap.resize(w, h);
     this.touchControls.resize(w, h);

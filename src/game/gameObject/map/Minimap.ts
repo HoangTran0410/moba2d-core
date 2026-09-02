@@ -14,6 +14,7 @@
  */
 import { removeGraphics } from '@/utils/graphics.utils';
 import AssetManager from '@/managers/AssetManager';
+import { safeAreaInsets } from '@/game/render/safeArea';
 
 export interface MinimapRect {
   x: number;
@@ -99,7 +100,21 @@ export const hitTest = (point: Point, rect: MinimapRect): boolean =>
  */
 export const minimapRect = (expanded: boolean, viewport: MinimapViewport): MinimapRect => {
   if (!expanded) {
-    return { x: MINIMAP_MARGIN, y: MINIMAP_MARGIN, size: collapsedMinimapSize(viewport) };
+    // The margin is clearance from the *viewport* edge; the insets are how much
+    // of that edge the device has already spent on its own furniture. On an
+    // iPad running this as a full-screen PWA the status bar sits over the top
+    // of the canvas — `apple-mobile-web-app-status-bar-style` is
+    // `black-translucent`, which is what puts the page under it on purpose —
+    // so a map pinned at a flat 12px was pinned underneath the clock.
+    //
+    // Added rather than maxed: the margin is a gap the design wants and the
+    // inset is ground that is not there, so the map wants both. Zero on every
+    // device without furniture, which is what makes this free to add.
+    return {
+      x: MINIMAP_MARGIN + (viewport.safeLeft ?? 0),
+      y: MINIMAP_MARGIN + (viewport.safeTop ?? 0),
+      size: collapsedMinimapSize(viewport),
+    };
   }
   const size = Math.min(viewport.width, viewport.height) * EXPANDED_FRACTION;
   return { x: (viewport.width - size) / 2, y: (viewport.height - size) / 2, size };
@@ -108,6 +123,16 @@ export const minimapRect = (expanded: boolean, viewport: MinimapViewport): Minim
 export interface MinimapViewport {
   width: number;
   height: number;
+  /**
+   * The device furniture at the top-left corner, in canvas pixels.
+   *
+   * Optional and defaulted to zero at the one place that reads them, so every
+   * existing caller — and every test that hands this two numbers — keeps
+   * meaning exactly what it meant. Passed in rather than read here, because
+   * `minimapRect` is pure and `TouchLayout.test.ts` drives it as pure.
+   */
+  safeTop?: number;
+  safeLeft?: number;
 }
 
 /**
@@ -294,9 +319,12 @@ export class Minimap {
 
   /** Pure: the current rect for the current state. No p5, no canvas. */
   get rect(): MinimapRect {
+    const safe = safeAreaInsets();
     return minimapRect(this.expanded, {
       width: this.viewportWidth,
       height: this.viewportHeight,
+      safeTop: safe.top,
+      safeLeft: safe.left,
     });
   }
 

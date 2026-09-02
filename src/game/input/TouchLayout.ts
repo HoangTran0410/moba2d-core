@@ -16,6 +16,18 @@ import { clamp } from '@/utils/math.utils';
 export interface TouchViewport {
   readonly width: number;
   readonly height: number;
+  /**
+   * The device furniture along the top edge, in canvas pixels.
+   *
+   * Only the top, because that is the only edge a control here is pinned to —
+   * everything else is measured from the bottom or the sides, where the thumbs
+   * are, and those already clear the home indicator by a wide `margin`.
+   *
+   * Optional and defaulted at the one place that reads it, so the dozens of
+   * cases in `TouchLayout.test.ts` that hand this a width and a height keep
+   * meaning what they meant. See `render/safeArea.ts`.
+   */
+  readonly safeTop?: number;
 }
 
 export interface TouchCircle {
@@ -298,7 +310,14 @@ export function computeTouchLayout(viewport: TouchViewport, slotCount: number): 
       recallRadius + 2,
       viewport.width - recallRadius - 2
     ),
-    y: clamp(margin + recallRadius, recallRadius + 2, viewport.height - recallRadius - 2),
+    // The only top-pinned control on the canvas, so the only one the status bar
+    // of a full-screen PWA can sit on. `margin` is clearance the design wants;
+    // the inset is edge the device has already spent.
+    y: clamp(
+      (viewport.safeTop ?? 0) + margin + recallRadius,
+      recallRadius + 2,
+      viewport.height - recallRadius - 2
+    ),
     radius: recallRadius,
     primary: false,
   };

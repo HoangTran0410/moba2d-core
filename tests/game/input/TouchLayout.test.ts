@@ -560,3 +560,62 @@ describe('itemButtonAt', () => {
     expect(itemButtonAt(layout, ability.x, ability.y)).toBeNull();
   });
 });
+
+/**
+ * Device furniture, and the two controls pinned under it.
+ *
+ * On an iPad running this as a full-screen PWA the status bar is drawn *over*
+ * the page — `apple-mobile-web-app-status-bar-style` is `black-translucent`,
+ * which puts the canvas under it on purpose so the game owns the whole screen.
+ * The price is that anything measured from a flat `0` at the top edge is
+ * measured from underneath the clock. `styles/main.css` has held the four
+ * insets as tokens for a while and nothing on the canvas could read them;
+ * `render/safeArea.ts` is the bridge, and these are the two things it moves.
+ *
+ * Zero on every device without furniture, which is why the inset is *added* to
+ * the margin rather than replacing it: the margin is a gap the design wants and
+ * the inset is ground that is not there.
+ */
+describe('safe-area insets', () => {
+  const viewport = { width: 1024, height: 768 };
+
+  it('pushes the canvas recall button below the status bar', () => {
+    const flat = computeTouchLayout(viewport, 4);
+    const inset = computeTouchLayout({ ...viewport, safeTop: 24 }, 4);
+
+    // Its own field rather than one of `buttons` — see `computeTouchLayout`.
+    expect(flat.recall.slot).toBe(RECALL_SLOT);
+    const before = flat.recall;
+    const after = inset.recall;
+
+    expect(after.y - before.y).toBe(24);
+    // Sideways is the corner cluster's business, not the status bar's.
+    expect(after.x).toBe(before.x);
+  });
+
+  it('leaves the thumb controls exactly where they were', () => {
+    // Everything else is measured from the bottom or the sides, where the
+    // hands are — a top inset must not move any of it.
+    const flat = computeTouchLayout(viewport, 4);
+    const inset = computeTouchLayout({ ...viewport, safeTop: 24 }, 4);
+
+    for (const before of flat.buttons) {
+      const after = inset.buttons.find(b => b.slot === before.slot)!;
+      expect([after.x, after.y], `slot ${before.slot} moved`).toEqual([before.x, before.y]);
+    }
+  });
+
+  it('and a viewport that says nothing about insets lays out as it always did', () => {
+    expect(computeTouchLayout({ ...viewport, safeTop: 0 }, 4)).toEqual(
+      computeTouchLayout(viewport, 4)
+    );
+  });
+
+  it('pins the collapsed minimap clear of the top-left corner', () => {
+    const flat = minimapRect(false, viewport);
+    const inset = minimapRect(false, { ...viewport, safeTop: 24, safeLeft: 8 });
+
+    expect([inset.x - flat.x, inset.y - flat.y]).toEqual([8, 24]);
+    expect(inset.size).toBe(flat.size);
+  });
+});
