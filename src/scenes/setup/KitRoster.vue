@@ -60,6 +60,13 @@ import type { MatchRules } from '@/game/config/PregameConfig';
 import type { SavedKit } from '@/game/config/savedKits';
 import { groupShelvesByPack, packShelvesVisible, type KitShelf, type PackLabel } from './pregameCatalog';
 import { packInPool, readChampionPool, setPackInPool } from '@/game/config/championPool';
+import {
+  kdaOf,
+  masteryLevel,
+  masteryTable,
+  readMatchHistory,
+  type MasteryStats,
+} from '@/game/config/matchHistory';
 import SpellIcon from './SpellIcon.vue';
 import type { SpellPeek } from './useSpellPeek';
 
@@ -203,6 +210,18 @@ const inPool = (packId: string): boolean => packInPool(pool.value, packId);
 const togglePool = (packId: string): void => {
   pool.value = setPackInPool(packId, !inPool(packId));
 };
+/**
+ * Mastery, read once per mount from the local match history
+ * (`config/matchHistory.ts`): a level on the tile, the numbers behind it on
+ * the opened shelf. Keyed by the shelf's qualified champion id, so a
+ * hand-built kit and the two non-champion shelves show nothing.
+ */
+const mastery = masteryTable(readMatchHistory());
+const masteryFor = (shelf: KitShelf): MasteryStats | null =>
+  shelf.championId ? (mastery.get(shelf.championId) ?? null) : null;
+const masteryTitle = (stats: MasteryStats): string =>
+  `Thông thạo bậc ${masteryLevel(stats.points)} · ${stats.matches} trận · KDA ${kdaOf(stats).toFixed(1)}`;
+
 /** "2/3 pack" under the random card once any pack is out; nothing while all are in. */
 const poolHint = computed(() => {
   const { groupCount } = rosterRows.value;
@@ -398,6 +417,12 @@ watch(
           <span v-if="isSelectedShelf(shelf) && shelf !== openShelf" class="kit-tile-badge" title="Đang chọn tướng này">
             <i class="fas fa-check" aria-hidden="true"></i>
           </span>
+          <!-- Mastery on the opposite corner from the check, so a selected
+               champion with a level wears both. Only for a champion that has
+               been played: an empty roster of "1"s would say nothing. -->
+          <span v-if="masteryFor(shelf)" class="kit-tile-mastery" :title="masteryTitle(masteryFor(shelf)!)">
+            {{ masteryLevel(masteryFor(shelf)!.points) }}
+          </span>
         </div>
         <span class="kit-shelf-name">{{ shelf.name }}</span>
         <div class="kit-shelf-state">
@@ -423,6 +448,15 @@ watch(
            tap could hit — which is the thing that made the old tile grid unable
            to do anything *but* replace the kit. -->
       <div v-if="shelf === openShelf && shelf.kit.length" class="kit-shelf-cta">
+        <!-- The numbers behind the badge, on the shelf the player opened —
+             the one place with room for a sentence. -->
+        <p v-if="masteryFor(shelf)" class="kit-mastery-line">
+          <i class="fas fa-medal" aria-hidden="true"></i>
+          Thông thạo <strong>bậc {{ masteryLevel(masteryFor(shelf)!.points) }}</strong>
+          · {{ masteryFor(shelf)!.matches }} trận
+          · {{ masteryFor(shelf)!.kills }}/{{ masteryFor(shelf)!.deaths }}/{{ masteryFor(shelf)!.assists }}
+          · KDA {{ kdaOf(masteryFor(shelf)!).toFixed(1) }}
+        </p>
         <button type="button" class="hextech-btn kit-apply-all" :class="{ 'is-active-kit': isSelectedShelf(shelf) }"
           :title="`Dùng cả bộ chiêu ${shelf.name}`" @click="emit('applyKit', shelf)">
           <i class="fas" :class="isSelectedShelf(shelf) ? 'fa-check-double' : 'fa-bolt'" aria-hidden="true"></i>

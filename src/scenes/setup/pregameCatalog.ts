@@ -56,6 +56,12 @@ export interface KitShelfEntry {
 export interface KitShelf {
   name: string;
   /**
+   * The qualified champion id (`QualifiedChampion.id`) — what the match
+   * history and mastery are keyed on. Absent for the two shelves that are
+   * not a champion, and for a test's hand-built shelf.
+   */
+  championId?: string;
+  /**
    * Which installed pack this champion came from — `QualifiedChampion.packId`,
    * carried through unchanged.
    *
@@ -387,6 +393,7 @@ export const getPregameCatalog = (): PregameCatalog => {
 
         return {
           name: champion.name,
+          championId: champion.playable ? champion.id : undefined,
           packId: champion.packId,
           avatar: champion.image,
           entries,

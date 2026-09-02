@@ -44,6 +44,13 @@ import {
   modeDrift,
   type MatchModeId,
 } from '@/game/config/matchModes';
+import {
+  clearMatchHistory,
+  formatDuration,
+  formatWhen,
+  readMatchHistory,
+  type MatchRecord,
+} from '@/game/config/matchHistory';
 import { vTap } from '../tapGuard';
 import MapPickerModal from './MapPickerModal.vue';
 import { mapRuleCount, mapRuleGroups } from './mapRuleLines';
@@ -150,6 +157,33 @@ const restartForMode = (): void => {
   }
   confirmingModeRestart.value = false;
   live?.restart();
+};
+
+/**
+ * ## Trận gần đây
+ *
+ * The local match history (`config/matchHistory.ts`), read once per mount:
+ * the running match is in it too, autosaved every thirty seconds, so the
+ * list opened mid-match shows tonight's numbers so far. Shown a page at a
+ * time — ten rows, then "Xem thêm" — because forty rows of K/D/A is a wall on
+ * a phone. Cleared with the same two-step press the other irreversible
+ * controls on this tab use.
+ */
+const HISTORY_PAGE = 10;
+const history = ref<MatchRecord[]>(readMatchHistory().records);
+const historyShown = ref(HISTORY_PAGE);
+const historyNow = Date.now();
+const shownHistory = computed(() => history.value.slice(0, historyShown.value));
+const mapNameOf = (id: string): string => maps.find(map => map.id === id)?.name ?? id;
+const confirmingClearHistory = ref(false);
+const clearHistory = (): void => {
+  if (!confirmingClearHistory.value) {
+    confirmingClearHistory.value = true;
+    return;
+  }
+  confirmingClearHistory.value = false;
+  clearMatchHistory();
+  history.value = [];
 };
 
 const CDR_PERCENT_STEP = 10;
@@ -514,6 +548,35 @@ const resetLabel = computed(() =>
     <p v-if="live && canEdit" class="practice-note">
       Quái rừng và lính: thay đổi có hiệu lực khi bạn đóng bảng và trận chạy tiếp.
     </p>
+
+    <!-- What the evenings added up to. After the controls, before the way
+         out: it is about matches, not about this one. -->
+    <div v-if="history.length" class="history-field" id="practice-history">
+      <div class="history-head">
+        <span class="map-field-label">Trận gần đây <span class="history-count">{{ history.length }}</span></span>
+        <button type="button" class="history-clear" :class="{ confirming: confirmingClearHistory }"
+          id="practice-history-clear" @click="clearHistory" v-tap="clearHistory">
+          {{ confirmingClearHistory ? 'Chắc chưa?' : 'Xoá lịch sử' }}
+        </button>
+      </div>
+      <ul class="history-list">
+        <li v-for="row in shownHistory" :key="row.id" class="history-row">
+          <span class="history-champ">{{ row.championName }}</span>
+          <span class="history-kda">
+            <strong>{{ row.kills }}</strong>/<strong class="history-deaths">{{ row.deaths }}</strong>/<strong>{{ row.assists }}</strong>
+            <span class="history-cs">· {{ row.cs }} CS</span>
+          </span>
+          <span class="history-meta">
+            {{ matchModeFor(row.mode).name }} · {{ mapNameOf(row.mapId) }} · {{ formatDuration(row.durationMs) }}
+          </span>
+          <span class="history-when">{{ formatWhen(row.endedAt, historyNow) }}</span>
+        </li>
+      </ul>
+      <button v-if="history.length > historyShown" type="button" class="history-more" id="practice-history-more"
+        @click="historyShown += HISTORY_PAGE" v-tap="() => (historyShown += HISTORY_PAGE)">
+        Xem thêm
+      </button>
+    </div>
 
     <!-- Last in the flow and visually apart: the irreversible controls. See the
          file comment on why each is here and why both confirm. -->

@@ -399,6 +399,110 @@
   color: var(--hextech-muted);
 }
 
+/* ------------------------------------------------ Trận gần đây (MatchTab.vue)
+   A compact ledger: champion, K/D/A, where and how long, when. Two lines per
+   row on a phone (the grid wraps), one on a desktop. */
+.history-field {
+  margin: 1rem 0 0;
+  font-size: 0.85em;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.history-count {
+  margin-left: 0.3rem;
+  color: var(--hextech-muted);
+  font-weight: normal;
+}
+
+.history-clear {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--hextech-line);
+  background: none;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.history-clear.confirming {
+  border-color: rgba(226, 120, 120, 0.9);
+  color: rgba(240, 150, 150, 0.95);
+}
+
+.history-list {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.1rem 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.18));
+}
+
+.history-champ {
+  color: var(--hextech-text);
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-kda {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  color: #d8dee6;
+}
+
+.history-deaths {
+  color: rgba(240, 150, 150, 0.95);
+}
+
+.history-cs {
+  margin-left: 0.2rem;
+  color: var(--hextech-muted);
+  font-weight: normal;
+}
+
+.history-meta {
+  color: var(--hextech-muted);
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-when {
+  justify-self: end;
+  color: var(--hextech-muted);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.history-more {
+  display: block;
+  width: 100%;
+  margin: 0.4rem 0 0;
+  padding: 0.35rem;
+  border: 1px dashed var(--hextech-line);
+  border-radius: 6px;
+  background: none;
+  color: var(--hextech-teal);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
 /* The restart inside the pending note — a link-shaped button, not a third
    block button: it is one clause of a sentence. Arms to gold on the first
    press like `.practice-exit`. */
@@ -1267,6 +1371,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Mastery on a tile: the level, bottom-left, teal on dark so it is not
+   mistaken for the gold "selected" check top-right. */
+.kit-tile-mastery {
+  position: absolute;
+  bottom: -3px;
+  left: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #102426;
+  border: 1px solid var(--hextech-teal);
+  color: var(--hextech-teal);
+  font-size: 9px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+}
+
+/* The sentence behind the badge, on the opened shelf. */
+.kit-mastery-line {
+  grid-column: 1 / -1;
+  margin: 0 0 0.4rem;
+  color: var(--hextech-muted);
+  font-size: 0.85em;
+}
+
+.kit-mastery-line strong {
+  color: var(--hextech-teal);
+}
+
+.kit-mastery-line .fa-medal {
+  margin-right: 0.3rem;
+  color: var(--hextech-teal);
 }
 
 .kit-tile-badge {

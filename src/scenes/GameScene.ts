@@ -172,6 +172,9 @@ export default class GameScene extends Scene {
    * still has to stop either way.
    */
   private _leavePage(): void {
+    // Whatever else leaving does, the match's numbers land first: a hidden
+    // PWA may never come back (`MatchRecorder`'s reason to exist).
+    this.game?.recorder?.save();
     // A LAN match stops for nobody — least of all for a blur. Suspending here
     // is what froze net matches solid: `Game.pause()` refuses while a session
     // is attached, so the away-panel's close button had no `unpause()` to
@@ -187,6 +190,10 @@ export default class GameScene extends Scene {
   // Bound once so addEventListener/removeEventListener target the same
   // reference — otherwise the listener added in enter() could never be
   // removed in exit(), leaking a handler across every scene re-entry.
+  private _handlePageHide = (): void => {
+    this.game?.recorder?.save();
+  };
+
   private _handleVisibilityChange = (): void => {
     if (document.hidden) this._leavePage();
     else this.resumeRuntime();
@@ -252,6 +259,9 @@ export default class GameScene extends Scene {
     imageMode(CENTER);
 
     document.addEventListener('visibilitychange', this._handleVisibilityChange);
+    // `pagehide` is the one event a closing tab and a swiped-away PWA both
+    // fire; `visibilitychange` covers the tab merely going behind another.
+    window.addEventListener('pagehide', this._handlePageHide);
     window.addEventListener('blur', this._handleWindowBlur);
     window.addEventListener('keydown', this._swallowTab, true);
 
@@ -660,6 +670,7 @@ export default class GameScene extends Scene {
 
   exit() {
     document.removeEventListener('visibilitychange', this._handleVisibilityChange);
+    window.removeEventListener('pagehide', this._handlePageHide);
     window.removeEventListener('blur', this._handleWindowBlur);
     window.removeEventListener('keydown', this._swallowTab, true);
     this.game?.spellInputController.cancelAll('SCENE_EXIT');

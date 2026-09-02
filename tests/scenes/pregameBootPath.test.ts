@@ -75,6 +75,9 @@ const ALLOWED_GAME_MODULES = [
   // The random pool: `localStorage` and nothing else, read by the picker's
   // pack headings. Same directory, same carve-out.
   '@/game/config/championPool',
+  // The match history: `localStorage` only, read by the picker for its
+  // mastery badges and by the match tab for the recent-matches list.
+  '@/game/config/matchHistory',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

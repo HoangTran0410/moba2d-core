@@ -58,6 +58,7 @@ import { FpsMeter, drawFpsOverlay } from './debug/FpsOverlay';
 import EventManager from '@/managers/EventManager';
 import MatchAnnouncer from '@/game/combat/Announcer';
 import { DeathCamera, type SpectateCandidate } from './render/deathCamera';
+import { MatchRecorder } from './combat/MatchRecorder';
 import { uuidv4 } from '@/utils';
 import SpellInputController from './spell/input/SpellInputController';
 import TargetResolver, {
@@ -232,6 +233,12 @@ export default class Game {
   announcer!: MatchAnnouncer;
   /** Where the camera goes while the player is dead. See `render/deathCamera.ts`. */
   deathCamera!: DeathCamera<Champion>;
+  /**
+   * This match's identity in the local history — what makes the recorder's
+   * repeated saves one entry. See `combat/MatchRecorder.ts`.
+   */
+  readonly matchId = uuidv4();
+  recorder!: MatchRecorder;
   terrainMap!: TerrainMap;
   navigation!: NavigationSystem;
   fogOfWar!: FogOfWar;
@@ -440,6 +447,17 @@ export default class Game {
     this.objectManager = new ObjectManager(this);
     this.eventManager = new EventManager();
     this.announcer = new MatchAnnouncer(this.eventManager, () => this.matchTimeMs);
+    this.recorder = new MatchRecorder({
+      matchId: this.matchId,
+      mapId: this.activeMapId,
+      mode: this.matchMode,
+      enabled: !isNetClient(),
+      nowMs: () => this.matchTimeMs,
+      clock: () => Date.now(),
+      player: () => this.player ?? null,
+      botCount: () => this.director?.bots().length ?? 0,
+      onAnnounce: listener => this.announcer.onAnnounce(listener),
+    });
     this.deathCamera = new DeathCamera<Champion>({
       isDead: () => this.player.isDead,
       deathPoint: () => this.player.position,
@@ -766,6 +784,7 @@ export default class Game {
     // Before the camera lerps, so the tick a target changes is the tick the
     // journey there starts.
     this.deathCamera.tick();
+    this.recorder.tick();
     this.camera.update();
     this.worldMouse = this.camera.screenToWorld(mouseX, mouseY);
     // before objectManager.update(), so a minion released this frame is added
@@ -923,6 +942,9 @@ export default class Game {
     // lanes before anything that can throw means one bad teardown loses at
     // most its own cleanup, not every match after it.
     clearActiveLanes();
+    // The last word on this match, before the announcer it listens to goes.
+    this.recorder?.save();
+    this.recorder?.detach();
     this.announcer?.detach();
     this.fogOfWar.destroy();
     this.minimap.destroy();
