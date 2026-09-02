@@ -255,7 +255,13 @@ export default class MatchAnnouncer {
   }
 
   private onDeath(event: UnitDeathEvent): void {
-    const { unit: victim, killer } = event;
+    const { unit: victim } = event;
+    // The feed names whoever the kill was *booked* to, which for a summon's
+    // last hit is the player who summoned it — the same unit `die()` gave the
+    // kill and the gold to. Announced off the clone instead, the row reads
+    // "Không rõ hạ X": a `Pet`'s own `killCredit` is `'none'`, so it does not
+    // clear the champion-on-champion gate below and nobody's spree moves.
+    const killer = event.creditedTo ?? event.killer;
     const now = this.clock();
 
     // The victim's run ends whatever killed it — a turret ends a spree too.

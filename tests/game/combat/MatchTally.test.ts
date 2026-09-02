@@ -18,6 +18,7 @@ import Monster from '../../../src/game/gameObject/attackableUnits/Monster';
 import Pet from '../../../src/game/gameObject/attackableUnits/Pet';
 import Turret from '../../../src/game/gameObject/structures/Turret';
 import Shield from '../../../src/game/gameObject/buffs/Shield';
+import { Lane } from '../../../src/game/lanes';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
 
 let game: TestGame;
@@ -92,6 +93,45 @@ describe('kill credit', () => {
     // distinction a Pet — which extends Champion — would read as a kill.
     expect(attacker.tally.kills).toBe(0);
     expect(attacker.tally.minionsKilled).toBe(0);
+  });
+
+  it("credits a pet's farm to whoever owns it", () => {
+    // The other side of the rule above. Killing a pet is worth nothing;
+    // being killed *by* one has to be worth the same as being killed by its
+    // owner, or a clone is a way of throwing farm away. The count went onto
+    // the pet's own tally, which nothing reads and which dies with it.
+    const owner = champion('owner');
+    game.setPlayer(owner);
+    const pet = new Pet({ game, ownerUnit: owner, lifeTimeMs: 10_000, teamId: 'owner' });
+    const wave = new Minion({
+      game,
+      position: createVector(50, 0),
+      teamId: 'enemy',
+      lane: Lane.MID,
+      waypoints: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+      ],
+    } as ConstructorParameters<typeof Minion>[0]);
+    indexObjects(game, [owner, pet, wave]);
+
+    wave.die({ attacker: pet, reviveAfter: 0 });
+
+    expect(owner.tally.minionsKilled).toBe(1);
+    expect(pet.tally.minionsKilled).toBe(0);
+  });
+
+  it("credits a pet's champion kill to its owner too", () => {
+    const owner = champion('owner');
+    game.setPlayer(owner);
+    const pet = new Pet({ game, ownerUnit: owner, lifeTimeMs: 10_000, teamId: 'owner' });
+    const victim = champion('victim');
+    indexObjects(game, [owner, pet, victim]);
+
+    victim.die({ attacker: pet, reviveAfter: 10 });
+
+    expect(owner.tally.kills).toBe(1);
+    expect(victim.tally.deaths).toBe(1);
   });
 
   it('does not credit a unit for killing itself', () => {

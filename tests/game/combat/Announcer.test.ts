@@ -56,6 +56,25 @@ describe('MatchAnnouncer', () => {
     expect(row.victimUnit).toBe(bot);
   });
 
+  it("names the summoner, not the summon, when a pet lands the kill", () => {
+    // `die()` books the kill to the owner, so the feed has to say the same
+    // thing the scoreboard does. Announced off the clone, the row would read
+    // "Không rõ hạ Bot" — a `Pet`'s own `killCredit` is `'none'`, so it does
+    // not even count as a champion kill.
+    const clone = unit('Phân thân', 'BLUE', 'none');
+    events.emit(EventType.ON_DIE, {
+      unit: bot,
+      killer: clone,
+      creditedTo: vera,
+      credit: bot.killCredit,
+    } satisfies UnitDeathEvent);
+
+    const [row] = announcer.recent(now);
+    expect(row.killer?.name).toBe('Vera');
+    expect(row.killerUnit).toBe(vera);
+    expect(announcer.streakOf(vera)).toBe(1);
+  });
+
   it('gives first blood to the first champion-on-champion kill, once', () => {
     kill(unit('Trụ', 'BLUE', 'none'), bot);
     expect(announcer.recent(now)[0].firstBlood).toBe(false);

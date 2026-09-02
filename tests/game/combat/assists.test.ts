@@ -171,6 +171,31 @@ describe('what an assist is awarded for', () => {
     expect(helper.tally.assists).toBe(0);
   });
 
+  it("credits a summoner for what their summon did", () => {
+    // The participation half of the same rule the bounty and the farm count
+    // follow: a clone chipping somebody down is its owner doing it. Recorded
+    // against the pet, the entry earned nobody an assist (a `Pet` has no
+    // wallet and its tally dies with it) and was then pruned outright the
+    // moment the clone expired — `rememberParticipant` drops `toRemove`
+    // entries, so a summon that helps and then runs out of time helped
+    // nobody at all.
+    const killer = champion('team-blue');
+    const owner = champion('team-blue');
+    const victim = champion('team-red');
+    victim.goldBounty = 200;
+    const pet = new Pet({ game, ownerUnit: owner, lifeTimeMs: 10_000, teamId: 'team-blue' });
+    game.setPlayer(killer);
+    indexObjects(game, [killer, owner, victim, pet]);
+
+    const before = owner.wallet!.balance;
+    victim.takeDamage(30, pet, 'MAGIC');
+    finish(victim, killer);
+
+    expect(owner.tally.assists).toBe(1);
+    expect(pet.tally.assists).toBe(0);
+    expect(owner.wallet!.balance).toBe(before + Math.round(200 * ASSIST_GOLD_SHARE));
+  });
+
   it('not a pet, which is a Champion only by inheritance', () => {
     const killer = champion('team-blue');
     const helper = champion('team-blue');

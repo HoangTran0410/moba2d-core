@@ -4,6 +4,7 @@ import Champion from '@/game/gameObject/attackableUnits/Champion';
 import Minion from '@/game/gameObject/attackableUnits/Minion';
 import { Lane } from '@/game/lanes';
 import Pet from '@/game/gameObject/attackableUnits/Pet';
+import Turret from '@/game/gameObject/structures/Turret';
 import { CHAMPION_BOUNTY, MINION_BOUNTY } from '@/game/economy/Wallet';
 import { PASSIVE_GOLD_PER_SECOND, STARTING_GOLD } from '@/game/economy/Wallet';
 
@@ -134,6 +135,38 @@ describe('a corpse is worth gold to whoever made it', () => {
   it('gives a pet no wallet of its own', () => {
     const pet = petOf(champion(0, 'blue'), 'blue');
     expect(pet.wallet).toBeNull();
+  });
+
+  it('pays the owner when their pet lands the last hit', () => {
+    // A clone farming a wave is the player farming a wave. Before this, the
+    // gold simply evaporated: `killer.wallet?.earn(...)` and a `Pet` whose
+    // wallet is `null` on purpose, so the `?.` swallowed the whole bounty
+    // and nobody — not the pet, not the owner, not the team — was paid.
+    // Reported from a real match, and the hole covers every summon any
+    // installed pack ships — a clone, a shadow, a box — not one champion's.
+    const owner = champion(0, 'blue');
+    const pet = petOf(owner, 'blue');
+    const victim = minion(50, 'red');
+
+    const before = owner.wallet!.balance;
+    kill(victim, pet);
+
+    expect(owner.wallet!.balance).toBe(before + MINION_BOUNTY);
+  });
+
+  it('still pays nobody for a turret’s last hit', () => {
+    // The other half of the same rule, and it does not move: a turret has no
+    // owner to walk up to, so its last hit denies the gold — which is the
+    // behaviour, not an oversight.
+    const bystander = champion(0, 'blue');
+    const turret = new Turret({ game, position: createVector(40, 0), teamId: 'blue' });
+    indexObjects(game, [turret]);
+    const victim = minion(50, 'red');
+
+    const before = bystander.wallet!.balance;
+    kill(victim, turret);
+
+    expect(bystander.wallet!.balance).toBe(before);
   });
 
   it('pays nobody when nobody killed it', () => {

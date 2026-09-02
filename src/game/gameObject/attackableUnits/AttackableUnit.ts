@@ -86,12 +86,34 @@ export interface HitPresentationOptions {
  * landed the blow (a champion, a turret, a minion), or absent for a death
  * nobody caused; `credit` is the victim's `killCredit`, so a listener can
  * tell a champion's death from a minion's without knowing the classes.
+ *
+ * `creditedTo` is who the kill was actually *booked* to, which is not always
+ * who swung: a summon's last hit belongs to whoever summoned it. It is a
+ * separate field rather than a redefinition of `killer` because the two are
+ * different questions and a listener may want either — the announcer names
+ * the player, a damage log names the clone.
  */
 export interface UnitDeathEvent {
   unit: AttackableUnit;
   killer?: AttackableUnit;
+  creditedTo?: AttackableUnit;
   credit: KillCredit;
 }
+
+/**
+ * Who a kill by `killer` is booked to.
+ *
+ * Walks `killCreditedTo`, which is the unit itself for everything that fights
+ * on its own account and the owner for a summon. Iterative and capped rather
+ * than recursive: a pet of a pet is a shape nobody builds on purpose, and a
+ * cycle built by accident should not take the whole match down with a stack
+ * overflow at the moment somebody dies.
+ */
+const creditFor = (killer: AttackableUnit): AttackableUnit => {
+  let at = killer;
+  for (let hop = 0; hop < 4 && at.killCreditedTo !== at; hop++) at = at.killCreditedTo;
+  return at;
+};
 
 /** Peak alpha of the white disc a hit lights on a body. See `drawHitFlash`. */
 const HIT_FLASH_PEAK_ALPHA = 150;
@@ -218,6 +240,25 @@ export default class AttackableUnit extends GameObject {
    * `Pet`/`Turret` are neither.
    */
   killCredit: KillCredit = 'minion';
+
+  /**
+   * Who a kill *by* this unit belongs to.
+   *
+   * The mirror of `killCredit` above: that one is asked of the victim, this
+   * one of the killer. Itself for everything that fights on its own account,
+   * which is nearly everything; `Pet` points at its owner.
+   *
+   * It exists because the crediting site paid whoever landed the blow, and a
+   * `Pet` has no wallet by design — so `killer.wallet?.earn(bounty)` on a
+   * clone's last hit swallowed the whole bounty and paid *nobody*, while the
+   * farm count went onto a tally that dies with the summon. Using a clone to
+   * clear a wave was a way of throwing gold away, in every pack that ships
+   * one. A `Turret` deliberately keeps the base answer: it has no owner to
+   * walk up to, so its last hit still denies the gold.
+   */
+  get killCreditedTo(): AttackableUnit {
+    return this;
+  }
 
   /**
    * What killing this unit pays whoever did it. `0` for anything that is not
@@ -1091,7 +1132,13 @@ export default class AttackableUnit extends GameObject {
 
   private rememberParticipant(attacker: AttackableUnit): void {
     const atMs = this.game?.matchTimeMs ?? 0;
-    this._assistLedger.set(attacker, atMs);
+    // Booked to whoever the attacker fights for, the same way `die()` books
+    // the kill. Recorded against a summon instead, the entry earns nobody an
+    // assist — a `Pet` has no wallet and its tally dies with it — and is then
+    // pruned outright the moment the summon expires, because the sweep below
+    // drops `toRemove` entries. A clone that chips somebody down and then
+    // runs out of time would have helped nobody at all.
+    this._assistLedger.set(creditFor(attacker), atMs);
     if (this._assistLedger.size <= ASSIST_LEDGER_PRUNE_AT) return;
     const cutoff = atMs - MAX_ASSIST_WINDOW_MS;
     for (const [unit, seen] of this._assistLedger) {
@@ -1273,26 +1320,31 @@ export default class AttackableUnit extends GameObject {
       // and it lands on a LAN client too, whose `die` comes from the snapshot.
       if (isLocalPlayer(this.game, this)) feel(this.game, 'death', DEATH_SHAKE_TRAUMA);
       const killer = deathData.attacker;
-      if (killer && killer !== this) {
+      // Who swung is not always who is paid: a summon's last hit is its
+      // owner's farm. Everything below books to `credited` and nothing to
+      // `killer` — the two differ for exactly one shape of unit today, and
+      // splitting them per line is how half of it would get fixed.
+      const credited = killer ? creditFor(killer) : undefined;
+      if (killer && credited && killer !== this && credited !== this) {
         if (this.killCredit === 'champion') {
-          killer.tally.kills++;
-          if (isLocalPlayer(this.game, killer)) feel(this.game, 'kill', KILL_SHAKE_TRAUMA);
-        } else if (this.killCredit === 'minion') killer.tally.minionsKilled++;
+          credited.tally.kills++;
+          if (isLocalPlayer(this.game, credited)) feel(this.game, 'kill', KILL_SHAKE_TRAUMA);
+        } else if (this.killCredit === 'minion') credited.tally.minionsKilled++;
         // Inside the same `!isDead` guard as the ledger and the bounty, and
         // before `clearBuffs` below touches anything: a second `die` on a
         // corpse must not pay a second set of assists.
-        this.payAssists(killer);
+        this.payAssists(credited);
         // Inside the same `!isDead` guard the ledger is: `die` is reachable on
         // a corpse (`Champion.die` runs cleanup that is safe to repeat), and a
         // bounty paid on every one of those calls is an unbounded gold press
         // pointed at anything that keeps hitting a body.
-        killer.wallet?.earn(this.goldBounty);
+        credited.wallet?.earn(this.goldBounty);
         // Over the **killer**, which is the opposite of every other combat
         // text — see `GOLD_TEXT_COLOR`. Guarded on a wallet as well as on the
         // bounty, so a minion that last-hits another minion does not float a
         // number for money it cannot hold.
-        if (killer.wallet && this.goldBounty > 0) {
-          CombatText.show(killer, 'gold', this.goldBounty, [...GOLD_TEXT_COLOR]);
+        if (credited.wallet && this.goldBounty > 0) {
+          CombatText.show(credited, 'gold', this.goldBounty, [...GOLD_TEXT_COLOR]);
         }
       }
     }
@@ -1303,9 +1355,12 @@ export default class AttackableUnit extends GameObject {
     // kill already counted. On the transition only, like everything above.
     if (transition) {
       const killer = deathData.attacker;
+      const attributed = killer && killer !== this ? killer : undefined;
+      const credited = attributed ? creditFor(attributed) : undefined;
       this.game?.eventManager?.emit(EventType.ON_DIE, {
         unit: this,
-        killer: killer && killer !== this ? killer : undefined,
+        killer: attributed,
+        creditedTo: credited !== this ? credited : undefined,
         credit: this.killCredit,
       } satisfies UnitDeathEvent);
     }

@@ -106,6 +106,18 @@ export default class Pet extends Champion {
    */
   wallet: Wallet | null = null;
 
+  /**
+   * A summon's kills belong to whoever summoned it.
+   *
+   * The other half of `wallet` being `null`: without this the crediting site
+   * paid the pet, which cannot hold money, and the bounty simply evaporated —
+   * so clearing a wave with a clone was strictly worse than clearing it
+   * yourself. See `AttackableUnit.killCreditedTo`.
+   */
+  get killCreditedTo(): AttackableUnit {
+    return this.ownerUnit;
+  }
+
   goldBounty = 0;
 
   ownerUnit: AttackableUnit;
