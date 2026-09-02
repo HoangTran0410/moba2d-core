@@ -3220,11 +3220,34 @@ body.touch-ui .kill-banner-sub {
 
 /* One grid for the header row and every body row, so the columns line up.
    Fixed columns add up to less than half the panel at its narrowest; the name
-   is the only column that stretches, and the only one allowed to be cut. */
+   is the only column that stretches, and the only one allowed to be cut.
+
+   The bag column is a *computed* width and not `max-content`, and that is the
+   whole reason the header lines up at all. These are two separate grids — the
+   header is a div, the rows are `li`s inside a flex `ul` — so each resolves
+   `max-content` against its own content: 118px of item slots in a row, the
+   width of the word "Đồ" in the header. The 98px difference came out of the
+   only elastic track, `1fr` on the name, so every header label from K/D/A
+   onward sat about two columns right of the cell it named — "CS" printed over
+   the damage number, which climbs all match and reads raw below 10,000
+   (`compact`). Reported as a CS column counting to nine thousand while the
+   practice panel said 36 about the same champion, which it did, because 36 was
+   the CS and the board was showing something else under the label.
+
+   Deriving the track from the same three numbers the bag itself is built from
+   is what stops them drifting apart again: `.scoreboard-items` below reads
+   them too, and the touch and narrow-phone overrides change the *variables*
+   rather than a second copy of the arithmetic. */
 .scoreboard-cols,
 .scoreboard-row {
+  --sb-item: 18px;
+  --sb-item-gap: 2px;
+  --sb-bag-cols: 6;
+  --sb-bag: calc(
+    var(--sb-bag-cols) * var(--sb-item) + (var(--sb-bag-cols) - 1) * var(--sb-item-gap)
+  );
   display: grid;
-  grid-template-columns: 26px minmax(56px, 1fr) 64px 28px 50px 42px max-content;
+  grid-template-columns: 26px minmax(56px, 1fr) 64px 28px 50px 42px var(--sb-bag);
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -3370,8 +3393,8 @@ body.touch-ui .kill-banner-sub {
 
 .scoreboard-items {
   display: grid;
-  grid-template-columns: repeat(6, 18px);
-  gap: 2px;
+  grid-template-columns: repeat(var(--sb-bag-cols), var(--sb-item));
+  gap: var(--sb-item-gap);
 }
 
 .scoreboard-item {
@@ -3498,7 +3521,10 @@ body.touch-ui .scoreboard-teams {
 
 body.touch-ui .scoreboard-cols,
 body.touch-ui .scoreboard-row {
-  grid-template-columns: 20px minmax(36px, 1fr) 56px 24px 40px max-content;
+  /* On both, never on `.scoreboard-items` alone: the header has no bag to
+     measure, so it has to be told the same number the bag is built from. */
+  --sb-item: 14px;
+  grid-template-columns: 20px minmax(36px, 1fr) 56px 24px 40px var(--sb-bag);
   gap: 4px;
 }
 
@@ -3516,10 +3542,6 @@ body.touch-ui .scoreboard-face {
   height: 22px;
 }
 
-body.touch-ui .scoreboard-items {
-  grid-template-columns: repeat(6, 14px);
-}
-
 body.touch-ui .scoreboard-item {
   width: 14px;
   height: 14px;
@@ -3528,8 +3550,9 @@ body.touch-ui .scoreboard-item {
 /* The narrowest phones: six in a row no longer fit beside the numbers, so the
    bag folds into two rows of three. */
 @media (max-width: 720px) {
-  body.touch-ui .scoreboard-items {
-    grid-template-columns: repeat(3, 14px);
+  body.touch-ui .scoreboard-cols,
+  body.touch-ui .scoreboard-row {
+    --sb-bag-cols: 3;
   }
 }
 
