@@ -773,6 +773,33 @@ export default class FogOfWar {
 
   resize(w: number, h: number): void {
     this.overlay.resizeCanvas(w, h, true);
+    // **The gradients do not survive this call, so the cache must not either.**
+    //
+    // `resizeCanvas` writes `canvas.width`/`canvas.height`, and that resets the
+    // 2D context outright — p5 knows it, which is why it snapshots the context
+    // and writes it back afterwards. Read what it snapshots: `for (o in
+    // drawingContext) if (typeof a !== 'object' && typeof a !== 'function')` —
+    // strings and numbers only. Every `CanvasGradient` this class handed to
+    // `fillStyle` is an object, created against the context that just went
+    // away, and `getRadialGradient` would go on serving those objects for the
+    // rest of the match because it buckets by `(innerR, radius)` and nothing
+    // ever evicted them.
+    //
+    // A stale gradient assigned to `fillStyle` is not an error anybody sees: a
+    // rejected assignment leaves the previous fill standing, and inside
+    // `erase()` the previous fill is p5's own opaque erase colour. So the
+    // polygon erases at **full strength with a hard edge** instead of fading
+    // out through `#fff → #0000`, i.e. it clears ground that should still be
+    // fogged — and only for the radii that were cached before the resize,
+    // which is why it would be some circles and not others.
+    //
+    // Why this shows up on an iPad and not on a desktop: it needs a resize.
+    // Safari on iOS fires them constantly — the URL bar collapsing on scroll,
+    // rotation, Split View, Stage Manager — where a desktop window sits still
+    // for a whole session. The bug was always here; only one platform pulls
+    // the trigger. Correct regardless of which engine is strict about it: a
+    // cache of context-bound objects has no business outliving its context.
+    this.gradientCache.clear();
   }
 
   destroy(): void {
