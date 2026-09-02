@@ -793,6 +793,10 @@ export default class Game {
     // journey there starts.
     this.deathCamera.tick();
     this.recorder.tick();
+    // Puts the panel's cheats back on whoever can carry them now — a champion
+    // who was dead when the switch was flipped, or who has died since. See
+    // `MatchDirector.tick`.
+    this.director?.tick();
     this.camera.update();
     this.worldMouse = this.camera.screenToWorld(mouseX, mouseY);
     // before objectManager.update(), so a minion released this frame is added

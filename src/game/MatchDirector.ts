@@ -1165,9 +1165,63 @@ export default class MatchDirector {
     this.persist();
   }
 
-  /** Whether `unit` is currently carrying the invulnerability buff. */
+  /**
+   * Which champions the panel has been told to keep invulnerable.
+   *
+   * **The intent, not the buff** — and they are different states, which is the
+   * bug this exists for. `AttackableUnit.addBuff` refuses on a corpse
+   * (`if (this.isDead || !buff) return`), which is right for a stun and wrong
+   * for a match setting: flipping the switch on a champion who happened to be
+   * dead did nothing at all, `isInvulnerable` read the missing buff back as
+   * `false`, the checkbox sprang back to off, and `persist()` wrote the
+   * refusal to storage. Reported as "nếu tướng đc bật đang chết thì ko mở đc
+   * bất tử? phải đợi tướng đó sống lại mới bật đc?" — yes, and it should not
+   * have been.
+   *
+   * Holding the intent separately also fixes the quieter half. The buff runs
+   * on `INVULNERABLE_DURATION_MS`, "effectively permanent" at ten minutes,
+   * which a practice room left open for an afternoon outlives; and death
+   * clears buffs, so a champion who died with it on came back mortal. `tick`
+   * puts it back in both cases, because the switch is what the player set and
+   * the buff is only how it is currently spelled.
+   *
+   * A `WeakSet` because a bot the panel replaces is gone and its intent with
+   * it — never iterated, only asked about the roster that is actually live.
+   */
+  private _wantsInvulnerable = new WeakSet<Champion>();
+
+  /**
+   * Re-applies what the panel asked for to whoever can carry it now.
+   *
+   * Called from `Game.fixedUpdate`, beside `deathCamera.tick` — so it does not
+   * run while a tab holds the match paused, which is exactly right: the
+   * checkbox reads the intent and needs no loop, and the buff catches up on
+   * the first frame after the player closes the panel.
+   */
+  tick(): void {
+    this.reassertInvulnerable(this.game.player);
+    for (const bot of this.bots()) this.reassertInvulnerable(bot);
+  }
+
+  private reassertInvulnerable(unit: Champion | undefined): void {
+    if (!unit || unit.isDead) return;
+    if (!this._wantsInvulnerable.has(unit)) return;
+    if (this.invulnerableBuffs(unit).length > 0) return;
+    unit.addBuff(new Invulnerable(INVULNERABLE_DURATION_MS, unit, unit));
+  }
+
+  /**
+   * Whether the panel has `unit` set to invulnerable.
+   *
+   * The intent rather than the live buff, so the checkbox and the stored
+   * config say what the player chose even in the frames where the engine
+   * cannot carry it — a corpse, or the gap between a buff expiring and `tick`
+   * noticing. A unit nobody has toggled falls back to what it is actually
+   * wearing, which is what a buff granted by anything other than this panel
+   * would be.
+   */
   isInvulnerable(unit: Champion): boolean {
-    return this.invulnerableBuffs(unit).length > 0;
+    return this._wantsInvulnerable.has(unit) || this.invulnerableBuffs(unit).length > 0;
   }
 
   /**
@@ -1188,11 +1242,15 @@ export default class MatchDirector {
   private applyInvulnerable(unit: Champion, on: boolean): void {
     const existing = this.invulnerableBuffs(unit);
     if (on) {
+      // The intent first and unconditionally: `addBuff` below is allowed to
+      // refuse (a dead champion), and the switch must still be on when it does.
+      this._wantsInvulnerable.add(unit);
       if (existing.length === 0) {
         unit.addBuff(new Invulnerable(INVULNERABLE_DURATION_MS, unit, unit));
       }
       return;
     }
+    this._wantsInvulnerable.delete(unit);
     for (const buff of existing) buff.deactivateBuff();
   }
 

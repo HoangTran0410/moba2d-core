@@ -84,6 +84,64 @@ describe('MatchDirector — cheats', () => {
   });
 
   /**
+   * `addBuff` refuses on a corpse — right for a stun, wrong for a match
+   * setting. Flipping the switch on a champion who happened to be dead did
+   * nothing at all: `isInvulnerable` read the missing buff back as false, the
+   * checkbox sprang off, and `persist()` wrote the refusal to storage.
+   * Reported as "phải đợi tướng đó sống lại mới bật đc?".
+   */
+  it('turns on for a champion who is dead right now', () => {
+    const { context: ctx, player } = context();
+    const director = new MatchDirector(ctx);
+    // `isDead` is `deathData !== null`; this is a corpse the way the engine
+    // makes one, without driving a whole death through `takeDamage`.
+    player.deathData = { attacker: undefined, reviveAfter: 5_000 };
+
+    director.setInvulnerable(player, true);
+
+    expect(director.isInvulnerable(player), 'the switch forgot what it was told').toBe(true);
+  });
+
+  it('and lands the buff on the first frame after they stand up', () => {
+    const { context: ctx, player } = context();
+    const director = new MatchDirector(ctx);
+    player.deathData = { attacker: undefined, reviveAfter: 5_000 };
+    director.setInvulnerable(player, true);
+    expect(player.buffs.some(buff => buff instanceof Invulnerable)).toBe(false);
+
+    player.deathData = null;
+    director.tick();
+
+    expect(player.buffs.some(buff => buff instanceof Invulnerable && !buff.toRemove)).toBe(true);
+  });
+
+  it('puts it back when the buff goes away under a switch still set to on', () => {
+    // Death clears buffs, and the buff's own "effectively permanent" ten
+    // minutes is a duration a practice room left open outlives. Either way the
+    // switch is what the player set; the buff is only how it is spelled.
+    const { context: ctx, player } = context();
+    const director = new MatchDirector(ctx);
+    director.setInvulnerable(player, true);
+
+    for (const buff of [...player.buffs]) buff.deactivateBuff();
+    director.tick();
+
+    expect(player.buffs.some(buff => buff instanceof Invulnerable && !buff.toRemove)).toBe(true);
+  });
+
+  it('does not put it back on a champion switched off', () => {
+    const { context: ctx, player } = context();
+    const director = new MatchDirector(ctx);
+    director.setInvulnerable(player, true);
+    director.setInvulnerable(player, false);
+
+    director.tick();
+
+    expect(director.isInvulnerable(player)).toBe(false);
+    expect(player.buffs.some(buff => buff instanceof Invulnerable && !buff.toRemove)).toBe(false);
+  });
+
+  /**
    * The panel is always paused, so `AttackableUnit.update()` — which is what
    * actually drops a `toRemove` buff off the list — never runs between two
    * presses of this toggle. Both directions have to answer correctly anyway.
