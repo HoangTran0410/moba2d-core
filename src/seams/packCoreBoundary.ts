@@ -175,6 +175,9 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     somebody looked at it. That import is also exactly why it is not in the
  *     `/testing` barrel — 84KB of engine dragged into every pack test file
  *     that only wanted a champion fixture.
+ *   - `/testing/vfx` — `describeVfxRules`, the VFX rules a scan can hold.
+ *     Facts about the engine (what a missile carries, which globals the
+ *     harness supplies), so a pack cannot derive them from its own source.
  *   - `/testing/tempo` — `describeTempo`, the cooldown band. Cheap, and here
  *     for the same reason `/testing/items` is: the ceiling is a property of
  *     the *engine* — moba2d is a fast game — and every pack that adopts it
@@ -202,6 +205,7 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/boundary`,
   `${CORE_PACKAGE}/testing/bots`,
   `${CORE_PACKAGE}/testing/tempo`,
+  `${CORE_PACKAGE}/testing/vfx`,
   `${CORE_PACKAGE}/seams`,
   `${CORE_PACKAGE}/pack-webp`,
   `${CORE_PACKAGE}/pack-assets`,

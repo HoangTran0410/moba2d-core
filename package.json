@@ -20,6 +20,7 @@
     "./testing/items": "./src/testing/itemRules.ts",
     "./testing/bots": "./src/testing/botRules.ts",
     "./testing/tempo": "./src/testing/tempoRules.ts",
+    "./testing/vfx": "./src/testing/vfxRules.ts",
     "./testing/maps": "./src/testing/mapRules.ts",
     "./testing/boundary": "./src/testing/boundaryRules.ts",
     "./testing/vitest": "./src/testing/vitest.mjs",
@@ -38,7 +39,8 @@
     "moba2d-generate-maps": "./scripts/pack-maps.mjs",
     "moba2d-check-core-link": "./scripts/pack-core-link.mjs",
     "moba2d-check-unused": "./scripts/pack-unused.mjs",
-    "moba2d-write-manifest": "./scripts/pack-manifest.mjs"
+    "moba2d-write-manifest": "./scripts/pack-manifest.mjs",
+    "moba2d-shoot-vfx": "./scripts/shoot-vfx.mjs"
   },
   "files": [
     "assets/cursors",
@@ -59,6 +61,7 @@
     "scripts/pack-new.mjs",
     "scripts/pack-add.mjs",
     "scripts/pack-serve.mjs",
+    "scripts/shoot-vfx.mjs",
     "scripts/lib/packRoot.mjs",
     "scripts/templates",
     "scripts/version.mjs",

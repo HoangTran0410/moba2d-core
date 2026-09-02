@@ -17,6 +17,7 @@
     "test": "vitest run",
     "build": "npm run assets:generate && npm run catalog:generate && vite build && moba2d-write-manifest --name=\"__PACK_NAME__\"",
     "manifest:write": "moba2d-write-manifest --name=\"__PACK_NAME__\"",
+    "e2e:vfx": "moba2d-shoot-vfx",
     "serve": "moba2d-pack-serve",
     "hooks:install": "git config core.hooksPath scripts/git-hooks",
     "verify": "npm run core:check && npm run assets:check && npm run catalog:check && npm run typecheck && npm run check-unused && npm run check-seams && npm run build && npm test"

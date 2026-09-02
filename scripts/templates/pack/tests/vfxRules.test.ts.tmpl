@@ -1,0 +1,26 @@
+/**
+ * The VFX rules a scan can hold.
+ *
+ * Every visual failure the content packs have shipped was a rule its author
+ * had read that week — `docs/VFX_STANDARD.md` was open in another tab. So the
+ * ones that *can* be checked are checked, in core
+ * (`@moba2d/core/testing/vfx`), because each is a fact about the **engine**:
+ * what `MissileSpellObject` carries, which globals p5 supplies, which globals
+ * the test harness supplies. A pack cannot get any of them right by reading
+ * its own source.
+ *
+ * What this deliberately does **not** check is the half that decides whether
+ * an ability looks like anything: is this shape this champion's own, does it
+ * pop in, does it vanish on contact, does it read as an ultimate. Those are
+ * eyes-only, and `npm run e2e:vfx` is the answer to them — see `AGENTS.md`.
+ */
+import { describeVfxRules } from '@moba2d/core/testing/vfx';
+import { join } from 'node:path';
+
+describeVfxRules({
+  label: '__PACK_NAME__ — VFX rules a scan can hold',
+  spellsDir: join(__dirname, '../spells'),
+  // `file:rule` pairs not fixed yet. Every entry is something a player will
+  // eventually report, so an empty list is the goal and not a formality.
+  knownDebt: [],
+});

@@ -94,7 +94,7 @@ import * as testingVitest from '../../src/testing/vitest.mjs';
  * content-install machinery, whether or not that file ever calls
  * `loadSpellsForTests` — the same eager-loading cost Task 3 measured for
  * `vi.mock` one level down. A pack that wants the whole registry filled says
- * so explicitly, at this subpath. Thirteen subpaths and no more.
+ * so explicitly, at this subpath. Fourteen subpaths and no more.
  *
  * The lesson `./testing/setup` cost a fix round to learn: a subpath in this
  * map publishes the *file's entire export list*, not the bindings anyone
@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the twenty content-pack-facing subpaths', () => {
+  it('declares exports as exactly the fourteen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -216,6 +216,7 @@ describe('package.json public surface', () => {
         // compared to anything. A pack that means to be slower overrides them
         // in one visible line.
         './testing/tempo',
+  './testing/vfx',
         './testing/vitest',
         './testing/setup',
         // The two build helpers a pack's own tooling runs, added when the
@@ -249,7 +250,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly ten bins, the seven below plus the three a pack no longer copies', () => {
+  it('declares exactly eleven bins, the eight below plus the three a pack no longer copies', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -269,6 +270,13 @@ describe('package.json public surface', () => {
       'moba2d-generate-spell-catalog': './scripts/generate-spell-catalog.mjs',
       'moba2d-pack-new': './scripts/pack-new.mjs',
       'moba2d-pack-add': './scripts/pack-add.mjs',
+      // Eleven, not ten. `verify` cannot see whether an effect is legible and
+      // no unit test ever will, so the only honest check is to run the
+      // ability and look at it — which needs core's own dev server and rig.
+      // A pack that had to copy that would have copied it wrong: the last
+      // three files the scaffold copied had all drifted, and one shipped a
+      // published manifest pointing at a 404.
+      'moba2d-shoot-vfx': './scripts/shoot-vfx.mjs',
       // Five, not four. The scaffold's `assetManifest.ts` told an author, in
       // its own header, that "core's own `scripts/generate-assets.mjs` is the
       // worked example" for a pack with more than a handful of images — and
