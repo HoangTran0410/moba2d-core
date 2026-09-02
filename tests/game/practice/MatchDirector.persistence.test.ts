@@ -475,6 +475,28 @@ describe('MatchDirector persistence', () => {
       );
     });
 
+    it('clears the player’s own scoreboard, which nothing else ever does', async () => {
+      // The bots are new objects a line later and get a fresh tally for free.
+      // The player is the one body this method reuses, so before this the
+      // board read 0/0/0 for every bot beside a player carrying every kill and
+      // last hit since the page loaded — a CS column in the thousands.
+      const { director, ctx } = bench();
+      ctx.spawnJungle = vi.fn();
+      ctx.player.tally.kills = 7;
+      ctx.player.tally.deaths = 3;
+      ctx.player.tally.assists = 5;
+      ctx.player.tally.minionsKilled = 412;
+      ctx.player.tally.damageDealt = 90_000;
+
+      await director.resetToDefaults();
+
+      expect(ctx.player.tally.minionsKilled).toBe(0);
+      expect(ctx.player.tally.kills).toBe(0);
+      expect(ctx.player.tally.deaths).toBe(0);
+      expect(ctx.player.tally.assists).toBe(0);
+      expect(ctx.player.tally.damageDealt).toBe(0);
+    });
+
     it('clears the setup screen’s global AI flags too — it is a reset, not a partial one', async () => {
       savePregameConfig({
         ...DEFAULT_PREGAME_CONFIG,

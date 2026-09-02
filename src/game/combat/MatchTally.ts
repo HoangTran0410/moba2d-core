@@ -38,6 +38,28 @@ export default class MatchTally {
   get score(): number {
     return this.kills - this.deaths;
   }
+
+  /**
+   * Back to an unplayed match.
+   *
+   * Every other unit gets this for free by being a new object: a bot the panel
+   * re-adds, a minion the next wave spawns. The **player is the one body that
+   * is never rebuilt** — `MatchDirector.resetToDefaults` recreates the bots and
+   * calls `applyResolvedLoadout` on the standing `game.player` — so without a
+   * way to say it, the one row a player actually reads was the only cumulative
+   * one on the board: bots back to 0/0/0 beside a player carrying every kill
+   * and every last hit since the page loaded. Reported as a CS column reading
+   * three to four thousand, which is what a whole session of a practice room
+   * genuinely adds up to.
+   */
+  reset(): void {
+    this.kills = 0;
+    this.deaths = 0;
+    this.assists = 0;
+    this.minionsKilled = 0;
+    this.damageDealt = 0;
+    this.damageTaken = 0;
+  }
 }
 
 /**

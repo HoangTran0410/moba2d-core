@@ -1041,6 +1041,12 @@ export default class MatchDirector {
     if (generation !== this.resetGeneration) return false;
 
     for (const bot of this.bots()) bot.toRemove = true;
+    // The scoreboard, and the only line here that is about the match rather
+    // than the config. Every bot on the board is about to be a new object with
+    // a fresh tally; the player is the one body this method reuses, so a reset
+    // left them standing beside 0/0/0 bots carrying a K/D/A and a CS count
+    // from every match since the page loaded. See `MatchTally.reset`.
+    this.game.player.tally.reset();
     this.applyResolvedLoadout(this.game.player, config.player, presets[0], false);
     // The player's side is a match setting now, so a reset puts it back on the
     // default team the same way it puts the bots back — otherwise a player who
