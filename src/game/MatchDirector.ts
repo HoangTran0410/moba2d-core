@@ -626,6 +626,8 @@ export default class MatchDirector {
         autoMove: behaviour.autoMove,
         autoAttack: behaviour.autoAttack,
         autoCast: behaviour.autoCast,
+        autoBuy: behaviour.autoBuy,
+        autoReroll: behaviour.autoReroll,
         difficulty: behaviour.difficulty,
       })
     );
@@ -723,6 +725,8 @@ export default class MatchDirector {
     if (flags.autoMove !== undefined) bot._autoMove = flags.autoMove;
     if (flags.autoAttack !== undefined) bot._autoAttack = flags.autoAttack;
     if (flags.autoCast !== undefined) bot._autoCast = flags.autoCast;
+    if (flags.autoBuy !== undefined) bot._autoBuy = flags.autoBuy;
+    if (flags.autoReroll !== undefined) bot._autoReroll = flags.autoReroll;
     // Through `setDifficulty`, which is the single writer for `_difficulty` —
     // the three above are plain fields the e2e scripts already flip directly,
     // and this one deliberately is not.
@@ -1298,5 +1302,7 @@ const behaviourOf = (bot: AIChampion): BotBehaviour => ({
   autoMove: bot._autoMove,
   autoAttack: bot._autoAttack,
   autoCast: bot._autoCast,
+  autoBuy: bot._autoBuy,
+  autoReroll: bot._autoReroll,
   difficulty: bot._difficulty,
 });

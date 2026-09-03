@@ -168,6 +168,26 @@ describe('MatchDirector.applyLoadout', () => {
     expect(bot.name).toBe(afterSwap);
   });
 
+  it("does not re-arm over the owner's own 'no re-rolling' choice", () => {
+    // The whole reason the preference is a second field. `applyLoadout` sets
+    // `_respawnWithNewPreset` back to true every time (the case below depends
+    // on it), so a preference living in that field would be switched back on
+    // by any visit to the picker — the owner turns re-rolling off, edits the
+    // bot's champion, and it silently starts re-rolling again.
+    const { context: ctx, game } = context();
+    const director = new MatchDirector(ctx);
+    const bot = director.addBot(AHRI)!;
+    game.objectManager.update();
+
+    director.setBotBehaviour(bot, { autoReroll: false });
+    director.applyLoadout(bot, ZED);
+
+    expect(bot._autoReroll).toBe(false);
+    // And the mechanism really was re-armed underneath it, so turning the
+    // preference back on picks up the loadout that was set meanwhile.
+    expect(bot._respawnWithNewPreset).toBe(true);
+  });
+
   it('re-arms a bot that had been pinned, so the respawn reapplies the new loadout', () => {
     const { context: ctx, game } = context();
     const director = new MatchDirector(ctx);

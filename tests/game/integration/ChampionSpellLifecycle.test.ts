@@ -76,6 +76,10 @@ describe('Champion spell presentation lifecycle', () => {
     const champion = Object.assign(Object.create(AIChampion.prototype) as AIChampion, {
       spells: [{ deactivate }] as unknown as Spell[],
       _respawnWithNewPreset: true,
+      // `respawn()` asks the owner's preference as well as the mechanism, and
+      // `Object.create` skipped the field initialiser that defaults it on.
+      // See `AIChampion._autoReroll` for why they are two fields.
+      _autoReroll: true,
       // Hand-built via Object.create, so the constructor never ran and never
       // defaulted this to getChampionPresetRandom — set directly to what
       // that default would have resolved to under the mock above.

@@ -140,6 +140,36 @@ export interface BotBehaviour {
   autoAttack: boolean;
   autoCast: boolean;
   /**
+   * Whether this bot spends its own gold (`ai/BotShopper.ts`).
+   *
+   * The fifth field and the only one that is a *cheat* rather than a
+   * behaviour: switching it off is how an owner freezes a bot's build to
+   * study one fight, and a bot with it off is a bot the shop no longer
+   * happens to. It defaults on because a bot that banks its gold all match
+   * is the broken state `BotShopper`'s own header is about, not a playstyle.
+   *
+   * Like `difficulty` it has no `AIConfig` global beside it: the setup screen
+   * has no control for it, so there is nothing for a global to carry.
+   */
+  autoBuy: boolean;
+  /**
+   * Whether death re-rolls this bot into another champion — the Đội tab's
+   * "Tự đổi tướng khi chết".
+   *
+   * **Not the same field as `AIChampion._respawnWithNewPreset`, on purpose.**
+   * That one is a *mechanism* the UI arms and disarms on its own: the picker's
+   * "clone my spells" pins a bot so a respawn cannot overwrite the kit it was
+   * just handed, and `MatchDirector.applyLoadout` re-arms it so a later
+   * champion swap survives the next death
+   * (`MatchDirector.loadout.test.ts` pins both halves). An owner preference
+   * living in that field would be silently switched back on by any loadout
+   * edit. This is the preference; `respawn()` needs both.
+   *
+   * On by default, which is the behaviour every match had before the toggle:
+   * a bot left on "random" re-rolls every life.
+   */
+  autoReroll: boolean;
+  /**
    * How well this bot plays — `game/ai/Difficulty.ts` holds the three tiers and
    * everything they tune. A fourth field of a *behaviour* rather than an array
    * of its own beside `botBehaviours`, because it is the same question the
@@ -406,6 +436,8 @@ export const DEFAULT_BOT_BEHAVIOUR: Readonly<BotBehaviour> = Object.freeze({
   autoMove: true,
   autoAttack: true,
   autoCast: true,
+  autoBuy: true,
+  autoReroll: true,
   difficulty: DEFAULT_BOT_DIFFICULTY,
 });
 
@@ -425,6 +457,8 @@ export const globalBotBehaviour = (
   autoMove: ai.autoMove,
   autoAttack: ai.autoAttack,
   autoCast: ai.autoCast,
+  autoBuy: DEFAULT_BOT_BEHAVIOUR.autoBuy,
+  autoReroll: DEFAULT_BOT_BEHAVIOUR.autoReroll,
   difficulty: DEFAULT_BOT_DIFFICULTY,
 });
 
@@ -544,6 +578,8 @@ export const sanitizeBotBehaviour = (raw: unknown, fallback: BotBehaviour): BotB
     autoMove: asBoolean(source.autoMove, fallback.autoMove),
     autoAttack: asBoolean(source.autoAttack, fallback.autoAttack),
     autoCast: asBoolean(source.autoCast, fallback.autoCast),
+    autoBuy: asBoolean(source.autoBuy, fallback.autoBuy),
+    autoReroll: asBoolean(source.autoReroll, fallback.autoReroll),
     // Per field like the three above, and the fallback callers hand in carries
     // `DEFAULT_BOT_DIFFICULTY`: nothing could set a tier before this field
     // existed, so a stored behaviour without one *is* a normal bot rather than

@@ -77,6 +77,18 @@ describe('AIChampion.respawn with a new preset', () => {
     expect(bot.stats.attackDamage.baseValue).toBe(11);
   });
 
+  it('keeps the current champion when the owner switches re-rolling off', () => {
+    // The Đội tab's "Tự đổi tướng khi chết". Same outcome as the pinned case
+    // above and a different field on purpose — see `_autoReroll`.
+    const bot = makeBot(rollsTo(BLUE));
+
+    bot._autoReroll = false;
+    bot.respawn();
+
+    expect(bot.name).toBe('Red');
+    expect(bot.spells.map(s => s.name)).toEqual(['Red']);
+  });
+
   it('rolls from whatever setPresetFactory was last handed', () => {
     const bot = makeBot(rollsTo(BLUE));
 

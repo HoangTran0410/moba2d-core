@@ -145,13 +145,20 @@ const switchTeam = (row: ConfigRosterEntry): void => {
   panel.invalidate();
 };
 
-/** The three booleans only: `difficulty` is the same record's fourth field and has its own row. */
-type BehaviourFlag = 'autoMove' | 'autoAttack' | 'autoCast';
+/** The booleans only: `difficulty` is the same record's last field and has its own row. */
+type BehaviourFlag = 'autoMove' | 'autoAttack' | 'autoCast' | 'autoBuy' | 'autoReroll';
 
 const BEHAVIOUR_FLAGS: { key: BehaviourFlag; label: string }[] = [
   { key: 'autoMove', label: 'Tự di chuyển' },
   { key: 'autoAttack', label: 'Tự tấn công' },
   { key: 'autoCast', label: 'Tự dùng kỹ năng' },
+  // Last because it is the one that is not about the next second: the other
+  // three change what a bot does in this fight, this one changes what it will
+  // be holding in the next one (`ai/BotShopper.ts`).
+  { key: 'autoBuy', label: 'Tự mua đồ' },
+  // Last for the same reason `autoBuy` is: it decides what this bot will *be*
+  // next life, not what it does in this one.
+  { key: 'autoReroll', label: 'Tự đổi tướng khi chết' },
 ];
 
 const onFlagChange = (row: ConfigRosterEntry, flag: BehaviourFlag, event: Event): void => {

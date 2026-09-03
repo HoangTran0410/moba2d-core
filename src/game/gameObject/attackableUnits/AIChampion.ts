@@ -22,6 +22,10 @@ export interface AIChampionOptions extends ChampionOptions {
   autoMove?: boolean;
   autoAttack?: boolean;
   autoCast?: boolean;
+  /** Whether this bot spends its own gold — see `_autoBuy`. */
+  autoBuy?: boolean;
+  /** Whether death re-rolls this bot's champion — see `_autoReroll`. */
+  autoReroll?: boolean;
   /**
    * How well this bot plays. A plain option like the three behaviour flags
    * above, resolved by the caller: it rides in `BotBehaviour` alongside them,
@@ -103,6 +107,28 @@ export default class AIChampion extends Champion {
   _autoMoveOnCollideWall = true;
   _autoMoveOnCollideMapEdge = true;
   _respawnWithNewPreset = true;
+  /**
+   * Whether this bot opens the shop at all — the Đội tab's "Tự mua đồ".
+   *
+   * On by default, because a bot that banks its gold for a whole match is the
+   * state `ai/BotShopper.ts`'s header exists about (close for two minutes,
+   * then unloseable) rather than a way to play. The switch is for the other
+   * direction: an owner studying one fight wants a build frozen where they
+   * put it, and hand-filling six slots to starve the shopper only works until
+   * the bot sells something.
+   */
+  _autoBuy = true;
+  /**
+   * The owner's answer to "should this bot become someone else when it dies" —
+   * the Đội tab's "Tự đổi tướng khi chết".
+   *
+   * A second gate in front of `_respawnWithNewPreset` rather than a rename of
+   * it, because that field is not a preference: `applyLoadout` sets it back to
+   * `true` every time a champion is assigned, so that a swap made mid-match
+   * survives the next death. A preference stored there would be cleared by any
+   * visit to the picker. `respawn()` asks both.
+   */
+  _autoReroll = true;
   _difficulty: BotDifficulty = DEFAULT_DIFFICULTY;
   /** ms until the next scan, jittered on construction. */
   _attackScanCooldown = Math.random() * AI_ATTACK_SCAN_INTERVAL_MS;
@@ -120,6 +146,8 @@ export default class AIChampion extends Champion {
     if (options.autoMove !== undefined) this._autoMove = options.autoMove;
     if (options.autoAttack !== undefined) this._autoAttack = options.autoAttack;
     if (options.autoCast !== undefined) this._autoCast = options.autoCast;
+    if (options.autoBuy !== undefined) this._autoBuy = options.autoBuy;
+    if (options.autoReroll !== undefined) this._autoReroll = options.autoReroll;
     if (options.difficulty !== undefined) this._difficulty = options.difficulty;
     this.presetFactory = options.presetFactory ?? getChampionPresetRandom;
   }
@@ -146,11 +174,13 @@ export default class AIChampion extends Champion {
    * own platform.
    *
    * Bots existed for the entire life of the shop without ever opening it —
-   * see `ai/BotShopper.ts` for what that did to a match. There is no behaviour
-   * flag for it, unlike the three above: a bot that does not spend its gold is
-   * not a differently-behaved bot, it is a broken one, and an owner who wants
-   * to hand-build a bot's bag through the practice panel already gets that by
-   * filling the six slots (a full bag has nothing this can buy).
+   * see `ai/BotShopper.ts` for what that did to a match. `_autoBuy` gates it
+   * now, and the reasoning that once said no flag should exist is the reason
+   * it defaults *on*: a bot that does not spend its gold is not a
+   * differently-behaved bot, it is a broken one. What the switch buys is the
+   * case that argument missed — freezing a bag the owner built by hand.
+   * Filling the six slots was supposed to starve the shopper, and only does
+   * until the bot sells something or a slot frees up.
    *
    * The host is read off `game` structurally, the way `BotBrain.retreatPoint`
    * reads the turrets it retreats to: `GameObjectRuntimeContext` is the
@@ -159,6 +189,7 @@ export default class AIChampion extends Champion {
    * have to be `as unknown as`.
    */
   updateShopping(): void {
+    if (!this._autoBuy) return;
     this._shopCooldown -= deltaTime;
     if (this._shopCooldown > 0) return;
     this._shopCooldown = BOT_SHOP_INTERVAL_MS;
@@ -322,7 +353,11 @@ export default class AIChampion extends Champion {
 
   respawn() {
     super.respawn();
-    if (this._respawnWithNewPreset) this.applyPreset(this.presetFactory());
+    // Both gates: the owner has to want re-rolling at all, and the mechanism
+    // has to be armed. See `_autoReroll` for why they are two fields.
+    if (this._autoReroll && this._respawnWithNewPreset) {
+      this.applyPreset(this.presetFactory());
+    }
   }
 
   /**

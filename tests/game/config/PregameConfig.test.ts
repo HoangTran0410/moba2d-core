@@ -257,6 +257,8 @@ describe('sanitizePregameConfig', () => {
           autoMove: true,
           autoAttack: false,
           autoCast: false,
+          autoBuy: true,
+          autoReroll: true,
           difficulty: 'hard' as const,
         })),
       },
@@ -371,6 +373,8 @@ describe('loadPregameConfig / savePregameConfig', () => {
           autoMove: i === 0,
           autoAttack: true,
           autoCast: false,
+          autoBuy: true,
+          autoReroll: true,
           difficulty: i === 0 ? ('easy' as const) : ('normal' as const),
         })),
       },
@@ -525,6 +529,8 @@ describe('ai.botBehaviours', () => {
         autoMove: true,
         autoAttack: true,
         autoCast: true,
+        autoBuy: true,
+        autoReroll: true,
         difficulty: 'normal',
       });
     }
@@ -537,7 +543,7 @@ describe('ai.botBehaviours', () => {
   // silently discarding a setting the player really made on the setup screen.
   it('seeds a missing array from the stored global flags, not from DEFAULT_PREGAME_CONFIG', () => {
     const globals = { autoMove: true, autoAttack: false, autoCast: false };
-    const seeded = { ...globals, difficulty: 'normal' };
+    const seeded = { ...globals, autoBuy: true, autoReroll: true, difficulty: 'normal' };
     const result = sanitizePregameConfig({ ai: { count: 3, ...globals } });
 
     expect(result.ai.botBehaviours).toHaveLength(AI_COUNT_MAX);
@@ -549,7 +555,7 @@ describe('ai.botBehaviours', () => {
 
   it('pads a short array from the global flags and truncates a long one', () => {
     const globals = { autoMove: true, autoAttack: false, autoCast: true };
-    const seeded = { ...globals, difficulty: 'normal' };
+    const seeded = { ...globals, autoBuy: true, autoReroll: true, difficulty: 'normal' };
     const result = sanitizePregameConfig({
       ai: { ...globals, botBehaviours: [{ autoMove: false, autoAttack: true, autoCast: false }] },
     });
@@ -559,6 +565,8 @@ describe('ai.botBehaviours', () => {
       autoMove: false,
       autoAttack: true,
       autoCast: false,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
     expect(result.ai.botBehaviours[1]).toEqual(seeded);
@@ -572,7 +580,7 @@ describe('ai.botBehaviours', () => {
 
   it('falls back per field, to the global flag, for a wrong-typed entry', () => {
     const globals = { autoMove: true, autoAttack: false, autoCast: true };
-    const seeded = { ...globals, difficulty: 'normal' };
+    const seeded = { ...globals, autoBuy: true, autoReroll: true, difficulty: 'normal' };
     const result = sanitizePregameConfig({
       ai: { ...globals, botBehaviours: [{ autoMove: 'yes', autoCast: false }, 'not an object'] },
     });
@@ -581,6 +589,8 @@ describe('ai.botBehaviours', () => {
       autoMove: true, // 'yes' is not a boolean -> the global
       autoAttack: false, // absent -> the global
       autoCast: false, // a real boolean -> kept
+      autoBuy: true, // absent, and no global carries it -> the default
+      autoReroll: true, // same
       difficulty: 'normal', // no global to fall back to -> the default tier
     });
     expect(result.ai.botBehaviours[1]).toEqual(seeded);
@@ -629,6 +639,8 @@ describe('ai.botBehaviours[].difficulty', () => {
       autoMove: true,
       autoAttack: false,
       autoCast: true,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
     // Nothing else moved: the field is added, not a reset of the blob it is
@@ -639,6 +651,8 @@ describe('ai.botBehaviours[].difficulty', () => {
       autoMove: false,
       autoAttack: false,
       autoCast: false,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
     expect(result.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: false });

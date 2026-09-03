@@ -131,6 +131,8 @@ describe('MatchDirector persistence', () => {
       autoMove: true,
       autoAttack: true,
       autoCast: true,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
     expect(stored.rules).toEqual({ cooldownReductionPercent: 40, manaFree: true, recall: true });
@@ -411,6 +413,10 @@ describe('MatchDirector persistence', () => {
       autoMove: true,
       autoAttack: true,
       autoCast: false,
+      // Same story as `difficulty` below: the setup screen has no auto-buy
+      // control either, so a bot added mid-match starts on the default.
+      autoBuy: true,
+      autoReroll: true,
       // The setup screen has no difficulty control, so the global flags say
       // nothing about it: a bot added mid-match is a bot nobody has tuned.
       difficulty: 'normal',

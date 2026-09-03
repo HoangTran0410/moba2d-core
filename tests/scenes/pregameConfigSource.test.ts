@@ -140,6 +140,9 @@ describe('PregameConfigSource.removeBot', () => {
       autoMove: true,
       autoAttack: false,
       autoCast: true,
+      // Nor about auto-buy, for the same reason and with the same answer.
+      autoBuy: true,
+      autoReroll: true,
       // The globals say nothing about a tier — there is no control for one on
       // the setup screen — so a freed slot is a bot nobody has tuned.
       difficulty: 'normal',

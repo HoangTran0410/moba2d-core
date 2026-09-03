@@ -259,6 +259,8 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
         autoMove: expect.any(Boolean),
         autoAttack: expect.any(Boolean),
         autoCast: expect.any(Boolean),
+        autoBuy: expect.any(Boolean),
+        autoReroll: expect.any(Boolean),
         difficulty: expect.any(String),
       });
     });

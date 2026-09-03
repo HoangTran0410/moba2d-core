@@ -35,6 +35,8 @@ describe('MatchDirector roster', () => {
       autoMove: true,
       autoAttack: true,
       autoCast: true,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
   });
@@ -219,6 +221,8 @@ describe('MatchDirector roster', () => {
       autoMove: true,
       autoAttack: true,
       autoCast: true,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
   });
@@ -243,6 +247,8 @@ describe('MatchDirector roster', () => {
       autoMove: true,
       autoAttack: true,
       autoCast: true,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'hard',
     });
   });
@@ -260,6 +266,8 @@ describe('MatchDirector roster', () => {
       autoMove: true,
       autoAttack: false,
       autoCast: false,
+      autoBuy: true,
+      autoReroll: true,
       difficulty: 'normal',
     });
   });
