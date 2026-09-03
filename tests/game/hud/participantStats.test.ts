@@ -12,6 +12,7 @@ import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import { scoreLine, statGroups } from '../../../src/game/hud/practice/participantStats';
 import { createGame, stubGameGlobals, type TestGame } from '../fixtures';
 import { DAMAGE_TEXT_COLOR } from '../../../src/game/gameObject/helpers/CombatText';
+import { statLinesFor } from '../../../src/game/hud/itemStatLines';
 
 let game: TestGame;
 
@@ -149,6 +150,29 @@ describe('statGroups', () => {
  * off `DAMAGE_TEXT_COLOR` rather than restated as a hex here, where it could
  * drift away from the thing it is explaining.
  */
+describe('ability power', () => {
+  it('reads as points here and on the shop card, never as a percentage', () => {
+    // The stat is stored as a fraction — `1.5` is +150% ability damage — and
+    // both surfaces used to say so. Beside `Sát thương 26` that was a number
+    // of percent against a number of points, which is two units a player has
+    // to convert between to compare a rod with a sword.
+    //
+    // The claim worth pinning is not the format on its own but that the two
+    // agree: this panel and the shop card are the only places ability power is
+    // read, and one saying `+35` while the other says `150%` is the drift.
+    const champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    champion.stats.abilityPower.baseValue = 1.5;
+
+    const row = statGroups(champion)
+      .flatMap(group => group.rows)
+      .find(entry => entry.label === 'Sức mạnh phép');
+    expect(row?.value).toBe('150');
+
+    const [card] = statLinesFor({ stats: { abilityPower: 0.35 } });
+    expect(card).toEqual({ label: 'Sức mạnh phép', amount: '+35' });
+  });
+});
+
 describe('the resistances', () => {
   const rowsOf = (title: string) =>
     statGroups(unit()).find(group => group.title === title)?.rows ?? [];

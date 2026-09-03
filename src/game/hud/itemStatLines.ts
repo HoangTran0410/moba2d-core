@@ -101,13 +101,30 @@ export const STAT_LABEL: Record<ItemStatKey, string> = {
  */
 export const AS_PER_SECOND = new Set<ItemStatKey>(['healthRegen', 'manaRegen']);
 
+/**
+ * Stored as a fraction, read as **points** — the one stat that is scaled by a
+ * hundred like a percentage and then printed without the sign.
+ *
+ * `abilityPower: 1.5` really is "+150% ability damage" and `AS_PERCENT` was
+ * the honest reading of it. It was also the unhelpful one beside `Sát thương
+ * +18`: a player comparing a sword to a rod got a number of points against a
+ * number of percent and no way to hold the two in mind at once. Points are
+ * what this genre's players already read ability power in, and the panel is
+ * where a build is *compared*, not where the multiplier is explained — the
+ * spell tooltip does that, and does it better, by printing what the ability
+ * actually hits for (`Spell.effectiveDescription`).
+ *
+ * A set of one, deliberately: nothing else here is a fraction a player thinks
+ * of in points, and the next stat that is should have to be added by name.
+ */
+export const AS_POINTS = new Set<ItemStatKey>(['abilityPower']);
+
 export const AS_PERCENT = new Set<ItemStatKey>([
   'critChance',
   'critDamage',
   'omnivamp',
   'lifesteal',
   'spellVamp',
-  'abilityPower',
   'armorPenetration',
   'magicPenetration',
   'tenacity',
@@ -124,6 +141,9 @@ export interface StatLine {
 
 const formatAmount = (key: ItemStatKey, amount: number): string => {
   const sign = amount < 0 ? '' : '+';
+  // Before `AS_PERCENT`, or a rod would fall through to the raw-number branch
+  // below and advertise itself as `+0.35`.
+  if (AS_POINTS.has(key)) return `${sign}${Math.round(amount * 100)}`;
   if (AS_PERCENT.has(key)) return `${sign}${Math.round(amount * 100)}%`;
   // The unit the stat is *stored* in is not the unit it is read in. One
   // decimal and no trailing `.0`, the same shape `participantStats.ts` prints,

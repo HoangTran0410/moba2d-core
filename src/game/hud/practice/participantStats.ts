@@ -86,6 +86,14 @@ const whole = (value: number): string => String(Math.round(value));
 
 const percent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
 
+/**
+ * The same hundredths, printed as points — `itemStatLines.ts`'s `AS_POINTS`,
+ * and it has to stay in step with it: the shop card and this panel are the two
+ * places a player reads ability power, and one saying `+35` while the other
+ * says `150%` is the drift that makes a build unreadable.
+ */
+const points = (fraction: number): string => String(Math.round(fraction * 100));
+
 const cssColor = (rgb: readonly [number, number, number]): string => `rgb(${rgb.join(', ')})`;
 
 /** One decimal, and no trailing `.0` to make a round number look measured. */
@@ -160,7 +168,7 @@ export function statGroups(unit: AttackableUnit): StatGroup[] {
         {
           icon: STAT_ICON.abilityPower,
           label: 'Sức mạnh phép',
-          value: percent(stats.abilityPower.value),
+          value: points(stats.abilityPower.value),
         },
         {
           icon: STAT_ICON.abilityHaste,

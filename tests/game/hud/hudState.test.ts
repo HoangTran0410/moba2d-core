@@ -467,7 +467,7 @@ describe('computeHudState honours match rules', () => {
     // power, then armour — which is what makes two cards comparable.
     expect(state?.items[0].stats).toEqual([
       { label: 'Máu tối đa', amount: '+30' },
-      { label: 'Sức mạnh phép', amount: '+50%' },
+      { label: 'Sức mạnh phép', amount: '+50' },
       { label: 'Giáp', amount: '+45' },
     ]);
   });
