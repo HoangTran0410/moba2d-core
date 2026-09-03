@@ -10,3 +10,6 @@ public/vendor/
 # packages and review diffs. Process scaffolding, not source — and it holds
 # full branch diffs. Never part of the repo.
 .superpowers/
+
+# CodeGraph index — a local search cache, rebuilt by `codegraph init`.
+.codegraph/
