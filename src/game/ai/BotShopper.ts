@@ -7,7 +7,10 @@ import {
   buyItem,
   componentSlotsFor,
   priceFor,
+  refundFractionOf,
   refusalFor,
+  sellItem,
+  sellValueOf,
   type ShopHost,
   type ShopMode,
 } from '@/game/economy/ItemShop';
@@ -16,6 +19,7 @@ import {
   MAX_ATTACK_SPEED,
   MAX_ABILITY_HASTE,
 } from '@/game/gameObject/Stats';
+import { abilityMultiplier } from '@/game/combat/Amplification';
 import { profileFor, type BotDifficulty } from '@/game/ai/Difficulty';
 
 /**
@@ -46,7 +50,14 @@ import { profileFor, type BotDifficulty } from '@/game/ai/Difficulty';
  * speed and a mage ability power without either of them being told which they
  * are, because the same multiplication values a point of attack speed by the
  * attack damage already on the champion and a point of ability power by the
- * ability damage every champion has.
+ * ability damage its own kit says it deals.
+ *
+ * That last clause is `AbilityMix` below, and it is the one thing the bot asks
+ * the *content* rather than the stat block. Everything else here is arithmetic
+ * over numbers core owns; which stat amplifies an ability is a fact only the
+ * pack knows, and it declares it in the one place it already had to — the
+ * class on a `damage` span. Still not an archetype table: nothing is named, and
+ * a champion is whatever the four descriptions it is holding add up to.
  *
  * Offence and survival **multiply**, which is the one structural decision in
  * here. Added, a bot buys damage until the shop runs out; multiplied, the
@@ -111,6 +122,140 @@ export const BOT_ABILITY_BASELINE_DPS = 15.4;
  */
 export const BOT_MOBILITY_EXPONENT = 0.7;
 
+/**
+ * Which stat this champion's **abilities** actually scale on, read off the kit
+ * it is holding.
+ *
+ * ## The bug this exists for
+ *
+ * `combatValue` priced every ability in the game as magic damage, because
+ * that is the engine's default and nothing here could see past it. It is
+ * wrong for a third of the shipped abilities: `combat/Amplification.ts`
+ * multiplies a `PHYSICAL` ability by **bonus attack damage** and a `MAGIC`
+ * one by **ability power**, and they are not interchangeable. So a bot on a
+ * marksman whose four abilities are all physical read a rod of ability power
+ * as a straight multiplier on its whole kit, bought it over a sword that
+ * would really have scaled that kit, and got nothing at all for the gold. The
+ * player across from it did not have that problem, because a player can read.
+ *
+ * ## Why the description is the signal
+ *
+ * A pack already declares this, once per figure, in the only place both the
+ * stylesheet and `amplifiedDamageText` read: the class on a `damage` span.
+ * Core does not have to ask a pack for anything new, and the answer is per
+ * *ability* rather than per champion, which is the granularity the question
+ * actually has: a shipped roster has several champions whose first ability is
+ * physical and whose other three are magic.
+ *
+ * A `heal` span counts as magic, because that is what the engine does with
+ * one: `takeHeal` and `buffs/Shield` amplify by `abilityPower` and there is
+ * nothing for a restored number to read off attack damage. An untyped
+ * `damage` span counts as magic for the same reason — it is the default
+ * `amplifiedDamageText` applies to it.
+ *
+ * ## `coverage`, and why a support is not a carry
+ *
+ * The three shares say *which* stat amplifies this kit. They cannot say how
+ * much of the kit is amplified at all, and that is the other half of the same
+ * question: a champion whose four abilities are a dash, a stun, a taunt and a
+ * shield has one number in it a power stat can move. Valuing all four as
+ * amplified damage is what made every bot in every pack shop like a carry.
+ *
+ * Counted per *ability*, never per span. A pack that writes its damage over
+ * time as "3 a tick (30 total)" spends two spans on one ability and one that
+ * writes the total alone spends one, so counting spans would let prose style
+ * outvote the kit.
+ */
+export interface AbilityMix {
+  /** Share of this kit's amplified abilities that bonus attack damage scales. */
+  physical: number;
+  /** The same for ability power — heals and shields included. */
+  magic: number;
+  /** True damage, which `abilityMultiplier` pays out of whichever is better. */
+  trueDamage: number;
+  /** Share of the kit's abilities that anything amplifies at all, 0 to 1. */
+  coverage: number;
+}
+
+/**
+ * What a body that names no kit is worth, and it is deliberately *exactly*
+ * what this module did before a kit could be read: every ability magic, every
+ * ability amplified. Hand-built bodies in tests and any future caller with no
+ * champion in hand keep the old valuation rather than silently losing their
+ * ability term.
+ */
+export const DEFAULT_ABILITY_MIX: Readonly<AbilityMix> = Object.freeze({
+  physical: 0,
+  magic: 1,
+  trueDamage: 0,
+  coverage: 1,
+});
+
+/**
+ * Every `damage`/`heal` span opener a pack writes. Only the classes are read —
+ * the figure inside is `amplifiedDamageText`'s business, and this needs to
+ * know which stat pays for the ability, not how much.
+ */
+const SCALING_SPAN = /<span class="(?:damage|heal)(?: (physical|magic|true))?">/g;
+
+/** Anything with a kit. Structural, so the valuation stays testable without a match. */
+interface KitBearer {
+  spells?: readonly {
+    description?: unknown;
+    damageScalesWithAbilityPower?: boolean;
+  }[];
+}
+
+/**
+ * The mix this champion's own kit declares.
+ *
+ * `damageScalesWithAbilityPower` is the filter, and it is the same gate
+ * `Spell.effectiveDescription` asks before rescaling a tooltip — so the basic
+ * attack (`coreSpells/BasicAttack` opts out) and a held item's own passive and
+ * active (`economy/ItemShop` opts them out) are excluded without this having
+ * to know what either of them is.
+ *
+ * Falls back to `DEFAULT_ABILITY_MIX` for a champion with no kit at all rather
+ * than to a zeroed mix: no abilities read is "nothing to go on", which is the
+ * old behaviour, and not "a kit that scales with nothing", which would have a
+ * bot refuse to buy ability power for a pack that tags no spans.
+ */
+export function kitAbilityMix(champion: KitBearer): AbilityMix {
+  const abilities = (champion.spells ?? []).filter(
+    spell => spell?.damageScalesWithAbilityPower === true
+  );
+  if (abilities.length === 0) return DEFAULT_ABILITY_MIX;
+
+  const total = { physical: 0, magic: 0, trueDamage: 0 };
+  let amplified = 0;
+
+  for (const spell of abilities) {
+    const description = typeof spell.description === 'string' ? spell.description : '';
+    const named = new Set<'physical' | 'magic' | 'trueDamage'>();
+    for (const [, type] of description.matchAll(SCALING_SPAN)) {
+      // An untyped span is the engine's own default, exactly as
+      // `amplifiedDamageText` treats it.
+      named.add(type === 'physical' ? 'physical' : type === 'true' ? 'trueDamage' : 'magic');
+    }
+    if (named.size === 0) continue;
+    amplified++;
+    // One ability is one vote, split evenly when it deals two types — an
+    // execute that is magic until it beheads and true when it does, and
+    // neither half is more of the ability than the other.
+    for (const type of named) total[type] += 1 / named.size;
+  }
+
+  if (amplified === 0) {
+    return { physical: 0, magic: 1, trueDamage: 0, coverage: 0 };
+  }
+  return {
+    physical: total.physical / amplified,
+    magic: total.magic / amplified,
+    trueDamage: total.trueDamage / amplified,
+    coverage: amplified / abilities.length,
+  };
+}
+
 /** Sustain as effective health: 10% omnivamp reads as a fifth again of the pool. */
 const OMNIVAMP_HEALTH_EQUIVALENT = 2;
 
@@ -148,6 +293,15 @@ export interface BotBody {
   critDamage: number;
   abilityPower: number;
   abilityHaste: number;
+  /**
+   * The wearer's *unbuilt* attack damage, because only the **bonus** half
+   * scales a physical ability (`Amplification.physicalPowerMultiplier`).
+   * Optional: a body that omits it reports no bonus, which is what a body
+   * that also omits `abilityMix` is valued as anyway.
+   */
+  baseAttackDamage?: number;
+  /** What this champion's abilities scale on. Defaults to `DEFAULT_ABILITY_MIX`. */
+  abilityMix?: AbilityMix;
   omnivamp: number;
   lifesteal: number;
   spellVamp: number;
@@ -159,8 +313,15 @@ export interface BotBody {
   baseSpeed: number;
 }
 
-/** Reads a live champion's current numbers, items and buffs included. */
-export function bodyOf(champion: Champion): BotBody {
+/**
+ * Reads a live champion's current numbers, items and buffs included.
+ *
+ * `mix` is a parameter with a default rather than always being read here
+ * because `nextBotPurchase` calls this once per item on the shelf, and the kit
+ * behind it does not change between two items in the same decision — see the
+ * call there. Every other caller gets the champion's real kit by omitting it.
+ */
+export function bodyOf(champion: Champion, mix: AbilityMix = kitAbilityMix(champion)): BotBody {
   const stats = champion.stats;
   return {
     attackDamage: stats.attackDamage.value,
@@ -171,6 +332,8 @@ export function bodyOf(champion: Champion): BotBody {
     critDamage: stats.critDamage.value,
     abilityPower: stats.abilityPower.value,
     abilityHaste: stats.abilityHaste.value,
+    baseAttackDamage: stats.attackDamage.baseValue,
+    abilityMix: mix,
     omnivamp: stats.omnivamp.value,
     lifesteal: stats.lifesteal.value,
     spellVamp: stats.spellVamp.value,
@@ -196,7 +359,28 @@ const clamp = (body: BotBody): BotBody => ({
  * entry — `maxMana`, `manaRegen`, `healthRegen` — are the omission the header
  * names; `attackRange` and `visionRadius` are the other two.
  */
-const BODY_FIELD: Partial<Record<ItemStatKey, keyof BotBody>> = {
+/**
+  * The numeric fields an item may actually move. Spelled out rather than
+  * `keyof BotBody`, which now also names `abilityMix` — a record, not a number,
+  * and `+=` on it is exactly the mistake worth a compile error.
+  */
+type GrantableBodyField =
+  | 'attackDamage'
+  | 'attackSpeed'
+  | 'onHitDamage'
+  | 'critChance'
+  | 'critDamage'
+  | 'abilityPower'
+  | 'abilityHaste'
+  | 'omnivamp'
+  | 'lifesteal'
+  | 'spellVamp'
+  | 'maxHealth'
+  | 'armor'
+  | 'magicResist'
+  | 'speed';
+
+const BODY_FIELD: Partial<Record<ItemStatKey, GrantableBodyField>> = {
   attackDamage: 'attackDamage',
   attackSpeed: 'attackSpeed',
   onHitDamage: 'onHitDamage',
@@ -225,7 +409,7 @@ const BODY_FIELD: Partial<Record<ItemStatKey, keyof BotBody>> = {
  * prices its fourth attack-speed item as its most valuable one — and it would
  * no longer subtract to zero when `applyItemStats` takes a component back off.
  */
-const SHARE_OF: Partial<Record<ItemStatKey, keyof BotBody>> = {
+const SHARE_OF: Partial<Record<ItemStatKey, 'baseAttackSpeed' | 'baseSpeed'>> = {
   attackSpeed: 'baseAttackSpeed',
   speedPercent: 'baseSpeed',
 };
@@ -269,12 +453,44 @@ export function combatValue(raw: BotBody): number {
   const swing = (body.attackDamage + body.onHitDamage) *
     (1 + body.critChance * Math.max(0, body.critDamage - 1));
   const autos = swing * body.attackSpeed;
+  // What this build does to *this* kit, asked of `combat/Amplification.ts`
+  // itself rather than restated here. That module is what `takeDamage`,
+  // `takeHeal` and `buffs/Shield` all run through, so routing the bot's
+  // valuation through the same function is what makes "what the bot thinks an
+  // item is worth" and "what the item does" one answer that cannot drift —
+  // the previous code was a hand-copied `1 + abilityPower`, which was the
+  // whole of the physical-kit bug.
+  const mix = raw.abilityMix ?? DEFAULT_ABILITY_MIX;
+  const source = {
+    stats: {
+      abilityPower: { value: body.abilityPower },
+      attackDamage: {
+        value: body.attackDamage,
+        // No base means no bonus, never a negative one — see `baseAttackDamage`.
+        baseValue: body.baseAttackDamage ?? body.attackDamage,
+      },
+    },
+  };
+  const amplified =
+    mix.physical * abilityMultiplier('PHYSICAL', source) +
+    mix.magic * abilityMultiplier('MAGIC', source) +
+    mix.trueDamage * abilityMultiplier('TRUE', source);
+
+  // `coverage` blends that multiplier toward 1 for the share of the kit
+  // nothing amplifies. A dash and a taunt are still abilities worth casting
+  // and still come up sooner with haste — they are simply not numbers a power
+  // stat moves, so they dilute the multiplier instead of being priced as if
+  // they were damage.
+  const share = Math.min(1, Math.max(0, mix.coverage));
+
   // Haste is *casts per second*, linear in the stat by construction: 100 haste
   // is one extra cast in the time two used to take. That is the whole reason
   // the stat is points rather than the fraction it replaced — the bot's
   // valuation is a straight multiply now instead of `1/(1-r)`, which grew
-  // without bound as the fraction approached its cap.
-  const casts = BOT_ABILITY_BASELINE_DPS * (1 + body.abilityPower) * (1 + body.abilityHaste / 100);
+  // without bound as the fraction approached its cap. It multiplies the whole
+  // kit, amplified or not, which is why it sits outside `amplified`.
+  const casts =
+    BOT_ABILITY_BASELINE_DPS * (1 + (amplified - 1) * share) * (1 + body.abilityHaste / 100);
   const offence = Math.max(0, autos + casts);
 
   // `Mitigation`'s own curve, averaged over the two damage types because a
@@ -297,8 +513,12 @@ export function combatValue(raw: BotBody): number {
  * those parts. Negative for a recipe that is a downgrade, which is a purchase
  * this refuses to make rather than one it has to be told about.
  */
-export function itemValueFor(champion: Champion, def: QualifiedItem): number {
-  const before = bodyOf(champion);
+export function itemValueFor(
+  champion: Champion,
+  def: QualifiedItem,
+  mix: AbilityMix = kitAbilityMix(champion)
+): number {
+  const before = bodyOf(champion, mix);
   let after = before;
   for (const slot of componentSlotsFor(champion, def)) {
     const part = champion.items?.[slot]?.def;
@@ -346,6 +566,11 @@ export function nextBotPurchase(
   const held = new Set<string>();
   for (const item of champion.items ?? []) if (item?.def) held.add(item.def.id);
 
+  // Once for the whole shelf. The kit is the same for every candidate, and
+  // reading it per item would re-scan every ability's description once per
+  // item on sale.
+  const mix = kitAbilityMix(champion);
+
   let best: QualifiedItem | null = null;
   let bestScore = 0;
 
@@ -353,7 +578,7 @@ export function nextBotPurchase(
     if (held.has(def.id)) continue;
     if (refusalFor(champion, def, host, mode) !== null) continue;
 
-    const gain = itemValueFor(champion, def);
+    const gain = itemValueFor(champion, def, mix);
     if (gain <= 0) continue;
 
     // Per gold, so a 300g component competes with a 1500g finished item on the
@@ -364,6 +589,108 @@ export function nextBotPurchase(
     if (score > bestScore) {
       bestScore = score;
       best = def;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * How much better a swap has to be before a bot will pay the refund to make it.
+ *
+ * A sale returns `SELL_REFUND_FRACTION` of what the item cost — 30% of the
+ * gold evaporates — so a swap that is merely *level* is a straight loss, and a
+ * swap that is barely ahead is a loss the next tick will want to undo. The
+ * margin is what makes the decision one-way: each swap has to raise
+ * `combatValue` by a tenth, and nothing can raise it by a tenth in both
+ * directions, so a bot cannot oscillate between two builds.
+ *
+ * A share of the champion's *current* value rather than a flat number, because
+ * `combatValue` is damage-squared-per-second and its magnitude means nothing
+ * on its own — a fixed threshold would be untouchable at level one and
+ * meaningless on a finished build.
+ */
+export const BOT_SWAP_MARGIN = 0.1;
+
+/** A sale and the purchase it pays for. */
+export interface BotSwap {
+  slot: number;
+  sell: QualifiedItem;
+  buy: QualifiedItem;
+}
+
+/**
+ * The best "sell one, buy one" this champion could make, or `null`.
+ *
+ * ## Why a bot needs this at all
+ *
+ * `nextBotPurchase` answers `null` for a full bag — every candidate is refused
+ * with `NO_SLOT` — so a bot that finished a build stopped shopping for the
+ * rest of the match and banked its income forever. That is merely wasteful
+ * until the bot **respawns as a different champion**, which is the default
+ * (`AIChampion._respawnWithNewPreset`): `respawn()` does not empty the bag, so
+ * a mage inherits the marksman's six attack-damage items and can never sell
+ * one to fix it. Reported exactly that way — a bot re-rolled into a new
+ * champion, holding the wrong build, with the gold to fix it and no way to.
+ *
+ * ## Only when there is nothing to buy outright
+ *
+ * `botShopTick` asks this after `nextBotPurchase` comes back empty, never
+ * instead of it. Selling costs 30% and a free slot never needs paying for, so
+ * a swap is the answer to "the bag is full and wrong", not to "I am poor".
+ *
+ * ## What it will not consider
+ *
+ * A candidate that is **built from the slot being sold**. `priceFor` credits
+ * components already in the bag, so selling one raises the price of anything
+ * that would have eaten it — the bot would sell, then find it could no longer
+ * afford the thing it sold for, and be down the refund for nothing. Excluding
+ * them is what makes the price computed here the price `buyItem` will charge.
+ */
+export function bestBotSwap(
+  champion: Champion,
+  host: ShopHost,
+  options: BotPurchaseOptions = {}
+): BotSwap | null {
+  const { catalog = shopItems(), mode = 'PLAYER' } = options;
+
+  const items = champion.items ?? [];
+  const held = new Set<string>();
+  for (const item of items) if (item?.def) held.add(item.def.id);
+
+  const mix = kitAbilityMix(champion);
+  const body = bodyOf(champion, mix);
+  const now = combatValue(body);
+  const gold = champion.wallet?.balance ?? 0;
+  const refundFraction = refundFractionOf(host);
+
+  let best: BotSwap | null = null;
+  let bestGain = now * BOT_SWAP_MARGIN;
+
+  for (let slot = 0; slot < items.length; slot++) {
+    const sold = items[slot]?.def as QualifiedItem | undefined;
+    if (!sold) continue;
+
+    const budget = gold + sellValueOf(sold, refundFraction);
+    // The body this champion would have standing in the shop with the slot
+    // empty — what every candidate below is measured against.
+    const without = applyItemStats(body, sold, -1);
+
+    for (const def of catalog) {
+      if (held.has(def.id)) continue;
+      // See the header: a combine that would have eaten this slot prices
+      // itself differently the moment the slot is gone.
+      if (componentSlotsFor(champion, def).includes(slot)) continue;
+      if (priceFor(champion, def) > budget) continue;
+      // Everything else the shop refuses for — spells not loaded, and the
+      // location rule `botShopTick` has already asked about.
+      if (refusalFor(champion, def, host, mode) === 'NOT_LOADED') continue;
+
+      const gain = combatValue(applyItemStats(without, def, 1)) - now;
+      if (gain > bestGain) {
+        bestGain = gain;
+        best = { slot, sell: sold, buy: def };
+      }
     }
   }
 
@@ -386,7 +713,23 @@ export function botShopTick(
   if (champion.toRemove) return null;
   if (options.mode !== 'CHEAT' && !champion.isDead && !atOwnFountain(champion, host)) return null;
 
+  const mode = options.mode ?? 'PLAYER';
+
   const def = nextBotPurchase(champion, host, options);
-  if (!def) return null;
-  return buyItem(champion, def, host, options.mode ?? 'PLAYER') ? def : null;
+  if (def) return buyItem(champion, def, host, mode) ? def : null;
+
+  // Nothing to buy outright. That is a finished build most of the time and a
+  // *wrong* build after a re-roll, so the bag itself becomes the candidate —
+  // see `bestBotSwap`.
+  const swap = bestBotSwap(champion, host, options);
+  if (!swap) return null;
+
+  // Sell first, then buy: the slot has to be free before `buyItem` will take
+  // it. `bestBotSwap` has already priced the purchase against the refund and
+  // excluded anything whose price the sale would move, so this cannot leave
+  // the bot down a slot and unable to fill it — but if the purchase is
+  // refused anyway, the refund is in the wallet and the next tick reconsiders
+  // from the body it actually has, rather than this one retrying blind.
+  if (sellItem(champion, swap.slot, host, mode) === 0) return null;
+  return buyItem(champion, swap.buy, host, mode) ? swap.buy : null;
 }
