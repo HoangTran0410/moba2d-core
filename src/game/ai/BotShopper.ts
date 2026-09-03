@@ -20,6 +20,7 @@ import {
   MAX_ABILITY_HASTE,
 } from '@/game/gameObject/Stats';
 import { abilityMultiplier } from '@/game/combat/Amplification';
+import { SCALING_SPAN_OPEN } from '@/game/combat/DamageText';
 import { profileFor, type BotDifficulty } from '@/game/ai/Difficulty';
 
 /**
@@ -192,11 +193,14 @@ export const DEFAULT_ABILITY_MIX: Readonly<AbilityMix> = Object.freeze({
 });
 
 /**
- * Every `damage`/`heal` span opener a pack writes. Only the classes are read —
- * the figure inside is `amplifiedDamageText`'s business, and this needs to
+ * Every `damage`/`heal` span opener a pack writes — `combat/DamageText.ts`'s
+ * own pattern, never a copy of it. Only the classes are read: this needs to
  * know which stat pays for the ability, not how much.
+ *
+ * It *was* a copy, and the copy is what made this whole module stop working
+ * the day the packs started writing `data-base`. See `SCALING_SPAN_OPEN`.
  */
-const SCALING_SPAN = /<span class="(?:damage|heal)(?: (physical|magic|true))?">/g;
+const SCALING_SPAN = SCALING_SPAN_OPEN;
 
 /** Anything with a kit. Structural, so the valuation stays testable without a match. */
 interface KitBearer {

@@ -322,14 +322,23 @@ const withBonus = (base: number, multiplier: number): string => {
  * "I tried and could not", and the difference is the whole subject of
  * `DamageText`'s header.
  */
-const AUTHORED_SPAN = new RegExp(
-  '(<span class="(?:damage|heal)(?: (physical|magic|true))?"' +
-    `(?: ${BASE_ATTRIBUTE}="([\\d.]+)")?` +
-    `(?: ${BASE_HIGH_ATTRIBUTE}="([\\d.]+)")?` +
-    `(?: ${FLAT_NONE_ATTRIBUTE}="none")?` +
-    '>)([\\s\\S]*?)(</span>)',
-  'g'
-);
+const AUTHORED_SPAN =
+  /(<span class="(?:damage|heal)(?: (physical|magic|true))?"([^>]*)>)([\s\S]*?)(<\/span>)/g;
+
+/**
+ * One attribute out of a captured tag.
+ *
+ * The attributes are read by name rather than matched in a fixed order in the
+ * pattern above, and that is not tidiness. A pattern spelling them out in
+ * sequence silently stops matching the day one is added or reordered — and
+ * "silently stops matching" means the span falls through to the prose parser
+ * below, which is the exact failure this whole module was rewritten to end.
+ * Twice already a copy of a span pattern anchored to the markup of the day
+ * went blind: once here when packs began naming damage types, once in
+ * `ai/BotShopper.ts` when they began writing `data-base`.
+ */
+const attributeOf = (tag: string, name: string): string | undefined =>
+  new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 
 /**
  * The half of this that needs no guessing.
@@ -390,8 +399,12 @@ export function amplifiedDamageText(
   // them, because this one has already consumed them.
   const authored = description.replace(
     AUTHORED_SPAN,
-    (whole, open, span, base, high, inner, close) => {
-      // `tint`/`pct`: it said so. Nothing to do and nothing to report.
+    (whole, open, span, tag, inner, close) => {
+      const base = attributeOf(tag, BASE_ATTRIBUTE);
+      const high = attributeOf(tag, BASE_HIGH_ATTRIBUTE);
+      // `tint`/`pct` say so with `data-flat`; a span with neither attribute is
+      // a hand-typed one the legacy pass below still owns. Either way there is
+      // nothing to rescale from here.
       if (base === undefined) return whole;
       const multiplier = abilityMultiplier(span ? SPAN_TYPE[span] : DEFAULT_DAMAGE_TYPE, source);
       if (multiplier === 1) return whole;

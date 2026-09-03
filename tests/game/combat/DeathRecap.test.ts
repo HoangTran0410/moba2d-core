@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fixtures';
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
+import Shield from '../../../src/game/gameObject/buffs/Shield';
 import {
   DEATH_RECAP_MAX_ENTRIES,
   DEATH_RECAP_WINDOW_MS,
@@ -46,6 +47,63 @@ describe('the death-recap ledger', () => {
       source: 'Hỏa Cầu',
     });
     expect(victim.recentDamageLog[1].source).toBeUndefined();
+  });
+
+  describe('what a shield ate', () => {
+    /** A bubble on the victim, big enough to be asked to eat what follows. */
+    const bubble = (victim: Champion, amount: number) => {
+      const shield = new Shield(10_000, victim, victim);
+      shield.amount = amount;
+      victim.addBuff(shield);
+      return shield;
+    };
+
+    it('records the part a shield absorbed beside the part that landed', () => {
+      const { victim, killer } = duo();
+      bubble(victim, 30);
+
+      victim.takeDamage(50, killer, 'MAGIC', 'Hỏa Cầu');
+
+      expect(victim.recentDamageLog).toHaveLength(1);
+      expect(victim.recentDamageLog[0].amount).toBe(20);
+      expect(victim.recentDamageLog[0].blocked).toBe(30);
+    });
+
+    it('records a hit the shield ate whole, which used to vanish entirely', () => {
+      // The reported bug. A hit fully absorbed took `takeDamage`'s early
+      // return before anything was written, so a player who died behind a big
+      // bubble read a recap that never mentioned it — the shield looked as
+      // though it had done nothing at all.
+      const { victim, killer } = duo();
+      bubble(victim, 500);
+
+      victim.takeDamage(120, killer, 'MAGIC', 'Hỏa Cầu');
+
+      expect(victim.recentDamageLog).toHaveLength(1);
+      expect(victim.recentDamageLog[0].amount).toBe(0);
+      expect(victim.recentDamageLog[0].blocked).toBe(120);
+      expect(victim.recentDamageLog[0].source).toBe('Hỏa Cầu');
+    });
+
+    it('counts nothing as blocked when there is no shield to count', () => {
+      // So the field cannot quietly start reporting mitigation, which is a
+      // different thing: armour makes the hit smaller and never stands in
+      // front of it. `swung` is read after resistances for that reason.
+      const { victim, killer } = duo();
+      victim.stats.armor.baseValue = 100;
+
+      victim.takeDamage(40, killer, 'PHYSICAL');
+
+      expect(victim.recentDamageLog[0].blocked).toBe(0);
+      expect(victim.recentDamageLog[0].amount).toBeLessThan(40);
+    });
+
+    it('still refuses to record the unit shielding itself against itself', () => {
+      const { victim } = duo();
+      bubble(victim, 500);
+      victim.takeDamage(60, victim, 'TRUE');
+      expect(victim.recentDamageLog).toHaveLength(0);
+    });
   });
 
   it('never records the unit hurting itself', () => {

@@ -34,6 +34,7 @@ import {
   type BotBody,
 } from '@/game/ai/BotShopper';
 import { MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
+import { dmg, heal, tint } from '@/game/combat/DamageText';
 import { grantItem } from '@/game/economy/ItemShop';
 import type { QualifiedItem } from '@/content/PackRegistry';
 
@@ -250,15 +251,45 @@ describe('what a bot picks off the shelf', () => {
 });
 
 describe('what a kit says it scales on', () => {
-  /** A kit, written the way a pack writes one: a class per ability. */
+  /**
+   * A kit, written the way a pack writes one — **through the real helpers**.
+   *
+   * Hand-typed spans are what let this file go on passing while the shopper
+   * was blind: the packs migrated to `api.text.dmg`, which writes
+   * `data-base` into the tag, and this module's own copy of the span pattern
+   * required `">` right after the class. Every champion then read as a kit
+   * nothing amplifies and every bot in the game bought attack damage, a mage
+   * included. Building the fixtures with the emitter is what makes that a
+   * failure here instead of a report from a match.
+   */
   const kit = (...descriptions: string[]) =>
     descriptions.map(description => ({ description, damageScalesWithAbilityPower: true }));
 
   it('reads a physical kit as physical and a magic one as magic', () => {
-    expect(kitAbilityMix({ spells: kit('<span class="damage physical">22 sát thương</span>') }))
-      .toEqual({ physical: 1, magic: 0, trueDamage: 0, coverage: 1 });
-    expect(kitAbilityMix({ spells: kit('<span class="damage magic">22 sát thương</span>') }))
-      .toEqual({ physical: 0, magic: 1, trueDamage: 0, coverage: 1 });
+    expect(kitAbilityMix({ spells: kit(`gây ${dmg(22, 'PHYSICAL')}`) })).toEqual({
+      physical: 1, magic: 0, trueDamage: 0, coverage: 1,
+    });
+    expect(kitAbilityMix({ spells: kit(`gây ${dmg(22, 'MAGIC')}`) })).toEqual({
+      physical: 0, magic: 1, trueDamage: 0, coverage: 1,
+    });
+  });
+
+  it('reads the markup the helpers actually emit, attributes and all', () => {
+    // The regression, stated as its own case. `dmg()` writes
+    // `<span class="damage magic" data-base="30">…`, and a pattern anchored to
+    // `">` right after the class matches none of it — silently, because a mix
+    // nobody can read is indistinguishable from a kit that scales with
+    // nothing. Asserted on the emitter's output rather than on a literal so it
+    // cannot be updated to match a broken reader.
+    const emitted = dmg(30, 'MAGIC');
+    expect(emitted).toContain('data-base=');
+    expect(kitAbilityMix({ spells: kit(emitted) }).magic).toBe(1);
+    expect(kitAbilityMix({ spells: kit(emitted) }).coverage).toBe(1);
+
+    // And a span typed by hand still reads, for a pack built against an older
+    // core — the same population `amplifiedDamageText` keeps its legacy pass
+    // for.
+    expect(kitAbilityMix({ spells: kit('<span class="damage magic">30</span>') }).magic).toBe(1);
   });
 
   it('counts an untyped span and a heal as magic, the way the engine does', () => {
@@ -267,7 +298,7 @@ describe('what a kit says it scales on', () => {
     // attack damage. A pack that never labelled a type therefore keeps exactly
     // the valuation it had before this existed.
     expect(kitAbilityMix({ spells: kit('<span class="damage">22</span>') }).magic).toBe(1);
-    expect(kitAbilityMix({ spells: kit('hồi <span class="heal">40 máu</span>') }).magic).toBe(1);
+    expect(kitAbilityMix({ spells: kit(`hồi ${heal(40, ' máu')}`) }).magic).toBe(1);
   });
 
   it('splits one ability that deals two types, and weighs abilities not spans', () => {
@@ -294,10 +325,12 @@ describe('what a kit says it scales on', () => {
     // A dash, a stun and a shield-less taunt are abilities no power stat moves.
     const support = kitAbilityMix({
       spells: kit(
-        '<span class="damage magic">30</span>',
+        dmg(30, 'MAGIC'),
         '<span class="buff">choáng 1 giây</span>',
         '<span class="buff">lướt 300</span>',
-        '<span class="buff">khiêu khích</span>'
+        // `tint` is paint, not a figure — it must not count as an amplified
+        // ability just because it wears the damage colour.
+        tint('khiêu khích')
       ),
     });
     expect(support.coverage).toBeCloseTo(0.25);

@@ -102,6 +102,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
           <span v-else class="death-recap-source-dot" aria-hidden="true"></span>
           <span class="death-recap-source-label">{{ line.label }}</span>
           <span v-if="line.hits > 1" class="death-recap-source-hits">×{{ line.hits }}</span>
+          <!-- What a shield ate out of this source, when it ate anything. A
+               source that landed nothing at all shows only the blocked figure,
+               which is the whole point: it *was* there, and the bubble is why
+               it did not count. -->
+          <span v-if="line.blocked > 0" class="death-recap-source-blocked" title="Bị khiên chặn">
+            <i class="fas fa-shield-alt" aria-hidden="true"></i>{{ line.blocked }}
+          </span>
           <span class="death-recap-source-amount" :class="'dmg-' + line.type.toLowerCase()">
             {{ line.amount }}
           </span>
@@ -110,6 +117,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
     </div>
     <div v-show="!collapsed" class="death-recap-total">
       Tổng <b>{{ recap.total }}</b> sát thương phải chịu
+      <!-- Its own clause rather than folded into the total: the two answer
+           different questions, and adding them would break the figure a player
+           checks against their own health pool. -->
+      <span v-if="recap.blocked > 0" class="death-recap-blocked-total">
+        · khiên chặn <b>{{ recap.blocked }}</b>
+      </span>
     </div>
   </div>
 </template>

@@ -67,6 +67,40 @@ describe('computeHudState', () => {
     expect(recap.rows[0].sources[0].label).toBe('Sát thương chuẩn');
   });
 
+  it('adds up what a shield ate, per source and for the whole death', () => {
+    // The half the recap used to leave out. A hit absorbed whole has
+    // `amount: 0` and only a `blocked` — the recap must still show it, since
+    // "the bubble ate the entire ultimate" is the most interesting line on
+    // the panel and the one a player is looking for.
+    const player = fakePlayer({
+      isDead: true,
+      deathRecap: {
+        seq: 1,
+        killerName: 'Vera',
+        entries: [
+          { atMs: 0, amount: 20, type: 'MAGIC', attackerName: 'Vera', attackerId: 'a', source: 'Hỏa Cầu', blocked: 30 },
+          { atMs: 1, amount: 0, type: 'MAGIC', attackerName: 'Vera', attackerId: 'a', source: 'Hỏa Cầu', blocked: 45 },
+          { atMs: 2, amount: 60, type: 'TRUE', attackerName: 'Trụ', attackerId: 't' },
+        ],
+      },
+    });
+    const recap = computeHudState({ player } as any)!.deathRecap!;
+
+    // Beside the total, never folded into it: they answer different questions,
+    // and a player checks `total` against their own health pool.
+    expect(recap.total).toBe(80);
+    expect(recap.blocked).toBe(75);
+
+    const vera = recap.rows.find(row => row.attacker === 'Vera')!;
+    expect(vera.total).toBe(20);
+    expect(vera.blocked).toBe(75);
+    expect(vera.sources[0]).toMatchObject({ label: 'Hỏa Cầu', amount: 20, blocked: 75, hits: 2 });
+
+    // An entry that named no shield still reports zero rather than undefined,
+    // so the panel's `v-if` never has to guess.
+    expect(recap.rows.find(row => row.attacker === 'Trụ')!.blocked).toBe(0);
+  });
+
   it('resolves a source line’s icon off the spells living in the match', () => {
     const spell = {
       name: 'Hỏa Cầu (mã nội bộ)',

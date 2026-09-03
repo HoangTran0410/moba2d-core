@@ -2559,6 +2559,34 @@ body.touch-ui .corner-btn {
   color: rgb(248, 248, 248);
 }
 
+/* What a shield ate, in the colour the health bar's own shield segment wears
+   (`DesktopHudView`'s inline `rgba(225,230,238,0.85)`) — so the number in the
+   recap and the sliver on the bar are recognisably the same thing, the same
+   way `.dmg-*` above matches the floating combat text.
+
+   `margin-left: auto` moves to this chip when it is present, and the adjacent
+   rule cancels the amount's own auto: two autos would split the free space and
+   strand the blocked figure in the middle of the row. */
+.death-recap-source-blocked {
+  flex: none;
+  margin-left: auto;
+  color: rgba(225, 230, 238, 0.85);
+  opacity: 0.8;
+  font-size: 11px;
+}
+
+.death-recap-source-blocked i {
+  margin-right: 3px;
+}
+
+.death-recap-source-blocked + .death-recap-source-amount {
+  margin-left: 6px;
+}
+
+.death-recap-blocked-total {
+  color: rgba(225, 230, 238, 0.85);
+}
+
 .death-recap-total {
   margin-top: 6px;
   padding-top: 5px;

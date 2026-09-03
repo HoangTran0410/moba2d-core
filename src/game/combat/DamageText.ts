@@ -206,5 +206,29 @@ export function pct(share: number, type?: DamageType, tail = ''): string {
   return tint(`${printFigure(share)}%${tail}`, type);
 }
 
+/**
+ * The opening tag of a scaling span, **tolerant of the attributes the helpers
+ * write** — and exported so nothing has to keep its own copy.
+ *
+ * `ai/BotShopper.ts` had a copy that required `">` immediately after the
+ * class, which is what the spans looked like before `data-base` existed. The
+ * day the packs migrated, that regex silently matched nothing, every champion
+ * read as a kit no stat amplifies, and every bot in the game started buying
+ * attack damage — a mage included. `Amplification.ts`'s own header warns about
+ * exactly this failure one layer down ("a wildcard there would silently enrol
+ * whatever class a pack invents next"), and the answer is the same both times:
+ * one pattern, in the module that emits the markup.
+ *
+ * Group 1 is the damage type, absent for a span that names none.
+ *
+ * A `tint`/`pct` span is **not** one of these and the lookahead says so: it
+ * carries `data-flat="none"` precisely to mean "paint, no promise", and a
+ * reader counting it as a scaling figure is the same mistake in the other
+ * direction — it made a control kit's colour-only emphasis read to
+ * `ai/BotShopper.ts` as an ability that ability power multiplies.
+ */
+export const SCALING_SPAN_OPEN =
+  /<span class="(?:damage|heal)(?: (physical|magic|true))?"(?![^>]*\bdata-flat=)[^>]*>/g;
+
 /** The default a span with no type names, stated once so callers agree with the parser. */
 export const DEFAULT_TEXT_TYPE: DamageType = DEFAULT_DAMAGE_TYPE;

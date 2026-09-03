@@ -74,9 +74,16 @@ import { FRAMES_PER_SECOND, MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
  * this is the one place the attribute is typed out by hand, and admitting it
  * is what lets `testing/spellText` tell paint from a figure that forgot its
  * helper on the shelf as well as in a spell.
+ *
+ * All three of core's `data-` attributes are admitted, not just that one, and
+ * in any order: an item *spell*'s description does go through `dmg()` and
+ * carries `data-base`. Spelling one attribute out in sequence is how two other
+ * copies of this pattern went blind — see `combat/DamageText.ts`'s
+ * `SCALING_SPAN_OPEN`. Still an allow-list: the attribute *names* are named,
+ * so a pack cannot smuggle arbitrary markup onto a player's screen.
  */
 const ALLOWED_SPAN =
-  /<span class="(?:damage|heal)(?: (?:physical|magic|true))?"(?: data-flat="none")?>[^<]*<\/span>|<span class="(?:buff|time)">[^<]*<\/span>/g;
+  /<span class="(?:damage|heal)(?: (?:physical|magic|true))?"(?: data-(?:base|base-high|flat)="[^"]*")*>[^<]*<\/span>|<span class="(?:buff|time)">[^<]*<\/span>/g;
 
 /**
  * Prose that restates the stat list beside it.

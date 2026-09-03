@@ -119,12 +119,16 @@ export interface DeathRecapSourceRow {
   hits: number;
   /** 'PHYSICAL' | 'MAGIC' | 'TRUE' — the panel colours the number with it. */
   type: string;
+  /** What a shield or damage reduction ate out of these hits. `0` for most. */
+  blocked: number;
 }
 
 /** One attacker in the death recap, heaviest first. */
 export interface DeathRecapRow {
   attacker: string;
   total: number;
+  /** What this attacker's hits lost to a shield before reaching health. */
+  blocked: number;
   sources: DeathRecapSourceRow[];
 }
 
@@ -139,6 +143,15 @@ export interface DeathRecapDisplay {
   seq: number;
   killer: string;
   total: number;
+  /**
+   * Everything a shield or a damage-reduction buff absorbed in the same
+   * window — the number the recap used to leave out entirely.
+   *
+   * Beside `total` rather than folded into it: they answer different
+   * questions ("what killed me" against "what saved me"), and adding them
+   * would inflate the figure a player checks against their own health pool.
+   */
+  blocked: number;
   rows: DeathRecapRow[];
 }
 
@@ -825,20 +838,25 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
 
   const rows = new Map<string, DeathRecapRow & { lines: Map<string, DeathRecapSourceRow> }>();
   let total = 0;
+  let blocked = 0;
   for (const entry of recap.entries as {
     amount: number;
     type: string;
     attackerName: string;
     attackerId: string;
     source?: string;
+    blocked?: number;
   }[]) {
     total += entry.amount;
+    const eaten = entry.blocked ?? 0;
+    blocked += eaten;
     let row = rows.get(entry.attackerId);
     if (!row) {
-      row = { attacker: entry.attackerName, total: 0, sources: [], lines: new Map() };
+      row = { attacker: entry.attackerName, total: 0, blocked: 0, sources: [], lines: new Map() };
       rows.set(entry.attackerId, row);
     }
     row.total += entry.amount;
+    row.blocked += eaten;
     // Spell names carry their code name as a trailing parenthetical, which is
     // documentation, not something to retell a death with — trimmed here.
     const label = (entry.source ?? DAMAGE_TYPE_LABEL[entry.type] ?? entry.type).replace(
@@ -849,12 +867,14 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
     const line = row.lines.get(key);
     if (line) {
       line.amount += entry.amount;
+      line.blocked += eaten;
       line.hits += 1;
     } else {
       row.lines.set(key, {
         label,
         image: icons.get(sourceKeyOf(label)) ?? '',
         amount: entry.amount,
+        blocked: eaten,
         hits: 1,
         type: entry.type,
       });
@@ -865,13 +885,20 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
     seq: recap.seq,
     killer: recap.killerName,
     total,
+    blocked,
     rows: [...rows.values()]
       .map(row => ({
         attacker: row.attacker,
         total: row.total,
-        sources: [...row.lines.values()].sort((a, b) => b.amount - a.amount),
+        blocked: row.blocked,
+        // By damage dealt, then by what was blocked — so a source that landed
+        // nothing because a shield ate all of it still sorts sensibly instead
+        // of collapsing to the bottom in arbitrary order.
+        sources: [...row.lines.values()].sort(
+          (a, b) => b.amount - a.amount || b.blocked - a.blocked
+        ),
       }))
-      .sort((a, b) => b.total - a.total),
+      .sort((a, b) => b.total - a.total || b.blocked - a.blocked),
   };
 }
 

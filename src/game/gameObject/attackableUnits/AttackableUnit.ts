@@ -1015,9 +1015,30 @@ export default class AttackableUnit extends GameObject {
     }
 
     damage = Math.max(0, Math.round(damage));
+
+    /**
+     * What a shield or a damage-reduction buff just ate — `swung` is the hit
+     * after armour and before that loop, so this is exactly the part of it
+     * that never reached the body.
+     *
+     * Recorded because the death recap could not see it at all. A shield that
+     * absorbed the whole hit took the early return below and wrote nothing, so
+     * a player who died behind a big bubble read a recap listing only the
+     * damage that got through — the bubble looked like it had done nothing.
+     * Reported from a real match: a mage's shield absorbing "rất nhiều damage"
+     * and a death detail that never mentioned it.
+     */
+    const blocked = Math.max(0, swung - damage);
+
     // Nothing reached health — but something was still swung, so the reaction
     // pass below still owes an answer. Only the health side is skipped.
     if (damage <= 0) {
+      // The whole hit was eaten. It is still the most interesting kind of
+      // entry for the recap, so it is written here rather than lost to the
+      // early return: `landed` is zero and `blocked` carries the story.
+      if (blocked > 0 && attacker !== this) {
+        this.recordDamageForRecap(0, type, attacker, source ?? currentAttributionName(), blocked);
+      }
       this.reactToDamage(swung, 0, attacker);
       this.reactToDamageDealt(swung, 0, attacker, type);
       return;
@@ -1046,11 +1067,17 @@ export default class AttackableUnit extends GameObject {
     const landed = Math.min(damage, Math.max(0, this.stats.health.baseValue));
     this.tally.damageTaken += landed;
     if (attacker && attacker !== this) attacker.tally.damageDealt += landed;
-    if (landed > 0 && attacker !== this)
+    if ((landed > 0 || blocked > 0) && attacker !== this)
       // An explicit `source` always wins: five sites across the packs
       // deliberately name a sub-ability rather than their own spell. The
       // ambient only fills the silence — see `combat/DamageAttribution.ts`.
-      this.recordDamageForRecap(landed, type, attacker, source ?? currentAttributionName());
+      this.recordDamageForRecap(
+        landed,
+        type,
+        attacker,
+        source ?? currentAttributionName(),
+        blocked
+      );
 
     this.stats.health.baseValue -= damage;
 
@@ -1265,7 +1292,8 @@ export default class AttackableUnit extends GameObject {
     landed: number,
     type: DamageType,
     attacker?: AttackableUnit,
-    source?: string
+    source?: string,
+    blocked = 0
   ): void {
     const atMs = this.game?.matchTimeMs ?? 0;
     this.recentDamageLog.push({
@@ -1277,6 +1305,7 @@ export default class AttackableUnit extends GameObject {
       attackerName: unitDisplayName(attacker),
       attackerId: attacker?.id ?? 'unknown',
       source,
+      blocked: Math.round(blocked),
     });
     const cutoff = atMs - DEATH_RECAP_WINDOW_MS;
     const log = this.recentDamageLog;
@@ -1772,6 +1801,12 @@ export interface DamageLogEntry {
   attackerId: string;
   /** The ability's own name, when the damage call named one. */
   source?: string;
+  /**
+   * What a shield or a damage-reduction buff ate out of this hit before it
+   * reached health. `0` for most entries; an entry with `amount: 0` and a
+   * `blocked` is a hit that was absorbed whole.
+   */
+  blocked?: number;
 }
 
 /** What `die()` publishes for the HUD. */
