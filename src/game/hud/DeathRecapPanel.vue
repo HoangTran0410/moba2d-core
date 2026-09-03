@@ -124,5 +124,15 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         · khiên chặn <b>{{ recap.blocked }}</b>
       </span>
     </div>
+    <!-- Match totals, unlike everything above it, so it is labelled and ruled
+         off rather than left to look like part of the fight. -->
+    <div v-show="!collapsed" class="death-recap-dealt">
+      <span class="death-recap-dealt-label">Bạn đã gây (cả trận)</span>
+      <span class="death-recap-dealt-figures">
+        <span class="dmg-physical">{{ recap.dealt.physical }}</span>
+        <span class="dmg-magic">{{ recap.dealt.magic }}</span>
+        <span class="dmg-true">{{ recap.dealt.true }}</span>
+      </span>
+    </div>
   </div>
 </template>

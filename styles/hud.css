@@ -2587,6 +2587,28 @@ body.touch-ui .corner-btn {
   color: rgba(225, 230, 238, 0.85);
 }
 
+/* The one row about what *you* did. Ruled off from the total above it because
+   it is scoped to the whole match while everything above is scoped to the
+   fight that killed you — two different questions sharing a panel.
+
+   The three figures wear `.dmg-*`, the same palette the source lines and the
+   floating combat text use, so "which of my damage is magic" is answered by
+   the colour a player already knows rather than by three more labels. */
+.death-recap-dealt {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.85;
+}
+
+.death-recap-dealt-figures {
+  display: flex;
+  gap: 8px;
+}
+
 .death-recap-total {
   margin-top: 6px;
   padding-top: 5px;

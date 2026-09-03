@@ -101,6 +101,47 @@ describe('computeHudState', () => {
     expect(recap.rows.find(row => row.attacker === 'Trụ')!.blocked).toBe(0);
   });
 
+  it('reports what the player dealt, split by damage type', () => {
+    // The recap answered only "what killed me". A player tuning an ability
+    // wants the other half — what their own build actually pays out through —
+    // and the engine already keeps it (`MatchTally.damageDealtByType`).
+    //
+    // Match totals, deliberately, and the panel labels them as such: the rows
+    // above are the fight that killed you, and inventing a second ledger with
+    // its own window would put two differently-scoped numbers side by side
+    // with nothing to tell them apart.
+    const player = fakePlayer({
+      isDead: true,
+      tally: { damageDealtByType: { PHYSICAL: 420, MAGIC: 137, TRUE: 8 } },
+      deathRecap: {
+        seq: 1,
+        killerName: 'Kẻ giết',
+        entries: [
+          { atMs: 0, amount: 60, type: 'TRUE', attackerName: 'Kẻ giết', attackerId: 'k' },
+        ],
+      },
+    });
+    const recap = computeHudState({ player } as any)!.deathRecap!;
+
+    expect(recap.dealt).toEqual({ physical: 420, magic: 137, true: 8 });
+    // Never folded into the incoming total, which is a different question.
+    expect(recap.total).toBe(60);
+  });
+
+  it('reports zeroes rather than undefined for a player who has dealt nothing', () => {
+    // The panel renders all three unconditionally, so a missing tally has to
+    // read as 0 and not as a blank.
+    const player = fakePlayer({
+      isDead: true,
+      deathRecap: { seq: 1, killerName: 'x', entries: [] },
+    });
+    expect(computeHudState({ player } as any)!.deathRecap!.dealt).toEqual({
+      physical: 0,
+      magic: 0,
+      true: 0,
+    });
+  });
+
   it('resolves a source line’s icon off the spells living in the match', () => {
     const spell = {
       name: 'Hỏa Cầu (mã nội bộ)',

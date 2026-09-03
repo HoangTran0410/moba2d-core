@@ -172,6 +172,51 @@ describe('the death-recap ledger', () => {
     });
   });
 
+  it('splits what an attacker dealt by damage type', () => {
+    // The engine kept one `damageDealt` number, which cannot answer the
+    // question a player tuning a build is actually asking. Split at the same
+    // site so the two can never disagree about a hit.
+    const { victim, killer } = duo();
+    victim.stats.maxHealth.baseValue = 5_000;
+    victim.stats.health.baseValue = 5_000;
+
+    victim.takeDamage(30, killer, 'PHYSICAL');
+    victim.takeDamage(12, killer, 'MAGIC');
+    victim.takeDamage(5, killer, 'TRUE');
+    victim.takeDamage(10, killer, 'PHYSICAL');
+
+    expect(killer.tally.damageDealtByType).toEqual({ PHYSICAL: 40, MAGIC: 12, TRUE: 5 });
+    // And the total every other reader uses still adds up to the same hits.
+    expect(killer.tally.damageDealt).toBe(57);
+  });
+
+  it('keeps a bot that re-rolled mid-fight as two attackers, not one', () => {
+    // A bot becomes a different champion every time it dies
+    // (`AIChampion._autoReroll`), so one unit id can be Jinx for the first
+    // half of a skirmish and Alistar for the second. Keyed on the id alone and
+    // labelled from its *first* entry, everything that body ever did collected
+    // under whoever it was first — a death screen reading "Hạ gục bởi Alistar"
+    // with no Alistar row and his abilities filed under Jinx. Reported from a
+    // real match, and it reads as nonsense because it is.
+    const { victim } = duo();
+    victim.stats.maxHealth.baseValue = 5_000;
+    victim.stats.health.baseValue = 5_000;
+    const bot = new Champion({ game, position: createVector(50, 0), teamId: 'red' });
+    bot.name = 'Jinx';
+    indexObjects(game, [victim, bot]);
+
+    game.matchTimeMs = 0;
+    victim.takeDamage(88, bot, 'MAGIC', 'Giật Bắn!');
+    // It dies and comes back as somebody else — the same body, a new champion.
+    bot.name = 'Alistar';
+    game.matchTimeMs = 4_000;
+    victim.takeDamage(65, bot, 'MAGIC', 'Nghiền Nát');
+
+    const groups = new Set(victim.recentDamageLog.map(entry => entry.attackerId));
+    expect(groups.size).toBe(2);
+    expect(victim.recentDamageLog.map(entry => entry.attackerName)).toEqual(['Jinx', 'Alistar']);
+  });
+
   it('files every minion of a kind under one attacker, and keeps champions apart', () => {
     // A wave is six units with six ids, and the recap gave it six rows of a
     // dozen damage each. Champions keep their own id: two bots can be the

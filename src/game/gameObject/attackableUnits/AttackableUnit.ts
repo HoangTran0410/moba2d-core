@@ -1066,7 +1066,11 @@ export default class AttackableUnit extends GameObject {
     // it the pool is already negative.
     const landed = Math.min(damage, Math.max(0, this.stats.health.baseValue));
     this.tally.damageTaken += landed;
-    if (attacker && attacker !== this) attacker.tally.damageDealt += landed;
+    if (attacker && attacker !== this) {
+      attacker.tally.damageDealt += landed;
+      // The same number, split by what it was — see `MatchTally`.
+      attacker.tally.damageDealtByType[type] += landed;
+    }
     if ((landed > 0 || blocked > 0) && attacker !== this)
       // An explicit `source` always wins: five sites across the packs
       // deliberately name a sub-ability rather than their own spell. The
@@ -1921,8 +1925,22 @@ const unitDisplayName = (unit?: unknown): string =>
  */
 const recapGroupOf = (unit?: { id?: string; killCredit?: string; name?: string }): string => {
   if (!unit) return 'unknown';
-  if (unit.killCredit === 'champion') return unit.id ?? 'unknown';
-  return unitDisplayName(unit);
+  if (unit.killCredit !== 'champion') return unitDisplayName(unit);
+  // **The body *and* who it currently is.** A bot re-rolls into another
+  // champion every time it dies (`AIChampion._autoReroll`), so one unit id can
+  // be a marksman for the first half of a skirmish and a tank for the second.
+  // The recap keyed rows on the id alone and labelled each row from its
+  // *first* entry, so everything that body ever did collected under whoever it
+  // was first: a death screen naming a killer who has no row at all, with that
+  // killer's abilities filed under the champion they used to be. Reported from
+  // a real match, and it reads as nonsense because it is — two different
+  // champions in one row.
+  //
+  // Splitting on the name is the honest answer rather than a workaround: they
+  // *were* two champions, and the one that killed you is the one you want to
+  // read about. `\u0000` because no display name contains it, so this can never
+  // collide with a name that happens to look like an id.
+  return `${unit.id ?? 'unknown'}\u0000${unitDisplayName(unit)}`;
 };
 
 /**

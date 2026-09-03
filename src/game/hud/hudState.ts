@@ -144,6 +144,16 @@ export interface DeathRecapDisplay {
   killer: string;
   total: number;
   /**
+   * What this player has dealt all match, split by kind.
+   *
+   * **Match totals, not this engagement**, and the panel says so. The rows
+   * above are the fight that killed you; this is the whole match, because that
+   * is what the engine actually keeps (`MatchTally`) and because inventing an
+   * outgoing ledger with its own window would put two differently-scoped
+   * numbers in one panel with nothing to tell them apart.
+   */
+  dealt: { physical: number; magic: number; true: number };
+  /**
    * Everything a shield or a damage-reduction buff absorbed in the same
    * window — the number the recap used to leave out entirely.
    *
@@ -835,6 +845,12 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
   if (!player.deathRecap) return null;
   const recap = player.deathRecap;
   const icons = recapIconsFor(player, recap);
+  const byType = player.tally?.damageDealtByType;
+  const dealt = {
+    physical: Math.round(byType?.PHYSICAL ?? 0),
+    magic: Math.round(byType?.MAGIC ?? 0),
+    true: Math.round(byType?.TRUE ?? 0),
+  };
 
   const rows = new Map<string, DeathRecapRow & { lines: Map<string, DeathRecapSourceRow> }>();
   let total = 0;
@@ -890,6 +906,7 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
     killer: recap.killerName,
     total,
     blocked,
+    dealt,
     rows: [...rows.values()]
       .map(row => ({
         attacker: row.attacker,
