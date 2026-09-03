@@ -3,8 +3,9 @@ import { createGame, indexObjects, stubGameGlobals, type TestGame } from '../fix
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import Shield from '../../../src/game/gameObject/buffs/Shield';
 import {
+  DEATH_RECAP_ENGAGEMENT_GAP_MS,
   DEATH_RECAP_MAX_ENTRIES,
-  DEATH_RECAP_WINDOW_MS,
+  DEATH_RECAP_MERGE_MS,
 } from '../../../src/game/gameObject/attackableUnits/AttackableUnit';
 
 /**
@@ -112,19 +113,102 @@ describe('the death-recap ledger', () => {
     expect(victim.recentDamageLog).toHaveLength(0);
   });
 
-  it('prunes what fell out of the window, and caps the ledger', () => {
-    const { victim, killer } = duo();
-    victim.takeDamage(5, killer, 'PHYSICAL');
-    game.matchTimeMs = DEATH_RECAP_WINDOW_MS + 1_000;
-    victim.takeDamage(5, killer, 'PHYSICAL');
+  describe('how far back it reaches', () => {
+    /** One hit at `t`, from a source named so it will not merge with its neighbour. */
+    const hitAt = (victim: any, killer: any, t: number, source: string) => {
+      game.matchTimeMs = t;
+      victim.takeDamage(5, killer, 'PHYSICAL', source);
+    };
 
-    expect(victim.recentDamageLog).toHaveLength(1);
-    expect(victim.recentDamageLog[0].atMs).toBe(DEATH_RECAP_WINDOW_MS + 1_000);
+    it('keeps the whole fight, however long the finisher takes over it', () => {
+      // The reported bug. Under a flat window measured from the newest hit,
+      // every blow from the finisher pushed the cutoff forward and ate the
+      // earlier fight a hit at a time — until only the finisher was left.
+      const { victim, killer } = duo();
+      for (let t = 0; t <= 6_000; t += 1_500) hitAt(victim, killer, t, `Đòn ${t}`);
+      // Three seconds of quiet, then a finisher that takes five more.
+      for (let t = 9_000; t <= 14_000; t += 1_000) hitAt(victim, killer, t, `Kết liễu ${t}`);
 
-    for (let hit = 0; hit < DEATH_RECAP_MAX_ENTRIES + 10; hit++) {
-      victim.takeDamage(1, killer, 'PHYSICAL');
-    }
-    expect(victim.recentDamageLog.length).toBeLessThanOrEqual(DEATH_RECAP_MAX_ENTRIES);
+      expect(victim.recentDamageLog[0].atMs).toBe(0);
+      expect(victim.recentDamageLog.some(e => e.source === 'Đòn 0')).toBe(true);
+    });
+
+    it('drops a fight that really was a separate one', () => {
+      const { victim, killer } = duo();
+      hitAt(victim, killer, 0, 'Trận cũ');
+      hitAt(victim, killer, DEATH_RECAP_ENGAGEMENT_GAP_MS + 500, 'Trận mới');
+
+      expect(victim.recentDamageLog).toHaveLength(1);
+      expect(victim.recentDamageLog[0].source).toBe('Trận mới');
+    });
+
+    it('folds a tick stream into one entry instead of spending the ledger on it', () => {
+      // What makes the rule above survive contact with a damage-over-time: 40
+      // ticks used to be 40 entries, `DEATH_RECAP_MAX_ENTRIES` trimmed from
+      // the front, and the start of the fight was gone again.
+      const { victim, killer } = duo();
+      // Deep enough to survive the burn: `die()` clears the ledger, and a
+      // corpse proves nothing about merging.
+      victim.stats.maxHealth.baseValue = 10_000;
+      victim.stats.health.baseValue = 10_000;
+      for (let tick = 0; tick < 40; tick++) {
+        game.matchTimeMs = tick * (DEATH_RECAP_MERGE_MS / 4);
+        victim.takeDamage(3, killer, 'MAGIC', 'Độc');
+      }
+
+      expect(victim.recentDamageLog).toHaveLength(1);
+      expect(victim.recentDamageLog[0].hits).toBe(40);
+      expect(victim.recentDamageLog[0].amount).toBe(120);
+    });
+
+    it('still caps the ledger for a fight that genuinely runs that long', () => {
+      const { victim, killer } = duo();
+      for (let hit = 0; hit < DEATH_RECAP_MAX_ENTRIES + 10; hit++) {
+        // Distinct sources and spaced past the merge window, so nothing folds.
+        game.matchTimeMs = hit * (DEATH_RECAP_MERGE_MS + 100);
+        victim.takeDamage(1, killer, 'PHYSICAL', `Đòn ${hit}`);
+      }
+      expect(victim.recentDamageLog.length).toBeLessThanOrEqual(DEATH_RECAP_MAX_ENTRIES);
+    });
+  });
+
+  it('files every minion of a kind under one attacker, and keeps champions apart', () => {
+    // A wave is six units with six ids, and the recap gave it six rows of a
+    // dozen damage each. Champions keep their own id: two bots can be the
+    // same champion, and folding two players into one row misreports the kill.
+    const { victim } = duo();
+    const wave = [0, 1, 2].map(i => {
+      const minion = new Champion({ game, position: createVector(20 + i, 0), teamId: 'red' });
+      minion.name = 'Lính cận chiến';
+      minion.killCredit = 'minion';
+      return minion;
+    });
+    indexObjects(game, [victim, ...wave]);
+
+    wave.forEach((minion, i) => {
+      game.matchTimeMs = i * (DEATH_RECAP_MERGE_MS + 100);
+      victim.takeDamage(12, minion, 'PHYSICAL', 'Đánh thường');
+    });
+
+    expect(new Set(victim.recentDamageLog.map(e => e.attackerId))).toEqual(
+      new Set(['Lính cận chiến'])
+    );
+
+    const twins = [0, 1].map(i => {
+      const bot = new Champion({ game, position: createVector(40 + i, 0), teamId: 'red' });
+      bot.name = 'Ahri';
+      return bot;
+    });
+    indexObjects(game, [victim, ...twins]);
+    twins.forEach((bot, i) => {
+      game.matchTimeMs = 5_000 + i * (DEATH_RECAP_MERGE_MS + 100);
+      victim.takeDamage(9, bot, 'MAGIC', 'Hỏa Cầu');
+    });
+
+    const champIds = victim.recentDamageLog
+      .filter(e => e.attackerName === 'Ahri')
+      .map(e => e.attackerId);
+    expect(new Set(champIds).size).toBe(2);
   });
 
   it('die() publishes the recap — killing blow included — and clears the ledger', () => {

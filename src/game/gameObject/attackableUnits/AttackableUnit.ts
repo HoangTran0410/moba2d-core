@@ -1296,22 +1296,65 @@ export default class AttackableUnit extends GameObject {
     blocked = 0
   ): void {
     const atMs = this.game?.matchTimeMs ?? 0;
-    this.recentDamageLog.push({
+    const log = this.recentDamageLog;
+    const attackerId = recapGroupOf(attacker);
+    // `landed` is capped at the health pool, and regen leaves the pool
+    // fractional — un-rounded, the recap printed 43.999999999999996.
+    const amount = Math.round(landed);
+    const eaten = Math.round(blocked);
+
+    // Fold into a recent entry from the same attacker and ability, so a
+    // damage-over-time is one line rather than forty — see
+    // `DEATH_RECAP_MERGE_MS`. Walked backwards only as far as that window
+    // reaches, which is at most a handful of entries.
+    for (let i = log.length - 1; i >= 0; i--) {
+      const entry = log[i];
+      if (atMs - entry.atMs > DEATH_RECAP_MERGE_MS) break;
+      if (entry.attackerId !== attackerId || entry.source !== source || entry.type !== type) {
+        continue;
+      }
+      entry.amount += amount;
+      entry.blocked = (entry.blocked ?? 0) + eaten;
+      entry.hits += 1;
+      // Dated by its latest hit, so a line still being added to is not
+      // mistaken for the end of an engagement by the prune below.
+      entry.atMs = atMs;
+      this.pruneDamageLog();
+      return;
+    }
+
+    log.push({
       atMs,
-      // `landed` is capped at the health pool, and regen leaves the pool
-      // fractional — un-rounded, the recap printed 43.999999999999996.
-      amount: Math.round(landed),
+      amount,
+      hits: 1,
       type,
       attackerName: unitDisplayName(attacker),
-      attackerId: attacker?.id ?? 'unknown',
+      attackerId,
       source,
-      blocked: Math.round(blocked),
+      blocked: eaten,
     });
-    const cutoff = atMs - DEATH_RECAP_WINDOW_MS;
+    this.pruneDamageLog();
+  }
+
+  /**
+   * Drops everything before the fight the unit is currently in.
+   *
+   * The boundary is the newest gap of `DEATH_RECAP_ENGAGEMENT_GAP_MS` or more
+   * between consecutive entries: everything after it is this engagement,
+   * everything before it was a different one. Searched from the newest end so
+   * a long skirmish of back-to-back exchanges stays whole.
+   */
+  private pruneDamageLog(): void {
     const log = this.recentDamageLog;
-    while (log.length > DEATH_RECAP_MAX_ENTRIES || (log.length && log[0].atMs < cutoff)) {
-      log.shift();
+    for (let i = log.length - 1; i > 0; i--) {
+      if (log[i].atMs - log[i - 1].atMs >= DEATH_RECAP_ENGAGEMENT_GAP_MS) {
+        log.splice(0, i);
+        break;
+      }
     }
+    // The ledger is still capped: a fight that genuinely runs long enough to
+    // fill it keeps its most recent entries rather than growing for ever.
+    while (log.length > DEATH_RECAP_MAX_ENTRIES) log.shift();
   }
 
   /**
@@ -1773,8 +1816,44 @@ export default class AttackableUnit extends GameObject {
   }
 }
 
-/** How far back the death recap reaches. The source game shows about this much. */
-export const DEATH_RECAP_WINDOW_MS = 12_000;
+/**
+ * The quiet the recap treats as the end of a fight.
+ *
+ * It replaces a flat twelve-second window, and the difference is the whole
+ * point. That window was measured from the **most recent hit** and re-applied
+ * on every new one, so a player who fought, disengaged, and was then picked
+ * off watched the earlier fight get eaten a hit at a time: each blow from the
+ * finisher pushed the cutoff forward until nothing but the finisher was left.
+ * Reported exactly that way — "vừa combat xong, thoát combat chưa tới 3s, bị
+ * một đứa ngoài combat đánh chết, chỉ thấy damage của đứa đó".
+ *
+ * A gap is what a player actually means by "the fight I was just in": the
+ * story runs back to the last time nobody was hitting them. Eight seconds
+ * because a disengage is not instant — walking out, a recall cancelled, a
+ * finisher arriving — and a gap this long is already clearly a *separate*
+ * fight rather than the same one.
+ *
+ * League's own recap is a short rolling window of about this size and is
+ * long and widely criticised for exactly the failure above; matching it was
+ * not worth doing.
+ */
+export const DEATH_RECAP_ENGAGEMENT_GAP_MS = 8_000;
+
+/**
+ * How close two hits from the same attacker and ability have to be to be
+ * counted as one entry.
+ *
+ * Without this the gap rule above cannot deliver what it promises: a long
+ * fight with a damage-over-time on it spends the ledger's whole budget on
+ * tick entries, `DEATH_RECAP_MAX_ENTRIES` trims from the front, and the start
+ * of the fight is gone again — the same complaint through a different door.
+ *
+ * Merged backwards through the window rather than only into the last entry:
+ * two enemies trading blows alternate in the ledger, which is the common
+ * shape and the one a last-entry-only merge would never collapse.
+ */
+export const DEATH_RECAP_MERGE_MS = 1_000;
+
 /** A hard cap so a tick aura cannot grow the ledger without bound. */
 export const DEATH_RECAP_MAX_ENTRIES = 60;
 
@@ -1794,8 +1873,11 @@ export interface DamageNumberEvent {
 }
 
 export interface DamageLogEntry {
+  /** When the *latest* hit folded into this entry landed — see `DEATH_RECAP_MERGE_MS`. */
   atMs: number;
   amount: number;
+  /** How many hits this entry stands for; more than one once ticks merge. */
+  hits: number;
   type: DamageType;
   attackerName: string;
   attackerId: string;
@@ -1821,6 +1903,27 @@ export interface DeathRecap {
  *  it, so this reads it structurally and says "unknown" honestly otherwise. */
 const unitDisplayName = (unit?: unknown): string =>
   (unit as { name?: string } | undefined)?.name ?? 'Không rõ';
+
+/**
+ * What the recap files a hit under — a *kind* for everything that is not a
+ * champion, and the unit itself for one.
+ *
+ * A wave is six units with six ids, so a recap keyed on the id gave a death to
+ * minions six rows of a dozen damage each, in a panel whose whole job is to
+ * say what killed you at a glance. Grouping them by name answers the question
+ * a player is actually asking — "how much was the wave" — and, because the
+ * ledger merges entries sharing a key, it also stops a wave spending the
+ * ledger's whole budget and pushing a real fight out of it.
+ *
+ * Champions keep their own id and are the reason this is not simply "group by
+ * name": two bots can be the same champion, and folding two players into one
+ * row would misreport who killed you.
+ */
+const recapGroupOf = (unit?: { id?: string; killCredit?: string; name?: string }): string => {
+  if (!unit) return 'unknown';
+  if (unit.killCredit === 'champion') return unit.id ?? 'unknown';
+  return unitDisplayName(unit);
+};
 
 /**
  * Is `unit` the champion this device is playing? Presentation asks this on

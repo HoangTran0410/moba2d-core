@@ -846,6 +846,7 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
     attackerId: string;
     source?: string;
     blocked?: number;
+    hits?: number;
   }[]) {
     total += entry.amount;
     const eaten = entry.blocked ?? 0;
@@ -868,14 +869,17 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
     if (line) {
       line.amount += entry.amount;
       line.blocked += eaten;
-      line.hits += 1;
+      // The ledger folds a tick stream into one entry now, so an entry stands
+      // for `hits` blows rather than always one — counting entries would show
+      // a forty-tick burn as a single hit.
+      line.hits += entry.hits ?? 1;
     } else {
       row.lines.set(key, {
         label,
         image: icons.get(sourceKeyOf(label)) ?? '',
         amount: entry.amount,
         blocked: eaten,
-        hits: 1,
+        hits: entry.hits ?? 1,
         type: entry.type,
       });
     }
