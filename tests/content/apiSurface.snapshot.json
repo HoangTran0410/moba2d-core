@@ -238,6 +238,8 @@
     "text:object",
     "text.dmg:function",
     "text.dmgRange:function",
+    "text.dmgRangeValue:function",
+    "text.dmgValue:function",
     "text.heal:function",
     "text.pct:function",
     "text.tint:function",
