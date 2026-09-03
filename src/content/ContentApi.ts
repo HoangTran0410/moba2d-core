@@ -52,6 +52,15 @@ import Untargetable from '@/game/gameObject/buffs/Untargetable';
 import Buff from '@/game/gameObject/Buff';
 
 import * as Mitigation from '@/game/combat/Mitigation';
+import {
+  dmg,
+  dmgRange,
+  dmgRangeValue,
+  dmgValue,
+  heal,
+  pct,
+  tint,
+} from '@/game/combat/DamageText';
 import * as Reach from '@/game/combat/Reach';
 import * as Vision from '@/game/combat/Vision';
 import * as ExecuteTargeting from '@/game/combat/ExecuteTargeting';
@@ -224,6 +233,15 @@ export interface ContentApi {
   enums: typeof ENUMS;
   terrain: typeof TERRAIN;
   utils: typeof UTILS;
+  /**
+   * How a pack writes a number in a description that the engine will scale.
+   *
+   * Not optional decoration: `combat/DamageText.ts` explains at length why a
+   * span typed out by hand is a silent failure waiting to happen, and these
+   * are the only way to write one that cannot be. `api.text.dmg(26, 'MAGIC',
+   * ' sát thương')`.
+   */
+  text: typeof DAMAGE_TEXT;
 
   /**
    * A bare local key (`'spell_ahri_e'`) resolves against whichever pack
@@ -262,6 +280,12 @@ export interface ContentApi {
     label?: string
   ): p5.Image | p5.Element;
 }
+
+/**
+ * The description helpers, grouped so a spell file can lift them out at module
+ * scope the way it already lifts `Spell` — `const dmg = api.text.dmg;`.
+ */
+const DAMAGE_TEXT = Object.freeze({ dmg, dmgValue, dmgRange, dmgRangeValue, heal, tint, pct });
 
 const COMBAT = Object.freeze({
   Mitigation,
@@ -448,6 +472,7 @@ export function buildContentApi(): ContentApi {
     enums: ENUMS,
     terrain: TERRAIN,
     utils: UTILS,
+    text: DAMAGE_TEXT,
     asset: packAsset,
     renderableAsset: (handle: AssetHandle | undefined, label?: string) =>
       AssetManager.renderable(handle, label) as p5.Image | p5.Element,

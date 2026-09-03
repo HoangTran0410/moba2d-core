@@ -65,9 +65,18 @@ import { FRAMES_PER_SECOND, MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
  * (`damage physical`) that `styles/main.css` paints. Still an allow-list and still
  * closed: `ShopDetail` and the inventory tooltip both render this with `v-html`,
  * so markup a pack writes here is markup it puts on a player's screen.
+ *
+ * `data-flat="none"` is admitted for the same reason the classes are: it is
+ * core's own attribute, written by `combat/DamageText.ts`'s `tint`, and on an
+ * item it is simply true — core never rescales item text, because
+ * `economy/ItemShop` opts every item ability out of ability scaling. A pack's
+ * data half cannot call the helper (it may not value-import the engine), so
+ * this is the one place the attribute is typed out by hand, and admitting it
+ * is what lets `testing/spellText` tell paint from a figure that forgot its
+ * helper on the shelf as well as in a spell.
  */
 const ALLOWED_SPAN =
-  /<span class="(?:damage|heal)(?: (?:physical|magic|true))?">[^<]*<\/span>|<span class="(?:buff|time)">[^<]*<\/span>/g;
+  /<span class="(?:damage|heal)(?: (?:physical|magic|true))?"(?: data-flat="none")?>[^<]*<\/span>|<span class="(?:buff|time)">[^<]*<\/span>/g;
 
 /**
  * Prose that restates the stat list beside it.

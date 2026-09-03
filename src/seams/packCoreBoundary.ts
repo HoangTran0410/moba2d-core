@@ -159,6 +159,15 @@ const ALLOWED_TYPE_ONLY = new Set([
  *     copies. Out of the `/testing` barrel for exactly `/testing/spells`'
  *     reason: `export *` evaluates the whole module, and a pack test that
  *     only wanted `createGame` should not pay for the engine's item graph.
+ *   - `/testing/spellText` — `describeSpellDescriptions`, the rules a
+ *     description's coloured numbers have to satisfy. Here for the sharpest
+ *     version of `/testing/items`' reason: three packs had each written their
+ *     own scan of the same markup and the three checked different things, so
+ *     a defect caught in one shipped in the other two — 38 spans in one pack
+ *     spent their whole life claiming a scaling their abilities did not have.
+ *     The rules are facts about `combat/DamageText.ts` and
+ *     `combat/Amplification.ts`, and they belong beside the parser that
+ *     decides what valid means.
  *   - `/testing/maps` — `mapIssues`, the rules a map has to satisfy for the
  *     same reason `/testing/items` publishes the rules a shop has to satisfy:
  *     they are facts about what *core* does with a map, and both shipped packs
@@ -201,6 +210,7 @@ const ALLOWED_VALUE = new Set([
   `${CORE_PACKAGE}/testing/vitest`,
   `${CORE_PACKAGE}/testing/setup`,
   `${CORE_PACKAGE}/testing/items`,
+  `${CORE_PACKAGE}/testing/spellText`,
   `${CORE_PACKAGE}/testing/maps`,
   `${CORE_PACKAGE}/testing/boundary`,
   `${CORE_PACKAGE}/testing/bots`,

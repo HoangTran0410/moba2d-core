@@ -1,5 +1,5 @@
 {
-  "contract": 21,
+  "contract": 22,
   "surface": [
     "AoePulse:class",
     "AreaSpellObject:class",
@@ -235,6 +235,12 @@
     "terrain.sweepToWall:function",
     "terrain.wallOutlinesInArea:function",
     "terrain.zoneIdsAt:function",
+    "text:object",
+    "text.dmg:function",
+    "text.dmgRange:function",
+    "text.heal:function",
+    "text.pct:function",
+    "text.tint:function",
     "units:object",
     "units.AttackableUnit:class",
     "units.Champion:class",

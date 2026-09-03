@@ -120,7 +120,7 @@ function readPackageJson(): Record<string, unknown> {
 }
 
 describe('package.json public surface', () => {
-  it('declares exports as exactly the fourteen content-pack-facing subpaths', () => {
+  it('declares exports as exactly the fifteen content-pack-facing subpaths', () => {
     const pkg = readPackageJson();
     const exportsMap = pkg.exports as Record<string, string> | undefined;
 
@@ -137,6 +137,14 @@ describe('package.json public surface', () => {
         './testing',
         './testing/spell',
         './testing/spells',
+        // `describeSpellDescriptions` — the rules a description's coloured
+        // numbers have to satisfy, published for the reason `./testing/items`
+        // below is and with the sharpest evidence for it: all three packs had
+        // written their own scan of the same markup, the three checked
+        // different things, and a defect caught in one shipped in the other
+        // two. The rules belong beside `combat/DamageText.ts`, which is what
+        // decides what a valid span is.
+        './testing/spellText',
         // The sixteenth, and the first subpath here that publishes *rules*
         // rather than tools: `./testing/items` is `describeItemShop`, the
         // assertions every pack's shop has to satisfy because they are facts

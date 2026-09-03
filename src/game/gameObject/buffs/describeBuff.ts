@@ -95,11 +95,12 @@ const STATE_CLEARED: [number, string][] = [
  * and a burn that says only "5 sát thương" hides the one thing a player buying
  * resistances needs from it.
  */
-export const DAMAGE_WORD: Record<DamageType, string> = {
-  PHYSICAL: 'vật lý',
-  MAGIC: 'phép',
-  TRUE: 'chuẩn',
-};
+// One copy, in `combat/DamageText.ts`, because that is where the words became
+// load-bearing: `dmg()` generates the noun from the damage type it was handed,
+// so a second table here could drift and let a spell tooltip and a buff
+// tooltip disagree about what "chuẩn" means. Re-exported rather than moved so
+// every existing importer keeps working.
+export { DAMAGE_WORD } from '@/game/combat/DamageText';
 
 export const DAMAGE_CLASS: Record<DamageType, string> = {
   PHYSICAL: 'physical',

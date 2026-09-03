@@ -1,4 +1,10 @@
 import { DEFAULT_DAMAGE_TYPE, type DamageType } from '@/game/combat/Mitigation';
+import {
+  BASE_ATTRIBUTE,
+  BASE_HIGH_ATTRIBUTE,
+  FLAT_NONE_ATTRIBUTE,
+  printFigure,
+} from '@/game/combat/DamageText';
 
 /**
  * What a build does to an ability, and the only place that question is
@@ -306,6 +312,63 @@ const withBonus = (base: number, multiplier: number): string => {
  * Returns the input unchanged at a multiplier of 1, which is every unit in
  * the game until an item or a buff grants some.
  */
+/**
+ * A span written by `DamageText`'s helpers: the classes, then the attributes
+ * that say what the figure *is* instead of leaving it to be guessed at.
+ *
+ * `data-flat="none"` is matched here rather than skipped by a separate pass so
+ * that a `tint` span is recognised as *deliberately* unscaled — the parser
+ * then leaves it alone knowing it was told to, which is a different fact from
+ * "I tried and could not", and the difference is the whole subject of
+ * `DamageText`'s header.
+ */
+const AUTHORED_SPAN = new RegExp(
+  '(<span class="(?:damage|heal)(?: (physical|magic|true))?"' +
+    `(?: ${BASE_ATTRIBUTE}="([\\d.]+)")?` +
+    `(?: ${BASE_HIGH_ATTRIBUTE}="([\\d.]+)")?` +
+    `(?: ${FLAT_NONE_ATTRIBUTE}="none")?` +
+    '>)([\\s\\S]*?)(</span>)',
+  'g'
+);
+
+/**
+ * The half of this that needs no guessing.
+ *
+ * The base arrived as a number and the text in front of it was generated from
+ * that same number by `printFigure`, so the prefix to replace is known
+ * exactly rather than matched — no lookahead for a `%`, no pinning the end of
+ * a number to stop `40%` backtracking into `120%`, and no way for a `+` in
+ * front of the digits to make the whole thing quietly do nothing.
+ *
+ * Returns `null` when the span does not begin with the figure it declared,
+ * which is a pack and an engine disagreeing about `printFigure` — reported by
+ * `testing/spellRules.ts` rather than silently rendered, because a silent
+ * version of this is exactly what the old parser was.
+ */
+function rescaleAuthored(
+  inner: string,
+  base: number,
+  high: number | undefined,
+  multiplier: number
+): string | null {
+  const lowText = printFigure(base);
+  if (!inner.startsWith(lowText)) return null;
+  let rest = inner.slice(lowText.length);
+  let out = withBonus(base, multiplier);
+
+  if (high !== undefined) {
+    // The separator is the pack's own punctuation and is whatever sits
+    // between the two printed ends — read, not assumed, so a pack that writes
+    // a plain hyphen keeps its hyphen.
+    const highText = printFigure(high);
+    const at = rest.indexOf(highText);
+    if (at === -1) return null;
+    out += rest.slice(0, at) + withBonus(high, multiplier);
+    rest = rest.slice(at + highText.length);
+  }
+  return out + rest;
+}
+
 export function amplifiedDamageText(
   description: string,
   source: AmplificationSource | undefined
@@ -322,7 +385,35 @@ export function amplifiedDamageText(
   // hybrid, and impossible before the packs began labelling their spans. An
   // unlabelled span is the engine's default, exactly as a `takeDamage` that
   // names no type is.
-  return description.replace(SCALING_SPAN, (whole, open, span, inner, close) => {
+  // Spans the helpers wrote, which is every span in a pack built against this
+  // core. `data-base` is authoritative and the legacy pass below never sees
+  // them, because this one has already consumed them.
+  const authored = description.replace(
+    AUTHORED_SPAN,
+    (whole, open, span, base, high, inner, close) => {
+      // `tint`/`pct`: it said so. Nothing to do and nothing to report.
+      if (base === undefined) return whole;
+      const multiplier = abilityMultiplier(span ? SPAN_TYPE[span] : DEFAULT_DAMAGE_TYPE, source);
+      if (multiplier === 1) return whole;
+      const scaled = rescaleAuthored(
+        inner,
+        Number(base),
+        high === undefined ? undefined : Number(high),
+        multiplier
+      );
+      // Rebuilt from the captured tag, never `whole.replace(inner, …)`: a span
+      // with no tail has an `inner` of `26` and an attribute reading
+      // `data-base="26"`, and a string replace would rewrite the attribute.
+      return scaled === null ? whole : open + scaled + close;
+    }
+  );
+
+  // Everything else: a pack built against a core older than `DamageText`, or a
+  // third-party pack that types its spans by hand. The prose-guessing parser
+  // is kept for them alone and is not reachable from the packs shipped here —
+  // `describeSpellDescriptions` is what holds those to the helpers.
+  return authored.replace(SCALING_SPAN, (whole, open, span, inner, close) => {
+    if (whole.includes(BASE_ATTRIBUTE) || whole.includes(FLAT_NONE_ATTRIBUTE)) return whole;
     if (!LEADING_NUMBER.test(inner)) return whole;
     const multiplier = abilityMultiplier(span ? SPAN_TYPE[span] : DEFAULT_DAMAGE_TYPE, source);
     if (multiplier === 1) return whole;
