@@ -106,18 +106,22 @@ describe('computeHudState', () => {
     // wants the other half — what their own build actually pays out through —
     // and the engine already keeps it (`MatchTally.damageDealtByType`).
     //
-    // Match totals, deliberately, and the panel labels them as such: the rows
-    // above are the fight that killed you, and inventing a second ledger with
-    // its own window would put two differently-scoped numbers side by side
-    // with nothing to tell them apart.
+    // Scoped to the same window as the rows above, which is the whole point:
+    // "that fight went badly — how badly" is the comparison being made, and a
+    // match total answers a different question with a same-looking number.
     const player = fakePlayer({
       isDead: true,
-      tally: { damageDealtByType: { PHYSICAL: 420, MAGIC: 137, TRUE: 8 } },
       deathRecap: {
         seq: 1,
         killerName: 'Kẻ giết',
         entries: [
           { atMs: 0, amount: 60, type: 'TRUE', attackerName: 'Kẻ giết', attackerId: 'k' },
+        ],
+        dealt: [
+          { atMs: 0, amount: 300, type: 'PHYSICAL', attackerName: 'x', attackerId: 'x' },
+          { atMs: 1, amount: 120, type: 'PHYSICAL', attackerName: 'x', attackerId: 'x' },
+          { atMs: 2, amount: 137, type: 'MAGIC', attackerName: 'x', attackerId: 'x' },
+          { atMs: 3, amount: 8, type: 'TRUE', attackerName: 'x', attackerId: 'x' },
         ],
       },
     });

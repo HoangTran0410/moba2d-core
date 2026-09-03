@@ -16,8 +16,6 @@
  *
  * A match total, deliberately: nothing here is reset on death or respawn.
  */
-import type { DamageType } from '@/game/combat/Mitigation';
-
 export default class MatchTally {
   /** Enemy champions finished off. */
   kills = 0;
@@ -33,18 +31,6 @@ export default class MatchTally {
   minionsKilled = 0;
   /** Damage that actually landed on someone else, after their shields. */
   damageDealt = 0;
-  /**
-   * The same number split by what kind of damage it was.
-   *
-   * Kept beside `damageDealt` rather than replacing it: the total is what
-   * every existing reader wants (the scoreboard, the practice panel, the match
-   * record), and summing three fields at each of them to get it back would be
-   * three chances to forget one. The split answers a different question — what
-   * a build is actually paying out through — which is the one worth asking
-   * while tuning an ability, and the one the death recap prints beside what
-   * the player took.
-   */
-  damageDealtByType: Record<DamageType, number> = { PHYSICAL: 0, MAGIC: 0, TRUE: 0 };
   /** Damage that actually landed on this unit, after its own shields. */
   damageTaken = 0;
 
@@ -72,7 +58,6 @@ export default class MatchTally {
     this.assists = 0;
     this.minionsKilled = 0;
     this.damageDealt = 0;
-    this.damageDealtByType = { PHYSICAL: 0, MAGIC: 0, TRUE: 0 };
     this.damageTaken = 0;
   }
 }

@@ -144,13 +144,13 @@ export interface DeathRecapDisplay {
   killer: string;
   total: number;
   /**
-   * What this player has dealt all match, split by kind.
+   * What this player dealt over **the same window** the rows above cover,
+   * split by kind.
    *
-   * **Match totals, not this engagement**, and the panel says so. The rows
-   * above are the fight that killed you; this is the whole match, because that
-   * is what the engine actually keeps (`MatchTally`) and because inventing an
-   * outgoing ledger with its own window would put two differently-scoped
-   * numbers in one panel with nothing to tell them apart.
+   * Same window on purpose: the comparison a player is making is "that fight
+   * went badly — how badly", and match totals answered a different question
+   * with the same-looking number. `AttackableUnit.recentDamageDealtLog` is the
+   * other end of the ledger the rows come from, pruned by the same rule.
    */
   dealt: { physical: number; magic: number; true: number };
   /**
@@ -845,12 +845,12 @@ function buildDeathRecap(player: any): DeathRecapDisplay | null {
   if (!player.deathRecap) return null;
   const recap = player.deathRecap;
   const icons = recapIconsFor(player, recap);
-  const byType = player.tally?.damageDealtByType;
-  const dealt = {
-    physical: Math.round(byType?.PHYSICAL ?? 0),
-    magic: Math.round(byType?.MAGIC ?? 0),
-    true: Math.round(byType?.TRUE ?? 0),
-  };
+  const dealt = { physical: 0, magic: 0, true: 0 };
+  for (const entry of (recap.dealt ?? []) as { amount: number; type: string }[]) {
+    if (entry.type === 'PHYSICAL') dealt.physical += entry.amount;
+    else if (entry.type === 'TRUE') dealt.true += entry.amount;
+    else dealt.magic += entry.amount;
+  }
 
   const rows = new Map<string, DeathRecapRow & { lines: Map<string, DeathRecapSourceRow> }>();
   let total = 0;

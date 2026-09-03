@@ -177,6 +177,7 @@ describe('the death-recap ledger', () => {
     // question a player tuning a build is actually asking. Split at the same
     // site so the two can never disagree about a hit.
     const { victim, killer } = duo();
+    victim.name = 'Bị đánh';
     victim.stats.maxHealth.baseValue = 5_000;
     victim.stats.health.baseValue = 5_000;
 
@@ -185,9 +186,34 @@ describe('the death-recap ledger', () => {
     victim.takeDamage(5, killer, 'TRUE');
     victim.takeDamage(10, killer, 'PHYSICAL');
 
-    expect(killer.tally.damageDealtByType).toEqual({ PHYSICAL: 40, MAGIC: 12, TRUE: 5 });
-    // And the total every other reader uses still adds up to the same hits.
+    // The total every other reader uses still adds up to the same hits.
     expect(killer.tally.damageDealt).toBe(57);
+
+    // And the split the recap prints, on the dealer's own ledger, pruned by
+    // the same rule as the incoming one so the two totals in the panel cover
+    // one stretch of time. Only here, never also on `MatchTally`: two places
+    // keeping the same number is how the two drift.
+    const dealt = killer.recentDamageDealtLog;
+    const byType = (want: string) =>
+      dealt.filter(entry => entry.type === want).reduce((sum, e) => sum + e.amount, 0);
+    expect([byType('PHYSICAL'), byType('MAGIC'), byType('TRUE')]).toEqual([40, 12, 5]);
+    expect(dealt.reduce((sum, entry) => sum + entry.amount, 0)).toBe(57);
+    expect(dealt.every(entry => entry.attackerName === victim.name)).toBe(true);
+  });
+
+  it('forgets the outgoing ledger at its own death, exactly as the incoming one', () => {
+    // Both are published into the recap and both start clean for the next
+    // life; a dealer that kept its old ledger would print the last life's
+    // fight beside this life's.
+    const { victim, killer } = duo();
+    victim.stats.maxHealth.baseValue = 5_000;
+    victim.stats.health.baseValue = 5_000;
+    victim.takeDamage(20, killer, 'MAGIC');
+    expect(killer.recentDamageDealtLog).toHaveLength(1);
+
+    killer.die({ attacker: victim, reviveAfter: 1_000 } as never);
+    expect(killer.recentDamageDealtLog).toHaveLength(0);
+    expect(killer.deathRecap?.dealt).toHaveLength(1);
   });
 
   it('keeps a bot that re-rolled mid-fight as two attackers, not one', () => {

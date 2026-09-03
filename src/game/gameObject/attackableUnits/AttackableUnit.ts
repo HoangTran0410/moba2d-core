@@ -888,6 +888,22 @@ export default class AttackableUnit extends GameObject {
    * into `deathRecap`, and never read by gameplay — display only.
    */
   recentDamageLog: DamageLogEntry[] = [];
+
+  /**
+   * The same ledger, kept from the other side: what *this* unit dealt.
+   *
+   * It exists so the recap can print "you took 377, you dealt 512" with both
+   * numbers meaning the same stretch of time. The first version read match
+   * totals off `MatchTally` — correct, cheaper, and useless for the comparison
+   * a player is actually making, because one number was the fight and the
+   * other was the last twenty minutes.
+   *
+   * Same entry shape and the same prune, so the two windows are the same rule
+   * rather than two rules that agree today. The one field that reads
+   * differently: `attackerName`/`attackerId` name the **victim** here, since
+   * "who was on the other end" is what an entry needs either way.
+   */
+  recentDamageDealtLog: DamageLogEntry[] = [];
   /** The last death's summary, for the HUD. Survives until the next death. */
   deathRecap: DeathRecap | null = null;
   private _deathSeq = 0;
@@ -1068,8 +1084,18 @@ export default class AttackableUnit extends GameObject {
     this.tally.damageTaken += landed;
     if (attacker && attacker !== this) {
       attacker.tally.damageDealt += landed;
-      // The same number, split by what it was — see `MatchTally`.
-      attacker.tally.damageDealtByType[type] += landed;
+      // The same hit on the dealer's own ledger, so the recap can report what
+      // they dealt over the window it already reports what they took over.
+      // Deliberately *not* also a per-type running total on `MatchTally`: two
+      // places keeping the same number is how the two drift.
+      attacker.recordDamageInto(
+        attacker.recentDamageDealtLog,
+        landed,
+        type,
+        this,
+        source ?? currentAttributionName(),
+        blocked
+      );
     }
     if ((landed > 0 || blocked > 0) && attacker !== this)
       // An explicit `source` always wins: five sites across the packs
@@ -1299,8 +1325,27 @@ export default class AttackableUnit extends GameObject {
     source?: string,
     blocked = 0
   ): void {
+    this.recordDamageInto(this.recentDamageLog, landed, type, attacker, source, blocked);
+  }
+
+  /**
+   * One entry, into whichever of this unit's two ledgers is being written.
+   *
+   * Shared so the incoming and outgoing windows are the same rule rather than
+   * two rules that agree today — see `recentDamageDealtLog`. `other` is the
+   * unit at the far end of the hit: the attacker for an incoming entry, the
+   * victim for an outgoing one.
+   */
+  private recordDamageInto(
+    log: DamageLogEntry[],
+    landed: number,
+    type: DamageType,
+    other?: AttackableUnit,
+    source?: string,
+    blocked = 0
+  ): void {
     const atMs = this.game?.matchTimeMs ?? 0;
-    const log = this.recentDamageLog;
+    const attacker = other;
     const attackerId = recapGroupOf(attacker);
     // `landed` is capped at the health pool, and regen leaves the pool
     // fractional — un-rounded, the recap printed 43.999999999999996.
@@ -1323,7 +1368,7 @@ export default class AttackableUnit extends GameObject {
       // Dated by its latest hit, so a line still being added to is not
       // mistaken for the end of an engagement by the prune below.
       entry.atMs = atMs;
-      this.pruneDamageLog();
+      this.pruneLog(log);
       return;
     }
 
@@ -1337,7 +1382,7 @@ export default class AttackableUnit extends GameObject {
       source,
       blocked: eaten,
     });
-    this.pruneDamageLog();
+    this.pruneLog(log);
   }
 
   /**
@@ -1348,8 +1393,7 @@ export default class AttackableUnit extends GameObject {
    * everything before it was a different one. Searched from the newest end so
    * a long skirmish of back-to-back exchanges stays whole.
    */
-  private pruneDamageLog(): void {
-    const log = this.recentDamageLog;
+  private pruneLog(log: DamageLogEntry[]): void {
     for (let i = log.length - 1; i > 0; i--) {
       if (log[i].atMs - log[i - 1].atMs >= DEATH_RECAP_ENGAGEMENT_GAP_MS) {
         log.splice(0, i);
@@ -1480,8 +1524,12 @@ export default class AttackableUnit extends GameObject {
         // line by line — that is the part that is a damage log.
         killerName: unitDisplayName(credited ?? deathData.attacker),
         entries: this.recentDamageLog.slice(),
+        // Snapshotted from the same window, so "you took this, you dealt
+        // that" is one stretch of time read from both ends.
+        dealt: this.recentDamageDealtLog.slice(),
       };
       this.recentDamageLog.length = 0;
+      this.recentDamageDealtLog.length = 0;
       // The player's own death is the one hit that always lands hardest —
       // and it lands on a LAN client too, whose `die` comes from the snapshot.
       if (isLocalPlayer(this.game, this)) feel(this.game, 'death', DEATH_SHAKE_TRAUMA);
@@ -1901,6 +1949,8 @@ export interface DeathRecap {
   seq: number;
   killerName: string;
   entries: DamageLogEntry[];
+  /** What the dying unit dealt over the same window — see `recentDamageDealtLog`. */
+  dealt: DamageLogEntry[];
 }
 
 /** Every concrete unit type carries `name`; the base class does not declare
