@@ -150,6 +150,99 @@ export function describeSpellDescriptions(subject: SpellTextSubject): void {
       expect(wrong).toEqual([]);
     });
 
+    it('does not repeat the damage noun on either side of a span', () => {
+      // The half the case above cannot see. It reads *inside* a span, so a
+      // second "sát thương" written in the surrounding prose is invisible to
+      // it — and that is precisely where the doubling lands, because `dmg()`
+      // ends the span with the noun and the sentence around it was written
+      // back when the span did not.
+      //
+      // Anchored to the span's own edges rather than "two nouns close
+      // together": a sentence naming two figures ("10 sát thương phép, hoặc
+      // 26 sát thương phép nếu…") is ordinary prose, and eleven of the twelve
+      // hits a proximity scan produced were exactly that. What is never
+      // ordinary is the noun immediately abutting a span that already ends
+      // with it.
+      const AFTER = /^[\s,.:;)]*sát thương/;
+      const BEFORE = /sát thương[\s,.:;(]*$/;
+      const doubled: string[] = [];
+      for (const [id, description] of shipped()) {
+        for (const match of description.matchAll(ANY_SPAN)) {
+          if (attribute(match[3], BASE_ATTRIBUTE) === undefined) continue;
+          // Only a span that already *says* the noun can repeat it. `dmgValue`
+          // writes none on purpose — a list of figures with the noun stated
+          // once after it ("18 / 24 / 30 sát thương vật lý") is the shape it
+          // exists for, and reading that as a repeat is how this rule went
+          // off on four correct sentences the first time it was written.
+          if (!/sát thương/.test(match[4])) continue;
+          const plain = (text: string) => text.replace(/<[^>]*>/g, '');
+          const after = plain(description.slice(match.index + match[0].length)).slice(0, 24);
+          const before = plain(description.slice(0, match.index)).slice(-24);
+          if (AFTER.test(after)) {
+            doubled.push(`${id}: noun repeated after — ${match[0].trim()}“${after}”`);
+          } else if (BEFORE.test(before)) {
+            doubled.push(`${id}: noun repeated before — “${before}”${match[0].trim()}`);
+          }
+        }
+      }
+      expect(doubled).toEqual([]);
+    });
+
+    it('and these readers can see a bad span, so the cases above mean something', () => {
+      // The falsification. Every rule above narrowed at least once against a
+      // real sentence that turned out to be correct, and a rule narrowed
+      // enough stops matching anything at all — which passes for ever.
+      const reads = (description: string) => {
+        const found: string[] = [];
+        for (const match of description.matchAll(ANY_SPAN)) {
+          const tag = match[3];
+          const inner = match[4];
+          const plain = (t: string) => t.replace(/<[^>]*>/g, '');
+          if (attribute(tag, BASE_ATTRIBUTE) === undefined) {
+            if (attribute(tag, FLAT_NONE_ATTRIBUTE) === undefined) found.push('unmarked');
+            continue;
+          }
+          if (!inner.startsWith(printFigure(Number(attribute(tag, BASE_ATTRIBUTE))))) {
+            found.push('figure does not match data-base');
+          }
+          const nouns = [...inner.matchAll(/sát thương(?: (phép|vật lý|chuẩn|chí mạng))?/g)];
+          if (nouns.length > 1) found.push('noun twice inside');
+          else if (nouns.length === 1 && nouns[0][1] === undefined) found.push('noun with no type');
+          if (/sát thương/.test(inner)) {
+            const after = plain(description.slice(match.index + match[0].length)).slice(0, 24);
+            if (/^[\s,.:;)]*sát thương/.test(after)) found.push('noun repeated after');
+          }
+        }
+        return found;
+      };
+
+      expect(reads('<span class="damage magic">26 sát thương phép</span>')).toEqual(['unmarked']);
+      expect(reads('<span class="damage magic" data-base="26">99 sát thương phép</span>')).toEqual([
+        'figure does not match data-base',
+      ]);
+      expect(
+        reads('<span class="damage magic" data-base="26">26 sát thương phép sát thương phép</span>')
+      ).toEqual(['noun twice inside']);
+      expect(reads('<span class="damage magic" data-base="26">26 sát thương</span>')).toEqual([
+        'noun with no type',
+      ]);
+      expect(
+        reads('<span class="damage magic" data-base="26">26 sát thương phép</span> sát thương phép')
+      ).toEqual(['noun repeated after']);
+
+      // And the shapes that are correct stay correct, which is the half a
+      // sharper reader keeps breaking: a bare figure list naming its noun
+      // once afterwards, and two figures in one ordinary sentence.
+      expect(reads('<span class="damage physical" data-base="18">18</span> sát thương vật lý')).toEqual([]);
+      expect(
+        reads(
+          '<span class="damage magic" data-base="10">10 sát thương phép</span>, hoặc ' +
+            '<span class="damage magic" data-base="26">26 sát thương phép</span> nếu trúng'
+        )
+      ).toEqual([]);
+      expect(reads('<span class="damage" data-flat="none">+15% sát thương</span>')).toEqual([]);
+    });
+
     it('reads enough spans to be worth running at all', () => {
       // Against the day a `descriptions()` that returns nothing makes every
       // case above vacuously green.
