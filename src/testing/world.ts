@@ -234,6 +234,35 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
   // turns that arithmetic into `NaN` inside a `fill` nobody is looking at.
   vi.stubGlobal('frameCount', 0);
 
+  // The native canvas context. Several shipped draw paths reach for it rather
+  // than going through p5 — the avatar's circular clip, and the hottest bars,
+  // where p5's wrapper costs 6–10x the raw call for the same picture (see
+  // `Minion.drawHealthBar`). A test that wants to *assert* on it still stubs
+  // its own over the top; this is so that calling a draw method does not throw
+  // for want of one.
+  vi.stubGlobal('drawingContext', {
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    lineWidth: 1,
+    font: '10px sans-serif',
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    arc: vi.fn(),
+    rect: vi.fn(),
+    fillRect: vi.fn(),
+    strokeRect: vi.fn(),
+    clip: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    fillText: vi.fn(),
+  });
+
   const spies: Record<string, ReturnType<typeof vi.fn>> = {};
   for (const name of [
     'push',
