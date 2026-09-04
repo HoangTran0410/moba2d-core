@@ -42,8 +42,25 @@ export const FEED_TTL_MS = 6_000;
  * Rows the feed shows at once; older ones simply age out. Three on a
  * monitor; the touch layout hides the third (`hud.css`), so a phone gives up
  * at most two rows of its top edge.
+ *
+ * A *row* is a multi-kill, not a kill — `hud/killFeedGroups.ts` folds a run
+ * into one — so three of these is a far larger share of a fight than it was
+ * when a penta spent all three on one champion.
  */
 export const FEED_ROWS = 3;
+/**
+ * How long a row stays *buffered*, as opposed to shown.
+ *
+ * Longer than `FEED_TTL_MS` because the feed draws a run as one row and the
+ * window binding that run (ten seconds) outlives the six a row is visible
+ * for. Pruned on the shorter clock, the first kill of a slow penta would drop
+ * out from under the row still showing it, and the row would lose the seq it
+ * is keyed on and re-enter mid-run — the dropped-callout flicker this whole
+ * fold exists to remove. `recent` still hands out only the six-second rows.
+ */
+export const FEED_BUFFER_TTL_MS = FEED_TTL_MS + MULTI_KILL_WINDOW_MS;
+/** Announcements held at once, whatever the clock says. Kills, not rows. */
+export const FEED_BUFFER_ROWS = FEED_ROWS * 8;
 /** How long a banner holds the centre of the screen. */
 export const BANNER_TTL_MS = 2_200;
 /** A kill run reaching one of these lengths is worth a banner even when it is not yours — each is a new tier name. */
@@ -74,6 +91,12 @@ export interface Announcement {
   streak: number;
   /** The run the victim was on, when it was at least `SHUTDOWN_STREAK`; else 0. */
   shutdown: number;
+  /**
+   * Set when the body was an objective rather than a champion. Such a death
+   * moves nobody's run: `multi`, `streak` and `firstBlood` are all left at
+   * zero, so a turret cannot be somebody's Double Kill.
+   */
+  objective?: ObjectiveKind;
   /** Local references, for "is this mine". Never serialised — see `HostSession`. */
   killerUnit?: AttackableUnit;
   victimUnit?: AttackableUnit;
@@ -98,11 +121,27 @@ const MULTI_KILL_LABEL: readonly string[] = [
   'Triple Kill',
   'Quadra Kill',
   'Penta Kill',
+  'Hexa Kill',
+  // Seven and up. The source game stops naming them because five is a whole
+  // team; a match here can field more, and a run that outgrows the vocabulary
+  // should say so rather than repeat "Penta" for the rest of the evening.
+  'Legendary Kill',
 ];
 
-/** "Double Kill" for 2, up to "Penta Kill" for 5 or more; '' below 2. */
+/** "Double Kill" for 2, through "Hexa Kill" at 6 to "Legendary Kill" beyond; '' below 2. */
 export const multiKillLabel = (multi: number): string =>
   MULTI_KILL_LABEL[Math.min(multi, MULTI_KILL_LABEL.length - 1)] ?? '';
+
+/**
+ * How loud a multi-kill is drawn, 0 for "not one".
+ *
+ * Clamped at the top of the label table, so the banner stops growing exactly
+ * where the words stop changing — a run of nine and a run of twenty are the
+ * same sentence and get the same size.
+ */
+export const MAX_MULTI_TIER = MULTI_KILL_LABEL.length - 1;
+export const multiKillTier = (multi: number): number =>
+  multi >= 2 ? Math.min(multi, MAX_MULTI_TIER) : 0;
 
 const STREAK_LABEL: Record<number, string> = {
   3: 'Killing Spree',
@@ -118,6 +157,13 @@ export const streakLabel = (streak: number): string =>
 
 export const FIRST_BLOOD_LABEL = 'First Blood';
 export const SHUTDOWN_LABEL = 'Shutdown';
+
+/**
+ * A death that is news without being a kill: a turret falling, an epic camp
+ * taken. Declared by the body itself (`AttackableUnit.announceAs`) so nothing
+ * here has to know which monster a pack calls its dragon.
+ */
+export type ObjectiveKind = 'turret' | 'epic';
 
 /**
  * What made a kill more than a kill. Each kind wears its own colour in the
@@ -141,8 +187,8 @@ export function announcementTags(a: Announcement): AnnouncementTag[] {
   return tags;
 }
 
-/** The banner's colour family: the four kinds above, a plain kill, or your own death. */
-export type BannerKind = AnnouncementKind | 'kill' | 'death';
+/** The banner's colour family: the four kinds above, a plain kill, your own death, or an objective. */
+export type BannerKind = AnnouncementKind | 'kill' | 'death' | 'objective';
 
 export interface BannerText {
   kind: BannerKind;
@@ -150,13 +196,20 @@ export interface BannerText {
   subtitle: string;
 }
 
-
 /**
  * Whether this kill interrupts the centre of the screen. Yours always does;
  * anyone else's only when it is a moment — first blood, a triple or more, a
  * shutdown, a run hitting a milestone.
  */
-export function deservesBanner(a: Announcement, player: AttackableUnit | null | undefined): boolean {
+export function deservesBanner(
+  a: Announcement,
+  player: AttackableUnit | null | undefined
+): boolean {
+  // An epic camp is a call the whole map answers, so it interrupts for both
+  // sides. A turret is not: a match has a dozen of them, and a banner each
+  // would spend the centre of the screen on the most ordinary objective there
+  // is — landing on top of a Penta as often as not.
+  if (a.objective) return a.objective === 'epic';
   if (player && (a.killerUnit === player || a.victimUnit === player)) return true;
   return a.firstBlood || a.multi >= 3 || a.shutdown > 0 || STREAK_MILESTONES.includes(a.streak);
 }
@@ -165,6 +218,15 @@ export function deservesBanner(a: Announcement, player: AttackableUnit | null | 
 export function bannerText(a: Announcement, player: AttackableUnit | null | undefined): BannerText {
   const killer = a.killer?.name ?? 'Không rõ';
   const pair = `${killer} hạ ${a.victim.name}`;
+  // The objective is the headline, because that is what the four players on
+  // the losing side need to read; who landed it is the detail.
+  if (a.objective) {
+    return {
+      kind: 'objective',
+      title: a.victim.name,
+      subtitle: a.killer ? `${killer} hạ gục` : '',
+    };
+  }
   const milestone = STREAK_MILESTONES.includes(a.streak);
   if (player && a.victimUnit === player) {
     return { kind: 'death', title: 'Bạn đã bị hạ', subtitle: a.killer ? `bởi ${killer}` : '' };
@@ -228,15 +290,34 @@ export default class MatchAnnouncer {
   }
 
   /** The host's announcement, arriving on a client. Stamped to *this* clock; the host's is not ours. */
-  receive(wire: WireAnnouncement, units: { killerUnit?: AttackableUnit; victimUnit?: AttackableUnit }): void {
+  receive(
+    wire: WireAnnouncement,
+    units: { killerUnit?: AttackableUnit; victimUnit?: AttackableUnit }
+  ): void {
     const { kid: _kid, vid: _vid, ...rest } = wire;
-    this.push({ ...rest, atMs: this.clock(), killerUnit: units.killerUnit, victimUnit: units.victimUnit });
+    this.push({
+      ...rest,
+      atMs: this.clock(),
+      killerUnit: units.killerUnit,
+      victimUnit: units.victimUnit,
+    });
   }
 
   /** The rows still worth showing, oldest first, at most `FEED_ROWS`. */
   recent(nowMs: number): Announcement[] {
     this.prune(nowMs);
-    return this.rows.slice(-FEED_ROWS);
+    return this.rows.filter(row => nowMs - row.atMs <= FEED_TTL_MS).slice(-FEED_ROWS);
+  }
+
+  /**
+   * Everything still buffered, oldest first, on the wider `FEED_BUFFER_TTL_MS`
+   * clock. The HUD folds these into multi-kill rows and applies `FEED_TTL_MS`
+   * to each row's newest kill, which is why it cannot use `recent`: that one
+   * caps at three *kills*, and a penta is five.
+   */
+  buffered(nowMs: number): Announcement[] {
+    this.prune(nowMs);
+    return this.rows.slice();
   }
 
   /** The newest announcement still young enough to hold the centre, if any deserves to. */
@@ -271,6 +352,29 @@ export default class MatchAnnouncer {
       victimRun.streak = 0;
       victimRun.multi = 0;
       victimRun.lastKillAtMs = Number.NEGATIVE_INFINITY;
+    }
+
+    // An objective is news on its own terms: announced, but never folded into
+    // anybody's run, and never first blood. Taken before the champion gate
+    // below, which exists to keep minions out of the feed.
+    const objective = victim.announceAs;
+    if (objective) {
+      const announcement: Announcement = {
+        seq: ++this.seq,
+        atMs: now,
+        killer: killer && killer !== victim ? sideOf(killer) : null,
+        victim: sideOf(victim),
+        firstBlood: false,
+        multi: 0,
+        streak: 0,
+        shutdown: 0,
+        objective,
+        killerUnit: killer && killer !== victim ? killer : undefined,
+        victimUnit: victim,
+      };
+      this.push(announcement);
+      for (const listener of this.listeners) listener(announcement);
+      return;
     }
 
     if (event.credit !== 'champion') return;
@@ -322,12 +426,18 @@ export default class MatchAnnouncer {
   }
 
   private prune(nowMs: number): void {
-    // Rows older than the feed shows are gone for good; a banner never
-    // outlives a row, so the same cut serves both.
+    // Rows older than the buffer holds are gone for good; a banner never
+    // outlives a row, so the same cut serves both. The cut is the buffer's
+    // clock, not the feed's — `recent` narrows to the feed's on the way out,
+    // and the extra ten seconds are what keep a slow run whole for the fold.
     let drop = 0;
-    while (drop < this.rows.length && nowMs - this.rows[drop].atMs > FEED_TTL_MS) drop++;
+    while (drop < this.rows.length && nowMs - this.rows[drop].atMs > FEED_BUFFER_TTL_MS) drop++;
     if (drop > 0) this.rows.splice(0, drop);
     // And never more than a few beyond what is shown, whatever the clock says.
-    if (this.rows.length > FEED_ROWS * 4) this.rows.splice(0, this.rows.length - FEED_ROWS * 4);
+    // Counted in kills while a row is a run: three rows of a penta each is
+    // fifteen, and `multi` keeps climbing past the five the label stops at.
+    if (this.rows.length > FEED_BUFFER_ROWS) {
+      this.rows.splice(0, this.rows.length - FEED_BUFFER_ROWS);
+    }
   }
 }

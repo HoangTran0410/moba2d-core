@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, createUnit, installSpellObjectGlobals } from '../spell/fixtures';
 import CombatText, {
   COMBAT_TEXT_LIFETIME_MS,
+  MINOR_TEXT_BUDGET,
   HEADLINE_WINDOW_MS,
   PUNCH_MS,
 } from '../../../src/game/gameObject/helpers/CombatText';
@@ -386,5 +387,81 @@ describe('CombatText keeps the headline apart from the total', () => {
     expect(text.amount).toBe(25);
     expect(text.textSize).toBeCloseTo(20 * damageTextScale(0.05, false), 5);
     expect(text.textSize).toBeLessThan(30);
+  });
+});
+
+// The flood a teamfight over a wave produces, and the rule that keeps it from
+// burying what the fight is actually read from. See `MINOR_TEXT_BUDGET`.
+describe('CombatText.show budgets the bodies that flood, not the ones that matter', () => {
+  beforeEach(() => installSpellObjectGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A body that counts as a champion — `killCredit` is the codebase's test for it. */
+  const createChampionLike = (game: ReturnType<typeof createGame>, x: number) => {
+    const unit = createUnit(game, x, 'blue');
+    (unit as { killCredit: string }).killCredit = 'champion';
+    return unit;
+  };
+
+  it('stops opening new numbers over minions once the budget is spent', () => {
+    const game = createGame();
+    const minions = Array.from({ length: MINOR_TEXT_BUDGET + 8 }, (_, i) =>
+      createUnit(game, i * 10, 'red')
+    );
+    for (const minion of minions) CombatText.show(minion, 'damage', 9, [255, 0, 0]);
+
+    expect(combatTexts(game)).toHaveLength(MINOR_TEXT_BUDGET);
+  });
+
+  it('never budgets a champion, however loud the wave beside it is', () => {
+    const game = createGame();
+    for (let i = 0; i < MINOR_TEXT_BUDGET + 8; i++) {
+      CombatText.show(createUnit(game, i * 10, 'red'), 'damage', 9, [255, 0, 0]);
+    }
+    // The teamfight lands after the wave has already spent the whole budget.
+    const champions = Array.from({ length: 5 }, (_, i) => createChampionLike(game, 500 + i * 10));
+    for (const champion of champions) CombatText.show(champion, 'damage', 40, [255, 0, 0]);
+
+    expect(combatTexts(game)).toHaveLength(MINOR_TEXT_BUDGET + champions.length);
+  });
+
+  it('keeps merging into a number that is already on screen', () => {
+    const game = createGame();
+    const minions = Array.from({ length: MINOR_TEXT_BUDGET + 4 }, (_, i) =>
+      createUnit(game, i * 10, 'red')
+    );
+    for (const minion of minions) CombatText.show(minion, 'damage', 9, [255, 0, 0]);
+    // A merge costs no new object, so a budgeted body whose number is still
+    // alive keeps counting up — the cap is on opening one, not on accuracy.
+    CombatText.show(minions[0], 'damage', 11, [255, 0, 0]);
+
+    const texts = combatTexts(game);
+    expect(texts).toHaveLength(MINOR_TEXT_BUDGET);
+    expect(texts.find(t => t.owner === minions[0])!.amount).toBe(20);
+  });
+
+  it('hands the budget back as its numbers expire', () => {
+    const game = createGame();
+    const wave = Array.from({ length: MINOR_TEXT_BUDGET }, (_, i) =>
+      createUnit(game, i * 10, 'red')
+    );
+    for (const minion of wave) CombatText.show(minion, 'damage', 9, [255, 0, 0]);
+    tick(game, COMBAT_TEXT_LIFETIME_MS + 100);
+
+    const later = createUnit(game, 999, 'red');
+    CombatText.show(later, 'damage', 9, [255, 0, 0]);
+    expect(combatTexts(game).some(t => t.owner === later)).toBe(true);
+  });
+
+  it('gives each match its own budget', () => {
+    const first = createGame();
+    for (let i = 0; i < MINOR_TEXT_BUDGET; i++) {
+      CombatText.show(createUnit(first, i * 10, 'red'), 'damage', 9, [255, 0, 0]);
+    }
+    // A finished match must not spend the next one's — the budget is a property
+    // of the screen it protects.
+    const second = createGame();
+    CombatText.show(createUnit(second, 0, 'red'), 'damage', 9, [255, 0, 0]);
+    expect(combatTexts(second)).toHaveLength(1);
   });
 });

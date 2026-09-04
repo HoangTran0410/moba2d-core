@@ -113,6 +113,59 @@ const colorKey = (textColor: string | number[]): string =>
 const mergeTargets = new WeakMap<AttackableUnit, Map<string, CombatText>>();
 
 /**
+ * How many floating numbers bodies that are *not* champions may hold on screen
+ * at once.
+ *
+ * The merge key is `(victim, kind, colour)`, so the live count scales with how
+ * many bodies are being hit rather than how fast — which is the right bound
+ * for a duel and the wrong one for a teamfight over a wave. Measured with this
+ * repository's own `tests/e2e/measure-combattext-perf.mjs`: 106 minions under
+ * sustained damage held **50.3 numbers on average and 63 at the peak**, and
+ * what they buried was the two things a fight is actually read from — the
+ * champions and the spell objects.
+ *
+ * `COMBAT_TEXT_PERF.md` declined a flat cap for a good reason: forty bodies
+ * taking a hit is forty numbers, and trimming that trims the answer. This is
+ * not a flat cap. Champions are never budgeted — a teamfight's numbers all
+ * still land, however loud the wave beside it is — and the budget applies only
+ * to the bodies that produce the flood, so the two cannot crowd each other
+ * out. Solo farming never reaches it; an AOE over a wave is what it is for.
+ */
+export const MINOR_TEXT_BUDGET = 12;
+
+/**
+ * Live numbers currently spending that budget, per match.
+ *
+ * A `Set`, not a count, so a text removed by any path is caught by re-reading
+ * `toRemove` rather than by every remover remembering to decrement. Keyed on
+ * the game rather than held module-wide because a budget is a property of the
+ * screen it is protecting: a finished match must not spend the next one's, and
+ * a `WeakMap` retires each set with the `Game` that owns it.
+ */
+const minorTexts = new WeakMap<object, Set<CombatText>>();
+
+function minorTextsOf(owner: AttackableUnit): Set<CombatText> {
+  const game = owner.game as unknown as object;
+  let live = minorTexts.get(game);
+  if (!live) {
+    live = new Set();
+    minorTexts.set(game, live);
+  }
+  return live;
+}
+
+/**
+ * Whether this body's numbers are the ones a fight is read from.
+ *
+ * `killCredit`, not `instanceof Champion`: it is already this codebase's
+ * answer to "does this count as a champion" (`CLAUDE.md`), it is what a pack's
+ * own body inherits, and it keeps this file free of a value import it has
+ * never needed. Minions and monsters are `'minion'`, turrets and pets
+ * `'none'`; all three are budgeted.
+ */
+const isMajor = (owner: AttackableUnit): boolean => owner.killCredit === 'champion';
+
+/**
  * Closed-form "toss and fall": rises a little, then gravity wins and it
  * settles below its start, expressed as coefficients of `p` and `p*p` where
  * `p = min(elapsedMs, COMBAT_TEXT_ARC_MS) / COMBAT_TEXT_ARC_MS` — see
@@ -139,9 +192,15 @@ export const PUNCH_MS = 120;
 const PUNCH_SCALE = 0.35;
 
 /** What the headline should be drawn at. Only damage weighs itself against the pool. */
-const sizeFor = (owner: AttackableUnit, kind: CombatTextKind, amount: number, crit: boolean): number =>
+const sizeFor = (
+  owner: AttackableUnit,
+  kind: CombatTextKind,
+  amount: number,
+  crit: boolean
+): number =>
   kind === 'damage'
-    ? BASE_TEXT_SIZE * damageTextScale(hitFraction(amount, owner.stats?.maxHealth?.value ?? 0), crit)
+    ? BASE_TEXT_SIZE *
+      damageTextScale(hitFraction(amount, owner.stats?.maxHealth?.value ?? 0), crit)
     : BASE_TEXT_SIZE;
 
 /**
@@ -342,6 +401,18 @@ export default class CombatText extends SpellObject {
       return;
     }
 
+    // Nothing above this line is gated: a *merge* costs no new object and only
+    // makes a number already on screen more accurate, so a budgeted body whose
+    // text is still alive keeps counting up regardless.
+    const major = isMajor(owner);
+    const live = major ? null : minorTextsOf(owner);
+    if (live) {
+      if (live.size >= MINOR_TEXT_BUDGET) {
+        for (const text of live) if (text.toRemove) live.delete(text);
+      }
+      if (live.size >= MINOR_TEXT_BUDGET) return;
+    }
+
     const combatText = new CombatText(owner);
     combatText.amount = amount;
     combatText.recent = amount;
@@ -358,6 +429,7 @@ export default class CombatText extends SpellObject {
       mergeTargets.set(owner, targets);
     }
     targets.set(key, combatText);
+    live?.add(combatText);
 
     owner.game.objectManager.addObject(combatText);
   }
@@ -378,6 +450,9 @@ export default class CombatText extends SpellObject {
     this.age += deltaTime;
     if (this.age > this.lifeTime) {
       this.toRemove = true;
+      // Hands the budget back on the ordinary path; the lazy sweep in `show`
+      // is what covers a text removed by any other one.
+      minorTexts.get(this.owner.game as unknown as object)?.delete(this);
     }
   }
 

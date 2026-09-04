@@ -230,6 +230,8 @@ defineExpose({
     v-if="state && state.deathRecap"
     :recap="state.deathRecap"
     :is-dead="state.isDead"
+    :revive-after="state.reviveAfter"
+    :spectating="state.spectating"
   />
   <!-- The countdown and the ally being watched, while dead. Bottom-centre:
        the recap owns the top, the callouts own the space under the strip, and

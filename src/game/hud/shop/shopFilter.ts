@@ -78,15 +78,17 @@ export const EMPTY_FILTER: ShopFilter = { text: '', stats: [] };
  * and stays correct for whatever a pack writes next.
  */
 export function foldText(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    // đ/Đ carries its stroke in the base letter, so NFD leaves it alone.
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      // đ/Đ carries its stroke in the base letter, so NFD leaves it alone.
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 /** Strip the markup a pack's description carries, so a search never matches a tag. */
@@ -154,9 +156,9 @@ export const isFiltering = (filter: ShopFilter): boolean =>
  * `ShopPanel` is `v-if`'d, so `<script setup>` state dies every time the shop
  * closes — and the shop is opened and closed several times a trip to the
  * fountain. Re-picking three chips each time is the whole of the friction this
- * feature exists to remove, so it is a *setting*, kept the same guarded
- * `moba2d:*` way `deathRecapPrefs.ts` keeps the recap's collapse: a blocked
- * store reads as the default and swallows the write.
+ * feature exists to remove, so it is a *setting*, kept the guarded `moba2d:*`
+ * way every preference in this codebase is kept: a blocked store reads as the
+ * default and swallows the write.
  *
  * Stat keys are validated on the way back in. A stale key from an older build,
  * or a hand-edited store, would otherwise filter every item out and leave a
@@ -187,7 +189,10 @@ export function saveShopFilter(filter: ShopFilter): void {
       localStorage.removeItem(SHOP_FILTER_KEY);
       return;
     }
-    localStorage.setItem(SHOP_FILTER_KEY, JSON.stringify({ text: filter.text, stats: filter.stats }));
+    localStorage.setItem(
+      SHOP_FILTER_KEY,
+      JSON.stringify({ text: filter.text, stats: filter.stats })
+    );
   } catch {
     // a blocked store loses the filter, never the shelf
   }
