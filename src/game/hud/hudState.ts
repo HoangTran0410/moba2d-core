@@ -15,15 +15,18 @@ import { atOwnFountain } from '@/game/economy/ItemShop';
 import type MatchAnnouncer from '@/game/combat/Announcer';
 import TeamId from '@/game/enums/TeamId';
 import {
+  FEED_ROWS,
   FEED_TTL_MS,
-  SHUTDOWN_STREAK,
-  announcementTags,
   bannerText,
+  multiKillTier,
+  type Announcement,
   type AnnouncementKind,
   type AnnouncementSide,
   type AnnouncementTag,
   type BannerKind,
+  type ObjectiveKind,
 } from '@/game/combat/Announcer';
+import { MAX_FEED_VICTIMS, groupKillFeed, type KillFeedGroup } from '@/game/hud/killFeedGroups';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import { statLinesFor, type StatLine } from '@/game/hud/itemStatLines';
 
@@ -257,10 +260,29 @@ export interface FeedSideDisplay {
   side: 'ally' | 'enemy';
 }
 
+/** One champion on a feed row's victim list. `seq` is the kill that added them. */
+export interface FeedVictimDisplay extends FeedSideDisplay {
+  seq: number;
+}
+
 export interface FeedRowDisplay {
+  /** The seq of the kill that opened the row; stable while a run grows onto it. */
   seq: number;
   killer: FeedSideDisplay | null;
-  victim: FeedSideDisplay;
+  /**
+   * Who this killer took down in one run, **newest first** — a single kill is
+   * a list of one. Capped at `MAX_FEED_VICTIMS`; the older ones past the cap
+   * are `overflow`. See `killFeedGroups.ts` for why a run is one row.
+   */
+  victims: FeedVictimDisplay[];
+  /** The older victims past the cap, counted rather than drawn. 0 when they all fit. */
+  overflow: number;
+  /**
+   * Set when the row is an objective falling rather than a champion dying — a
+   * turret, an epic camp. The victim has no portrait to draw, so `KillFeed.vue`
+   * puts the glyph for the kind in its place.
+   */
+  objective?: ObjectiveKind;
   /** "Máu đầu", "Song sát", "Chuỗi 5" — see `announcementTags`. */
   tags: AnnouncementTag[];
   /**
@@ -280,6 +302,12 @@ export interface BannerDisplay {
   kind: BannerKind;
   title: string;
   subtitle: string;
+  /**
+   * How loud to draw it: 0 for an ordinary moment, then 2..`MAX_MULTI_TIER`
+   * as a multi-kill climbs. `hud.css` scales the type and the glow off this,
+   * and stops where the words stop changing.
+   */
+  tier: number;
 }
 
 export interface FeedDisplay {
@@ -673,7 +701,10 @@ const DAMAGE_TYPE_LABEL: Record<string, string> = {
 
 /** A source label, as the icon map keys it: codename trimmed, case folded. */
 const sourceKeyOf = (name: string): string =>
-  name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+  name
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim()
+    .toLowerCase();
 
 /**
  * label -> iconUrl, read off the spells actually living in this match.
@@ -691,7 +722,10 @@ function recapIconsFor(player: any, recap: unknown): Map<string, string> {
   // a fresh match's first death would otherwise wear the last match's icons.
   if (recapIconCache?.recap === recap) return recapIconCache.icons;
   const icons = new Map<string, string>();
-  const claim = (spell: { name?: string; image?: { path?: string; key?: string; status?: string } } | null | undefined): void => {
+  const claim = (
+    spell:
+      { name?: string; image?: { path?: string; key?: string; status?: string } } | null | undefined
+  ): void => {
     const name = spell?.name;
     const path = spell?.image?.path;
     if (!name || !path) return;
@@ -799,37 +833,68 @@ function buildFeed(game: any, player: any): FeedDisplay {
     };
   // Newest first: a new callout lands at the top and pushes the rest down,
   // the way the eye expects a ticker under the top edge to move.
-  const rows = announcer
-    .recent(now)
-    .map(row => {
-      ensureVisibleAsset(row.killerUnit?.avatar);
-      ensureVisibleAsset(row.victimUnit?.avatar);
-      const left = FEED_TTL_MS - (now - row.atMs);
-      const tags = announcementTags(row);
-      const accent: AnnouncementKind | null =
-        row.streak >= SHUTDOWN_STREAK
-          ? 'streak'
-          : row.multi >= 2
-            ? 'multi'
-            : row.shutdown > 0
-              ? 'shutdown'
-              : row.firstBlood
-                ? 'first'
-                : null;
+  //
+  // Folded before it is aged, and aged by the row rather than the kill: a run
+  // is one row, and it stays as long as its newest kill would have. Reading
+  // `buffered` rather than `recent` is what makes that possible — `recent`
+  // caps at three kills, which is less than one penta.
+  const groups = groupKillFeed(announcer.buffered(now));
+  const rows = groups
+    .filter(group => now - group.latestAtMs <= FEED_TTL_MS)
+    .slice(-FEED_ROWS)
+    .map(group => {
+      ensureVisibleAsset(group.killerUnit?.avatar);
+      // Newest first, capped: the face of whoever just died leads the row, and
+      // the run's older kills fall off the end into `overflow`.
+      const shown = group.victims.slice(-MAX_FEED_VICTIMS).reverse();
+      // Only the faces that get drawn: a run past the cap must not fetch art
+      // for portraits it has already decided to count instead.
+      for (const member of shown) ensureVisibleAsset(member.victimUnit?.avatar);
+      const left = FEED_TTL_MS - (now - group.latestAtMs);
       return {
-        seq: row.seq,
-        killer: sideOf(row.killer),
-        victim: sideOf(row.victim)!,
-        tags,
-        accent,
+        seq: group.seq,
+        killer: sideOf(group.killer),
+        victims: shown.map(member => ({ seq: member.seq, ...sideOf(member.victim)! })),
+        overflow: Math.max(0, group.victims.length - MAX_FEED_VICTIMS),
+        // An objective never folds (its `multi` is 0), so the group is one kill
+        // and the kind can be read straight off it.
+        objective: group.victims[0].objective,
+        tags: group.tags,
+        accent: group.accent,
         fade: left >= FEED_FADE_MS ? 1 : Math.max(0, left / FEED_FADE_MS),
-        mine: row.killerUnit === player || row.victimUnit === player,
+        mine:
+          group.killerUnit === player || group.victims.some(member => member.victimUnit === player),
       };
     })
     .reverse();
   const top = announcer.banner(now, player);
-  const banner = top && { seq: top.seq, ...bannerText(top, player) };
-  return { rows, banner };
+  return { rows, banner: top && buildBanner(top, groups, player) };
+}
+
+/**
+ * The banner under the stack, or nothing when the recap is already saying it.
+ *
+ * **Keyed on the run, not the kill.** `KillFeed.vue` gives the banner a
+ * `<transition>` keyed on this seq, and a climbing multi-kill used to hand it a
+ * new one every time: the Quadra banner and the Penta banner were both in the
+ * flex column for the length of a leave, so the new one appeared 46px low and
+ * snapped up as the old one went. Keyed on the group, "QUADRA KILL" becomes
+ * "PENTA KILL" in place — one banner, no jump, the same fold the rows got.
+ */
+function buildBanner(
+  top: Announcement,
+  groups: readonly KillFeedGroup[],
+  player: any
+): BannerDisplay | null {
+  const text = bannerText(top, player);
+  // A death banner and the death recap are the same sentence — "Bạn đã bị hạ /
+  // bởi X" over the recap's own "Hạ gục bởi X" — arriving at the same instant
+  // in the same place. The recap is the one that stays and the one that
+  // explains, so it wins; the banner is what the player was reading *through*,
+  // because the recap is deliberately semi-transparent.
+  if (text.kind === 'death' && player?.deathRecap) return null;
+  const run = groups.find(group => group.victims.some(member => member.seq === top.seq));
+  return { seq: run?.seq ?? top.seq, ...text, tier: multiKillTier(top.multi) };
 }
 
 /**

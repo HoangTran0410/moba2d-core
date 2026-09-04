@@ -25,6 +25,7 @@ import CombatText, {
   GOLD_TEXT_COLOR,
 } from '@/game/gameObject/helpers/CombatText';
 import MatchTally, { type KillCredit } from '@/game/combat/MatchTally';
+import type { ObjectiveKind } from '@/game/combat/Announcer';
 import type Wallet from '@/game/economy/Wallet';
 import AssetManager, { type AssetHandle } from '@/managers/AssetManager';
 import PathAgent from '@/game/nav/PathAgent';
@@ -37,10 +38,7 @@ import {
   currentAttributionName,
   endAttribution,
 } from '@/game/combat/DamageAttribution';
-import {
-  amplifiedAbilityDamage,
-  type AmplificationSource,
-} from '@/game/combat/Amplification';
+import { amplifiedAbilityDamage, type AmplificationSource } from '@/game/combat/Amplification';
 import { isNetClient } from '@/game/net/netRole';
 import { resolveVisionTuning } from '@/game/config/mapTuning';
 
@@ -245,6 +243,17 @@ export default class AttackableUnit extends GameObject {
    * `Pet`/`Turret` are neither.
    */
   killCredit: KillCredit = 'minion';
+
+  /**
+   * What the kill feed calls this body when it dies, if it calls it anything.
+   *
+   * A declaration rather than a type test, so `combat/Announcer.ts` decides
+   * what a death is worth without importing `Turret` or `Monster` — and so a
+   * pack's own epic monster is announced by setting its `tier`, with no core
+   * change and no list of ids anywhere. `undefined` is the default and means
+   * what it has always meant: a minion dying is not news.
+   */
+  announceAs?: ObjectiveKind;
 
   /**
    * Who a kill *by* this unit belongs to.

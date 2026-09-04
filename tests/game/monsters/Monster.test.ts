@@ -25,7 +25,13 @@ const clawsThrown = (camp: Monster): MonsterClaw[] => {
 import Champion from '../../../src/game/gameObject/attackableUnits/Champion';
 import Airborne from '../../../src/game/gameObject/buffs/Airborne';
 import Stun from '../../../src/game/gameObject/buffs/Stun';
-import { createGame, indexObjects, stubGameGlobals, TEST_AVATAR_KEY, type TestGame } from '../fixtures';
+import {
+  createGame,
+  indexObjects,
+  stubGameGlobals,
+  TEST_AVATAR_KEY,
+  type TestGame,
+} from '../fixtures';
 
 const CAMP = { x: 1_000, y: 1_000, r: 300 };
 
@@ -432,4 +438,12 @@ describe('Monster', () => {
     });
   });
 
+  it('tells the kill feed which camps are worth announcing', () => {
+    // The tier is the pack's word (`MonsterDef.tier`), and this is the whole
+    // wiring behind it: `combat/Announcer.ts` reads `announceAs` and so never
+    // has to know which monster a pack calls its dragon.
+    expect(makeCamp().announceAs).toBeUndefined();
+    expect(makeCamp({ tier: 'camp' }).announceAs).toBeUndefined();
+    expect(makeCamp({ tier: 'epic' }).announceAs).toBe('epic');
+  });
 });

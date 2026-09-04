@@ -646,3 +646,55 @@ across all 45 touched files to catch real formatting issues, and the two
 collateral reformats it produced on lines this session did not otherwise
 touch were manually reverted, per `CLAUDE.md`'s explicit instruction never to
 fix a predates-Prettier file as a side effect of an unrelated change.
+
+## Addendum 3: the bound the merge gives is per *body*, and a wave has a hundred
+
+"### No separate cap" above declined a flat cap and named
+`COMBAT_TEXT_LIFETIME_MS` and the merge key as the two knobs to retune from if
+a future report showed the merge's own bound was still too many. That report
+arrived: *"khi combat nhiều người thì nó render rất nhiều … thứ cần nhìn lúc
+combat là champ + spellobject bị nó làm lu mờ"*.
+
+### Measured, with this repository's own script
+
+`node tests/e2e/measure-combattext-perf.mjs`, unchanged, 106 minions under
+sustained damage for five seconds:
+
+| | before | after |
+|---|---|---|
+| `combatTextLiveMean` | 50.3 | 11.8 |
+| `combatTextLiveMax` | 63 | 12 |
+| `combatTextConstructions` | 111 | 10–21 |
+| `totalObjectCount` | 185 | 135 |
+
+**No fps claim is made here.** Four runs of the same script measured 21.5,
+29.3, 31.8 and 34.4 — the burst drives 106 `takeDamage` calls per tick and
+dominates the window, so a change of a few frames cannot be attributed to this
+one. What is reproducible is the count, and the count was the complaint: the
+numbers were burying the champions and the spell objects.
+
+### Why this is not the flat cap that was declined
+
+The earlier reasoning still holds — forty bodies taking a hit *is* forty
+numbers, and trimming that trims the answer. `MINOR_TEXT_BUDGET` does not trim
+it flatly. The budget is spent only by bodies whose `killCredit` is not
+`'champion'`, and champions are never budgeted at all, so the wave and the
+teamfight cannot crowd each other out: a fight's numbers all still land however
+loud the minions beside them are. Solo farming never reaches the budget; an AOE
+over a wave is the only thing that does, and that is the case reported.
+
+Two properties worth keeping if this is ever retuned:
+
+- **A merge is never gated.** Only *opening* a number is. A budgeted body whose
+  number is still on screen keeps counting up, so the cap costs no accuracy on
+  anything already visible.
+- **The budget is per match**, held in a `WeakMap` keyed on the `Game`. Held
+  module-wide it would have leaked a finished match's dead texts into the next
+  one's budget, and — found first — into the next unit test's.
+
+### Tests
+
+`tests/game/helpers/CombatText.test.ts`, five cases: the budget stops new minion
+numbers; a champion is never budgeted even after the wave has spent it; a merge
+into a live number still works; expiry hands the budget back; each match gets
+its own.

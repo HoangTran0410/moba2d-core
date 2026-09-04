@@ -604,6 +604,9 @@ export default class Monster extends AttackableUnit {
     this.reviveTime = preset.reviveTime;
     this.camp = preset.camp;
     this.tier = preset.tier ?? 'camp';
+    // An objective is worth announcing; a farm camp is not. Read off the tier
+    // the pack already declares, so no core list names anybody's dragon.
+    if (this.tier === 'epic') this.announceAs = 'epic';
     this.home = preset.home ?? { x: preset.camp.x, y: preset.camp.y };
     this.attackInterval = preset.attackInterval ?? 1500;
     this.damage = preset.damage ?? Math.min(25, Math.max(3, Math.round(preset.health / 25)));

@@ -10,6 +10,8 @@ import MatchAnnouncer, {
   bannerText,
   deservesBanner,
   multiKillLabel,
+  multiKillTier,
+  MAX_MULTI_TIER,
   streakLabel,
 } from '../../../src/game/combat/Announcer';
 import type AttackableUnit from '../../../src/game/gameObject/attackableUnits/AttackableUnit';
@@ -21,7 +23,12 @@ import type { UnitDeathEvent } from '../../../src/game/gameObject/attackableUnit
  * `ON_DIE` events `die()` emits, with fakes shaped like the fields read.
  */
 const unit = (name: string, team: string, credit: 'champion' | 'minion' | 'none' = 'champion') =>
-  ({ name, teamId: team, killCredit: credit, avatar: { path: `${name}.png` } }) as unknown as AttackableUnit;
+  ({
+    name,
+    teamId: team,
+    killCredit: credit,
+    avatar: { path: `${name}.png` },
+  }) as unknown as AttackableUnit;
 
 describe('MatchAnnouncer', () => {
   let events: EventManager;
@@ -32,7 +39,11 @@ describe('MatchAnnouncer', () => {
   let other: AttackableUnit;
 
   const kill = (killer: AttackableUnit | undefined, victim: AttackableUnit) =>
-    events.emit(EventType.ON_DIE, { unit: victim, killer, credit: victim.killCredit } satisfies UnitDeathEvent);
+    events.emit(EventType.ON_DIE, {
+      unit: victim,
+      killer,
+      credit: victim.killCredit,
+    } satisfies UnitDeathEvent);
 
   beforeEach(() => {
     events = new EventManager();
@@ -56,7 +67,7 @@ describe('MatchAnnouncer', () => {
     expect(row.victimUnit).toBe(bot);
   });
 
-  it("names the summoner, not the summon, when a pet lands the kill", () => {
+  it('names the summoner, not the summon, when a pet lands the kill', () => {
     // `die()` books the kill to the owner, so the feed has to say the same
     // thing the scoreboard does. Announced off the clone, the row would read
     // "Không rõ hạ Bot" — a `Pet`'s own `killCredit` is `'none'`, so it does
@@ -96,7 +107,13 @@ describe('MatchAnnouncer', () => {
     expect(multis).toEqual([1, 2, 1]);
     expect(multiKillLabel(2)).toBe('Double Kill');
     expect(multiKillLabel(5)).toBe('Penta Kill');
-    expect(multiKillLabel(9)).toBe('Penta Kill');
+    expect(multiKillLabel(6)).toBe('Hexa Kill');
+    // Past the words, one name for the rest of the run rather than "Penta"
+    // repeated — and the banner stops growing where the words stop changing.
+    expect(multiKillLabel(9)).toBe('Legendary Kill');
+    expect(multiKillTier(1)).toBe(0);
+    expect(multiKillTier(3)).toBe(3);
+    expect(multiKillTier(20)).toBe(MAX_MULTI_TIER);
   });
 
   it('keeps a run going until the runner dies, and calls ending a long one a shutdown', () => {
@@ -171,6 +188,42 @@ describe('MatchAnnouncer', () => {
     expect((row as { kid?: string }).kid).toBeUndefined();
   });
 
+  it('announces an objective without moving anybody’s run', () => {
+    const turret = unit('Trụ', 'RED', 'none');
+    (turret as { announceAs?: string }).announceAs = 'turret';
+    kill(vera, bot); // a real kill first, so a run exists to be disturbed
+    kill(vera, turret);
+
+    const rows = announcer.recent(now);
+    const last = rows.at(-1)!;
+    expect(last.objective).toBe('turret');
+    expect(last.victim.name).toBe('Trụ');
+    expect(last.killer?.name).toBe('Vera');
+    // The whole point: a turret is not somebody's Double Kill.
+    expect(last.multi).toBe(0);
+    expect(last.streak).toBe(0);
+    expect(last.firstBlood).toBe(false);
+    expect(announcer.streakOf(vera)).toBe(1);
+    // And it does not hold the centre of the screen — a match has a dozen.
+    expect(deservesBanner(last, null)).toBe(false);
+  });
+
+  it('interrupts for an epic camp, on both sides', () => {
+    const dragon = unit('Rồng', 'NEUTRAL', 'minion');
+    (dragon as { announceAs?: string }).announceAs = 'epic';
+    kill(vera, dragon);
+
+    const last = announcer.recent(now).at(-1)!;
+    expect(last.objective).toBe('epic');
+    expect(deservesBanner(last, null)).toBe(true);
+    // The objective is the headline; who landed it is the detail.
+    expect(bannerText(last, null)).toEqual({
+      kind: 'objective',
+      title: 'Rồng',
+      subtitle: 'Vera hạ gục',
+    });
+  });
+
   it('stops listening once detached', () => {
     announcer.detach();
     kill(vera, bot);
@@ -196,7 +249,9 @@ describe('the words', () => {
 
   it('tags a row with what made it special, each in its own colour family', () => {
     expect(announcementTags(base)).toEqual([]);
-    expect(announcementTags({ ...base, firstBlood: true, multi: 3, streak: 5, shutdown: 4 })).toEqual([
+    expect(
+      announcementTags({ ...base, firstBlood: true, multi: 3, streak: 5, shutdown: 4 })
+    ).toEqual([
       { kind: 'first', label: 'First Blood' },
       { kind: 'multi', label: 'Triple Kill' },
       { kind: 'shutdown', label: 'Shutdown' },
@@ -224,7 +279,11 @@ describe('the words', () => {
       title: 'Double Kill',
       subtitle: 'Bot · First Blood',
     });
-    expect(bannerText(base, bot)).toEqual({ kind: 'death', title: 'Bạn đã bị hạ', subtitle: 'bởi Vera' });
+    expect(bannerText(base, bot)).toEqual({
+      kind: 'death',
+      title: 'Bạn đã bị hạ',
+      subtitle: 'bởi Vera',
+    });
     const bystander = unit('Third', 'BLUE');
     expect(bannerText({ ...base, firstBlood: true }, bystander)).toEqual({
       kind: 'first',

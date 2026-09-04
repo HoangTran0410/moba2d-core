@@ -2409,7 +2409,15 @@ body.touch-ui .corner-btn {
      `#game-scene`, which is the full-viewport box this was measuring against
      all along. */
   position: fixed;
-  top: 12%;
+  /* Anchored to the bottom on *both* layouts, and opening upward from there.
+     It used to sit at `top: 12%`, which on a phone was inside the kill feed
+     and on a desktop was across the middle of the screen — the half a dead
+     player is watching. Down here it is a bar under the thumb (or under the
+     ability row) that the fight plays out above.
+
+     One number places it — `--recap-bottom`, which clears whatever owns the
+     bottom edge: a desktop's ability row, a phone's nothing. */
+  bottom: var(--recap-bottom);
   left: 50%;
   transform: translateX(-50%);
   /* Deliberately unranked. It used to carry `z-index: 30` to climb over the
@@ -2418,8 +2426,22 @@ body.touch-ui .corner-btn {
      modals it has no business covering. Unranked, tree order in
      `InGameHUD.vue` puts it under both and over `.dead-tint`, which is the
      order it wants. */
-  width: min(340px, 86vw);
-  max-height: 55vh;
+  /* Wide enough that the header stays on one line while collapsed: it is a
+     whole bar now — killer, countdown, the ally being watched. */
+  width: min(460px, 92vw);
+  box-sizing: border-box;
+  /* Nine tenths of the screen, less the lane it sits in — so the panel can
+     reach to within a tenth of the top edge and no further.
+
+     It used to stop at the kill feed's floor as well, which on a desktop left
+     it 541px against content that wanted 962: five attackers and thirty-six
+     source lines, more than half of it behind a scrollbar. Being open is a
+     deliberate act now (it opens collapsed on every layout), and the thing a
+     player deliberately opened is the thing that should win the screen while
+     it is up. It is see-through, it is dismissable, and the feed underneath is
+     a ticker they can read after. */
+  max-height: calc(90vh - var(--recap-bottom));
+  max-height: calc(90dvh - var(--recap-bottom));
   overflow-y: auto;
   padding: 10px 12px;
   /* the hextech skin every panel wears — see .practice-panel */
@@ -2459,6 +2481,54 @@ body.touch-ui .corner-btn {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+/* The countdown, and with it the ally control, live in this header on both
+   layouts — the panel is the bottom bar on both, and `SpectateBar` stands down
+   while it is up (see the `:has()` rule above). They were scoped to touch for
+   one revision, while only the phone had been moved, and a desktop then drew
+   two copies of the same second: one here and one in the bar below.
+
+   Tabular figures on the number so the row does not twitch as it ticks down. */
+.death-recap-revive {
+  flex: none;
+  color: #cfd8e2;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.death-recap-revive b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One control, the way `SpectateBar` has it: the ally's name is the button,
+   and pressing it goes to the next living one. */
+.death-recap-spectate {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #ffffff2e;
+  background: #ffffff14;
+  color: #d8dee6;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.death-recap-spectate-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.death-recap-spectate .fa-forward {
+  opacity: 0.65;
 }
 
 .death-recap-title {
@@ -2851,14 +2921,81 @@ button.practice-roster-item {
     0 0 12px var(--feed-glow);
   color: #e6ebf0;
   font-size: 12px;
-  line-height: 1;
+  /* 1.2, not 1: the `overflow: hidden` below clips the box in both directions,
+     and at 1 the line box ends on the baseline — which ate the dot under the
+     ụ in "Trụ". Every name on this row can carry a Vietnamese diacritic. */
+  line-height: 1.2;
   white-space: nowrap;
+  /* Centred and wider than the screen, the row lost *both* ends to the clip —
+     the killer's own face and name among them, which is the half a feed cannot
+     do without. This is the hard stop; the badge words below are what gives
+     way first to stay under it. */
+  max-width: calc(100vw - 16px);
+  overflow: hidden;
   transition: opacity 0.2s linear;
 }
 
-/* The stack is the whole occlusion budget: three rows on a monitor, two on a phone. */
+/* The stack is the whole occlusion budget: three rows on a monitor, two on a
+   phone. A row is a whole multi-kill now (`hud/killFeedGroups.ts`), so this is
+   a backstop against a chaotic teamfight rather than the thing a penta ran
+   into — five kills by one champion is one row and hits it no sooner than
+   five kills by five champions does. */
 .kill-feed-row:nth-child(n + 4) {
   display: none;
+}
+
+/* The faces of everyone a run took down, oldest on the left. Its own flex row
+   so the new face animates inside it without the badges beside it shifting.
+
+   4px, not 3: at 3 the 2px borders of neighbouring faces read as one strip
+   rather than five portraits, which is what a row of them was reported as. */
+.kill-feed-victims {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Victims past the cap, counted. Sized and shaped like a face so the row still
+   reads as one run of portraits rather than a portrait row plus a label. */
+.kill-feed-more {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 2px solid #ffffff2e;
+  background: #1a2029;
+  color: #c6d0da;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+/* The new face slides in from the left, where it lands: the newest victim
+   leads the row and pushes the older ones towards the count. The row itself
+   does not move, which is the whole difference between this and a second
+   callout. */
+.kill-feed-victim-enter-active {
+  animation: kill-feed-victim-in 0.28s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+.kill-feed-victim-move {
+  transition: transform 0.24s ease;
+}
+
+@keyframes kill-feed-victim-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.6);
+  }
+  60% {
+    transform: translateX(0) scale(1.12);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 
 .kill-feed-row.mine {
@@ -2948,6 +3085,17 @@ button.practice-roster-item {
   color: #8ff08f;
 }
 
+/* An objective belongs to neither side once it has fallen — no ally green, no
+   enemy red. Slate, so a turret row cannot be misread as a kill at a glance. */
+.kill-feed-face.objective {
+  border-color: #8b98a6;
+  color: #cfd8e2;
+}
+
+.kill-feed-name.objective {
+  color: #cfd8e2;
+}
+
 .kill-feed-name.enemy {
   color: #ff8f88;
 }
@@ -3028,7 +3176,36 @@ button.practice-roster-item {
   --banner-a: #ffe08a;
   --banner-b: #e2a72e;
   --banner-glow: #f2c14e88;
-  margin-top: 2px;
+  /* Out of the column for good, not only while it leaves.
+     Going absolute *at* leave-time is what made the big text jump: with
+     `top: auto` the used value is the static position, and a box already out
+     of flow has none worth having — it resolved to the top of the callouts
+     and the banner leapt 38px up at full opacity, halfway through its own
+     fade. Absolute from the start, `top` is a number the whole time, so
+     nothing is recomputed when it goes; and two banners crossing over land in
+     the same place instead of stacking, which is the case this replaced a
+     leave-time rule for. */
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  /* Sized by its own words, capped by the screen — never by the feed row above
+     it. Absolute inside `.kill-callouts` makes that column the containing
+     block, and the column is only as wide as the widest callout, so "Legendary
+     Kill" at 40px wrapped onto a second line: 111px tall instead of 57, half
+     the height of a 390px phone spent on two words. `max-content` is what says
+     "one line unless the screen itself cannot hold it". */
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  /* Grow downward from a fixed top edge, not outward from the middle.
+     `kill-banner-pop` scales 1.45 -> 1, and about the default centre origin
+     that lifts the top edge by a fraction of the box's own height — 15px on
+     the 63px "Legendary Kill", which reads as the text jerking up and sliding
+     back every time a new banner arrives. Measured every frame: the box
+     entered at top 100 and crept to 115 as the scale settled. The horizontal
+     half stays centred, because `translateX(-50%)` is a translate and an
+     origin does not move one. */
+  transform-origin: 50% 0;
   text-align: center;
   filter: drop-shadow(0 0 14px var(--banner-glow)) drop-shadow(0 2px 2px #000);
 }
@@ -3085,6 +3262,14 @@ button.practice-roster-item {
   --banner-glow: #9b7bff99;
 }
 
+/* Objectives get their own family: teal, which is nobody's team colour here
+   and is already the HUD's word for "structure" (`--hextech-teal`). */
+.kill-banner.banner-objective {
+  --banner-a: #b8f3ee;
+  --banner-b: #33a79e;
+  --banner-glow: #4cc9c088;
+}
+
 .kill-banner.banner-death {
   --banner-a: #ff9a94;
   --banner-b: #b12a2a;
@@ -3095,6 +3280,8 @@ button.practice-roster-item {
   animation: kill-banner-pop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
+/* Nothing to reposition: `.kill-banner` is already out of flow, so a leaving
+   banner and the one replacing it share one place and simply cross-fade. */
 .kill-banner-leave-active {
   transition: opacity 0.25s ease;
 }
@@ -3103,13 +3290,16 @@ button.practice-roster-item {
   opacity: 0;
 }
 
+/* Both frames carry the centring translate: the banner is absolute now, so an
+   animation that set `transform` alone would drop it and shunt the text half
+   its own width to the right for the length of the pop. */
 @keyframes kill-banner-pop {
   from {
-    transform: scale(1.45);
+    transform: translateX(-50%) scale(1.45);
     opacity: 0;
   }
   to {
-    transform: scale(1);
+    transform: translateX(-50%) scale(1);
     opacity: 1;
   }
 }
@@ -3134,6 +3324,90 @@ body.touch-ui .kill-feed-row:nth-child(n + 3) {
   display: none;
 }
 
+/* Five 22px faces plus their gaps is 122px — the reason the names go when a
+   run has more than one victim. Tighter still here so a penta and its badge
+   clear a 360px-wide phone without wrapping. */
+body.touch-ui .kill-feed-victims {
+  gap: 3px;
+}
+
+body.touch-ui .kill-feed-more {
+  min-width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+/* Narrow enough that a full row cannot fit, so the badge words go and the
+   icons stay. Measured: five faces, a `+n` and three worded badges is 654px,
+   which overflows a 560px window; icon-only the same row is ~460px. The
+   threshold sits above the widest row that still fits (634px at 692px) so a
+   window that has room keeps its words.
+
+   The words, not the portraits, because the icon and the colour family already
+   say which kind of moment it was — first blood crimson, a multi-kill gold, a
+   run fire, a shutdown violet — while a missing face is a kill nobody can name. */
+@media (max-width: 760px) {
+  .kill-feed-badge-label {
+    display: none;
+  }
+
+  .kill-feed-badge {
+    padding: 2px 5px;
+  }
+}
+
+/* How far down the screen the callout stack can reach: 40px of inset, two feed
+   rows (32px each, 5px apart), 10px, and a banner (39px) — 150px measured on a
+   844x390 phone, plus 8px of air. The death recap starts below it.
+
+   A number rather than a measurement because CSS cannot ask how tall a
+   sibling grew, and a *reserved* floor is the right trade here anyway: the
+   recap must not move every time a kill lands behind it. */
+/* Measured on 1280x900: `.bottom-HUD` — the portrait and ability row — starts
+   at 781, which is the 118px lane `.spectate-bar` has always used to clear it. */
+body {
+  --recap-bottom: 124px;
+}
+
+/* The phone has no ability row at the bottom centre. */
+body.touch-ui {
+  --recap-bottom: calc(14px + var(--safe-bottom));
+}
+
+/* The recap opened at `top: 12%` — 46px of a 390px-tall phone, which is inside
+   the feed and directly over the banner. Being deliberately see-through (see
+   `.death-recap`), it did not hide what it landed on: the banner's own words
+   showed *through* the panel and neither could be read.
+
+   Moving it below the stack fixed that and left it across the middle of the
+   screen instead, which is the half a dead player is watching. So: the bottom,
+   beside the revive pill, where a phone already expects the panel it reads
+   rather than plays through. Between the joystick and the ability ring, both
+   of which are canvas and neither of which is centred.
+
+   `border-box` because the number below is arithmetic against other elements
+   on the screen, and content-box made it a lie: 168px of content wore 20px of
+   padding and 6px of border out to a 194px box, which reached 13px into the
+   spectate bar. The panel opts in the way `.practice-panel` and the two beside
+   it do — this file has no global reset. */
+/* Collapsed, it *is* the revive bar: one row on the bottom edge that opens
+   upward. `width: auto` so it shrinks to its own content rather than holding
+   the open panel's width while shut. */
+.death-recap.collapsed {
+  width: auto;
+  max-width: min(460px, 92vw);
+}
+
+/* `SpectateBar` is the same three facts, for the case this panel is not on
+   screen — dismissed, or a layout where it has never owned the bottom edge.
+   Two bars saying "Hồi sinh sau 3s" at once is the thing to avoid, and `:has()`
+   settles it in the stylesheet: neither component learns about the other, and
+   the panel's own dismissal — which lives inside `DeathRecapPanel` — stays
+   where it is instead of being lifted out for a layout decision. */
+#InGameHUD:has(.death-recap) .spectate-bar {
+  display: none;
+}
+
 body.touch-ui .kill-feed-face {
   width: 22px;
   height: 22px;
@@ -3145,8 +3419,77 @@ body.touch-ui .kill-feed-badge {
   padding: 2px 6px;
 }
 
+/* A run gets louder as it climbs: two steps of type and one of glow per tier,
+   stopping at `MAX_MULTI_TIER` where the words stop changing too.
+
+   Type size, letter-spacing and the existing `drop-shadow` only — all three
+   are things the compositor already does for this element every frame it is
+   on screen. No second element, no keyframed filter, no shadow *count* that
+   grows: a phone renders the Legendary banner for the same cost as the Double
+   one, which is why the tiers scale a value rather than add a layer. */
+.kill-banner.tier-3 .kill-banner-title {
+  font-size: 30px;
+}
+
+.kill-banner.tier-4 .kill-banner-title {
+  font-size: 34px;
+  letter-spacing: 0.1em;
+}
+
+.kill-banner.tier-5 .kill-banner-title {
+  font-size: 40px;
+  letter-spacing: 0.12em;
+}
+
+.kill-banner.tier-6 .kill-banner-title {
+  font-size: 46px;
+  letter-spacing: 0.14em;
+}
+
+.kill-banner.tier-7 .kill-banner-title {
+  font-size: 52px;
+  letter-spacing: 0.16em;
+}
+
+/* The glow rides the same tier. `--banner-glow` is already in the `filter` on
+   `.kill-banner`, so brightening it costs nothing new. */
+.kill-banner.tier-4 {
+  --banner-glow: #f2c14ebb;
+}
+
+.kill-banner.tier-5,
+.kill-banner.tier-6,
+.kill-banner.tier-7 {
+  --banner-glow: #ffd76aee;
+  --banner-a: #fff3c4;
+  --banner-b: #f0a81e;
+}
+
 body.touch-ui .kill-banner-title {
   font-size: 20px;
+}
+
+/* Two thirds of the desktop steps: the phone's banner starts at 20px and the
+   screen it sits on is 390px tall, so the top tier lands at 40px rather than
+   52 and still leaves the fight visible under it. */
+body.touch-ui .kill-banner.tier-3 .kill-banner-title {
+  font-size: 23px;
+}
+
+body.touch-ui .kill-banner.tier-4 .kill-banner-title {
+  font-size: 26px;
+}
+
+body.touch-ui .kill-banner.tier-5 .kill-banner-title {
+  font-size: 31px;
+}
+
+body.touch-ui .kill-banner.tier-6 .kill-banner-title {
+  font-size: 35px;
+}
+
+body.touch-ui .kill-banner.tier-7 .kill-banner-title {
+  font-size: 40px;
 }
 
 body.touch-ui .kill-banner-sub {

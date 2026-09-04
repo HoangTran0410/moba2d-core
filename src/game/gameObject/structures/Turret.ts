@@ -5,6 +5,7 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
+import type { ObjectiveKind } from '@/game/combat/Announcer';
 import type { StructureMark } from '@/game/gameObject/Buff';
 import type {
   AttackableUnitOptions,
@@ -105,6 +106,9 @@ export default class Turret extends AttackableUnit {
 
   /** A building is not farm — killing one moves nobody's CS. */
   killCredit: KillCredit = 'none';
+
+  /** A turret falling is news, though nobody's kill count moves for it. */
+  announceAs: ObjectiveKind = 'turret';
   // Yes, despite `killCredit: 'none'` right above. Nobody's kill count moves
   // for a tower, but "who helped take that tower" is a real question and the
   // gold that answers it is the second-biggest purse on the map.
@@ -237,7 +241,10 @@ export default class Turret extends AttackableUnit {
     const holds = this.stillValidTarget(this.target);
     if (this._scanCooldown <= 0 || !holds) {
       this._scanCooldown = AGGRO_SCAN_INTERVAL_MS;
-      const picked = this.findTarget(holds ? this.target : null, holds ? this._targetRank : Infinity);
+      const picked = this.findTarget(
+        holds ? this.target : null,
+        holds ? this._targetRank : Infinity
+      );
       this.target = picked?.unit ?? null;
       this._targetRank = picked?.rank ?? Infinity;
     }
@@ -263,9 +270,7 @@ export default class Turret extends AttackableUnit {
     if (target.isDead || !target.targetable) return false;
     if (target.isStealthed) return false;
     if (target.teamId === this.teamId) return false;
-    if (
-      !(target instanceof Champion || target instanceof Minion || target instanceof Monster)
-    ) {
+    if (!(target instanceof Champion || target instanceof Minion || target instanceof Monster)) {
       return false;
     }
 

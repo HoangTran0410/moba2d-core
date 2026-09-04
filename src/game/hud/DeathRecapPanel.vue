@@ -7,28 +7,59 @@
  *
  * Shown while dead, dismissable, and re-shown on the next death: `recap.seq`
  * bumps per death, and the panel remembers only which seq was closed.
+ *
+ * **This is the bottom bar, on both layouts.** Always collapsed when it
+ * arrives, anchored to the bottom edge and opening *upward*, it
+ * holds the three things a dead player reads — who killed them, how long until
+ * they are back, and whose eyes they are borrowing — in the place the revive
+ * pill used to have to itself. `SpectateBar` is the same content for the case
+ * this panel is not on screen (dismissed, or a desktop layout where the panel
+ * has never owned the bottom edge); `hud.css` hides the one while the other is
+ * up, with `:has()`, so neither component has to know about the other.
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vTap } from './tapGuard';
-import { loadRecapCollapsed, saveRecapCollapsed } from './deathRecapPrefs';
+import type { HudInteractions } from './hudInteractions';
 import type { DeathRecapDisplay } from './hudState';
 
 const props = defineProps<{
   recap: DeathRecapDisplay;
   /** While dead a stray tap must not eat the panel; alive, any tap outside closes it. */
   isDead: boolean;
+  /** Seconds until respawn — 0 once alive. Shown only while dead. */
+  reviveAfter: number;
+  /** The ally the death camera is on, or null while it lingers on the corpse. */
+  spectating: string | null;
 }>();
+
+const hud = inject<HudInteractions>('hud')!;
+
+/** The bar's live half: only worth drawing while the player is actually down. */
+const showRevive = computed(() => props.isDead);
 
 const dismissedSeq = ref(0);
 const dismiss = (): void => {
   dismissedSeq.value = props.recap.seq;
 };
 
-/** Collapsed = just the killer headline. Persisted — see deathRecapPrefs. */
-const collapsed = ref(loadRecapCollapsed());
+/**
+ * Collapsed = just the bar. Open only for the death that was opened.
+ *
+ * Keyed on `recap.seq` the way `dismissedSeq` above is, and for the same
+ * reason: this component is **not** remounted between deaths — `deathRecap`
+ * outlives a respawn, so `v-if` never lets go and a plain `ref(true)` would
+ * still be open on the next one. A seq that has moved on is a new death, and a
+ * new death opens shut.
+ *
+ * Nothing is persisted. Opening it takes most of the screen (`hud.css`), which
+ * is a fair trade for a question a player asked and a bad one for an answer
+ * that arrives by itself every time they die — so the panel forgets, on
+ * purpose, rather than remembering a preference it would then impose.
+ */
+const expandedSeq = ref(0);
+const collapsed = computed(() => props.recap.seq !== expandedSeq.value);
 const toggleCollapse = (): void => {
-  collapsed.value = !collapsed.value;
-  saveRecapCollapsed(collapsed.value);
+  expandedSeq.value = collapsed.value ? props.recap.seq : 0;
 };
 
 /**
@@ -50,17 +81,36 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 </script>
 
 <template>
-  <div
-    v-if="recap.seq !== dismissedSeq"
-    ref="panelEl"
-    class="death-recap"
-    :class="{ collapsed }"
-  >
+  <div v-if="recap.seq !== dismissedSeq" ref="panelEl" class="death-recap" :class="{ collapsed }">
     <div class="death-recap-head">
-      <span class="death-recap-title">
+      <!-- The whole headline toggles, not just the chevron: on a phone this is
+           the bar you press to open the panel, and a 16px glyph is not that. -->
+      <span
+        class="death-recap-title"
+        role="button"
+        :aria-expanded="!collapsed"
+        @click="toggleCollapse()"
+        v-tap="toggleCollapse"
+      >
         <i class="fas fa-skull" aria-hidden="true"></i>
         Hạ gục bởi <b>{{ recap.killer }}</b>
       </span>
+      <span v-if="showRevive" class="death-recap-revive">
+        Hồi sinh sau <b id="recap-revive-seconds">{{ reviveAfter }}</b
+        >s
+      </span>
+      <button
+        v-if="showRevive && spectating"
+        type="button"
+        class="death-recap-spectate"
+        title="Xem đồng minh tiếp theo"
+        @click="hud.spectateNext()"
+        v-tap="() => hud.spectateNext()"
+      >
+        <i class="fas fa-eye" aria-hidden="true"></i>
+        <span class="death-recap-spectate-name">{{ spectating }}</span>
+        <i class="fas fa-forward" aria-hidden="true"></i>
+      </button>
       <button
         type="button"
         class="death-recap-close"
@@ -70,7 +120,15 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         @click="toggleCollapse()"
         v-tap="toggleCollapse"
       >
-        <i class="fas" :class="collapsed ? 'fa-chevron-down' : 'fa-chevron-up'" aria-hidden="true"></i>
+        <!-- The arrow points the way the panel moves, and the panel opens
+             upward from the bottom edge: closed it offers "up", open it offers
+             "down". It pointed the other way while this lived at the top of the
+             screen and grew downward. -->
+        <i
+          class="fas"
+          :class="collapsed ? 'fa-chevron-up' : 'fa-chevron-down'"
+          aria-hidden="true"
+        ></i>
       </button>
       <button
         type="button"
