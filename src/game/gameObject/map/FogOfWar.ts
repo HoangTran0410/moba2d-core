@@ -216,6 +216,20 @@ export default class FogOfWar {
   }
 
   draw(): void {
+    // The Cài đặt tab's "hiện bản đồ", answered before either painting path
+    // because it is the same answer for both.
+    //
+    // The sight pass still runs, and that is the whole subtlety: it is the
+    // only writer of `visibleToPlayerTeam` (see `calculateSight`), so a bare
+    // `return` here would freeze every unit at whatever the last painted frame
+    // decided — the cheat would lift the veil and leave the units under it
+    // hidden, which is the opposite of what it is for. Skipping the *painting*
+    // is strictly less work than doing it: a full-viewport fill on this tier,
+    // three viewport passes and the blit on the other.
+    if (this.revealsEverything()) {
+      this.calculateSight();
+      return;
+    }
     // The stressed tier's fog: one pass on the main canvas, no overlay at all.
     if (this.hardEdged()) {
       this.drawDirect();
@@ -253,6 +267,22 @@ export default class FogOfWar {
   }
 
   /**
+   * Whether this match is being played with the fog off — the practice panel's
+   * `revealMap`.
+   *
+   * `Game.minimapBlips` and `minimapHost.visionCircles` have honoured it since
+   * it existed and the main view never did, so the cheat used to lift the veil
+   * off the *minimap* and leave the screen it is a map of fogged. Read per
+   * frame, like `hardEdged`, so the picture follows the switch.
+   *
+   * Optional chaining because `game` is a structural surface here: the sight
+   * suites build one by hand and none of them has a director.
+   */
+  revealsEverything(): boolean {
+    return this.game.director?.revealMap === true;
+  }
+
+  /**
    * The fog without the buffer: one fill on the main canvas, the viewport
    * with every sight polygon cut out of it, hard-edged.
    *
@@ -264,13 +294,46 @@ export default class FogOfWar {
    * where there were three, at the price of the gradient rim — which is why
    * it is the stressed tier's picture and not everyone's.
    *
-   * **Winding, not even-odd.** Two allies' sight polygons overlap wherever
-   * they stand together, and an even-odd fill would paint the overlap fogged
-   * again. With the viewport rectangle wound one way and every hole wound the
-   * other, the nonzero rule leaves the union of the holes clear however many
-   * of them overlap. `PolyVisibility`'s sweep does not promise an orientation,
-   * so each polygon's is measured (`signedArea`) and reversed when it matches
-   * the rectangle's.
+   * ## One clip per hole, not one path with every hole in it
+   *
+   * This used to build a single path — the viewport rectangle, then every
+   * sight polygon wound the other way — and fill it `nonzero`, on the written
+   * argument that the rule "leaves the union of the holes clear however many
+   * of them overlap". **That argument is wrong, and it is the bug this path
+   * shipped with.** A winding number is arithmetic, not a union: a point
+   * inside the rectangle and inside *one* hole scores `+1 - 1 = 0` and is
+   * left clear, and a point inside *two* scores `+1 - 1 - 1 = -1`, which is
+   * not zero, so it is painted. Wherever two allies' vision overlapped — a
+   * champion beside its own turret, anything at all near the fountain — the
+   * fog came back, hard-edged, in the exact shape of the intersection.
+   * Even-odd does the same thing one crossing later; no fill rule turns N
+   * overlapping subpaths into their union.
+   *
+   * So the subtraction happens in the clip stack instead, where intersection
+   * is what the operation *means*. Holes are grouped so that nothing in a
+   * group overlaps anything else in it — the winding argument *is* sound for
+   * disjoint holes — and each group clips to "the viewport minus these holes".
+   * `ctx.clip` intersects those regions for us, and the intersection of every
+   * complement is the complement of the union, which is the region the fog
+   * belongs in. A frame whose revealers are spread out is one group: one
+   * rectangle, one clip, one fill, the same work the broken version did. Only
+   * a cluster standing on top of itself pays a clip per hole.
+   *
+   * `PolyVisibility`'s sweep does not promise an orientation, so each
+   * polygon's is measured (`signedArea`) and reversed when it matches the
+   * rectangle's.
+   *
+   * ## Why the polygon is cut to a circle first
+   *
+   * `computeSightPoly` clips its sweep to a **square** box reaching `radius`
+   * out on every side (see `boxRadius` there), so the polygon it returns runs
+   * to `1.41 × radius` in its own corners. The soft path never shows that: its gradient is
+   * fully transparent past `radius`, so the corners erase nothing. This path
+   * has no gradient — it would cut the corners out at full strength, and every
+   * revealer's hole would be a square with straight edges slicing across its
+   * neighbours. `clipPolygonToCircle` puts the rim back where the soft path
+   * draws it. Done here rather than in `computeSightPoly` so the soft path's
+   * geometry is untouched — it pays no vertices for a rim it already fades.
    */
   drawDirect(): void {
     const ctx = drawingContext as CanvasRenderingContext2D;
@@ -278,8 +341,7 @@ export default class FogOfWar {
     const sights = this.calculateSight();
 
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, width, height);
+
     const rectSign = Math.sign(
       signedArea([
         { x: 0, y: 0 },
@@ -289,25 +351,66 @@ export default class FogOfWar {
       ])
     );
 
-    const screen: { x: number; y: number }[] = [];
-    for (const { sightPoly } of sights) {
+    const viewport: Bounds = { minX: 0, minY: 0, maxX: width, maxY: height };
+    const cuts: { points: { x: number; y: number }[]; box: Bounds }[] = [];
+
+    for (const { object, sightPoly, radius } of sights) {
       if (sightPoly.length < 3) continue;
-      screen.length = 0;
+      const screen: { x: number; y: number }[] = [];
       for (const v of sightPoly) {
         const p = camera.worldToScreen(v.x, v.y);
         screen.push({ x: p.x, y: p.y });
       }
-      const sameAsRect = Math.sign(signedArea(screen)) === rectSign;
-      const count = screen.length;
-      for (let i = 0; i < count; i++) {
-        const p = screen[sameAsRect ? count - 1 - i : i];
-        if (i === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
-      }
-      ctx.closePath();
+      // Wound against the rectangle before the cut, so the rim the cut inserts
+      // runs the same way the edges around it do.
+      if (Math.sign(signedArea(screen)) === rectSign) screen.reverse();
+
+      // The live position and `currentScale`, exactly as `prepareRadialGradient`
+      // reads them — the hole has to land where the soft path would have drawn
+      // its rim, not where the polygon happened to be cast.
+      const centre = camera.worldToScreen(object.position.x, object.position.y);
+      const points = clipPolygonToCircle(screen, centre.x, centre.y, radius * camera.currentScale);
+      if (points.length < 3) continue;
+      const box = boundsOf(points);
+      // A hole with nothing on screen would clip the viewport to itself: no
+      // change, one clip's worth of work. The sight pass is already camera
+      // limited, but its margin is world px and this is the cheap exact test.
+      if (!boundsOverlap(box, viewport)) continue;
+      cuts.push({ points, box });
     }
+
+    // Only holes that actually overlap each other need clips of their own.
+    //
+    // The winding rule states "the viewport minus these holes" correctly for
+    // any number of holes that are pairwise **disjoint** — every point is
+    // inside at most one of them, so the arithmetic cancels exactly once. It
+    // is only the overlap that breaks it. So holes are packed greedily into
+    // groups nobody in the group touches, and each group is one clip: the
+    // ordinary frame — revealers spread across a lane — is back to one
+    // rectangle, one clip and one fill, and only a cluster standing on top of
+    // itself pays per hole. Bounding boxes, not the polygons: a box overlap
+    // that is not a real one costs one extra clip, while a missed one would
+    // cost the bug.
+    const groups: { points: { x: number; y: number }[]; box: Bounds }[][] = [];
+    for (const cut of cuts) {
+      const room = groups.find(group => group.every(other => !boundsOverlap(other.box, cut.box)));
+      if (room) room.push(cut);
+      else groups.push([cut]);
+    }
+
+    for (const group of groups) {
+      ctx.beginPath();
+      ctx.rect(0, 0, width, height);
+      for (const { points } of group) {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        ctx.closePath();
+      }
+      ctx.clip('nonzero');
+    }
+
     ctx.fillStyle = this.outOfViewColor;
-    ctx.fill('nonzero');
+    ctx.fillRect(0, 0, width, height);
     ctx.restore();
   }
 
@@ -454,12 +557,19 @@ export default class FogOfWar {
     // folding it into the reset that already walks every object is what keeps
     // it from being a third full pass. `combat/AttackReveal.ts` has the rule.
     const viewer = { teamId: this.game.player?.teamId };
+    // `revealMap` folded into the reset rather than given a walk of its own,
+    // for the same reason the reveal-on-attack rule above is: this loop already
+    // touches every object, and the cheat is one more thing that can light one.
+    // It must not reach `revealedEnemies` — that list is what *lends a circle*
+    // to the enemy team, and a cheat that is only about what this player sees
+    // has no business granting vision on the other side.
+    const reveal = this.revealsEverything();
     /** Attackers lit this frame — each one lights a circle around itself too. */
     const revealedEnemies: any[] = [];
     this.game.objectManager.objects.forEach((o: any) => {
       if (!(o instanceof AttackableUnit) || o.alwaysVisible) return;
       const gaveItselfAway = revealedTo(viewer, o);
-      o.visibleToPlayerTeam = gaveItselfAway;
+      o.visibleToPlayerTeam = reveal || gaveItselfAway;
       if (gaveItselfAway) revealedEnemies.push(o);
     });
     visiblePlayers.forEach((p: any) => (p.visibleToPlayerTeam = true));
@@ -820,6 +930,162 @@ export default class FogOfWar {
     // `utils/graphics.utils.ts`.
     removeGraphics(this.overlay);
   }
+}
+
+/**
+ * How many segments a whole turn of a cut rim is drawn with.
+ *
+ * The rim this inserts stands in for the soft path's gradient edge, and the
+ * error that shows is the sag of a chord: `r * (1 - cos(pi / segments))`, which
+ * at 32 is under half a percent of the radius — about 2px on the widest vision
+ * in the shipped maps, under a fill that is 47% black against black. Doubling
+ * it would double the vertices this tier exists to avoid paying for.
+ */
+export const SIGHT_CIRCLE_SEGMENTS = 32;
+
+/** A screen-space bounding box, which is all the grouping below needs of a hole. */
+type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+function boundsOf(points: readonly { x: number; y: number }[]): Bounds {
+  const box: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of points) {
+    if (p.x < box.minX) box.minX = p.x;
+    if (p.x > box.maxX) box.maxX = p.x;
+    if (p.y < box.minY) box.minY = p.y;
+    if (p.y > box.maxY) box.maxY = p.y;
+  }
+  return box;
+}
+
+const boundsOverlap = (a: Bounds, b: Bounds): boolean =>
+  a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+
+/**
+ * A polygon cut down to what fits inside a circle, with the circle's own rim
+ * standing in for the parts that did not.
+ *
+ * ## What it is for
+ *
+ * `computeSightPoly` sweeps against a **square** clip box, so a revealer's
+ * polygon reaches `1.41 x radius` into its corners. The soft path hides that
+ * behind a gradient that is already transparent by `radius`; `drawDirect` has
+ * no gradient and would cut the square out at full strength. This is the cut
+ * that puts the boundary back on the circle.
+ *
+ * ## The shape of the walk
+ *
+ * Every edge is one of four cases — both ends in, leaving, entering, or a
+ * chord straight across the disc from outside — and the only interesting one
+ * is what happens *between* leaving and entering again: the boundary follows
+ * the circle, so the rim is emitted there, in the direction the polygon itself
+ * is wound. `atan2` increases along a positively-signed loop in screen
+ * coordinates (y down), so that direction is one sign read off `signedArea`.
+ *
+ * The walk starts at a vertex **inside** the circle, which is what makes it
+ * close itself: every run outside is then bracketed by an exit and an entry
+ * within one lap, including the run that wraps past the end of the array.
+ * Nothing inside at all is not a failure — the polygon is cast from this very
+ * centre and is star-shaped about it, so it means the disc sits wholly inside
+ * the polygon and the answer is the whole disc.
+ */
+export function clipPolygonToCircle(
+  poly: readonly { x: number; y: number }[],
+  cx: number,
+  cy: number,
+  r: number,
+  segments: number = SIGHT_CIRCLE_SEGMENTS
+): { x: number; y: number }[] {
+  const count = poly.length;
+  if (count < 3 || !(r > 0)) return [];
+
+  const r2 = r * r;
+  const isInside = (p: { x: number; y: number }): boolean => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    return dx * dx + dy * dy <= r2;
+  };
+
+  const winding = signedArea(poly) >= 0 ? 1 : -1;
+  const step = (2 * Math.PI) / Math.max(3, segments);
+  const out: { x: number; y: number }[] = [];
+
+  const angleOf = (p: { x: number; y: number }): number => Math.atan2(p.y - cy, p.x - cx);
+  const pointAt = (angle: number) => ({
+    x: cx + r * Math.cos(angle),
+    y: cy + r * Math.sin(angle),
+  });
+
+  /** The rim between two angles already on the circle, exclusive of both. */
+  const rim = (from: number, to: number): void => {
+    const turn = 2 * Math.PI;
+    // Measured the way the polygon runs, so the two angles need no ordering.
+    const sweep = ((((to - from) * winding) % turn) + turn) % turn;
+    const points = Math.max(0, Math.ceil(sweep / step) - 1);
+    for (let i = 1; i <= points; i++)
+      out.push(pointAt(from + winding * i * (sweep / (points + 1))));
+  };
+
+  let start = -1;
+  for (let i = 0; i < count; i++) {
+    if (isInside(poly[i])) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) {
+    const whole = Math.max(3, Math.round(segments));
+    for (let i = 0; i < whole; i++) out.push(pointAt((winding * i * 2 * Math.PI) / whole));
+    return out;
+  }
+
+  let pendingExit: number | null = null;
+  for (let k = 0; k < count; k++) {
+    const a = poly[(start + k) % count];
+    const b = poly[(start + k + 1) % count];
+    const aIn = isInside(a);
+    const bIn = isInside(b);
+
+    if (aIn) out.push(a);
+    if (aIn && bIn) continue;
+
+    // Where this edge meets the circle, as parameters along a -> b.
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const fx = a.x - cx;
+    const fy = a.y - cy;
+    const qa = dx * dx + dy * dy;
+    if (qa === 0) continue;
+    const qb = 2 * (fx * dx + fy * dy);
+    const qc = fx * fx + fy * fy - r2;
+    const discriminant = qb * qb - 4 * qa * qc;
+    if (discriminant < 0) continue;
+    const root = Math.sqrt(discriminant);
+    const near = (-qb - root) / (2 * qa);
+    const far = (-qb + root) / (2 * qa);
+    const at = (t: number) => ({ x: a.x + dx * t, y: a.y + dy * t });
+
+    if (aIn) {
+      // Leaving: `a` is inside, so the far root is the one on the segment.
+      const exit = at(far);
+      out.push(exit);
+      pendingExit = angleOf(exit);
+    } else if (bIn) {
+      const entry = at(near);
+      if (pendingExit !== null) rim(pendingExit, angleOf(entry));
+      out.push(entry);
+      pendingExit = null;
+    } else {
+      // Both ends outside — but the edge can still cut a chord across the disc.
+      if (near < 0 || near > 1 || far < 0 || far > 1) continue;
+      const entry = at(near);
+      const exit = at(far);
+      if (pendingExit !== null) rim(pendingExit, angleOf(entry));
+      out.push(entry, exit);
+      pendingExit = angleOf(exit);
+    }
+  }
+
+  return out;
 }
 
 /** Shoelace area with sign: a polygon's orientation, which is all `drawDirect` needs of it. */

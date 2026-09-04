@@ -107,3 +107,76 @@ describe('an allied revealer off camera still lights the map', () => {
     expect(enemy.visibleToPlayerTeam).toBe(false);
   });
 });
+
+/**
+ * The practice panel's `revealMap`, which the sight pass had never heard of.
+ *
+ * `Game.minimapBlips` and `minimapHost.visionCircles` both honoured it, so the
+ * cheat lifted the veil off the *minimap* and left the screen it is a map of
+ * fogged — and the units in that fog undrawn, because `ObjectManager.draw`
+ * reads the same flag these cases do.
+ */
+describe('hiện bản đồ', () => {
+  const withReveal = (world: TestGame, on: boolean): TestGame => {
+    (world as unknown as { director: unknown }).director = { revealMap: on };
+    return world;
+  };
+
+  const enemyInTheDark = (): Champion => {
+    const player = new Champion({ game, teamId: TeamId.BLUE });
+    player.position.set(100, 100);
+    game.setPlayer(player);
+
+    const enemy = new Champion({ game, teamId: TeamId.RED });
+    enemy.position.set(AWAY.x, AWAY.y);
+
+    indexObjects(game, [player, enemy]);
+    return enemy;
+  };
+
+  it('marks an enemy nobody is lighting', () => {
+    const enemy = enemyInTheDark();
+    fogOver(withReveal(game, true)).calculateSight();
+
+    expect(enemy.visibleToPlayerTeam).toBe(true);
+  });
+
+  it('hides it again the moment the switch goes off', () => {
+    const enemy = enemyInTheDark();
+    const fog = fogOver(withReveal(game, true));
+    fog.calculateSight();
+    expect(enemy.visibleToPlayerTeam).toBe(true);
+
+    withReveal(game, false);
+    // A fresh pass, not the cached one — the cheat is read per pass, and
+    // `FOG_SIGHT_TICK_INTERVAL` is what decides when the next one runs.
+    fogOver(game).calculateSight();
+
+    expect(enemy.visibleToPlayerTeam).toBe(false);
+  });
+
+  it('does not lend the enemy a circle of its own', () => {
+    // `revealedEnemies` is what makes an attacker light a radius *for the other
+    // team*. A cheat about what this player sees must not reach it, or the
+    // fog would start revealing allies to nobody's benefit.
+    const player = new Champion({ game, teamId: TeamId.BLUE });
+    player.position.set(100, 100);
+    game.setPlayer(player);
+
+    const enemy = new Champion({ game, teamId: TeamId.RED });
+    enemy.position.set(AWAY.x, AWAY.y);
+    const bystander = new Champion({ game, teamId: TeamId.RED });
+    bystander.position.set(AWAY.x + 10_000, AWAY.y);
+
+    indexObjects(game, [player, enemy, bystander]);
+    const lit = fogOver(withReveal(game, true));
+    lit.calculateSight();
+    const dark = fogOver(withReveal(game, false));
+    dark.calculateSight();
+
+    // Both enemies are visible because the cheat says so, and the circle list
+    // — which is what lends vision — is exactly the one it would have been.
+    expect(enemy.visibleToPlayerTeam).toBe(false); // the pass without the cheat ran last
+    expect(lit.visionCircles()).toEqual(dark.visionCircles());
+  });
+});
