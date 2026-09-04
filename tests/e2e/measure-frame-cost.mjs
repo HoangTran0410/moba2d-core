@@ -27,15 +27,44 @@
  *   node tests/e2e/measure-frame-cost.mjs
  *   MOBA2D_CPU_THROTTLE=6 MOBA2D_TARGET_MINIONS=150 node tests/e2e/measure-frame-cost.mjs
  */
-import { startHarness, startMatch } from './harness.mjs';
+import { CFG_KEY, startHarness, startMatch } from './harness.mjs';
 
 const THROTTLE = Number(process.env.MOBA2D_CPU_THROTTLE ?? 10);
 const TARGET_MINIONS = Number(process.env.MOBA2D_TARGET_MINIONS ?? 200);
 const WINDOW_MS = Number(process.env.MOBA2D_WINDOW_MS ?? 6_000);
+/**
+ * Bots to field, and the difference between the two loads this script can
+ * measure.
+ *
+ * Zero — the default — leaves the roster alone and measures the *crowd*: two
+ * hundred minions walking lanes, which is what found the fog, the minimap and
+ * the fountains. Any other number seeds the pregame config with that many bots
+ * set to move, attack and cast for free, drags every champion on the map into
+ * one pile, and measures a **teamfight** instead: ten champions inside one
+ * screen, casting on cooldown, with the spell objects, the floating numbers and
+ * the buff art that come with that. They are different profiles and they find
+ * different things — a minion is a body, a champion is a body plus a kit.
+ *
+ *   MOBA2D_BOTS=9 node tests/e2e/measure-frame-cost.mjs
+ */
+const BOTS = Number(process.env.MOBA2D_BOTS ?? 0);
 
 const { url, page, report, check, guard } = await startHarness();
 
 await guard(async () => {
+  if (BOTS > 0) {
+    await page.goto(url, { waitUntil: 'load' });
+    await page.evaluate(
+      ([key, config]) => localStorage.setItem(key, JSON.stringify(config)),
+      [
+        CFG_KEY,
+        {
+          ai: { count: BOTS, autoMove: true, autoAttack: true, autoCast: true, bots: [] },
+          rules: { manaFree: true },
+        },
+      ]
+    );
+  }
   await page.goto(url, { waitUntil: 'load' });
   await startMatch(page);
   await page.waitForFunction(() => window.__moba2d?.scene?.oScene?.game?.objectManager, null, {
@@ -53,10 +82,11 @@ await guard(async () => {
   if (THROTTLE > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
 
   const result = await page.evaluate(
-    async ({ targetMinions, windowMs }) => {
+    async ({ targetMinions, windowMs, bots }) => {
       const game = window.__moba2d.scene.oScene.game;
       const manager = game.objectManager;
       const spawner = game.minionSpawner;
+      const settle = ms => new Promise(resolve => setTimeout(resolve, ms));
 
       // ------------------------------------------------------------ the board
       const pairs = [];
@@ -83,6 +113,29 @@ await guard(async () => {
       for (const minion of spawner.minions) {
         minion.stats.maxHealth.baseValue = 1e9;
         minion.stats.health.baseValue = 1e9;
+      }
+
+      // Every champion on the map, in one pile around the player, with health
+      // they cannot burn through — so the window measures a fight that is still
+      // going at the end of it rather than a field of corpses. The pile is
+      // loose (a ring, not a point) because `UnitCollisionSystem` would spend
+      // the whole window pushing a stack of co-located bodies apart, and that
+      // is a measurement of the setup rather than of the game.
+      if (bots > 0) {
+        const champions = manager.objects.filter(o => o.killCredit === 'champion');
+        const anchor = game.player?.position ?? champions[0]?.position;
+        champions.forEach((champion, i) => {
+          const angle = (i / champions.length) * Math.PI * 2;
+          champion.position.x = anchor.x + Math.cos(angle) * 160;
+          champion.position.y = anchor.y + Math.sin(angle) * 160;
+          champion.stats.maxHealth.baseValue = 1e9;
+          champion.stats.health.baseValue = 1e9;
+        });
+        // Long enough for the kits to be *running* before anything is wrapped:
+        // a spell object that does not exist yet has no prototype to time, and
+        // the classes this load exists to measure — the missiles, the floating
+        // numbers, the buff art — all arrive on a cast.
+        await settle(2_500);
       }
 
       // ----------------------------------------------------------- the timers
@@ -237,8 +290,62 @@ await guard(async () => {
         wrapMember(object, 'update', 'obj.update/');
       }
 
+      /**
+       * Inside a body's own draw, bucketed by *method* rather than by class.
+       *
+       * `obj.draw/AIChampion` is the biggest row a teamfight produces and it is
+       * five different jobs — the portrait, the facing line, the buff art, the
+       * bar, the numbers over the bar — so on its own it says only that bodies
+       * are expensive. One bucket per job says which one, across every class
+       * that has bodies, which is the question. Subclasses override some of
+       * these (`Minion` and `Monster` both paint their own `drawBody`), so this
+       * walks the chain per object the way `wrapMember` does and pours every
+       * override into the one bucket.
+       */
+      const wrapNamed = (object, key, name) => {
+        let owner = Object.getPrototypeOf(object);
+        while (owner && !Object.prototype.hasOwnProperty.call(owner, key)) {
+          owner = Object.getPrototypeOf(owner);
+        }
+        const real = owner?.[key];
+        if (typeof real !== 'function' || wrapped.has(real) || real.__profiled) return;
+        wrapped.add(real);
+        const fn = function (...args) {
+          const frame = enter();
+          const startedAt = performance.now();
+          const out = real.apply(this, args);
+          // Bucketed by the receiver's class as well as the job, because most
+          // of these are overridden: a lean bar and a bar carrying a name, a
+          // level and six buff icons are the same method name and nothing
+          // alike, and one bucket for both says only that bars are expensive.
+          leave(frame, startedAt, name + '/' + (this?.constructor?.name ?? '?'));
+          return out;
+        };
+        fn.__profiled = true;
+        owner[key] = fn;
+        restores.push(() => {
+          owner[key] = real;
+        });
+      };
+      // Every buff class that is currently drawing on anybody, by class. A
+      // buff's world art is per-instance and per-frame, and a fight puts the
+      // same buff on every body in a wave at once — so "buffs are expensive"
+      // needs to name one before it can be acted on.
+      for (const object of [...manager.objects]) {
+        if (!Array.isArray(object.buffs)) continue;
+        for (const buff of object.buffs) wrapNamed(buff, 'draw', 'buff.draw');
+      }
+
+      for (const object of [...manager.objects]) {
+        if (typeof object.drawHealthBar !== 'function') continue;
+        wrapNamed(object, 'drawAvatar', 'unit/drawAvatar');
+        wrapNamed(object, 'drawBody', 'unit/drawBody');
+        wrapNamed(object, 'drawDir', 'unit/drawDir');
+        wrapNamed(object, 'drawBuffs', 'unit/drawBuffs');
+        wrapNamed(object, 'drawHealthBar', 'unit/drawHealthBar');
+      }
+
       // ---------------------------------------------------------- the window
-      const settle = ms => new Promise(resolve => setTimeout(resolve, ms));
       await settle(500);
       frames = 0;
       ticks = 0;
@@ -263,6 +370,27 @@ await guard(async () => {
         census[name] = (census[name] ?? 0) + 1;
       }
 
+      // What is actually riding the bodies, and how much of it *paints*.
+      // `Buff.prototype.draw` is empty, so a buff with no art of its own costs
+      // one call and nothing else — the difference between "minions carry
+      // buffs" and "minions carry buffs that draw" is the whole question, and
+      // a class name in the row above cannot answer it.
+      const buffCensus = {};
+      const emptyDraw = Object.getPrototypeOf(Object.getPrototypeOf({})) && null;
+      for (const object of manager.objects) {
+        if (!Array.isArray(object.buffs) || object.buffs.length === 0) continue;
+        const host = object.constructor?.name ?? '?';
+        for (const buff of object.buffs) {
+          const drawFn = buff.draw;
+          // A `draw` inherited straight from the base is the empty one.
+          const paints =
+            typeof drawFn === 'function' && drawFn.length + drawFn.toString().length > 24;
+          const key = `${host}<-${buff.constructor?.name ?? '?'}${paints ? '' : ' (no art)'}`;
+          buffCensus[key] = (buffCensus[key] ?? 0) + 1;
+        }
+      }
+      void emptyDraw;
+
       const rows = [...buckets.entries()]
         .filter(([, bucket]) => bucket.calls > 0)
         .map(([name, bucket]) => ({
@@ -272,6 +400,11 @@ await guard(async () => {
           calls: bucket.calls,
           selfPerFrame: Number((bucket.self / Math.max(1, frames)).toFixed(3)),
           pctCpu: Number(((bucket.self / wall) * 100).toFixed(1)),
+          // What one call of this costs. The column that finds a *pathological*
+          // object rather than a numerous one: a body drawn forty times a frame
+          // and a single effect drawn once can carry the same share of the
+          // profile, and only one of them is a bug.
+          usPerCall: Number(((bucket.self / bucket.calls) * 1000).toFixed(1)),
         }))
         .sort((a, b) => b.selfMs - a.selfMs);
 
@@ -282,11 +415,13 @@ await guard(async () => {
         drawMsPerFrame: Number((drawMs / Math.max(1, frames)).toFixed(2)),
         updateMsPerTick: Number((updateMs / Math.max(1, ticks)).toFixed(2)),
         objects: manager.objects.length,
+        frames,
         census,
+        buffCensus,
         rows: rows.slice(0, 40),
       };
     },
-    { targetMinions: TARGET_MINIONS, windowMs: WINDOW_MS }
+    { targetMinions: TARGET_MINIONS, windowMs: WINDOW_MS, bots: BOTS }
   );
 
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
@@ -315,7 +450,25 @@ await guard(async () => {
         String(row.pctCpu).padStart(7)
     );
   }
+  // Sorted by what one call costs, not by the total. `calls >= frames / 4`
+  // keeps out the row that ran twice and happened to land on a slow frame.
+  const perCall = [...result.rows]
+    .filter(row => row.calls >= Math.max(4, result.frames / 4))
+    .sort((a, b) => b.usPerCall - a.usPerCall)
+    .slice(0, 12);
+  console.log('\n--- most expensive per call (the outliers, not the crowds) ---');
+  console.log('name'.padEnd(34) + 'us/call'.padStart(9) + 'calls'.padStart(9) + '%cpu'.padStart(7));
+  for (const row of perCall) {
+    console.log(
+      row.name.padEnd(34) +
+        String(row.usPerCall).padStart(9) +
+        String(row.calls).padStart(9) +
+        String(row.pctCpu).padStart(7)
+    );
+  }
+
   console.log('\ncensus: ' + JSON.stringify(result.census));
+  console.log('buffs:  ' + JSON.stringify(result.buffCensus));
 
   Object.assign(report, { throttle: THROTTLE, ...result });
   // The board has to be crowded or the profile is of an empty map, and the
