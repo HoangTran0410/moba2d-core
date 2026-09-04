@@ -31,7 +31,9 @@
  */
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-import { basename } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -40,6 +42,24 @@ const flag = (name, fallback) => {
 };
 /** Microseconds per live instance per frame, over which an ability is reported. */
 const BUDGET_US = flag('budget', 150);
+/**
+ * And the other half of the question: what the whole sustained load costs a
+ * frame, however it divides.
+ *
+ * Per-instance alone missed a real one. An ability at 95us/instance is inside
+ * budget and reads fine — until it turns out to keep 57 of them alive and add
+ * **5.4ms to every frame**, which is most of a phone's budget for one spell.
+ * Cheap per instance and ruinous in aggregate is a thing an ability can be, so
+ * both are gated.
+ */
+const DELTA_BUDGET_MS = flag('delta-budget', 3);
+/**
+ * Below this many live instances, us-per-instance is a ratio with a rounding
+ * error on the bottom, not a measurement — one ability measured 257us/instance
+ * off 1.1 live and a 0.27ms delta, which is nothing at all. Under the floor the
+ * aggregate is the only figure that means anything.
+ */
+const MIN_INSTANCES = 3;
 const THROTTLE = flag('throttle', 4);
 const WINDOW_MS = flag('window', 4000);
 
@@ -56,6 +76,36 @@ const spellNames = args
 if (spellNames.length === 0) {
   console.error('usage: measure-spell-cost.mjs <Champion_Slot | path/to/Champion_Slot.ts> ...');
   process.exit(2);
+}
+
+/**
+ * Which champion owns an ability, read off the packs' own rosters.
+ *
+ * The file name is `<Champion>_<Slot>.ts` and the *class* is named for it, but
+ * the roster is not: `ChoGath_Q` belongs to "Cho'Gath", `LeeSin_W` to "Lee
+ * Sin", `KogMaw_E` to "Kog'Maw". Guessing the roster name from the file name
+ * put nine abilities on the wrong champion, and `applyLoadout` answers an
+ * unknown name with a *random* one rather than an error — so the run reported
+ * "not in Kakashi's kit (Singed_Q, Singed_W, ...)" and skipped, which is at
+ * least honest, but nine abilities went unmeasured.
+ *
+ * A pack states the pairing in its own roster, and the three do not agree on
+ * where that lives — one keeps it in `data.ts`, two in `pack.ts` — so both are
+ * read. The shape is the same in all of them: a `name`, then a `spells` list.
+ */
+const CORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const championOf = new Map();
+for (const pack of ['lol', 'naruto', 'dota']) {
+  for (const roster of ['data.ts', 'pack.ts']) {
+    const file = resolve(CORE_ROOT, '..', pack, roster);
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    for (const entry of text.matchAll(/name:\s*(['"])(.*?)\1[\s\S]*?spells:\s*\[([^\]]*)\]/g)) {
+      for (const quoted of entry[3].match(/['"][\w]+['"]/g) ?? []) {
+        if (!championOf.has(quoted.slice(1, -1))) championOf.set(quoted.slice(1, -1), entry[2]);
+      }
+    }
+  }
 }
 
 const MATCH_CONFIG = {
@@ -92,7 +142,8 @@ try {
   if (THROTTLE > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
 
   for (const spellName of spellNames) {
-    const championName = spellName.slice(0, spellName.lastIndexOf('_'));
+    const championName =
+      championOf.get(spellName) ?? spellName.slice(0, spellName.lastIndexOf('_'));
     const measured = await page.evaluate(
       async ([spellName, championName, windowMs]) => {
         const game = window.__moba2d.scene.oScene.game;
@@ -243,7 +294,10 @@ try {
       continue;
     }
     const delta = measured.loadedMs - measured.idleMs;
-    const perInstance = measured.instances > 0.5 ? (delta * 1000) / measured.instances : 0;
+    const enough = measured.instances >= MIN_INSTANCES;
+    const perInstance = enough ? (delta * 1000) / measured.instances : 0;
+    const overPer = enough && perInstance > BUDGET_US;
+    const overDelta = delta > DELTA_BUDGET_MS;
     results.push({
       spell: spellName,
       idleMs: measured.idleMs,
@@ -251,7 +305,9 @@ try {
       delta,
       instances: measured.instances,
       perInstance,
-      over: perInstance > BUDGET_US,
+      enough,
+      over: overPer || overDelta,
+      reason: overPer && overDelta ? 'per-instance + total' : overPer ? 'per-instance' : overDelta ? 'total' : '',
     });
   }
 } finally {
@@ -259,7 +315,10 @@ try {
   await server.close();
 }
 
-console.log(`\n=== spell draw cost (CPU throttle ${THROTTLE}x, budget ${BUDGET_US}us/instance) ===`);
+console.log(
+  `\n=== spell draw cost (CPU throttle ${THROTTLE}x, ` +
+    `budget ${BUDGET_US}us/instance or ${DELTA_BUDGET_MS}ms/frame total) ===`
+);
 console.log(
   'spell'.padEnd(24) +
     'idle'.padStart(9) +
@@ -281,8 +340,8 @@ for (const row of results) {
       row.loadedMs.toFixed(2).padStart(9) +
       row.delta.toFixed(2).padStart(9) +
       row.instances.toFixed(1).padStart(8) +
-      Math.round(row.perInstance).toString().padStart(10) +
-      (row.over ? '   OVER BUDGET' : '')
+      (row.enough ? Math.round(row.perInstance).toString() : '—').padStart(10) +
+      (row.over ? `   OVER (${row.reason})` : '')
   );
 }
 if (pageErrors.length) console.log(`\npage errors: ${pageErrors.slice(0, 3).join(' | ')}`);
@@ -290,7 +349,8 @@ console.log('');
 
 if (over > 0) {
   console.error(
-    `${over} ability(s) over ${BUDGET_US}us per live instance per frame.\n` +
+    `${over} ability(s) over budget — ${BUDGET_US}us per live instance, ` +
+      `or ${DELTA_BUDGET_MS}ms a frame all told.\n` +
       'One of these is fine and forty are not — that is how every expensive\n' +
       'effect in this game has been expensive. Cut the primitive count, or make\n' +
       'the effect a ParticleSystem so the draw budget can ration it.'
