@@ -31,11 +31,12 @@ import {
   itemValueFor,
   kitAbilityMix,
   nextBotPurchase,
+  rebuildBotBag,
   type BotBody,
 } from '@/game/ai/BotShopper';
 import { MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
 import { dmg, heal, tint } from '@/game/combat/DamageText';
-import { grantItem } from '@/game/economy/ItemShop';
+import { buyItem, grantItem } from '@/game/economy/ItemShop';
 import type { QualifiedItem } from '@/content/PackRegistry';
 
 const item = (id: string, cost: number, stats: QualifiedItem['stats']): QualifiedItem => ({
@@ -267,10 +268,16 @@ describe('what a kit says it scales on', () => {
 
   it('reads a physical kit as physical and a magic one as magic', () => {
     expect(kitAbilityMix({ spells: kit(`gây ${dmg(22, 'PHYSICAL')}`) })).toEqual({
-      physical: 1, magic: 0, trueDamage: 0, coverage: 1,
+      physical: 1,
+      magic: 0,
+      trueDamage: 0,
+      coverage: 1,
     });
     expect(kitAbilityMix({ spells: kit(`gây ${dmg(22, 'MAGIC')}`) })).toEqual({
-      physical: 0, magic: 1, trueDamage: 0, coverage: 1,
+      physical: 0,
+      magic: 1,
+      trueDamage: 0,
+      coverage: 1,
     });
   });
 
@@ -342,7 +349,10 @@ describe('what a kit says it scales on', () => {
     // asks, so neither has to be recognised by name here.
     const mix = kitAbilityMix({
       spells: [
-        { description: '<span class="damage physical">14</span>', damageScalesWithAbilityPower: false },
+        {
+          description: '<span class="damage physical">14</span>',
+          damageScalesWithAbilityPower: false,
+        },
         { description: '<span class="damage magic">30</span>', damageScalesWithAbilityPower: true },
       ],
     });
@@ -393,8 +403,7 @@ describe('a build bought for the kit that is holding it', () => {
   it('dilutes a power stat across a kit that is mostly control', () => {
     const carry = withMix({ abilityMix: MAGIC });
     const support = withMix({ abilityMix: { ...MAGIC, coverage: 0.25 } });
-    const gain = (b: BotBody) =>
-      combatValue({ ...b, abilityPower: 1 }) - combatValue(b);
+    const gain = (b: BotBody) => combatValue({ ...b, abilityPower: 1 }) - combatValue(b);
     expect(gain(support)).toBeLessThan(gain(carry));
     // But still positive — a quarter of a kit is not none of it.
     expect(gain(support)).toBeGreaterThan(0);
@@ -420,9 +429,7 @@ describe('a bag that is full and wrong', () => {
   let champion: Champion;
 
   /** Six distinct swords, so a full bag is a full *attack* build. */
-  const SWORDS = Array.from({ length: 6 }, (_, i) =>
-    item(`sword${i}`, 300, { attackDamage: 6 })
-  );
+  const SWORDS = Array.from({ length: 6 }, (_, i) => item(`sword${i}`, 300, { attackDamage: 6 }));
   const BIG_ROD = item('big_rod', 300, { abilityPower: 1.2 });
   const SHELF_WITH_ROD = [...SWORDS, BIG_ROD];
 
@@ -522,6 +529,103 @@ describe('a bag that is full and wrong', () => {
   });
 });
 
+/**
+ * The re-roll itself, which is where the swap above was being asked to do a
+ * job it cannot afford.
+ *
+ * A bot re-rolls into a new champion every death and keeps the bag, so fixing
+ * a six-item build by swapping one slot at a time costs 30% of the bag — and
+ * then it dies again and pays it again. Reported as a bot that got poorer and
+ * weaker the more it died. The fix is that a re-roll is not a change of mind:
+ * the build comes back at cost and is bought again in the same trip.
+ */
+describe('the bag a re-rolled bot wakes up holding', () => {
+  let game: TestGame;
+  let champion: Champion;
+
+  /** Six distinct blades, so a full bag is a full *attack* build. */
+  const BLADES = Array.from({ length: 6 }, (_, i) => item(`blade${i}`, 300, { attackDamage: 6 }));
+  const GREAT_ROD = item('great_rod', 300, { abilityPower: 1.2 });
+  const SHELF_AFTER_ROLL = [...BLADES, GREAT_ROD];
+
+  const MAGIC_KIT = '<span class="damage magic">40 sát thương</span>';
+
+  /** What the bag would cost at the counter, which is what it was paid for. */
+  const bagWorth = () =>
+    (champion.items ?? []).reduce((total, held) => total + (held?.def?.cost ?? 0), 0);
+
+  /** Bought, not granted: this suite is about gold, so gold has to leave. */
+  const buyBag = () => {
+    for (const blade of BLADES) expect(buyItem(champion, blade, HOST)).toBe(true);
+  };
+
+  const holdKit = (...descriptions: string[]) => {
+    champion.spells = descriptions.map(
+      description => ({ description, damageScalesWithAbilityPower: true }) as never
+    );
+  };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+    champion.stats.attackDamage.baseValue = 5;
+    champion.stats.attackSpeed.baseValue = 0.7;
+    champion.stats.maxHealth.baseValue = 135;
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('comes back at what it cost, so a re-roll is not a 30% tax', () => {
+    champion.wallet!.earn(10_000);
+    const before = champion.wallet!.balance;
+    buyBag();
+    expect(champion.wallet!.balance).toBe(before - 1_800);
+
+    holdKit(MAGIC_KIT);
+    expect(rebuildBotBag(champion, HOST, { catalog: SHELF_AFTER_ROLL })).toBe(true);
+
+    // Gold plus goods, before and after. Six sales at `SELL_REFUND_FRACTION`
+    // would have burned 540 of it — on this death, and on every one after.
+    expect(champion.wallet!.balance + bagWorth()).toBe(before);
+  });
+
+  it('is full again when the trip ends, and built for the kit it holds now', () => {
+    champion.wallet!.earn(10_000);
+    buyBag();
+    holdKit(MAGIC_KIT);
+
+    rebuildBotBag(champion, HOST, { catalog: SHELF_AFTER_ROLL });
+
+    // Not left standing at the fountain with a purse: a bot walks out within
+    // a couple of seconds and would carry that purse for the rest of the life.
+    const bag = (champion.items ?? []).filter(Boolean);
+    expect(bag).toHaveLength(6);
+    expect(bag.map(held => held!.def.id)).toContain('ref:great_rod');
+  });
+
+  it('will not empty a bag it cannot refill', () => {
+    // Out in the lane the refund and the re-buy are not one trip. Leaving the
+    // wrong build alone is the right answer there — that is the case
+    // `bestBotSwap` still covers.
+    champion.wallet!.earn(10_000);
+    buyBag();
+    holdKit(MAGIC_KIT);
+    champion.position.set(9_000, 9_000);
+
+    expect(rebuildBotBag(champion, HOST, { catalog: SHELF_AFTER_ROLL })).toBe(false);
+    expect((champion.items ?? []).filter(Boolean)).toHaveLength(6);
+  });
+
+  it('leaves an empty bag to the ordinary shop tick', () => {
+    champion.wallet!.earn(10_000);
+    holdKit(MAGIC_KIT);
+
+    expect(rebuildBotBag(champion, HOST, { catalog: SHELF_AFTER_ROLL })).toBe(false);
+  });
+});
+
 describe('the rules a bot plays by', () => {
   let game: TestGame;
   let champion: Champion;
@@ -612,7 +716,7 @@ describe('difficulty', () => {
     // are graded by one number instead of two.
     const chosen = new Set<string>();
     let seed = 0;
-    const rng = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const rng = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
     for (let i = 0; i < 60; i++) {
       const def = nextBotPurchase(champion, HOST, { catalog: SHELF, difficulty: 'easy', rng });
       if (def) chosen.add(def.id);

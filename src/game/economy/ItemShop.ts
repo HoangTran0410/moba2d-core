@@ -5,7 +5,7 @@ import { packAsset } from '@/game/config/packAsset';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type Spell from '@/game/gameObject/Spell';
 import type { QualifiedItem } from '@/content/PackRegistry';
-import { recordShopStep } from '@/game/economy/ShopHistory';
+import { clearShopHistory, recordShopStep } from '@/game/economy/ShopHistory';
 
 /**
  * Buying and selling, and the rules about where.
@@ -467,4 +467,64 @@ export function sellItem(
   champion.wallet?.earn(refund);
   recordShopStep(champion, { kind: 'sell', def: sold, slot, refund });
   return refund;
+}
+
+/**
+ * Hands the entire bag back at the price it was bought for, and answers the
+ * gold returned.
+ *
+ * ## Not a sale, for the same reason an undo is not one
+ *
+ * `SELL_REFUND_FRACTION` is the price of **changing your mind**, and the case
+ * this exists for is not a change of mind: a bot that re-rolls into a new
+ * champion on death did not decide to abandon its build — the match took the
+ * champion out from under it (`AIChampion.respawn`). Charging 30% for that
+ * turns every death into a tax on a decision nobody made, and a bot that dies
+ * often ends the match poorer than one that never bought anything at all,
+ * which is how it was reported: it sells and re-buys its way down.
+ *
+ * `ShopHistory.undoShop` is the right *idea* and cannot do this — it reverses
+ * one step at a time, only from the top of the stack, only while the world
+ * still matches it, and only `SHOP_HISTORY_LIMIT` steps deep. A finished build
+ * is none of those things. So this reaches the same place from the other end:
+ * whatever is in the bag right now, back at `cost`, all of it at once.
+ *
+ * ## Why it takes no host
+ *
+ * There is no location rule to obey here and no refund fraction to look up.
+ * *Whether* a champion may do this is the caller's question — the one caller,
+ * `ai/BotShopper.rebuildBotBag`, asks the same fountain question a purchase
+ * asks — and there is deliberately no player-facing door onto it: a full
+ * refund at will is exactly the inventory-as-free-stat-toggles that
+ * `SELL_REFUND_FRACTION`'s own comment refuses.
+ *
+ * The history goes with the items. Every step in it describes a bag that no
+ * longer exists, and while `undoShop` would refuse each one on its own guard,
+ * leaving a stack of dead steps behind a champion that is about to buy a whole
+ * new build is not a state anybody should have to reason about.
+ */
+export function refundBag(champion: Champion): number {
+  // No wallet, no refund — and therefore no unequipping either. `grantItem` is
+  // a door into a bag that never went through a wallet, and emptying one of
+  // those would be a deletion rather than a reversal.
+  if (!champion.wallet) return 0;
+
+  const items = champion.items ?? [];
+  let paid = 0;
+
+  for (let slot = 0; slot < items.length; slot++) {
+    // Read before `unequipItem` — that is what takes the stats and the
+    // passives back off, and it makes the entry unreadable on the way.
+    const def = items[slot]?.def as QualifiedItem | undefined;
+    if (!def) continue;
+    champion.unequipItem(slot);
+    // `sellValueOf` at a whole fraction rather than a bare `def.cost`, so the
+    // one function that turns a price into coins stays the only one.
+    paid += sellValueOf(def, 1);
+  }
+
+  if (paid === 0) return 0;
+  champion.wallet?.earn(paid);
+  clearShopHistory(champion);
+  return paid;
 }

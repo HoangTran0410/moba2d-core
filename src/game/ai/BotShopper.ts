@@ -7,6 +7,7 @@ import {
   buyItem,
   componentSlotsFor,
   priceFor,
+  refundBag,
   refundFractionOf,
   refusalFor,
   sellItem,
@@ -14,11 +15,7 @@ import {
   type ShopHost,
   type ShopMode,
 } from '@/game/economy/ItemShop';
-import {
-  CRIT_MULTIPLIER,
-  MAX_ATTACK_SPEED,
-  MAX_ABILITY_HASTE,
-} from '@/game/gameObject/Stats';
+import { CRIT_MULTIPLIER, MAX_ATTACK_SPEED, MAX_ABILITY_HASTE } from '@/game/gameObject/Stats';
 import { abilityMultiplier } from '@/game/combat/Amplification';
 import { SCALING_SPAN_OPEN } from '@/game/combat/DamageText';
 import { profileFor, type BotDifficulty } from '@/game/ai/Difficulty';
@@ -364,10 +361,10 @@ const clamp = (body: BotBody): BotBody => ({
  * names; `attackRange` and `visionRadius` are the other two.
  */
 /**
-  * The numeric fields an item may actually move. Spelled out rather than
-  * `keyof BotBody`, which now also names `abilityMix` — a record, not a number,
-  * and `+=` on it is exactly the mistake worth a compile error.
-  */
+ * The numeric fields an item may actually move. Spelled out rather than
+ * `keyof BotBody`, which now also names `abilityMix` — a record, not a number,
+ * and `+=` on it is exactly the mistake worth a compile error.
+ */
 type GrantableBodyField =
   | 'attackDamage'
   | 'attackSpeed'
@@ -454,7 +451,8 @@ const DEFAULT_BODY_SPEED = 3;
 export function combatValue(raw: BotBody): number {
   const body = clamp(raw);
 
-  const swing = (body.attackDamage + body.onHitDamage) *
+  const swing =
+    (body.attackDamage + body.onHitDamage) *
     (1 + body.critChance * Math.max(0, body.critDamage - 1));
   const autos = swing * body.attackSpeed;
   // What this build does to *this* kit, asked of `combat/Amplification.ts`
@@ -501,7 +499,8 @@ export function combatValue(raw: BotBody): number {
   // build is bought against a team that has both.
   const mitigated = 0.5 * (1 + body.armor / 100) + 0.5 * (1 + body.magicResist / 100);
   const vamp = body.omnivamp + (body.lifesteal + body.spellVamp) * TYPED_VAMP_SHARE;
-  const survival = Math.max(1, body.maxHealth) * mitigated * (1 + vamp * OMNIVAMP_HEALTH_EQUIVALENT);
+  const survival =
+    Math.max(1, body.maxHealth) * mitigated * (1 + vamp * OMNIVAMP_HEALTH_EQUIVALENT);
 
   const mobility = Math.max(0.1, body.speed) / DEFAULT_BODY_SPEED;
   return offence * survival * Math.pow(mobility, BOT_MOBILITY_EXPONENT);
@@ -736,4 +735,84 @@ export function botShopTick(
   // from the body it actually has, rather than this one retrying blind.
   if (sellItem(champion, swap.slot, host, mode) === 0) return null;
   return buyItem(champion, swap.buy, host, mode) ? swap.buy : null;
+}
+
+/**
+ * How many purchases one rebuild may make before it stops and leaves the rest
+ * to the ordinary shop tick.
+ *
+ * A safety net, not a budget. The loop below ends on its own the moment
+ * `nextBotPurchase` runs out of things worth buying, which for a bag that was
+ * just handed back is about as many purchases as it had items. The ceiling is
+ * there because a shelf may price an item at zero — `nextBotPurchase` floors
+ * the divisor at 1 for exactly that reason — and a free component that a
+ * combine keeps eating is a loop nothing else terminates. Three per slot,
+ * because filling six slots with components and then combining each one is a
+ * legitimate twelve.
+ */
+export const BOT_REBUILD_PURCHASE_LIMIT = 18;
+
+/**
+ * Hands this champion's bag back at cost and buys a new one for the kit it is
+ * holding now. Answers whether it did.
+ *
+ * ## The bug this is the answer to
+ *
+ * A bot re-rolls into a new champion every time it dies and `respawn()` does
+ * not empty the bag, so it wakes up as a mage holding six attack items.
+ * `bestBotSwap` was the first answer and it is the wrong one *here*: a swap
+ * pays `SELL_REFUND_FRACTION` for the privilege, so fixing a six-item build
+ * one slot at a time burns 30% of the whole bag — and then the bot dies again,
+ * re-rolls again, and pays it again. Every death made it poorer, which is the
+ * opposite of what a shopping bot is for and was reported as exactly that: the
+ * more it died, the more it sold and re-bought, the weaker it got.
+ *
+ * The tax is what is wrong, not the rebuilding. A bot that re-rolls did not
+ * change its mind about its build — the match changed the champion under it —
+ * so `refundBag` reverses the purchases at the price they were made and the
+ * bot buys again with the same gold it had. See `ItemShop.refundBag` for why
+ * that is not the free-refund door it looks like.
+ *
+ * ## Why the whole build, in one call
+ *
+ * `nextBotPurchase` buys one item per tick on purpose, and this is the one
+ * moment that pacing would be wrong: a bot respawns, walks out of the fountain
+ * within a couple of seconds, and would be carrying one item and a purse for
+ * the rest of the life. Each step is still re-measured against the body the
+ * step before it produced — the loop calls `nextBotPurchase` again rather than
+ * ranking the shelf once — so the build it lands on is the one it would have
+ * arrived at anyway, just without the walk.
+ *
+ * ## What it refuses to do
+ *
+ * Anything at all when the champion is not somewhere it could shop. The refund
+ * and the re-buy have to be the same trip: a bot that emptied its bag out in
+ * the lane would be holding nothing until it next went home. It asks the
+ * question `botShopTick` opens with, and when the answer is no it leaves the
+ * wrong build alone — that is the case `bestBotSwap` still covers.
+ */
+export function rebuildBotBag(
+  champion: Champion,
+  host: ShopHost,
+  options: BotPurchaseOptions = {}
+): boolean {
+  if (champion.toRemove) return false;
+  const mode = options.mode ?? 'PLAYER';
+  if (mode !== 'CHEAT' && !champion.isDead && !atOwnFountain(champion, host)) return false;
+  // Nothing to hand back is not a rebuild — `nextBotPurchase` on the next tick
+  // is already the right answer for an empty bag.
+  if (!(champion.items ?? []).some(held => held)) return false;
+
+  refundBag(champion);
+
+  for (let bought = 0; bought < BOT_REBUILD_PURCHASE_LIMIT; bought++) {
+    const def = nextBotPurchase(champion, host, options);
+    if (!def) break;
+    // A refusal here is the shop saying no to something this had already
+    // priced — nothing left to do but stop, with the gold still in the wallet
+    // for the next tick to spend.
+    if (!buyItem(champion, def, host, mode)) break;
+  }
+
+  return true;
 }

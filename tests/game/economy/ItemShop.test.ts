@@ -7,11 +7,13 @@ import {
   SELL_REFUND_FRACTION,
   atOwnFountain,
   buyItem,
+  refundBag,
   refusalFor,
   sellItem,
   sellRefusalFor,
   sellValueOf,
 } from '@/game/economy/ItemShop';
+import { canUndoShop } from '@/game/economy/ShopHistory';
 import { registerSpellForTests, resetSpellRegistryForTests } from '@/game/spellRegistry';
 import type { CastSpec } from '@/game/spell/runtime/types';
 import type { QualifiedItem } from '@/content/PackRegistry';
@@ -397,5 +399,79 @@ describe('shopping on someone else’s behalf', () => {
     // pass a mode gets the rule the game is played by, never the cheat.
     expect(refusalFor(bot, def({ cost: 300 }), host)).toBe('NOT_AT_FOUNTAIN');
     expect(sellItem(bot, 0, host)).toBe(0);
+  });
+});
+
+/**
+ * Handing a whole bag back at the price it was paid.
+ *
+ * Not a sale and not reachable by a player: it exists for the one case where
+ * a build is abandoned by something other than its owner changing their mind
+ * — a bot that re-rolls into a new champion on death, which used to pay
+ * `SELL_REFUND_FRACTION` per slot to fix a build it never chose to leave. See
+ * `refundBag`'s own comment, and `ai/BotShopper.rebuildBotBag` for the caller.
+ */
+describe('handing the bag back', () => {
+  let game: TestGame;
+  let champion: Champion;
+  const host = { fountains: [{ teamId: 'blue', position: { x: 0, y: 0 }, radius: 200 }] };
+
+  beforeEach(() => {
+    stubGameGlobals();
+    resetSpellRegistryForTests();
+    game = createGame();
+    champion = new Champion({ game, position: createVector(0, 0), teamId: 'blue' });
+    game.setPlayer(champion);
+    indexObjects(game, [champion]);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('pays the whole price, not the refund fraction', () => {
+    champion.wallet!.earn(2_000);
+    const before = champion.wallet!.balance;
+    expect(buyItem(champion, def({ id: 'ref:a', cost: 300 }), host)).toBe(true);
+    expect(buyItem(champion, def({ id: 'ref:b', cost: 900 }), host)).toBe(true);
+
+    expect(refundBag(champion)).toBe(1_200);
+    expect(champion.wallet!.balance).toBe(before);
+    // Stated the other way round too, because 1200 is also what two sales
+    // would pay if the fraction were 1 — and it is not.
+    expect(sellValueOf(def({ cost: 1_200 }))).toBeLessThan(1_200);
+    expect(SELL_REFUND_FRACTION).toBeLessThan(1);
+  });
+
+  it('empties every slot, and the stats go with the items', () => {
+    champion.wallet!.earn(2_000);
+    const speed = champion.stats.speed.value;
+    expect(buyItem(champion, def({ cost: 300, stats: { speed: 0.5 } }), host)).toBe(true);
+    expect(champion.stats.speed.value).toBeGreaterThan(speed);
+
+    refundBag(champion);
+
+    expect((champion.items ?? []).filter(Boolean)).toHaveLength(0);
+    expect(champion.stats.speed.value).toBe(speed);
+  });
+
+  it('takes the undo history with it', () => {
+    // Every step in it describes a bag that no longer exists.
+    champion.wallet!.earn(2_000);
+    expect(buyItem(champion, def({ cost: 300 }), host)).toBe(true);
+    expect(canUndoShop(champion)).toBe(true);
+
+    refundBag(champion);
+
+    expect(canUndoShop(champion)).toBe(false);
+  });
+
+  it('is a no-op on an empty bag, down to the history', () => {
+    champion.wallet!.earn(2_000);
+    expect(buyItem(champion, def({ cost: 300 }), host)).toBe(true);
+    expect(sellItem(champion, 0, host)).toBeGreaterThan(0);
+    const before = champion.wallet!.balance;
+
+    expect(refundBag(champion)).toBe(0);
+    expect(champion.wallet!.balance).toBe(before);
+    // The sale is still undoable: nothing happened, so nothing was forgotten.
+    expect(canUndoShop(champion)).toBe(true);
   });
 });

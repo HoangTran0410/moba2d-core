@@ -5,7 +5,7 @@ import type AttackableUnit from './AttackableUnit';
 import type { HitPresentationOptions } from './AttackableUnit';
 import { type BotDifficulty, DEFAULT_DIFFICULTY } from '@/game/ai/Difficulty';
 import BotBrain from '@/game/ai/BotBrain';
-import { BOT_SHOP_INTERVAL_MS, botShopTick } from '@/game/ai/BotShopper';
+import { BOT_SHOP_INTERVAL_MS, botShopTick, rebuildBotBag } from '@/game/ai/BotShopper';
 import type { ShopHost } from '@/game/economy/ItemShop';
 
 /** `avatar` is a pack's own asset key — see `ChampionPresetData.avatar`'s doc comment. */
@@ -182,11 +182,9 @@ export default class AIChampion extends Champion {
    * Filling the six slots was supposed to starve the shopper, and only does
    * until the bot sells something or a slot frees up.
    *
-   * The host is read off `game` structurally, the way `BotBrain.retreatPoint`
-   * reads the turrets it retreats to: `GameObjectRuntimeContext` is the
-   * surface a *game object* needs and deliberately does not carry the match's
-   * structures. One small object every two seconds, against a cast that would
-   * have to be `as unknown as`.
+   * The host comes from `shopHost`, which is also what a re-roll's rebuild
+   * trades against — one small object every two seconds, against a cast that
+   * would have to be `as unknown as`.
    */
   updateShopping(): void {
     if (!this._autoBuy) return;
@@ -194,8 +192,34 @@ export default class AIChampion extends Champion {
     if (this._shopCooldown > 0) return;
     this._shopCooldown = BOT_SHOP_INTERVAL_MS;
 
-    const { fountains = [] } = this.game as { fountains?: ShopHost['fountains'] };
-    botShopTick(this, { fountains }, { difficulty: this._difficulty, rng: this.brain.rng });
+    botShopTick(this, this.shopHost(), this.shopOptions());
+  }
+
+  /**
+   * The shop this bot trades at, read off `game` structurally — the way
+   * `BotBrain.retreatPoint` reads the turrets it retreats to.
+   * `GameObjectRuntimeContext` is the surface a *game object* needs and
+   * deliberately does not carry the match's structures or its economy.
+   *
+   * `sellRefund` belongs here as much as the fountains do. It is the map's own
+   * `EconomyTuning.sellRefund` and it was missing, so `bestBotSwap` priced
+   * every refund at `SELL_REFUND_FRACTION` while `sellItem` paid whatever the
+   * map said — on a map that refunds less than the default the bot sold, found
+   * it could no longer afford the thing it sold *for*, and was left down a
+   * slot, which is the one outcome that function's own header promises cannot
+   * happen.
+   */
+  private shopHost(): ShopHost {
+    const { fountains = [], sellRefund } = this.game as {
+      fountains?: ShopHost['fountains'];
+      sellRefund?: number;
+    };
+    return { fountains, sellRefund };
+  }
+
+  /** How this bot ranks a shelf — its tier's jitter, off its own rng. */
+  private shopOptions() {
+    return { difficulty: this._difficulty, rng: this.brain.rng };
   }
 
   /**
@@ -355,9 +379,28 @@ export default class AIChampion extends Champion {
     super.respawn();
     // Both gates: the owner has to want re-rolling at all, and the mechanism
     // has to be armed. See `_autoReroll` for why they are two fields.
-    if (this._autoReroll && this._respawnWithNewPreset) {
-      this.applyPreset(this.presetFactory());
-    }
+    if (!this._autoReroll || !this._respawnWithNewPreset) return;
+
+    // Read before the swap, and `championId ?? name` rather than either alone:
+    // a pack's playable champion carries an id, a hand-built custom kit
+    // carries only a name, and both are things a bag can be right or wrong
+    // for.
+    const before = this.championId ?? this.name;
+    this.applyPreset(this.presetFactory());
+
+    // The bag was bought for the champion that just went away. Left alone it
+    // is a build for a kit nobody is holding, and the only thing that could
+    // fix it was a 30%-refund swap per slot, every death — see
+    // `ai/BotShopper.rebuildBotBag` for what that did to a bot's gold over a
+    // match. Gated on `_autoBuy` with the rest of the shopping: that switch
+    // means "leave this bag where I put it", and re-rolling into a new
+    // champion must not be the one thing that overrules it.
+    if (!this._autoBuy) return;
+    // A roll that landed on the same champion is not a re-roll. Handing the
+    // build back and buying it again would be free, but it would also be
+    // churn — and the rebuild is a whole catalogue scan per purchase.
+    if ((this.championId ?? this.name) === before) return;
+    rebuildBotBag(this, this.shopHost(), this.shopOptions());
   }
 
   /**
