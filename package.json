@@ -125,6 +125,7 @@
     "e2e:bots": "node tests/e2e/drive-bot-discipline.mjs",
     "e2e:render": "node tests/e2e/verify-render-guard.mjs",
     "e2e:frame-cost": "node tests/e2e/measure-frame-cost.mjs",
+    "perf:scan": "node scripts/perf-scan.mjs",
     "e2e:sim-clock": "node tests/e2e/measure-sim-clock.mjs",
     "e2e:update": "node tests/e2e/verify-update-guard.mjs",
     "e2e:crash-report": "node tests/e2e/verify-global-error-overlay.mjs",
