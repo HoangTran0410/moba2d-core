@@ -1,0 +1,153 @@
+#!/usr/bin/env node
+/**
+ * The thing that runs before you push a spell, so a frame-eater never lands.
+ *
+ *   moba2d-perf-guard                 # spells changed against upstream
+ *   moba2d-perf-guard --static-only   # skip the browser, ~1s
+ *   moba2d-perf-guard --strict        # a static finding fails too
+ *   MOBA2D_PERF_GUARD_SKIP=1 git push # the escape hatch, for when you mean it
+ *
+ * Installed as a `pre-push` hook by `scripts/install-perf-hook.mjs`, in a pack
+ * repository as well as in core — the packs are separate repositories and a
+ * spell can be pushed from any of them.
+ *
+ * ## Two passes, because they answer different questions
+ *
+ * **Static** (`perf-scan.mjs`) reads the shape and costs a second. It knows an
+ * effect *looks* expensive: a hand-rolled particle array, a body of two hundred
+ * primitives, a composite-op switch paid per wearer. It cannot know how many of
+ * them are ever alive at once.
+ *
+ * **Dynamic** (`tests/e2e/measure-spell-cost.mjs`) casts the ability in a real
+ * match until the board is full of it and measures the frame. It answers the
+ * only question that decides a teamfight — *microseconds per live instance per
+ * frame* — and it is the one that can fail a push.
+ *
+ * They disagree usefully, which is why both are here. A summoned pet reads as
+ * the third-heaviest body in three packs and measures fine, because there is
+ * only ever one of it. An effect that reads as ordinary measures over budget
+ * because a wave-clear puts fifty on screen. Neither pass alone would have said
+ * so.
+ *
+ * The dynamic pass needs core's dev checkout (Vite, Playwright, a browser). A
+ * pack that has one — every linked development checkout does — gets both; a
+ * pack that does not is told, and gets the static pass rather than nothing.
+ */
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { scanSource } from './perf-scan.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CORE = resolve(HERE, '..');
+
+const argv = process.argv.slice(2);
+const has = name => argv.includes(`--${name}`);
+const valueOf = (name, fallback) => {
+  const at = argv.indexOf(`--${name}`);
+  return at === -1 ? fallback : argv[at + 1];
+};
+
+if (process.env.MOBA2D_PERF_GUARD_SKIP) {
+  console.log('perf-guard: skipped (MOBA2D_PERF_GUARD_SKIP)');
+  process.exit(0);
+}
+
+const repo = resolve(valueOf('repo', process.cwd()));
+// `stderr: 'pipe'` so a probe that is *expected* to fail (no upstream yet) does
+// not print git's own fatal above our own explanation of it.
+const git = (...a) =>
+  execFileSync('git', a, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+/**
+ * What this push is actually adding.
+ *
+ * Against the upstream branch when there is one, else the last commit — a
+ * branch that has never been pushed has no upstream, and "everything since the
+ * beginning of the repository" is not a useful answer at 4am.
+ */
+let range;
+try {
+  git('rev-parse', '--abbrev-ref', '@{u}');
+  range = '@{u}...HEAD';
+} catch {
+  range = 'HEAD~1..HEAD';
+}
+
+let changed = [];
+try {
+  changed = git('diff', '--name-only', range).split('\n').filter(Boolean);
+} catch {
+  console.log('perf-guard: no comparable history, nothing to check');
+  process.exit(0);
+}
+
+/** A spell file in any pack, or core's own drawable game objects. */
+const isSpellish = file =>
+  /\.ts$/.test(file) &&
+  !/\.test\.ts$/.test(file) &&
+  (/(^|\/)spells\//.test(file) || /^src\/game\/gameObject\//.test(file));
+
+const touched = changed.filter(isSpellish).filter(file => existsSync(join(repo, file)));
+if (touched.length === 0) {
+  console.log('perf-guard: no spell files in this push');
+  process.exit(0);
+}
+
+console.log(`\nperf-guard: ${touched.length} spell file(s) in this push\n`);
+
+// ---------------------------------------------------------------- static pass
+let staticFindings = 0;
+for (const file of touched) {
+  const findings = scanSource(readFileSync(join(repo, file), 'utf8'));
+  if (findings.length === 0) continue;
+  staticFindings += findings.length;
+  console.log(`  ${file}`);
+  for (const finding of findings.sort((a, b) => b.weight - a.weight)) {
+    console.log(`    [${finding.rule}] ${finding.note}`);
+  }
+}
+console.log(
+  staticFindings === 0
+    ? '  static: clean\n'
+    : `  static: ${staticFindings} finding(s) — see npm run perf:scan for the rules\n`
+);
+
+// --------------------------------------------------------------- dynamic pass
+const MAX_SPELLS = Number(valueOf('max-spells', 6));
+const spells = [...new Set(touched.map(f => basename(f, '.ts')))]
+  .filter(name => /^[A-Za-z][\w]*_[A-Za-z0-9]+$/.test(name))
+  .slice(0, MAX_SPELLS);
+
+const driver = join(CORE, 'tests/e2e/measure-spell-cost.mjs');
+const canMeasure = existsSync(driver) && existsSync(join(CORE, 'node_modules/playwright'));
+
+if (has('static-only') || spells.length === 0 || !canMeasure) {
+  if (!canMeasure && !has('static-only') && spells.length > 0) {
+    // A published core ships `src` and these scripts but not `tests/`, and a
+    // pack's own `node_modules` has no browser — so this is the ordinary case
+    // outside a development workspace, not a misconfiguration to shout about.
+    console.log(
+      '  dynamic: skipped — no core dev checkout with Playwright beside this repo.\n' +
+        `  From a core checkout:  npm run perf:spell -- ${spells.join(' ')}\n`
+    );
+  }
+  process.exit(has('strict') && staticFindings > 0 ? 1 : 0);
+}
+
+console.log(`  dynamic: casting ${spells.join(', ')} — this takes about a minute\n`);
+const run = spawnSync(
+  process.execPath,
+  [driver, ...spells, '--budget', String(valueOf('budget', 150))],
+  { cwd: CORE, stdio: 'inherit' }
+);
+
+if (run.status !== 0) {
+  console.error(
+    '\nperf-guard: refused. Push again with MOBA2D_PERF_GUARD_SKIP=1 if this is\n' +
+      'a cost you have decided to pay.\n'
+  );
+  process.exit(1);
+}
+process.exit(has('strict') && staticFindings > 0 ? 1 : 0);

@@ -258,7 +258,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly eleven bins, the eight below plus the three a pack no longer copies', () => {
+  it('declares exactly thirteen bins, the eight below plus the five a pack no longer copies', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -275,6 +275,15 @@ describe('package.json public surface', () => {
     expect(bin).toBeDefined();
     expect(bin).toEqual({
       'moba2d-check-seams': './scripts/check-seams.mjs',
+      // Thirteen, not eleven. A pack is its own repository and a spell is
+      // pushed from it, so the two halves of the performance guard have to be
+      // reachable from inside one: `moba2d-perf-scan` reads the shapes that
+      // have cost this game a frame, and `moba2d-perf-guard` is what a
+      // `pre-push` hook runs over the spell files a push is adding. Both are
+      // in `files` beside these entries; the dynamic half lives in `tests/`,
+      // is not shipped, and the guard says so rather than failing without one.
+      'moba2d-perf-scan': './scripts/perf-scan.mjs',
+      'moba2d-perf-guard': './scripts/perf-guard.mjs',
       'moba2d-generate-spell-catalog': './scripts/generate-spell-catalog.mjs',
       'moba2d-pack-new': './scripts/pack-new.mjs',
       'moba2d-pack-add': './scripts/pack-add.mjs',
