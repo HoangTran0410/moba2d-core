@@ -91,6 +91,52 @@ describe('perf-scan', () => {
       expect(found?.weight).toBeGreaterThan(100);
     });
 
+    it('follows the cost into a helper the draw calls', () => {
+      // The gap that mattered most: three of the game's heaviest abilities put
+      // their real cost one call below `draw()` and scanned as *zero findings*.
+      const offender = `
+        const PANELS = 10;
+        class Cage extends SpellObject {
+          draw() { for (let i = 0; i < PANELS; i++) this._drawPanel(i); }
+          _drawPanel(i) {
+            fill(1,2,3); rect(i,0,4,4); stroke(9); line(0,0,1,1);
+            fill(4,5,6); circle(i,1,2); noStroke(); rect(0,0,2,2);
+          }
+        }`;
+      const found = scanSource(offender).find((f: { rule: string }) => f.rule === 'heavy-draw');
+      expect(found?.weight, 'the helper was not costed').toBeGreaterThan(60);
+    });
+
+    it('resolves a loop bound written as a lowercase local', () => {
+      // `const links = 24` inside a method read as one pass, so a 24-point
+      // chain scanned as a single call.
+      const offender = `class Box extends SpellObject {
+        draw() {
+          const links = 40;
+          for (let i = 0; i < links; i++) { fill(1,2,3); vertex(i, i); }
+        }
+      }`;
+      const found = scanSource(offender).find((f: { rule: string }) => f.rule === 'heavy-draw');
+      expect(found?.weight).toBeGreaterThan(60);
+    });
+
+    it('charges a helper called twice, and survives one that calls itself', () => {
+      const twice = `class A extends SpellObject {
+        draw() { this._leaf(); this._leaf(); }
+        _leaf() { for (let i = 0; i < 20; i++) { fill(1); circle(i,i,2); } }
+      }`;
+      const found = scanSource(twice).find((f: { rule: string }) => f.rule === 'heavy-draw');
+      expect(found?.weight).toBeGreaterThan(70);
+
+      // A cycle must terminate rather than hang the tool.
+      const cyclic = `class B extends SpellObject {
+        draw() { this._a(); }
+        _a() { fill(1); circle(0,0,1); this._b(); }
+        _b() { fill(2); circle(1,1,1); this._a(); }
+      }`;
+      expect(() => scanSource(cyclic)).not.toThrow();
+    });
+
     it('leaves a body that draws a handful of shapes alone', () => {
       const fine = `class Bolt extends SpellObject {
         draw() { fill(1,2,3); circle(0,0,8); stroke(4); line(0,0,1,1); }

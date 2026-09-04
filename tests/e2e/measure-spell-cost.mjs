@@ -62,6 +62,21 @@ const DELTA_BUDGET_MS = flag('delta-budget', 3);
 const MIN_INSTANCES = 3;
 const THROTTLE = flag('throttle', 4);
 const WINDOW_MS = flag('window', 4000);
+/**
+ * Which render quality to measure under.
+ *
+ * `auto` is what a desktop plays at and what the numbers above mean. `low`
+ * turns on `ObjectManager.draw`'s particle ration, which is the *only* thing a
+ * `ParticleSystem` conversion buys: converting a hand-rolled array does not
+ * make it cheaper at full quality, it makes it **rationable** — so a conversion
+ * has to be checked here or the claim is unproven. (It also compacts unit
+ * bodies, so read a `low` number as "with the whole stress path on", not as the
+ * particle budget alone.)
+ */
+const QUALITY = (() => {
+  const at = process.argv.indexOf('--quality');
+  return at === -1 ? null : process.argv[at + 1];
+})();
 
 /**
  * `lol/spells/Annie_R.ts`, `Annie_R`, `Annie_R.ts` — all the same ability.
@@ -145,9 +160,10 @@ try {
     const championName =
       championOf.get(spellName) ?? spellName.slice(0, spellName.lastIndexOf('_'));
     const measured = await page.evaluate(
-      async ([spellName, championName, windowMs]) => {
+      async ([spellName, championName, windowMs, quality]) => {
         const game = window.__moba2d.scene.oScene.game;
         const settle = ms => new Promise(r => setTimeout(r, ms));
+        if (quality) game.renderQuality = quality;
 
         // An empty arena, so what is on screen is this ability and nothing else.
         const clear = () => {
@@ -286,7 +302,7 @@ try {
           instances: during.instances,
         };
       },
-      [spellName, championName, WINDOW_MS]
+      [spellName, championName, WINDOW_MS, QUALITY]
     );
 
     if (measured.skipped) {

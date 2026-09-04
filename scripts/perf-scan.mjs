@@ -40,6 +40,10 @@ const stripComments = source =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const walk = (dir, out = []) => {
+  // A path may be one file — the push guard hands over changed files, and a
+  // reader debugging one spell types its path. `readdirSync` on a file throws
+  // ENOTDIR, which is a stack trace where an answer was wanted.
+  if (statSync(dir).isFile()) return /\.ts$/.test(dir) ? [dir] : [];
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === 'dist' || name === 'generated') continue;
     const full = join(dir, name);
@@ -145,13 +149,80 @@ const outermostLoops = (body, consts) => {
   );
 };
 
-/** Module-level `const NAME = 14`, so a loop bound written as a name still counts. */
+/**
+ * Every `const name = 14` in the file, so a loop bound written as a name counts.
+ *
+ * Case-insensitive and not restricted to module scope, which it used to be: an
+ * ability hid a 24-point chain behind `const links = 24;` *inside* the method,
+ * and the scan counted that loop as one pass. A lowercase local is the ordinary
+ * way to write a loop bound and was exactly the shape being missed.
+ */
 const constsOf = text => {
   const map = new Map();
-  for (const m of text.matchAll(/(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=\s*(\d+)\s*[;,\n]/g)) {
+  for (const m of text.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(\d+)\s*[;,\n)]/g)) {
     map.set(m[1], Number(m[2]));
   }
   return map;
+};
+
+/** Names that look like a call but are the language, not a function. */
+const KEYWORDS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'function', 'constructor',
+  'typeof', 'new', 'await', 'super', 'do', 'else',
+]);
+
+/**
+ * Every named body in a file — methods, functions, arrow consts — so cost can
+ * be followed out of `draw()` and into whatever it calls.
+ *
+ * This is the gap that mattered most. `heavy-draw` counted the primitives it
+ * could see *inside* `draw()` and stopped there, and the three most expensive
+ * abilities in the game all put their real cost one call further down: a
+ * `_drawWall()` helper invoked ten times a frame, a `drawIreliaBlade()` imported
+ * from a sibling spell and fanned across twenty-six blades, a `drawCrescent()`
+ * of fourteen segments fanned across nine ribs. All three scanned as **zero
+ * findings** and were only in the worklist because an unrelated rule happened
+ * to catch them.
+ */
+const namedBodies = text => {
+  const bodies = new Map();
+  const patterns = [
+    // `name(...) {` at the head of a line: a class method.
+    /(?:^|\n)[ \t]*(?:public |private |protected |override |static |async )*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{;]+)?\{/g,
+    /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=]+)?=>\s*\{/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const name = match[1];
+      if (KEYWORDS.has(name) || bodies.has(name)) continue;
+      const block = braceBody(text, match.index + match[0].length - 1);
+      if (block) bodies.set(name, block.body);
+    }
+  }
+  return bodies;
+};
+
+/**
+ * The same, plus every sibling file this one imports a helper from.
+ *
+ * Spells share drawing helpers with each other — a champion's ultimate borrows
+ * the crescent its Q defines — and a scan that stops at the file boundary
+ * cannot see the fourteen-segment loop it is fanning nine times. Relative
+ * imports only, one level deep: enough for the shape packs actually use, and it
+ * cannot wander into `node_modules` looking for `p5`.
+ */
+const reachableBodies = (text, file) => {
+  const bodies = namedBodies(text);
+  for (const imp of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](\.[^'"]*)['"]/g)) {
+    const sibling = resolve(dirname(file), imp[2].endsWith('.ts') ? imp[2] : `${imp[2]}.ts`);
+    if (!existsSync(sibling)) continue;
+    const siblingBodies = namedBodies(stripComments(readFileSync(sibling, 'utf8')));
+    for (const name of imp[1].split(',').map(n => n.trim().split(/\s+as\s+/).pop())) {
+      if (siblingBodies.has(name) && !bodies.has(name)) bodies.set(name, siblingBodies.get(name));
+    }
+  }
+  return bodies;
 };
 
 /** p5 calls that put pixels on the canvas, as opposed to setting state. */
@@ -166,7 +237,7 @@ const countCalls = (text, pattern) => (text.match(pattern) ?? []).length;
  * Unknown trip counts count once — an underestimate on purpose, so a finding
  * is never an artefact of a guess.
  */
-const primitiveCost = (body, consts) => {
+const primitiveCost = (body, consts, bodies = new Map(), seen = new Set()) => {
   let direct = countCalls(body, PAINTS) + countCalls(body, STATE);
   let looped = 0;
   for (const loop of outermostLoops(body, consts)) {
@@ -175,9 +246,31 @@ const primitiveCost = (body, consts) => {
     // loop *multiplies*, and adding the two was the bug that made a 112-call
     // ring read as 34.
     direct -= countCalls(loop.body, PAINTS) + countCalls(loop.body, STATE);
-    looped += (loop.trips ?? 1) * primitiveCost(loop.body, consts);
+    direct -= calledCost(loop.body, consts, bodies, seen);
+    looped += (loop.trips ?? 1) * primitiveCost(loop.body, consts, bodies, seen);
   }
-  return direct + looped;
+  return direct + looped + calledCost(body, consts, bodies, seen);
+};
+
+/**
+ * What this body spends inside the helpers it calls.
+ *
+ * `seen` is per-branch and put back afterwards, so two sister calls to the same
+ * helper are both charged while a helper that reaches itself is charged once —
+ * a cycle here would be an infinite loop in a tool whose whole promise is that
+ * it costs a second.
+ */
+const calledCost = (body, consts, bodies, seen) => {
+  if (bodies.size === 0) return 0;
+  let total = 0;
+  for (const call of body.matchAll(/(?:this\.)?\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const name = call[1];
+    if (!bodies.has(name) || seen.has(name) || KEYWORDS.has(name)) continue;
+    seen.add(name);
+    total += primitiveCost(bodies.get(name), consts, bodies, seen);
+    seen.delete(name);
+  }
+  return total;
 };
 
 export const RULES = [
@@ -222,11 +315,11 @@ export const RULES = [
       'the cost. One pet at ~200 primitives a frame measured 388us a call and ' +
       '2.1% of CPU on its own. Cut the count, or bake the static half the way ' +
       'Fountain.bakeArt does.',
-    find: ({ methods, consts }) => {
+    find: ({ methods, consts, bodies }) => {
       const out = [];
       for (const method of methods) {
         if (!/^draw/.test(method.name)) continue;
-        const cost = primitiveCost(method.body, consts);
+        const cost = primitiveCost(method.body, consts, bodies, new Set([method.name]));
         if (cost >= 60) out.push({ note: `${method.name}() is ~${cost} p5 calls per frame`, weight: cost });
       }
       return out;
@@ -316,12 +409,13 @@ export const RULES = [
  * whose whole point is to be the mistake, which is the only way a scanner
  * stays honest about what it catches.
  */
-export function scanSource(source) {
+export function scanSource(source, file = null) {
   const text = stripComments(source);
   const consts = constsOf(text);
   const methods = methodsOf(text);
   if (methods.length === 0) return [];
-  const context = { text, methods, consts };
+  const bodies = file ? reachableBodies(text, file) : namedBodies(text);
+  const context = { text, methods, consts, bodies };
   const out = [];
   for (const rule of RULES) {
     for (const found of rule.find(context)) {
@@ -337,7 +431,7 @@ export function scanTree(root, labelFrom = resolve(CORE, '..')) {
   const out = [];
   if (!existsSync(root)) return out;
   for (const file of walk(root)) {
-    for (const finding of scanSource(readFileSync(file, 'utf8'))) {
+    for (const finding of scanSource(readFileSync(file, 'utf8'), file)) {
       out.push({ ...finding, file: relative(labelFrom, file) });
     }
   }
