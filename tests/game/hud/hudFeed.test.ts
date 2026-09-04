@@ -232,6 +232,37 @@ describe('HudState.feed', () => {
     expect(state.feed.rows.map(row => row.victims[0].name)).toEqual(['E5', 'E4', 'E3']);
   });
 
+  it('keeps a run that is still growing over three fresher single kills', () => {
+    const events = new EventManager();
+    let clock = 1_000;
+    const announcer = new MatchAnnouncer(events, () => clock);
+    announcer.attach();
+    const player = fakePlayer('BLUE');
+    const allies = ['A1', 'A2', 'A3'].map(
+      name => ({ ...fakeEnemy(name), teamId: 'BLUE' }) as unknown as AttackableUnit
+    );
+
+    // The player opens a run, three allies each take a kill after it, and then
+    // the player adds to their run. Sliced by the kill that *opened* each row,
+    // the player's run — the newest thing on the feed — was the row dropped,
+    // and it came back with the drop animation the moment an ally's aged out.
+    events.emit(EventType.ON_DIE, { unit: fakeEnemy('E1'), killer: player, credit: 'champion' });
+    allies.forEach((killer, i) => {
+      clock += 100;
+      events.emit(EventType.ON_DIE, { unit: fakeEnemy(`E${i + 2}`), killer, credit: 'champion' });
+    });
+    clock += 100;
+    events.emit(EventType.ON_DIE, { unit: fakeEnemy('E5'), killer: player, credit: 'champion' });
+
+    const state = computeHudState({ player, announcer, matchTimeMs: clock } as any)!;
+    expect(state.feed.rows).toHaveLength(3);
+    const mine = state.feed.rows.find(row => row.mine)!;
+    expect(mine.victims.map(v => v.name)).toEqual(['E5', 'E1']);
+    // Still drawn where it opened, under the two allies who killed after it:
+    // choosing a row on recency must not also reorder the stack every kill.
+    expect(state.feed.rows.map(row => row.killer!.name)).toEqual(['A3', 'A2', 'Me']);
+  });
+
   it('counts the run past five faces instead of drawing them', () => {
     const events = new EventManager();
     const announcer = new MatchAnnouncer(events, () => 1_000);

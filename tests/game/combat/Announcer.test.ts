@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import EventManager from '../../../src/managers/EventManager';
 import EventType from '../../../src/game/enums/EventType';
 import MatchAnnouncer, {
+  BANNER_MIN_HOLD_MS,
   BANNER_TTL_MS,
   FEED_ROWS,
   FEED_TTL_MS,
@@ -163,6 +164,40 @@ describe('MatchAnnouncer', () => {
     expect(announcer.banner(now, vera)?.killerUnit).toBe(vera);
     now += BANNER_TTL_MS + 1;
     expect(announcer.banner(now, vera)).toBeNull();
+  });
+
+  it('holds the loudest moment, not the newest one', () => {
+    // Three kills inside a second is an ordinary exchange in a 1v10 practice
+    // fight, and the banner used to be whichever landed last: the Double Kill
+    // was overwritten by a stranger's first blood a beat later.
+    kill(vera, bot);
+    now += 200;
+    kill(vera, other); // Vera's Double Kill — the loudest thing on the screen
+    now += 200;
+    kill(unit('Ally', 'BLUE'), unit('Third', 'RED')); // someone else's kill, still a moment
+    expect(announcer.banner(now, vera)?.multi).toBe(2);
+  });
+
+  it('makes an equal moment wait its turn before taking the centre', () => {
+    const ally = unit('Ally', 'BLUE');
+    kill(ally, bot); // first blood — the whole screen's moment
+    now += BANNER_MIN_HOLD_MS - 100;
+    kill(ally, unit('Second', 'RED'));
+    // Still the first one: the second is no louder and the first has not had
+    // its moment yet. This is the flicker — a banner replaced before it has
+    // finished arriving — and it is the only thing the hold exists to stop.
+    expect(announcer.banner(now, vera)?.firstBlood).toBe(true);
+
+    now += 200; // now past the hold, measured between the two kills
+    kill(ally, unit('Third', 'RED'));
+    expect(announcer.banner(now, vera)?.firstBlood).toBe(false);
+  });
+
+  it('lets the player\'s own kill through against a stranger\'s', () => {
+    const ally = unit('Ally', 'BLUE');
+    kill(vera, bot); // yours: quiet, but yours
+    kill(ally, other); // a stranger's, at the same instant
+    expect(announcer.banner(now, vera)?.killerUnit).toBe(vera);
   });
 
   it('receives a host announcement on its own clock', () => {

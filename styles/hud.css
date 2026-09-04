@@ -2464,10 +2464,10 @@ body.touch-ui .corner-btn {
   opacity: 1;
 }
 
-/* collapsed: just the killer headline, out of the fight's way */
+/* collapsed: just the killer headline, out of the fight's way. Fainter, and
+   nothing else — the width is the panel's in every state, on purpose. See the
+   second `.collapsed` rule further down for what shrinking cost. */
 .death-recap.collapsed {
-  width: auto;
-  max-width: min(340px, 86vw);
   opacity: 0.72;
 }
 
@@ -2481,6 +2481,38 @@ body.touch-ui .corner-btn {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+/* The live half — the countdown and whose eyes the player is borrowing — on
+   its own line, above the headline.
+
+   Above, not beside, for two reasons that happen to be the same reason. Beside,
+   it was a fourth thing on a row a phone had no room for, and the killer's name
+   was what gave way. And it is the half that *goes* at respawn: the panel is
+   anchored to the bottom of the screen and grows upward, so whatever is on the
+   last line stays where it is when a line above it disappears — which is the
+   whole trick, and the reason the buttons are down there and not up here. */
+.death-recap-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+/* Pushed to the right edge rather than left where the countdown leaves it: the
+   countdown is a number that changes width (`10s` is not `9s`, and no amount of
+   tabular figures makes it one), and this is a button. A button that moves
+   because a clock ticked is the bug this whole pass is about. */
+.death-recap-live .death-recap-spectate {
+  margin-left: auto;
+}
+
+/* Both buttons in one box, so the row's last item is always the same item. */
+.death-recap-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* The countdown, and with it the ally control, live in this header on both
@@ -2531,7 +2563,15 @@ body.touch-ui .corner-btn {
   opacity: 0.65;
 }
 
+/* The one thing on its row that may be any length, so it is the one that
+   gives: an ellipsis on a long killer's name, rather than a headline shoving
+   the buttons off the right edge of a phone. */
 .death-recap-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
 }
 
@@ -2895,6 +2935,20 @@ button.practice-roster-item {
 }
 
 .kill-feed {
+  /* One row's box and the air under it, in one place, because the reserved
+     height below is arithmetic on them and a row that grew past its number
+     would put the jump back. `.kill-feed-row` is pinned to `--feed-row-h`:
+     26px of face, 3px of padding and a 1px border on each side. */
+  --feed-row-h: 34px;
+  --feed-gap: 5px;
+  /* Room for the whole stack whether or not the stack is there.
+     `.kill-banner` sits at `top: 100%` of the column this closes, so every row
+     entering or ageing out used to move the banner ~39px with no transition to
+     soften it — the loudest thing on screen teleporting, several times a
+     second, in exactly the fight that makes several callouts a second. A
+     reserved floor is the same trade `--recap-bottom` makes further down: the
+     banner must not move because a kill landed behind it. */
+  min-height: calc(3 * var(--feed-row-h) + 2 * var(--feed-gap));
   position: relative;
   margin: 0;
   padding: 0;
@@ -2902,12 +2956,21 @@ button.practice-roster-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--feed-gap);
 }
 
 .kill-feed-row {
   --feed-edge: #ffffff26;
   --feed-glow: transparent;
+  /* The fade arrives as a custom property rather than as `style="opacity"`,
+     because an inline declaration outranks every class in this file: the
+     `.kill-feed-leave-to` rule below was dead, and a row evicted while still
+     at full opacity left an *opaque* ghost behind instead of a fading one. */
+  opacity: var(--row-fade, 1);
+  /* Pinned, so the reserved height above is exact. Every row is one nowrap
+     line, so there is nothing here a fixed height can clip. */
+  box-sizing: border-box;
+  height: var(--feed-row-h);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2935,14 +2998,12 @@ button.practice-roster-item {
   transition: opacity 0.2s linear;
 }
 
-/* The stack is the whole occlusion budget: three rows on a monitor, two on a
-   phone. A row is a whole multi-kill now (`hud/killFeedGroups.ts`), so this is
-   a backstop against a chaotic teamfight rather than the thing a penta ran
-   into — five kills by one champion is one row and hits it no sooner than
-   five kills by five champions does. */
-.kill-feed-row:nth-child(n + 4) {
-  display: none;
-}
+/* The stack's own cap — three rows on a monitor, two on a phone — is applied
+   in `KillFeed.vue` and deliberately not here. `nth-child` counts the rows on
+   their way *out* as well as the ones on screen, so one ghost at the head of
+   the list pushed a live row past the cap and `display: none` blanked it for
+   the length of a fade: a callout vanishing and coming back, which is the
+   opposite of what an occlusion budget is for. */
 
 /* The faces of everyone a run took down, oldest on the left. Its own flex row
    so the new face animates inside it without the badges beside it shifting.
@@ -3280,14 +3341,40 @@ button.practice-roster-item {
   animation: kill-banner-pop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
-/* Nothing to reposition: `.kill-banner` is already out of flow, so a leaving
-   banner and the one replacing it share one place and simply cross-fade. */
+/* The pop, for a banner that never left.
+ *
+ * `KillFeed.vue` keeps one element mounted for the whole fight and rewrites
+ * its words, because two banners are absolutely positioned at the same spot
+ * and 40px of gradient type over 40px of gradient type is unreadable — the
+ * stacking this whole pass is about. What that costs is the arrival: a
+ * rewrite is not an enter, and CSS will not replay an animation whose name is
+ * already on the element. So there are two of them, identical, and the
+ * component alternates the class. That is the entire trick.
+ *
+ * More specific than `.kill-banner-enter-active`, and the same animation, so
+ * a banner arriving out of nothing looks exactly as it did. */
+.kill-banner.pop-0 {
+  animation: kill-banner-pop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.kill-banner.pop-1 {
+  animation: kill-banner-pop-alt 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+/* Nothing to reposition: `.kill-banner` is already out of flow. Short, and
+   shrinking as it goes, because `mode="out-in"` spends this whole duration
+   with nothing on screen — and in a fight that keeps making moments, the next
+   one is already waiting on it. */
 .kill-banner-leave-active {
-  transition: opacity 0.25s ease;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .kill-banner-leave-to {
   opacity: 0;
+  /* Carries the centring translate, for the reason the keyframes below do. */
+  transform: translateX(-50%) scale(0.94);
 }
 
 /* Both frames carry the centring translate: the banner is absolute now, so an
@@ -3304,24 +3391,44 @@ button.practice-roster-item {
   }
 }
 
+/* The same frames under a second name. See `.kill-banner.pop-1`. */
+@keyframes kill-banner-pop-alt {
+  from {
+    transform: translateX(-50%) scale(1.45);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
 body.touch-ui .kill-callouts {
   top: 36px;
   gap: 6px;
 }
 
+/* Two rows of a 390px-tall screen, and no more; 22px of face, 2px of padding
+   and a 1px border make the row.
+
+   But only *one* of them is reserved, unlike the desktop block above, and the
+   arithmetic is why. `drive-kill-feed.mjs` holds the banner to the top 40% of
+   the screen so the fight stays visible under it, which on a 390px-tall phone
+   is 156px. The Legendary banner is 63px tall and hangs 12px under this box,
+   which starts 36px down: one row reserved puts its foot at 139px, two puts it
+   at 171px. So the phone buys back the 0↔1 change — which is most of them,
+   since a phone's feed spends most of a fight empty or holding one row — and
+   keeps the fight. A desktop has the room and reserves the lot. */
 body.touch-ui .kill-feed {
-  gap: 4px;
+  --feed-row-h: 28px;
+  --feed-gap: 4px;
+  min-height: var(--feed-row-h);
 }
 
 body.touch-ui .kill-feed-row {
   font-size: 11px;
   padding: 2px 8px;
   gap: 5px;
-}
-
-/* Two rows of a 390px-tall screen, and no more. */
-body.touch-ui .kill-feed-row:nth-child(n + 3) {
-  display: none;
 }
 
 /* Five 22px faces plus their gaps is 122px — the reason the names go when a
@@ -3391,12 +3498,13 @@ body.touch-ui {
    spectate bar. The panel opts in the way `.practice-panel` and the two beside
    it do — this file has no global reset. */
 /* Collapsed, it *is* the revive bar: one row on the bottom edge that opens
-   upward. `width: auto` so it shrinks to its own content rather than holding
-   the open panel's width while shut. */
-.death-recap.collapsed {
-  width: auto;
-  max-width: min(460px, 92vw);
-}
+   upward. It shrank to its own content for a while, which read well standing
+   still and badly in use: the panel is centred, so a bar that resizes when the
+   countdown and the ally control go at respawn *re-centres*, and both buttons
+   slide out from under a thumb already on its way to one of them. One width in
+   every state — collapsed, open, dead, alive — is worth more here than the
+   pixels it gives back, because this is the only panel a player reaches for
+   while something else is happening. */
 
 /* `SpectateBar` is the same three facts, for the case this panel is not on
    screen — dismissed, or a layout where it has never owned the bottom edge.

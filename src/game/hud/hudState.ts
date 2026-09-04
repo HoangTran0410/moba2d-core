@@ -839,9 +839,21 @@ function buildFeed(game: any, player: any): FeedDisplay {
   // `buffered` rather than `recent` is what makes that possible — `recent`
   // caps at three kills, which is less than one penta.
   const groups = groupKillFeed(announcer.buffered(now));
-  const rows = groups
-    .filter(group => now - group.latestAtMs <= FEED_TTL_MS)
-    .slice(-FEED_ROWS)
+  const fresh = groups.filter(group => now - group.latestAtMs <= FEED_TTL_MS);
+  // Which rows survive the cap is decided on each run's *newest* kill, not on
+  // the kill that opened it. Sliced by opening order, a run still being added
+  // to — the player's, in a fight they are winning — was dropped in favour of
+  // three fresh single kills, then let straight back in with the drop
+  // animation the moment one of those aged out. A row that blinks out and
+  // returns is worse than a row that is one kill stale, and in a 1v10 it
+  // blinked several times a second.
+  //
+  // Kept in opening order all the same, which is what `reverse` below reads:
+  // choosing on recency and *drawing* on recency are different things, and
+  // the second would have every row swapping places as the fight went on.
+  const keep = new Set([...fresh].sort((a, b) => a.latestAtMs - b.latestAtMs).slice(-FEED_ROWS));
+  const rows = fresh
+    .filter(group => keep.has(group))
     .map(group => {
       ensureVisibleAsset(group.killerUnit?.avatar);
       // Newest first, capped: the face of whoever just died leads the row, and

@@ -63,6 +63,18 @@ export const FEED_BUFFER_TTL_MS = FEED_TTL_MS + MULTI_KILL_WINDOW_MS;
 export const FEED_BUFFER_ROWS = FEED_ROWS * 8;
 /** How long a banner holds the centre of the screen. */
 export const BANNER_TTL_MS = 2_200;
+/**
+ * The least time a banner keeps the centre before an *equally* loud one may
+ * take it from it.
+ *
+ * A 1v10 practice fight makes a moment every few hundred milliseconds, and the
+ * banner used to be whichever was newest: three kills inside a second were
+ * three banners, each replacing one that had not finished arriving. What that
+ * reads as on screen is a flicker, not a callout. A louder moment still wins
+ * the instant it lands — a Penta never waits behind a plain kill — so this
+ * only ever asks a tie to hold.
+ */
+export const BANNER_MIN_HOLD_MS = 700;
 /** A kill run reaching one of these lengths is worth a banner even when it is not yours — each is a new tier name. */
 export const STREAK_MILESTONES: readonly number[] = [3, 4, 5, 6, 7, 8];
 /** Ending a run at least this long is a shutdown. */
@@ -214,6 +226,31 @@ export function deservesBanner(
   return a.firstBlood || a.multi >= 3 || a.shutdown > 0 || STREAK_MILESTONES.includes(a.streak);
 }
 
+/**
+ * How loud a moment is, for choosing which one holds the centre while several
+ * are on screen at once.
+ *
+ * Only ever compared, never shown, so the numbers themselves mean nothing; the
+ * gaps between the bands are what matter, because they let a tier grow inside
+ * its own band (a Penta over a Double) without reaching the band above. Your
+ * own death sits over first blood and under a run: the recap says the same
+ * thing a moment later and says it better, so the banner is the half of that
+ * pair that can afford to lose.
+ */
+export function bannerPriority(
+  a: Announcement,
+  player: AttackableUnit | null | undefined
+): number {
+  if (a.objective) return 30;
+  let score = player && a.killerUnit === player ? 20 : 10;
+  if (a.firstBlood) score = Math.max(score, 40);
+  if (player && a.victimUnit === player) score = Math.max(score, 45);
+  if (a.shutdown > 0) score = Math.max(score, 50);
+  if (STREAK_MILESTONES.includes(a.streak)) score = Math.max(score, 60 + a.streak);
+  if (a.multi >= 2) score = Math.max(score, 80 + multiKillTier(a.multi));
+  return score;
+}
+
 /** What the banner says, from the player's side of it. */
 export function bannerText(a: Announcement, player: AttackableUnit | null | undefined): BannerText {
   const killer = a.killer?.name ?? 'Không rõ';
@@ -320,14 +357,30 @@ export default class MatchAnnouncer {
     return this.rows.slice();
   }
 
-  /** The newest announcement still young enough to hold the centre, if any deserves to. */
+  /**
+   * The moment holding the centre of the screen, if any is.
+   *
+   * The *loudest* one still young enough, not the newest: a Penta that has
+   * been up for half a second is not something the plain kill after it should
+   * be allowed to overwrite. Between two of equal weight the newer one wins,
+   * but only once `BANNER_MIN_HOLD_MS` has passed — which is measured between
+   * the two kills rather than against `nowMs`, so the answer depends on the
+   * rows alone and cannot change between two ticks of the same fight.
+   */
   banner(nowMs: number, player: AttackableUnit | null | undefined): Announcement | null {
-    for (let i = this.rows.length - 1; i >= 0; i--) {
-      const row = this.rows[i];
-      if (nowMs - row.atMs > BANNER_TTL_MS) return null;
-      if (deservesBanner(row, player)) return row;
+    let chosen: Announcement | null = null;
+    for (const row of this.rows) {
+      if (nowMs - row.atMs > BANNER_TTL_MS) continue;
+      if (!deservesBanner(row, player)) continue;
+      if (
+        !chosen ||
+        bannerPriority(row, player) > bannerPriority(chosen, player) ||
+        row.atMs - chosen.atMs >= BANNER_MIN_HOLD_MS
+      ) {
+        chosen = row;
+      }
     }
-    return null;
+    return chosen;
   }
 
   /** The killer's run so far — what a shutdown would end. Exposed for the scoreboard and tests. */

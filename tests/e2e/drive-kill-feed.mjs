@@ -227,7 +227,18 @@ await guard(async () => {
   // Five killers cannot share a row: which victim belongs to which killer is
   // the one thing a feed exists to say. What is checked is that they stack
   // rather than pile up, and that a single banner still holds the centre.
-  check('five killers make five separate one-victim rows', report.afterTeamfight.length >= 3);
+  //
+  // Two on this viewport, and exactly two: the phone's cap is applied in
+  // `KillFeed.vue` now rather than by a `display: none` at the foot of the
+  // stack, so the row it will not show is no longer in the DOM to be counted —
+  // this asked for three and got them, hidden. `nth-child` counted the rows
+  // *leaving* as well as the ones on screen, and one ghost at the head of the
+  // list pushed a live row past the cap and blanked it mid-fight.
+  check(
+    'five killers make five separate one-victim rows',
+    report.afterTeamfight.length === 2,
+    `${report.afterTeamfight.length} rows`
+  );
   check(
     'no teamfight row carries someone else’s victim',
     report.afterTeamfight.every(row => row.faces === 1)
@@ -356,6 +367,30 @@ await guard(async () => {
   const wasOpen = await page.evaluate(
     () => !document.querySelector('.death-recap').classList.contains('collapsed')
   );
+
+  // Nothing a thumb is already on its way to may move on its own. The
+  // countdown and the ally control go at respawn, and they used to share the
+  // headline's line with the two buttons — so both buttons slid left into the
+  // space, and the bar being `width: auto` and centred re-centred underneath
+  // them as well. What a player pressed was whatever had just taken the place
+  // of the thing they aimed at.
+  //
+  // They are on the line *above* now, and the panel grows upward from the
+  // bottom edge, so the line the buttons are on is the last one and keeps its
+  // distance from that edge whatever goes from above it.
+  const barGeometry = () =>
+    page.evaluate(() => {
+      const panel = document.querySelector('.death-recap');
+      const box = panel.getBoundingClientRect();
+      return {
+        panel: [Math.round(box.left), Math.round(box.right)],
+        buttons: [...panel.querySelectorAll('.death-recap-close')].map(button => {
+          const r = button.getBoundingClientRect();
+          return [Math.round(r.left), Math.round(r.top)];
+        }),
+      };
+    });
+  report.barWhileDead = await barGeometry();
   // The *real* respawn, not a forced one: setting `isDead` by hand skips the
   // transition in `die()` that bumps `deathRecap.seq`, so the second death
   // would never look like a new one. Found by this check reporting a pass it
@@ -363,6 +398,13 @@ await guard(async () => {
   await page.waitForFunction(() => !window.__moba2d.scene.oScene.game.player.isDead, null, {
     timeout: 30_000,
   });
+  await page.waitForTimeout(300);
+  report.barWhenAlive = await barGeometry();
+  check(
+    'nothing on the recap bar moves when the countdown goes at respawn',
+    JSON.stringify(report.barWhileDead) === JSON.stringify(report.barWhenAlive),
+    `${JSON.stringify(report.barWhileDead)} → ${JSON.stringify(report.barWhenAlive)}`
+  );
   await page.evaluate(() => {
     const game = window.__moba2d.scene.oScene.game;
     const player = game.player;

@@ -16,6 +16,29 @@
  * this panel is not on screen (dismissed, or a desktop layout where the panel
  * has never owned the bottom edge); `hud.css` hides the one while the other is
  * up, with `:has()`, so neither component has to know about the other.
+ *
+ * ## Why the bar does not move
+ *
+ * It is a bar a player *presses* — the headline opens it, and two buttons on
+ * the right collapse and dismiss it — so every part of it that moves is a
+ * mis-tap waiting to happen. Three things had it moving, all of them at the
+ * one moment a player is most likely to be reaching for it:
+ *
+ *  - **The countdown and the ally control shared the headline's line.** Four
+ *    things on one row, and the killer's name is the one that gives: it pushed
+ *    the rest out, and on a phone there was no room to push into.
+ *  - **They then went away on respawn**, and everything after them slid left
+ *    into the space. What the player pressed was the button that used to be
+ *    there.
+ *  - **The panel was `width: auto` while collapsed** and centred, so losing
+ *    them re-centred the whole bar as well — the two shifts compounding.
+ *
+ * So: the live half is its own line *above* the headline, the panel holds one
+ * width in every state, and the buttons live in `.death-recap-actions` at the
+ * end of the row. The panel is anchored to the bottom of the screen and grows
+ * upward, which is what makes the first of those work — the line with the
+ * buttons on it is the last line, and the last line never moves, whether the
+ * live strip above it is there or not, whether the panel is open or shut.
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vTap } from './tapGuard';
@@ -82,6 +105,26 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 
 <template>
   <div v-if="recap.seq !== dismissedSeq" ref="panelEl" class="death-recap" :class="{ collapsed }">
+    <!-- The half that only exists while the player is down, on the line above
+         the one they press. It comes and goes; nothing under it may. -->
+    <div v-if="showRevive" class="death-recap-live">
+      <span class="death-recap-revive">
+        Hồi sinh sau <b id="recap-revive-seconds">{{ reviveAfter }}</b
+        >s
+      </span>
+      <button
+        v-if="spectating"
+        type="button"
+        class="death-recap-spectate"
+        title="Xem đồng minh tiếp theo"
+        @click="hud.spectateNext()"
+        v-tap="() => hud.spectateNext()"
+      >
+        <i class="fas fa-eye" aria-hidden="true"></i>
+        <span class="death-recap-spectate-name">{{ spectating }}</span>
+        <i class="fas fa-forward" aria-hidden="true"></i>
+      </button>
+    </div>
     <div class="death-recap-head">
       <!-- The whole headline toggles, not just the chevron: on a phone this is
            the bar you press to open the panel, and a 16px glyph is not that. -->
@@ -95,51 +138,41 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         <i class="fas fa-skull" aria-hidden="true"></i>
         Hạ gục bởi <b>{{ recap.killer }}</b>
       </span>
-      <span v-if="showRevive" class="death-recap-revive">
-        Hồi sinh sau <b id="recap-revive-seconds">{{ reviveAfter }}</b
-        >s
+      <!-- One box for both buttons, so they are the row's *last* item however
+           much or little sits to their left. Loose in the flex row they were
+           the third and fourth of four, and `space-between` moved them both
+           whenever one of the other two went. -->
+      <span class="death-recap-actions">
+        <button
+          type="button"
+          class="death-recap-close"
+          :title="collapsed ? 'Mở rộng' : 'Thu gọn'"
+          :aria-label="collapsed ? 'Mở rộng bảng tổng kết' : 'Thu gọn bảng tổng kết'"
+          :aria-expanded="!collapsed"
+          @click="toggleCollapse()"
+          v-tap="toggleCollapse"
+        >
+          <!-- The arrow points the way the panel moves, and the panel opens
+               upward from the bottom edge: closed it offers "up", open it
+               offers "down". It pointed the other way while this lived at the
+               top of the screen and grew downward. -->
+          <i
+            class="fas"
+            :class="collapsed ? 'fa-chevron-up' : 'fa-chevron-down'"
+            aria-hidden="true"
+          ></i>
+        </button>
+        <button
+          type="button"
+          class="death-recap-close"
+          title="Đóng"
+          aria-label="Đóng bảng tổng kết"
+          @click="dismiss()"
+          v-tap="dismiss"
+        >
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
       </span>
-      <button
-        v-if="showRevive && spectating"
-        type="button"
-        class="death-recap-spectate"
-        title="Xem đồng minh tiếp theo"
-        @click="hud.spectateNext()"
-        v-tap="() => hud.spectateNext()"
-      >
-        <i class="fas fa-eye" aria-hidden="true"></i>
-        <span class="death-recap-spectate-name">{{ spectating }}</span>
-        <i class="fas fa-forward" aria-hidden="true"></i>
-      </button>
-      <button
-        type="button"
-        class="death-recap-close"
-        :title="collapsed ? 'Mở rộng' : 'Thu gọn'"
-        :aria-label="collapsed ? 'Mở rộng bảng tổng kết' : 'Thu gọn bảng tổng kết'"
-        :aria-expanded="!collapsed"
-        @click="toggleCollapse()"
-        v-tap="toggleCollapse"
-      >
-        <!-- The arrow points the way the panel moves, and the panel opens
-             upward from the bottom edge: closed it offers "up", open it offers
-             "down". It pointed the other way while this lived at the top of the
-             screen and grew downward. -->
-        <i
-          class="fas"
-          :class="collapsed ? 'fa-chevron-up' : 'fa-chevron-down'"
-          aria-hidden="true"
-        ></i>
-      </button>
-      <button
-        type="button"
-        class="death-recap-close"
-        title="Đóng"
-        aria-label="Đóng bảng tổng kết"
-        @click="dismiss()"
-        v-tap="dismiss"
-      >
-        <i class="fas fa-times" aria-hidden="true"></i>
-      </button>
     </div>
     <div v-show="!collapsed" class="death-recap-rows">
       <div v-for="row in recap.rows" :key="row.attacker" class="death-recap-row">

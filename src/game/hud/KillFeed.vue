@@ -32,11 +32,88 @@
  *
  * An objective row — a turret, an epic camp — has no portrait to put on the
  * right, so the glyph for its kind stands in for one and the name is kept.
+ *
+ * ## What stops it stacking on itself
+ *
+ * Three things, all of which only showed up when kills came faster than a row
+ * lives — a 1v10 practice fight, which is what this room is for:
+ *
+ *  - **The stack is capped here, not in `hud.css`.** `nth-child` counts the
+ *    rows *leaving* too, so a ghost sitting at the top of the list pushed a
+ *    live row past the cap and blanked it for the length of a fade. A number
+ *    the template slices by cannot miscount.
+ *  - **A leaving row is pinned where it died.** `.kill-feed-leave-active` takes
+ *    it out of flow, and an out-of-flow child of a centred flex column has its
+ *    static position at the *top* of that column — so every ghost teleported
+ *    onto the newest callout and faded there, two rows deep. `pinLeaving`
+ *    writes the offsets it already had before the class lands.
+ *  - **The banner is one element, not a queue of them.** See below.
  */
+import { computed, ref, watch } from 'vue';
 import type { FeedDisplay } from './hudState';
 import type { AnnouncementKind, ObjectiveKind } from '@/game/combat/Announcer';
 
-defineProps<{ feed: FeedDisplay }>();
+const props = defineProps<{ feed: FeedDisplay; touch?: boolean }>();
+
+/**
+ * Rows the stack draws, by layout. Three on a monitor, two on a phone — the
+ * feed sits over the fight and the occlusion budget is the whole reason there
+ * is a cap at all. `hudState` hands over at most `FEED_ROWS`; this narrows it
+ * for the touch layout, which used to be `hud.css`'s job and cannot be, for
+ * the counting reason in the header.
+ */
+const MAX_ROWS = 3;
+const MAX_ROWS_TOUCH = 2;
+
+const rows = computed(() => props.feed.rows.slice(0, props.touch ? MAX_ROWS_TOUCH : MAX_ROWS));
+
+/**
+ * Flips whenever the banner's words change, and at no other time.
+ *
+ * The banner used to be keyed on the announcement, so every new moment built a
+ * *second* banner: `<transition>` runs enter and leave together, both are
+ * absolutely positioned at the same spot, and 40px gradient type over 40px
+ * gradient type is unreadable — the "two announcers on top of each other" this
+ * component was reported for. Unkeyed, one element stays mounted for the whole
+ * fight and simply rewrites itself. This is what puts the punch back: swapping
+ * the class restarts the pop animation, because a class that is already there
+ * would not.
+ */
+const pop = ref(0);
+watch(
+  () => {
+    const banner = props.feed.banner;
+    return banner && `${banner.seq}\u0000${banner.kind}\u0000${banner.title}\u0000${banner.subtitle}`;
+  },
+  next => {
+    if (next) pop.value ^= 1;
+  }
+);
+
+/**
+ * Holds a leaving row at the offsets it had while it was still in flow, before
+ * `.kill-feed-leave-active` makes it absolute and the flex column forgets where
+ * it was. Vue 3's `TransitionGroup` does this for rows that *move* and not for
+ * rows that go.
+ */
+const pinLeaving = (el: Element): void => {
+  const row = el as HTMLElement;
+  row.style.top = `${row.offsetTop}px`;
+  row.style.left = `${row.offsetLeft}px`;
+  row.style.width = `${row.offsetWidth}px`;
+};
+
+/**
+ * And drops the pin again on the way in. `top` and `left` mean nothing to a
+ * row back in flow, but `width` does: a row reusing an element that left
+ * earlier would wear the width it had then.
+ */
+const unpin = (el: Element): void => {
+  const row = el as HTMLElement;
+  row.style.top = '';
+  row.style.left = '';
+  row.style.width = '';
+};
 
 /** The glyph an objective wears where a champion would have a face. */
 const OBJECTIVE_ICON: Record<ObjectiveKind, string> = {
@@ -58,19 +135,24 @@ const initial = (name: string): string => name.trim().charAt(0).toUpperCase();
 <template>
   <!-- One column, so the banner always sits under however many rows there are. -->
   <div v-if="feed.rows.length || feed.banner" class="kill-callouts">
+    <!-- Always rendered, empty or not: `hud.css` reserves its height so the
+         banner under it has a fixed place to sit. Dropping the element when
+         the last row ages out is what used to jerk the banner up the screen
+         mid-fight. -->
     <transition-group
-      v-if="feed.rows.length"
       tag="ul"
       name="kill-feed"
       class="kill-feed"
       aria-live="polite"
+      @before-enter="unpin"
+      @before-leave="pinLeaving"
     >
       <li
-        v-for="row of feed.rows"
+        v-for="row of rows"
         :key="row.seq"
         class="kill-feed-row"
         :class="[row.accent && 'accent-' + row.accent, { mine: row.mine }]"
-        :style="{ opacity: row.fade }"
+        :style="{ '--row-fade': row.fade }"
       >
         <template v-if="row.killer">
           <span class="kill-feed-face" :class="row.killer.side">
@@ -116,14 +198,17 @@ const initial = (name: string): string => name.trim().charAt(0).toUpperCase();
       </li>
     </transition-group>
 
-    <transition name="kill-banner">
+    <!-- Unkeyed and `out-in`, so there is never a second banner: the words are
+         rewritten in place while one is on screen, and the only enter/leave
+         left is the banner arriving out of nothing or going. See `pop`. -->
+    <transition name="kill-banner" mode="out-in">
       <div
         v-if="feed.banner"
-        :key="feed.banner.seq"
         class="kill-banner"
         :class="[
           'banner-' + feed.banner.kind,
           feed.banner.tier ? 'tier-' + feed.banner.tier : null,
+          'pop-' + pop,
         ]"
       >
         <div class="kill-banner-title">{{ feed.banner.title }}</div>

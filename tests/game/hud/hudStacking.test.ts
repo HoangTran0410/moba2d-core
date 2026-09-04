@@ -75,6 +75,29 @@ describe('the HUD outranks the canvas it floats over', () => {
   });
 
   /**
+   * The collapsed bar holds the panel's width rather than shrinking to its
+   * content, and that is a decision, not a leftover.
+   *
+   * The panel is centred on the bottom edge, so a bar that resizes *moves*: at
+   * respawn the countdown and the ally control go, an auto width closes up
+   * behind them, and the two buttons on the right slide out from under a thumb
+   * already reaching for one of them. `drive-kill-feed.mjs` measures the same
+   * thing across a real respawn — this reads the rule that makes it true, in
+   * milliseconds, and says why it is there.
+   */
+  it('.death-recap.collapsed keeps the panel’s width instead of shrinking to fit', () => {
+    const css = stripCss(read('styles/hud.css'));
+    for (const rule of css.split('.death-recap.collapsed {').slice(1)) {
+      expect(
+        rule.slice(0, rule.indexOf('}')),
+        'the collapsed recap sizes to its content again — it is centred, so it ' +
+          're-centres when the countdown goes at respawn and the buttons move ' +
+          'under the thumb aiming at them'
+      ).not.toMatch(/width:\s*auto/);
+    }
+  });
+
+  /**
    * And the reason the first test exists at all, stated where a reader of
    * either file will find it: the death filter is what turns the canvas into
    * something that can climb. If it ever goes away this whole file can, too.

@@ -223,7 +223,11 @@ defineExpose({
 
   <!-- One feed for both views, out of the way with the corner cluster when a
        panel owns that corner. -->
-  <KillFeed v-if="state && !hud.showSpellsPicker && !hud.showShop" :feed="state.feed" />
+  <KillFeed
+    v-if="state && !hud.showSpellsPicker && !hud.showShop"
+    :feed="state.feed"
+    :touch="hud.touchUi"
+  />
 
   <!-- One recap for both views — see its own header. -->
   <DeathRecapPanel
