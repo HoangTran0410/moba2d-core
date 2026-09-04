@@ -249,6 +249,22 @@ export default class Buff {
     }
   }
 
+  /**
+   * Whether this live buff refuses `incoming`, which is then never added.
+   *
+   * The one place a buff already on a unit gets a say in what lands next. It
+   * exists because `addBuff`'s stack rules answer "how do two of these share a
+   * slot", and some effects need to answer "this one does not get a slot at
+   * all" — `Dash.unstoppable` is the first: a charge that says crowd control
+   * cannot stop it has to be able to turn away the pull that would otherwise
+   * replace it, and `REPLACE_EXISTING` gives the incoming buff that place
+   * unconditionally.
+   *
+   * Asked of every live buff, so keep it cheap and keep it a *question* —
+   * nothing here may mutate either side. Undefined on almost everything.
+   */
+  blocksIncoming?(incoming: Buff): boolean;
+
   // for override
   onCreate(): void {}
   onUpdate(): void {}

@@ -677,6 +677,16 @@ export default class AttackableUnit extends GameObject {
   addBuff(buff: Buff): void {
     if (this.isDead || !buff) return;
 
+    // Before anything else, including tenacity: a buff that is refused was
+    // never applied, so there is nothing to shorten and no stack to join.
+    // `Buff.blocksIncoming` is the hook; `Dash.unstoppable` is the one thing
+    // that answers it today. Live buffs only — a buff on its way out has no
+    // standing to turn anything away.
+    for (let i = 0; i < this.buffs.length; i++) {
+      const live = this.buffs[i];
+      if (!live.toRemove && live.blocksIncoming?.(buff)) return;
+    }
+
     // Tenacity is taken off here rather than where the buff was built: what a
     // stun *is* belongs to the caster, how long it survives contact belongs to
     // the body it lands on, and only this side knows the stat. `sourceUnit !==
