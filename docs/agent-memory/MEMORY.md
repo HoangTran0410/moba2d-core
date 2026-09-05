@@ -1,0 +1,35 @@
+- [moba2d workspace layout](moba2d-workspace-layout.md) — parent dir holds moba2d-core + 2 pack repos; verify gate, test traps, chunk invariant
+- [Map tuning + new jungle camps](moba2d-map-tuning.md) — landed 2026-08-29 on unpushed branches; pack floor and two PNGs left open
+- [Monster attack VFX](moba2d-monster-attack-vfx.md) — claw/spit/breath/lash objects; only melee+ranged are derived; comment-scan gate bans pack names in core
+- [HUD effective numbers](moba2d-hud-effective-numbers.md) — tooltips rescale tagged damage by AP; class="damage" is a claim; regex backtracking trap
+- [Aggro ladder + jungle states](moba2d-aggro-and-jungle-states.md) — turret/minion priority, camp wander, 7-drake pit; excluded-test trap
+- [Shop + map-editor seams](moba2d-shop-and-editor-seams.md) — item prose vs stat list, undo/redo, AreaSpellObject position, editor slot-stats drop
+- [Core subpath exports + map rules](moba2d-core-subpath-and-map-rules.md) — a new @moba2d/core/* export means five edits; where mapRules.js lives and the two rules that were wrong first
+- [Creature rig](moba2d-creature-leg-rig.md) — legs, spines, two-ended chains; lash/beam/limp/decor/trail; on main UNPUSHED; the clamp-don't-refuse and no-sag-in-top-down traps
+- [Vamp stats + Vết Thương Sâu](moba2d-vamp-and-heal-cut.md) — core 1.16 stat model (counters, haste, share-of-wearer grants + the AS_PERCENT display half); lol shop at 58 items, record-parity sweep, Janna fixes; dota 1.2.0 after being silently refused; all committed, unpushed
+- [Naruto pack](moba2d-naruto-pack.md) — terrain zones + stances in core; roster 3→7 (2026-09-02); rims-then-bodies, PIE unstubbed, onAdded not called in tests, slotName in vfx-casts, seeded geometry = flaky hitbox
+- [Bot scoring + cooldown band](moba2d-bot-scoring-and-tempo.md) — two shared gates in core; the SELF-cast blind spot, 226 findings, 10s ultimate ceiling
+- [Multi-pack install](moba2d-multi-pack-install.md) — linking 3 packs broke install + bare spell ids; installedPacks sorts by package name
+- [Sandbox, not win condition](moba2d-sandbox-not-win-condition.md) — user wants a phòng tập; never propose nexus/thắng-thua/end screen; frame retention around per-fight feel
+- [Audio design parked](moba2d-audio-design-parked.md) — zzfx SFX v1 scoped 2026-09-02, approach A proposed not approved; hooks already exist, ON_DIE never emitted
+- [Hit feedback bundle](moba2d-hit-feedback.md) — presentHit door, camera shake in applyRenderOrigin, 5th takeDamage param; test-world player getter throws; 3-pack link failure list
+- [Match modes + death camera](moba2d-match-modes-death-camera.md) — macro-then-overlay modes, rules.recall, DeathCamera/SpectateBar, per-pack random pool + folded picker; MatchRulesConfig literal churn, deathAtMs tick trap, no canvas filter on touch
+- [Kill credit](moba2d-pet-kill-credit.md) — killCreditedTo (pets, committed/UNPUSHED) + creditForDeath (turret/minion/camp executions, uncommitted); the \bany\b comment gate
+- [HUD stacking](moba2d-hud-stacking.md) — HUD vanished on death; #InGameHUD's z-index had no position, the dead-view filter lifted the canvas over it
+- [Match rules in the world](moba2d-match-rules-in-world.md) — GameObjectGameContext.matchRules; Health Relic respawn takes CDR, beam delay never does
+- [Core furniture + ARAM](moba2d-core-furniture-and-aram.md) — relic & turret passives moved into core; ARAM replaced Proving Grounds; pack still overrides both
+- [dota damage types](moba2d-dota-damage-types.md) — 38 untyped spans made magic red and AD builds show nothing; the `+` never-rescales trap
+- [Bot shopping](moba2d-bot-shopping.md) — "Tự mua đồ" toggle (7-edit chain) + kit-aware valuation from span classes; the 7 pre-existing linked failures
+- [Damage text helpers](moba2d-damage-text-helpers.md) — api.text.dmg replaced parsing prose for numbers; core 1.22.0, all 3 packs migrated
+- [Bot toggles](moba2d-bot-toggles.md) — autoBuy/autoReroll flags, sell-to-rebuy swaps, ability power shown as points
+- [Death recap](moba2d-death-recap.md) — shields reported, engagement-gap window instead of a clock, minions grouped by kind
+- [lol content](moba2d-lol-content.md) — Orianna ball vision (and how to test one), dragon blessings scaling with match time
+- [Bot re-roll rebuild](moba2d-bot-reroll-rebuild.md) — death+new champion refunds the bag at cost and re-buys in one trip; the missing sellRefund on the bot's ShopHost
+- [Fog hard path](moba2d-fog-hard-path.md) — Thấp-quality fog re-fogged overlapping vision and cut square holes; clip groups + circle cut; revealMap is minimap-only
+- [Announcer smoothing](moba2d-announcer-smoothing.md) — banner stacking/judder in 1v10: priority + min hold, reserved feed height, pinned ghosts; p5 ruled out
+- [Recap bar stability](moba2d-recap-bar-stability.md) — bottom bar grows upward, so the last line never moves; live strip above, buttons below, one width
+- [Unstoppable dash](moba2d-unstoppable-dash.md) — a displacement is another Dash and replaced charges outright; Buff.blocksIncoming + Dash.unstoppable
+- [Teamfight profile](moba2d-teamfight-profile.md) — MOBA2D_BOTS profiler mode, where the frame goes, and which measurements lie
+- [perf-scan](moba2d-perf-scan.md) — npm run perf:scan; six CPU-pattern rules over core + all packs, each validated against the bug it came from
+- [duty-scan](moba2d-duty-scan.md) — uptime = duration/cooldown; the three ways that ratio lies, and the 4 durations the cooldown cap inflated
+- [Flat UI rule](moba2d-flat-ui.md) — no glows/blur anywhere; allowed vocabulary; hextech-css CDN hover fetch was an offline hole
