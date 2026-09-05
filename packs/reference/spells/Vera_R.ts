@@ -15,7 +15,12 @@ import type { ContentApi } from '@moba2d/core/content/ContentApi';
 export const VERA_R_DAMAGE = 45;
 export const VERA_R_RADIUS = 200;
 export const VERA_R_RANGE = 500;
-export const VERA_R_COOLDOWN_MS = 60_000;
+// 18s, not the 60s it shipped with: the practice room's pace rule caps every
+// cooldown at 20s (core's `cooldowns` seam), and the sweep that rescaled all
+// twenty-four lol/dota spells missed the bundled pack — CI's verify:all runs
+// the reference pack's own check-seams and caught it there. Same band the
+// other ultimates landed in (11-19s); nothing else about the spell moved.
+export const VERA_R_COOLDOWN_MS = 18_000;
 export const VERA_R_MANA = 100;
 
 /**
