@@ -392,7 +392,7 @@ export default class Pet extends Champion {
   protected override compactBarWidth = 52;
   protected override compactShowsBuffIcons = false;
 
-  drawHealthBar(_compact = false, plain = false): void {
-    super.drawHealthBar(true, plain);
+  drawHealthBar(_compact = false): void {
+    super.drawHealthBar(true);
   }
 }

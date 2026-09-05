@@ -31,6 +31,7 @@ import Slow from '@/game/gameObject/buffs/Slow';
 import Stun from '@/game/gameObject/buffs/Stun';
 import Taunt from '@/game/gameObject/buffs/Taunt';
 import Wallet, { CHAMPION_BOUNTY, STARTING_GOLD } from '@/game/economy/Wallet';
+import { cssColor } from '@/game/render/cssColor';
 import type Buff from '@/game/gameObject/Buff';
 import type { BuffStackId } from '@/game/gameObject/Buff';
 
@@ -1019,7 +1020,7 @@ export default class Champion extends AttackableUnit {
   protected compactBarWidth = 88;
   protected compactShowsBuffIcons = true;
 
-  drawHealthBar(compact = false, plain = false) {
+  drawHealthBar(compact = false) {
     let pos = this.position;
     let { displaySize: size, alpha } = this.animatedValues;
     let health = this.stats.health.value;
@@ -1084,7 +1085,6 @@ export default class Champion extends AttackableUnit {
       return;
     }
 
-    push();
     // Overlay, not world: the whole frame — bar, ticks, buff icons and their
     // text — compensates for the camera scale together. See Camera.constantSize.
     const k = this.game?.camera?.constantSize?.(1) ?? 1;
@@ -1110,49 +1110,64 @@ export default class Champion extends AttackableUnit {
       y: pos.y - size / 2 - barHeight - 15 * k,
     };
 
-    // The backing, and on a healthy machine the pewter border around it. Under
-    // stress the border goes and the backing stays: the backing is what the
-    // bars are read *against*, the border is trim.
-    fill(2, 15, 21, alpha);
-    if (plain) {
-      noStroke();
-    } else {
-      stroke(91, 92, 87, alpha);
-      strokeWeight(3);
-    }
-    rect(
+    // The whole frame is painted through the native context rather than p5.
+    // This is the most-drawn rich frame in a fight (every champion, every
+    // frame) and it measured 170us/call on a bot champion at 6x throttle —
+    // p5's per-primitive overhead (argument normalising, style re-apply) is
+    // 3-10x the browser's own cost, per `Minion.drawHealthBar`'s ~2.6x
+    // proof of the same move. It also ends the reason stress ever wanted a
+    // "plain" variant of this frame: swapping what a health bar looks like
+    // mid-fight was reported as making health unreadable in combat, and the
+    // right fix is one frame that is always affordable, not two frames and a
+    // toggle. Same geometry, same colors, byte-for-byte the numbers below.
+    const ctx = drawingContext;
+    ctx.save();
+
+    // The backing and the pewter border around it.
+    ctx.fillStyle = cssColor(2, 15, 21, alpha);
+    ctx.strokeStyle = cssColor(91, 92, 87, alpha);
+    ctx.lineWidth = 3;
+    ctx.fillRect(
+      topleft.x - borderWidth * 0.5,
+      topleft.y - borderWidth * 0.5,
+      frameWidth + borderWidth,
+      barHeight + borderWidth
+    );
+    ctx.strokeRect(
       topleft.x - borderWidth * 0.5,
       topleft.y - borderWidth * 0.5,
       frameWidth + borderWidth,
       barHeight + borderWidth
     );
 
-    fill(242, 242, 242, alpha);
-    textSize(12 * k);
-    text(this.score, topleft.x + 3 * k, topleft.y + 12 * k);
+    ctx.fillStyle = cssColor(242, 242, 242, alpha);
+    ctx.font = `${12 * k}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(String(this.score), topleft.x + 3 * k, topleft.y + 12 * k);
 
-    noStroke();
-
-    fill(
-      this.isDead
-        ? [153, 153, 153, alpha]
-        : this.isAllied
-          ? [67, 196, 29, alpha]
-          : [196, 67, 29, alpha]
-    );
+    ctx.fillStyle = this.isDead
+      ? cssColor(153, 153, 153, alpha)
+      : this.isAllied
+        ? cssColor(67, 196, 29, alpha)
+        : cssColor(196, 67, 29, alpha);
     const healthRowH = barHeight - manaHeight - 1 * k;
-    rect(topleft.x + barHeight, topleft.y, healthW, healthRowH);
+    ctx.fillRect(topleft.x + barHeight, topleft.y, healthW, healthRowH);
 
     if (shieldW > 0) {
-      fill(225, 230, 238, alpha * 0.85);
-      rect(topleft.x + barHeight + shieldX, topleft.y, shieldW, healthRowH);
+      ctx.fillStyle = cssColor(225, 230, 238, alpha * 0.85);
+      ctx.fillRect(topleft.x + barHeight + shieldX, topleft.y, shieldW, healthRowH);
 
       // The bar cannot grow, so a shield larger than the whole health pool is
-      // flagged instead of drawn past the end. The flag is a refinement of a
-      // shield that is already fully drawn, so stress can have it.
-      if (shieldOverflows && !plain) {
-        fill(255, 246, 200, alpha);
-        rect(topleft.x + barHeight + healthContainerW - 2 * k, topleft.y, 2 * k, healthRowH);
+      // flagged instead of drawn past the end.
+      if (shieldOverflows) {
+        ctx.fillStyle = cssColor(255, 246, 200, alpha);
+        ctx.fillRect(
+          topleft.x + barHeight + healthContainerW - 2 * k,
+          topleft.y,
+          2 * k,
+          healthRowH
+        );
       }
     }
 
@@ -1160,32 +1175,31 @@ export default class Champion extends AttackableUnit {
     // bigger pool simply shows more of them — that is what makes two bars
     // comparable at a glance, and it also reads the shield against real health.
     //
-    // The single most expensive thing on this frame, and the first thing stress
-    // takes: `MAX_TICKS` is 20, so this loop can be **twenty `line()` calls per
-    // champion per frame**, about half of what the whole health frame costs.
-    // Nothing numeric is lost — the bar, the score and the status line all
-    // still say what they said; what goes is the ruler behind the bar.
-    //
-    // Note for anyone tempted to optimise these instead of dropping them:
-    // batching the twenty lines into one path was tried and measured *inside
-    // the noise* (0.276 -> 0.270 ms/call), because it does not reduce the p5
-    // call count at all — it trades 20 `line()` for a `beginShape` plus 40
-    // `vertex` plus an `endShape`, which is more. Dropping them is a different
-    // thing from batching them.
-    if (!plain) {
-      const tickStep = healthTickStep(maxHealth);
-      stroke(2, 15, 21, alpha * 0.6);
-      strokeWeight(1);
-      for (let mark = tickStep; mark < maxHealth; mark += tickStep) {
-        const tickX = topleft.x + barHeight + (mark / maxHealth) * healthContainerW;
-        line(tickX, topleft.y + 1 * k, tickX, topleft.y + healthRowH - 1 * k);
-      }
+    // Under p5 this loop was the most expensive thing on the frame — twenty
+    // `line()` calls — and batching them was measured useless there (0.276 ->
+    // 0.270 ms/call), because `beginShape` + 40 `vertex` is *more* p5 calls,
+    // not fewer. On the native context the arithmetic flips: the per-call
+    // overhead is what the batching removes, so all the ticks go down as one
+    // path and one stroke. That is also why stress no longer takes the ticks
+    // away: the ruler the player reads health against costs almost nothing
+    // now, and a frame that changes its face mid-fight was the real bug.
+    const tickStep = healthTickStep(maxHealth);
+    ctx.strokeStyle = cssColor(2, 15, 21, alpha * 0.6);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let mark = tickStep; mark < maxHealth; mark += tickStep) {
+      const tickX = topleft.x + barHeight + (mark / maxHealth) * healthContainerW;
+      ctx.moveTo(tickX, topleft.y + 1 * k);
+      ctx.lineTo(tickX, topleft.y + healthRowH - 1 * k);
     }
-    noStroke();
+    ctx.stroke();
 
     const manaW = maxMana > 0 ? constrain(mana / maxMana, 0, 1) * healthContainerW : 0;
-    fill(this.isDead ? [153, 153, 153, alpha] : [108, 179, 213, alpha]);
-    rect(topleft.x + barHeight, topleft.y + barHeight - manaHeight, manaW, manaHeight);
+    ctx.fillStyle = this.isDead ? cssColor(153, 153, 153, alpha) : cssColor(108, 179, 213, alpha);
+    ctx.fillRect(topleft.x + barHeight, topleft.y + barHeight - manaHeight, manaW, manaHeight);
+
+    ctx.restore();
+    push();
 
     this.drawBuffIcons(topleft.x + 10 * k, topleft.y - 13 * k, k, alpha);
 

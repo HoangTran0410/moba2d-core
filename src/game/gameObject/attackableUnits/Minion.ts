@@ -13,6 +13,7 @@ import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileS
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import SpellObject from '@/game/gameObject/SpellObject';
 import type GameObject from '@/game/gameObject/GameObject';
+import { cssColor } from '@/game/render/cssColor';
 import AttackableUnit from './AttackableUnit';
 import type { HitPresentationOptions } from './AttackableUnit';
 import type {
@@ -142,12 +143,46 @@ const TEAM_COLORS: Record<string, { body: number[]; trim: number[]; bar: number[
 const NEUTRAL_COLORS = { body: [150, 150, 160], trim: [40, 40, 48], bar: [200, 200, 210] };
 
 /**
- * The health bar's two fills as CSS strings, built once.
+ * The minion bodies and health bar paint through the native context — a wave
+ * is fifty bodies a frame and p5 charges 6-10x the raw canvas call for every
+ * primitive in them (`drawHealthBar` proved the move at ~2.6x). Same geometry,
+ * same colors — and the frame p5 rotated for `draw()` carries over, because
+ * p5 and `drawingContext` are one canvas sharing one transform. Fill style is
+ * set by the caller; these helpers only trace and fill.
+ */
+const ctxCircle = (ctx: CanvasRenderingContext2D, x: number, y: number, d: number): void => {
+  ctx.beginPath();
+  ctx.arc(x, y, d / 2, 0, Math.PI * 2);
+  ctx.fill();
+};
+// prettier-ignore
+const ctxEllipse = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void => {
+  ctx.beginPath();
+  ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+};
+// prettier-ignore
+const ctxTriangle = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): void => {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineTo(x3, y3);
+  ctx.closePath();
+  ctx.fill();
+};
+
+/** The soldier's blade and the thin body's — the one non-team fill both share. */
+const BLADE_CSS = 'rgba(238, 242, 250, 0.922)';
+/** The caster's staff stroke. */
+const STAFF_CSS = 'rgba(228, 220, 200, 0.824)';
+
+/**
+ * The stable per-team fills as CSS strings, built once per array.
  *
- * `drawHealthBar` below paints through the native context rather than p5, and
- * the native context wants a string. Building it per call would hand back the
- * allocation the bypass exists to avoid — and there are only three of these in
- * the game, one per team plus neutral, none of which ever changes.
+ * The native context wants a string, and building it per call would hand back
+ * the allocation the bypass exists to avoid — there are only a handful of
+ * these, keyed on palette arrays that never change. One-off tints with an
+ * animated alpha go through `cssColor`, which caches by value instead.
  */
 const BAR_BACKING_CSS = 'rgba(10, 12, 16, 0.824)';
 const barCssFor = (bar: number[]): string => `rgb(${bar[0]}, ${bar[1]}, ${bar[2]})`;
@@ -839,22 +874,24 @@ export default class Minion extends AttackableUnit {
    * the biggest thing in the wave.
    */
   private drawThinBody(size: number): void {
+    const ctx = drawingContext;
     const { body } = this.colors;
-    fill(body[0], body[1], body[2]);
-    circle(0, 0, size);
+    ctx.fillStyle = cachedBarCss(body);
+    ctxCircle(ctx, 0, 0, size);
     // the blade, unanimated: `windupReach` is the swing, and a swing is motion
     // nobody can see at this frame rate
-    fill(238, 242, 250, 235);
-    triangle(size * 0.34, -size * 0.11, size * 0.34, size * 0.11, size * 0.82, 0);
+    ctx.fillStyle = BLADE_CSS;
+    ctxTriangle(ctx, size * 0.34, -size * 0.11, size * 0.34, size * 0.11, size * 0.82, 0);
   }
 
   private drawSoldier(size: number): void {
+    const ctx = drawingContext;
     const { body, trim } = this.colors;
 
-    fill(trim[0], trim[1], trim[2], 200);
-    circle(0, 0, size * 1.12);
-    fill(body[0], body[1], body[2]);
-    circle(0, 0, size);
+    ctx.fillStyle = cssColor(trim[0], trim[1], trim[2], 200);
+    ctxCircle(ctx, 0, 0, size * 1.12);
+    ctx.fillStyle = cachedBarCss(body);
+    ctxCircle(ctx, 0, 0, size);
 
     // blade — a bright wedge past the front, the one thing that says which way
     // this is facing, and the one thing that moves when it swings.
@@ -865,19 +902,13 @@ export default class Minion extends AttackableUnit {
     // a frame rotated to `aimAngle`, so turning the blade turns it away from
     // what it is swinging at.
     const reach = this.windupReach(size);
-    fill(238, 242, 250, 235);
-    triangle(
-      size * 0.34 + reach,
-      -size * 0.11,
-      size * 0.34 + reach,
-      size * 0.11,
-      size * 0.82 + reach,
-      0
-    );
+    ctx.fillStyle = BLADE_CSS;
+    // prettier-ignore
+    ctxTriangle(ctx, size * 0.34 + reach, -size * 0.11, size * 0.34 + reach, size * 0.11, size * 0.82 + reach, 0);
 
     // shield boss, offset off the axis so the blade is not drawn through it
-    fill(trim[0], trim[1], trim[2], 245);
-    circle(size * 0.2, size * 0.24, size * 0.34);
+    ctx.fillStyle = cssColor(trim[0], trim[1], trim[2], 245);
+    ctxCircle(ctx, size * 0.2, size * 0.24, size * 0.34);
   }
 
   /**
@@ -891,29 +922,32 @@ export default class Minion extends AttackableUnit {
    * jittered per minion.
    */
   private drawCaster(size: number): void {
+    const ctx = drawingContext;
     const { body, trim } = this.colors;
     const orbX = size * 0.5;
     const orbY = -size * 0.26;
     const breath = 1 + 0.12 * Math.sin(frameCount * 0.08 + this._scanCooldown);
 
-    fill(trim[0], trim[1], trim[2], 200);
-    circle(0, 0, size * 1.02);
-    fill(body[0], body[1], body[2]);
-    circle(0, 0, size * 0.88);
+    ctx.fillStyle = cssColor(trim[0], trim[1], trim[2], 200);
+    ctxCircle(ctx, 0, 0, size * 1.02);
+    ctx.fillStyle = cachedBarCss(body);
+    ctxCircle(ctx, 0, 0, size * 0.88);
 
-    stroke(228, 220, 200, 210);
-    strokeWeight(Math.max(1.5, size * 0.07));
-    line(size * 0.06, size * 0.1, orbX, orbY);
-    noStroke();
+    ctx.strokeStyle = STAFF_CSS;
+    ctx.lineWidth = Math.max(1.5, size * 0.07);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.06, size * 0.1);
+    ctx.lineTo(orbX, orbY);
+    ctx.stroke();
 
     // The orb swells through the wind-up and drops back the moment the bolt
     // leaves — which is what makes a caster read as *casting* rather than as
     // standing beside a bolt that appeared.
     const gather = this.windupCharge();
-    fill(255, 235, 190, 110 + 90 * gather);
-    circle(orbX, orbY, size * 0.44 * breath * (1 + 0.5 * gather));
-    fill(255, 255, 255, 235);
-    circle(orbX, orbY, size * (0.2 + 0.16 * gather));
+    ctx.fillStyle = cssColor(255, 235, 190, 110 + 90 * gather);
+    ctxCircle(ctx, orbX, orbY, size * 0.44 * breath * (1 + 0.5 * gather));
+    ctx.fillStyle = cssColor(255, 255, 255, 235);
+    ctxCircle(ctx, orbX, orbY, size * (0.2 + 0.16 * gather));
   }
 
   /**
@@ -952,32 +986,37 @@ export default class Minion extends AttackableUnit {
    * others.
    */
   private drawCart(size: number): void {
+    const ctx = drawingContext;
     const { body, trim } = this.colors;
     const axle = size * 0.42;
     const wheel = size * 0.36;
     const muzzle = size * 0.86;
 
-    fill(22, 24, 32, 242);
-    circle(-size * 0.08, -axle, wheel);
-    circle(-size * 0.08, axle, wheel);
-    fill(trim[0], trim[1], trim[2], 210);
-    circle(-size * 0.08, -axle, wheel * 0.4);
-    circle(-size * 0.08, axle, wheel * 0.4);
+    ctx.fillStyle = cssColor(22, 24, 32, 242);
+    ctxCircle(ctx, -size * 0.08, -axle, wheel);
+    ctxCircle(ctx, -size * 0.08, axle, wheel);
+    ctx.fillStyle = cssColor(trim[0], trim[1], trim[2], 210);
+    ctxCircle(ctx, -size * 0.08, -axle, wheel * 0.4);
+    ctxCircle(ctx, -size * 0.08, axle, wheel * 0.4);
 
-    stroke(56, 60, 74, 245);
-    strokeWeight(size * 0.26);
-    strokeCap(ROUND);
-    line(size * 0.1, 0, muzzle, 0);
-    noStroke();
+    ctx.save();
+    ctx.strokeStyle = cssColor(56, 60, 74, 245);
+    ctx.lineWidth = size * 0.26;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(size * 0.1, 0);
+    ctx.lineTo(muzzle, 0);
+    ctx.stroke();
+    ctx.restore();
 
-    fill(trim[0], trim[1], trim[2], 235);
-    ellipse(0, 0, size * 1.16, size * 0.98);
-    fill(body[0], body[1], body[2]);
-    ellipse(0, 0, size * 1.0, size * 0.82);
+    ctx.fillStyle = cssColor(trim[0], trim[1], trim[2], 235);
+    ctxEllipse(ctx, 0, 0, size * 1.16, size * 0.98);
+    ctx.fillStyle = cachedBarCss(body);
+    ctxEllipse(ctx, 0, 0, size * 1.0, size * 0.82);
     // a soft highlight along the top-left, so the hull reads as rounded metal
     // rather than as a flat disc with a gun on it
-    fill(255, 255, 255, 55);
-    ellipse(-size * 0.1, -size * 0.16, size * 0.52, size * 0.24);
+    ctx.fillStyle = cssColor(255, 255, 255, 55);
+    ctxEllipse(ctx, -size * 0.1, -size * 0.16, size * 0.52, size * 0.24);
 
     // The muzzle: banked while the shell is being loaded, then blown out.
     //
@@ -991,21 +1030,15 @@ export default class Minion extends AttackableUnit {
 
     if (flash > 0) {
       // A short cone off the barrel, brightest at the lip.
-      fill(255, 236, 190, 210 * flash);
-      triangle(
-        muzzle,
-        -size * 0.2 * flash,
-        muzzle,
-        size * 0.2 * flash,
-        muzzle + size * 0.62 * flash,
-        0
-      );
-      fill(255, 255, 255, 230 * flash);
-      circle(muzzle + size * 0.12 * flash, 0, size * 0.3 * flash);
+      ctx.fillStyle = cssColor(255, 236, 190, 210 * flash);
+      // prettier-ignore
+      ctxTriangle(ctx, muzzle, -size * 0.2 * flash, muzzle, size * 0.2 * flash, muzzle + size * 0.62 * flash, 0);
+      ctx.fillStyle = cssColor(255, 255, 255, 230 * flash);
+      ctxCircle(ctx, muzzle + size * 0.12 * flash, 0, size * 0.3 * flash);
     }
 
-    fill(255, 214, 128, 240);
-    circle(muzzle, 0, size * (0.2 + 0.22 * charge + 0.3 * flash));
+    ctx.fillStyle = cssColor(255, 214, 128, 240);
+    ctxCircle(ctx, muzzle, 0, size * (0.2 + 0.22 * charge + 0.3 * flash));
   }
 
   /** Lights a cheap circle for the player team; minions carry no combat sight. */

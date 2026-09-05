@@ -106,9 +106,15 @@ describe('a pet gets the compact health frame', () => {
     game.setPlayer(owner);
 
     owner.drawHealthBar();
-    const championWidest = Math.max(...spies.rect.mock.calls.map(call => call[2]));
-    const championTexts = spies.text.mock.calls.length;
+    // The full champion frame paints through the native context; the compact
+    // pet frame stays on p5 — so each side reads its own spy.
+    const ctxRect = vi.mocked(drawingContext.fillRect);
+    const ctxText = vi.mocked(drawingContext.fillText);
+    const championWidest = Math.max(...ctxRect.mock.calls.map(call => call[2] as number));
+    const championTexts = ctxText.mock.calls.length;
 
+    ctxRect.mockClear();
+    ctxText.mockClear();
     spies.rect.mockClear();
     spies.text.mockClear();
     pet(game, owner).drawHealthBar();
@@ -118,5 +124,6 @@ describe('a pet gets the compact health frame', () => {
     expect(championWidest).toBeGreaterThan(petWidest * 1.8);
     expect(championTexts).toBeGreaterThan(0);
     expect(spies.text).not.toHaveBeenCalled();
+    expect(ctxText).not.toHaveBeenCalled();
   });
 });

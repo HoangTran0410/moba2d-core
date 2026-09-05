@@ -222,7 +222,6 @@ describe('ObjectManager mobile rendering', () => {
     expect(units[0].draw).toHaveBeenCalledWith({
       compactUnits: true,
       thinCrowd: false,
-      plainFrames: false,
     });
   });
 
@@ -243,7 +242,6 @@ describe('ObjectManager mobile rendering', () => {
     expect(unit.draw).toHaveBeenCalledWith({
       compactUnits: true,
       thinCrowd: true,
-      plainFrames: true,
     });
   });
 
@@ -271,7 +269,6 @@ describe('ObjectManager mobile rendering', () => {
     expect(units[0].draw).toHaveBeenCalledWith({
       compactUnits: false,
       thinCrowd: false,
-      plainFrames: false,
     });
   });
 

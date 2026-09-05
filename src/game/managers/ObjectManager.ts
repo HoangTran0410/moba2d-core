@@ -695,7 +695,11 @@ export default class ObjectManager {
         // question: "may the anonymous bodies in this fight be drawn with
         // fewer strokes". A minion has no information to lose. See
         // `renderStress.test.ts`, which pins that stress alone never compacts.
-        o.draw({ compactUnits, thinCrowd: deeplyStressed, plainFrames: stressed || deeplyStressed });
+        // No `plainFrames` any more: the champion frame paints through the
+        // native context and is cheap at full detail, so stress no longer
+        // changes what a health bar looks like mid-fight (that flicker was
+        // reported as making health unreadable in combat).
+        o.draw({ compactUnits, thinCrowd: deeplyStressed });
       } else {
         o.draw?.();
       }

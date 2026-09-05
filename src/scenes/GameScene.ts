@@ -12,7 +12,7 @@ import DomUtils from '@/utils/dom.utils';
 import AssetManager from '@/managers/AssetManager';
 import { ensurePackAsset } from '@/game/config/packAsset';
 import { renderAlpha } from '@/game/render/Interpolation';
-import { stepsToRun, MAX_CATCHUP_STEPS, TOUCH_MAX_CATCHUP_STEPS, } from '@/game/simulationClock';
+import { stepsToRun, MAX_CATCHUP_STEPS, TOUCH_MAX_CATCHUP_STEPS } from '@/game/simulationClock';
 import { contentCatalog } from '@/content/catalog';
 import { activeMapOf } from '@/content/activeMap';
 import { resolveMapId } from '@/content/defaultMap';
@@ -346,7 +346,6 @@ export default class GameScene extends Scene {
   }
 
   async startGame(attempt: number = ++this._attempt) {
-
     // A LAN match, armed by URL (`?net=host|join&server=…&room=…` — LAN
     // design spec §5). A *client* takes its map, kit and team from the
     // host's hello instead of planning locally, so the whole offline plan

@@ -119,6 +119,8 @@ function indexObjects(game: GameObjectRuntimeContext, objects: AttackableUnit[])
   }
 }
 
+let ctxFillStyles: string[] = [];
+
 describe('champion and direct-subclass type boundary', () => {
   beforeEach(() => {
     vi.stubGlobal('createVector', (x = 0, y = 0) => new TestVector(x, y));
@@ -154,6 +156,30 @@ describe('champion and direct-subclass type boundary', () => {
     vi.stubGlobal('BOTTOM', 'BOTTOM');
     vi.stubGlobal('LEFT', 'LEFT');
     vi.stubGlobal('BASELINE', 'BASELINE');
+    // The champion frame paints through the native context (see
+    // Champion.drawHealthBar); `fillRect` snapshots the style it was filled
+    // with, because a plain property records no history of its own.
+    ctxFillStyles = [];
+    const ctx: Record<string, unknown> = {
+      fillStyle: '#000',
+      strokeStyle: '#000',
+      lineWidth: 1,
+      font: '',
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      strokeRect: vi.fn(),
+      fillText: vi.fn(),
+    };
+    ctx.fillRect = vi.fn(() => {
+      ctxFillStyles.push(String(ctx.fillStyle));
+    });
+    vi.stubGlobal('drawingContext', ctx);
   });
 
   afterEach(() => {
@@ -310,9 +336,11 @@ describe('champion and direct-subclass type boundary', () => {
 
     champion.drawHealthBar();
 
-    const [, health, shieldSegment] = vi.mocked(rect).mock.calls;
+    const [, health, shieldSegment] = vi.mocked(drawingContext.fillRect).mock.calls;
     expect(shieldSegment[0]).toBe(health[0] + health[2]);
-    expect(fill).toHaveBeenCalledWith(225, 230, 238, expect.any(Number));
+    // The shield's pale fill, snapshotted at fill time — index 2 is the
+    // shield segment, matching the call order asserted above.
+    expect(ctxFillStyles[2]).toContain('225, 230, 238');
   });
 
   it('keeps the frame fixed and the shield inside it however big the shield is', () => {
@@ -320,7 +348,7 @@ describe('champion and direct-subclass type boundary', () => {
 
     champion.drawHealthBar();
 
-    const rectCalls = vi.mocked(rect).mock.calls;
+    const rectCalls = vi.mocked(drawingContext.fillRect).mock.calls;
     const frame = rectCalls[0];
     const shieldSegment = rectCalls[2];
     // 125 frame + 3 border, i.e. exactly what an unshielded champion draws
@@ -332,16 +360,19 @@ describe('champion and direct-subclass type boundary', () => {
   });
 
   it('ticks the bar by health so two champions can be compared at a glance', () => {
+    // Ticks go down as one native path — a moveTo per tick (see the tick
+    // comment in Champion.drawHealthBar for why the batching is real there
+    // and was not under p5).
     const small = shieldedChampion(createGame(), 100, 0, 100);
     small.drawHealthBar();
-    const smallTicks = vi.mocked(line).mock.calls.length;
+    const smallTicks = vi.mocked(drawingContext.moveTo).mock.calls.length;
 
-    vi.mocked(line).mockClear();
+    vi.mocked(drawingContext.moveTo).mockClear();
     const big = shieldedChampion(createGame(), 300, 0, 300);
     big.drawHealthBar();
 
     expect(smallTicks).toBe(1);
-    expect(vi.mocked(line).mock.calls.length).toBe(5);
+    expect(vi.mocked(drawingContext.moveTo).mock.calls.length).toBe(5);
   });
 
   it('draws spell overlays after the champion body and health UI', () => {

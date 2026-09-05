@@ -3,6 +3,7 @@ import { BASIC_ATTACK_SOURCE } from '@/game/combat/DamageAttribution';
 import type { DamageType } from '@/game/combat/Mitigation';
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import { TURRET_BOUNTY } from '@/game/economy/Wallet';
+import { cssColor } from '@/game/render/cssColor';
 import AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { KillCredit } from '@/game/combat/MatchTally';
 import type { ObjectiveKind } from '@/game/combat/Announcer';
@@ -575,20 +576,29 @@ export default class Turret extends AttackableUnit {
     const y = pos.y - size * 0.75;
     const percent = Math.max(0, this.stats.health.value / this.stats.maxHealth.value);
 
-    push();
-    noStroke();
-    fill(12, 14, 18, 220);
-    rect(x - 2 * k, y - 2 * k, w + 4 * k, h + 4 * k);
+    // Native context, not p5 — the same move as `Minion.drawHealthBar` and
+    // for the same reason: this measured 202us/call at 6x throttle and every
+    // one of those microseconds was p5 overhead around four primitives.
+    // Same geometry, same colors.
+    const ctx = drawingContext;
+    ctx.save();
+    ctx.fillStyle = cssColor(12, 14, 18, 220);
+    ctx.fillRect(x - 2 * k, y - 2 * k, w + 4 * k, h + 4 * k);
     // Team-coloured fill, the same bar shade a minion carries, so a turret's
     // side is legible from its health bar as well as its body.
     const bar = teamColors(this.teamId).bar;
-    fill(bar[0], bar[1], bar[2]);
-    rect(x, y, w * percent, h);
-    fill(200, 200, 210);
-    textAlign(CENTER, CENTER);
-    textSize(11 * k);
-    text(`${~~this.stats.health.value} / ${~~this.stats.maxHealth.value}`, pos.x, y - 9 * k);
-    pop();
+    ctx.fillStyle = cssColor(bar[0], bar[1], bar[2]);
+    ctx.fillRect(x, y, w * percent, h);
+    ctx.fillStyle = cssColor(200, 200, 210);
+    ctx.font = `${11 * k}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      `${~~this.stats.health.value} / ${~~this.stats.maxHealth.value}`,
+      pos.x,
+      y - 9 * k
+    );
+    ctx.restore();
 
     this.drawPassiveMarks(y + h + 4 * k, k);
   }

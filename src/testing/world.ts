@@ -254,6 +254,7 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     moveTo: vi.fn(),
     lineTo: vi.fn(),
     arc: vi.fn(),
+    ellipse: vi.fn(),
     rect: vi.fn(),
     fillRect: vi.fn(),
     strokeRect: vi.fn(),

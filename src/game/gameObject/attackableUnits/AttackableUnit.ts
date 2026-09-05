@@ -65,23 +65,16 @@ export interface AttackableUnitRenderOptions {
    * information — champions above all — must ignore it.
    */
   thinCrowd?: boolean;
-  /**
-   * The machine is missing its frame target and the health frame may drop its
-   * *pure decoration* — nothing a player reads a number off.
-   *
-   * The first stress rung, and the narrowest of the three flags on purpose. It
-   * takes the tick marks, the frame's border stroke and the shield-overflow
-   * flag; it leaves the bars themselves, the mana strip, the buff icons, the
-   * score and the status line. That division is not arbitrary — it is exactly
-   * the feedback from the last time a late frame took information away
-   * ("thanh máu rút gọn thì ko xem đc rõ buffs + máu đang bao nhiêu").
-   *
-   * The tick marks are why this exists: `MAX_TICKS` is 20, so a champion frame
-   * can pay for twenty `line()` calls a frame, which is about half of what the
-   * whole frame costs.
-   */
-  plainFrames?: boolean;
 }
+
+// There used to be a third flag here — `plainFrames`, the first stress rung
+// stripping the champion frame's ticks, border and shield-overflow flag. It
+// was removed on purpose, not forgotten: the two looks flickered against each
+// other whenever a fight sat near the stress threshold, and the report was
+// that reading health mid-combat got *harder* — the exact failure the flag's
+// own comment promised to avoid. The frame is painted through the native
+// context now (see `Champion.drawHealthBar`), which makes the full frame
+// cheaper than the plain one ever was; a health bar has one face, always.
 
 export interface UnitDeathData {
   attacker?: AttackableUnit;
@@ -555,11 +548,11 @@ export default class AttackableUnit extends GameObject {
   // hook for units colliding with the map edge (old JS: super.onCollideMapEdge?.())
   onCollideMapEdge() {}
 
-  draw({ compactUnits = false, plainFrames = false }: AttackableUnitRenderOptions = {}) {
+  draw({ compactUnits = false }: AttackableUnitRenderOptions = {}) {
     this.drawAvatar();
     if (!compactUnits) this.drawDir();
     this.drawBuffs(compactUnits);
-    this.drawHealthBar(compactUnits, plainFrames);
+    this.drawHealthBar(compactUnits);
   }
 
   drawAvatar() {
@@ -658,7 +651,7 @@ export default class AttackableUnit extends GameObject {
     }
   }
 
-  drawHealthBar(_compact = false, _plain = false) {
+  drawHealthBar(_compact = false) {
     push();
     let pos = this.position;
     let { displaySize: size, alpha } = this.animatedValues;
