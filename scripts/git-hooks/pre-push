@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-push gate: `npm run verify` must pass before anything leaves this machine.
+# Pre-push gate: the verify suite must pass before anything leaves this machine.
 #
 # Versioned here rather than living only in .git/hooks so a fresh clone gets it
 # back with one command: `npm run hooks:install` (points core.hooksPath here).
@@ -8,14 +8,24 @@
 #   git push --no-verify           # skip once, on purpose
 #   MOBA2D_SKIP_VERIFY=1 git push  # same, for scripts
 #
-# While a pack is linked for development, verify cannot run at all (links:check
-# refuses, and four test files are red under any link by design) — but the link
-# lives in the working tree, not in history, so that alone is no reason to
-# block a push. What must never leave is a *commit* with the link baked in: a
-# committed src/generated/installedPacks.ts naming a dev-linked pack is an
-# import that resolves for nobody else. So: unlinked pushes get the full gate;
-# linked pushes get each outgoing commit checked for exactly that poison, a
-# warning that the test suite did not run, and passage.
+# Two gates, split on whether a pack is dev-linked:
+#
+# Unlinked: `npm run verify:all` — verify PLUS the reference pack's own
+# check-seams, because that is what CI runs and the difference is not
+# theoretical: on 2026-09-05 the plain-verify gate here waved through a 60s
+# reference-pack cooldown that CI then refused on main.
+#
+# Linked: `links:check` refuses the full gate by design — the link lives in
+# the working tree and must never be committed, but that is no reason to push
+# *unverified*, which is what this hook used to do and what let two CI-red
+# pushes through in one afternoon. Most of the gate does not read the link
+# state at all, so it runs: the three typechecks, the vitest suite (its
+# pack-dependent exclusion shrinks itself to whatever is genuinely absent —
+# with packs linked, the champion/monster tests a core-alone checkout skips DO
+# run, which is exactly what would have caught the first of those two reds),
+# core's check-seams, and the reference pack's. What stays skipped is only
+# what reads the link itself: links:check, the generated-file drift checks,
+# and build + chunks:check.
 
 [ "$MOBA2D_SKIP_VERIFY" = "1" ] && exit 0
 
@@ -39,19 +49,20 @@ if [ -f "scripts/perf-guard.mjs" ]; then
 fi
 
 if npm run --silent links:check >/dev/null 2>&1; then
-  # Not linked: the full gate.
-  echo "pre-push: running npm run verify (git push --no-verify skips this once)"
-  npm run verify && exit 0
+  # Not linked: the full gate, CI's exact shape.
+  echo "pre-push: running npm run verify:all (git push --no-verify skips this once)"
+  npm run verify:all && exit 0
 
   echo ""
-  echo "pre-push: verify FAILED — push blocked."
+  echo "pre-push: verify:all FAILED — push blocked."
   echo "  skip once on purpose: git push --no-verify"
   exit 1
 fi
 
-# Linked for development. Check every outgoing commit (just the tip when the
-# remote side is new and there is no range to ask for) for a committed dev
-# link, and let a clean push through.
+# Linked for development. First, check every outgoing commit (just the tip
+# when the remote side is new and there is no range to ask for) for a
+# committed dev link: a committed src/generated/installedPacks.ts naming a
+# dev-linked pack is an import that resolves for nobody else.
 for pair in $pairs; do
   local_sha=${pair%:*}
   remote_sha=${pair#*:}
@@ -70,7 +81,23 @@ for pair in $pairs; do
   done
 done
 
-echo "pre-push: a pack is linked for development, so the verify suite cannot run —"
-echo "  outgoing commits carry no dev link, letting the push through unverified."
-echo "  For the full gate: npm run pack:unlink -- --all, push again, then re-link."
-exit 0
+# Then the link-compatible gate. MOBA2D_LINKED_GATE=1 tells vitest.config.ts
+# to exclude the six population-sensitive tests (each asserts the exact set
+# of installed packs, which a machine with dev links legitimately answers
+# differently) — the list, and the derive-from-installed fix each one is
+# owed, live beside the config's other exclusions, not here.
+echo "pre-push: a pack is linked — running the link-compatible gate"
+echo "  (typechecks + vitest + check-seams, core and reference; the drift checks and build stay CI's)"
+npm run typecheck \
+  && npm run typecheck:core \
+  && npm run typecheck:sw \
+  && MOBA2D_LINKED_GATE=1 npx vitest run \
+  && npm run check-seams \
+  && npm run check-seams --workspace=@moba2d/content-reference \
+  && exit 0
+
+echo ""
+echo "pre-push: the linked gate FAILED — push blocked."
+echo "  skip once on purpose: git push --no-verify"
+echo "  (links:check, drift checks, build and chunks:check did not run — CI covers those.)"
+exit 1

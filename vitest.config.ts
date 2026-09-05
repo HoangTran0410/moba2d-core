@@ -58,6 +58,33 @@ const installed = installedContentPackages(__dirname).map((pack: { name: string 
 const packDependent: string[] = packDependentTests(__dirname, installed);
 
 /**
+ * Population-sensitive tests, excluded ONLY under the pre-push hook's linked
+ * gate (`MOBA2D_LINKED_GATE=1`, set by `scripts/git-hooks/pre-push`).
+ *
+ * Each of these asserts the exact set of installed packs — registry
+ * membership, map counts, the jungle camp namespace, the summoner-spell
+ * list, a defence-profile fallback a linked champion legitimately overrides
+ * — so a machine with dev-linked packs answers them differently by
+ * construction, not by bug. They run everywhere else: CI, an unlinked push,
+ * a plain local `vitest run`. The honest fix for each is deriving its
+ * expectation from what is installed (`tests/support/installedPacks.ts` is
+ * the pattern); do that, then delete its line. A seventh test failing only
+ * under a link gets fixed or added here consciously — the linked gate skips
+ * nothing it was not told about.
+ */
+const populationSensitive =
+  process.env.MOBA2D_LINKED_GATE === '1'
+    ? [
+        'tests/content/registry.test.ts',
+        'tests/game/preset.customKitDefence.test.ts',
+        'tests/game/preset.runtimePack.test.ts',
+        'tests/game/slotObjects.test.ts',
+        'tests/game/config/matchConfigSource.contract.test.ts',
+        'tests/game/hud/shopSubject.test.ts',
+      ]
+    : [];
+
+/**
  * The same preset a separated pack's own `vitest.config.ts` spreads
  * (published as `@moba2d/core/testing/vitest`). Core runs under it too,
  * rather than merely resembling it, so core is the preset's first real
@@ -98,6 +125,7 @@ export default defineConfig({
       '**/.claude/**',
       'packs/*/tests/**',
       ...packDependent,
+      ...populationSensitive,
     ],
   },
 });
