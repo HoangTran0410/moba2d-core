@@ -36,3 +36,29 @@ only slot the wind drake uses (tripling move speed is a different game).
 `ELDER.body` and the chemtech `frenzy` are buffs on the *monster's own body*,
 not team rewards, and correctly do not scale; `ELDER.bonuses` is in `ROTATION`
 so it does.
+
+
+## The tank shelf (2026-09-05, lol `6c16561` + dota `5347854`)
+
+The user's balance read: too many AP items, nothing tanky survives them.
+Answered with items, not nerfs — agent-built, both packs:
+
+- **lol 61 -> 77**: 4 components (chain_vest/negatron/giants_belt/spectres_cowl)
+  + 6 MR/anti-AP (Force of Nature, Kaenic Rookern's permanent magic-only
+  shield via `Shield.absorbs: ['MAGIC']`, Banshee's spell-block with 12s
+  re-arm, Maw, Silvermere reusing Item_Quicksilver's cleanse, Hollow
+  Radiance) + 5 armor/HP (Randuin, Sunfire — one shared `Item_Immolate`
+  serves both burn items, Heartsteel capped at +20 max HP, Gargoyle,
+  Iceborn subclassing SpellbladeBuff) + Redemption (heals via `takeHeal`
+  so heal cuts apply). balanceReport ratio untouched (no new item enters
+  either best-six). Damage-type latch pattern: `modifyIncomingDamage` is
+  the only Buff hook told the DamageType — latch there, spend in
+  `onDamageTaken` after the chain settles.
+- **dota 12 more** (shop now 14 finished): the physical/magic barrier pairs
+  Vanguard+Crimson Guard vs Hood+Pipe (rebuilding `Shield.absorbs`
+  barriers), Satanic, Power Treads, Crystalys, 5 components. Blade
+  Mail/BKB/Heart already existed — check the shop before assuming a gap.
+  dota pack 1.2.0 -> 1.3.0.
+
+Nobody has PLAYED with any of these yet — per-fight feel (barrier rearm
+windows, Heartsteel pacing, Pipe teamfight value) is unreviewed.

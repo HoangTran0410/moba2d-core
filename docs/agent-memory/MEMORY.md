@@ -6,7 +6,7 @@
 - [Shop + map-editor seams](moba2d-shop-and-editor-seams.md) — item prose vs stat list, undo/redo, AreaSpellObject position, editor slot-stats drop
 - [Core subpath exports + map rules](moba2d-core-subpath-and-map-rules.md) — a new @moba2d/core/* export means five edits; where mapRules.js lives and the two rules that were wrong first
 - [Creature rig](moba2d-creature-leg-rig.md) — legs, spines, two-ended chains; lash/beam/limp/decor/trail; on main UNPUSHED; the clamp-don't-refuse and no-sag-in-top-down traps
-- [Vamp stats + Vết Thương Sâu](moba2d-vamp-and-heal-cut.md) — core 1.16 stat model (counters, haste, share-of-wearer grants + the AS_PERCENT display half); lol shop at 58 items, record-parity sweep, Janna fixes; dota 1.2.0 after being silently refused; all committed, unpushed
+- [Vamp stats + Vết Thương Sâu](moba2d-vamp-and-heal-cut.md) — core 1.16 stat model (counters, haste, share-of-wearer grants + the AS_PERCENT display half); lol shop at 77 items, record-parity sweep, Janna fixes; dota 1.2.0 after being silently refused; all committed, unpushed
 - [Naruto pack](moba2d-naruto-pack.md) — terrain zones + stances in core; roster 3→7 (2026-09-02); rims-then-bodies, PIE unstubbed, onAdded not called in tests, slotName in vfx-casts, seeded geometry = flaky hitbox
 - [Bot scoring + cooldown band](moba2d-bot-scoring-and-tempo.md) — two shared gates in core; the SELF-cast blind spot, 226 findings, 10s ultimate ceiling
 - [Multi-pack install](moba2d-multi-pack-install.md) — linking 3 packs broke install + bare spell ids; installedPacks sorts by package name
@@ -23,7 +23,7 @@
 - [Damage text helpers](moba2d-damage-text-helpers.md) — api.text.dmg replaced parsing prose for numbers; core 1.22.0, all 3 packs migrated
 - [Bot toggles](moba2d-bot-toggles.md) — autoBuy/autoReroll flags, sell-to-rebuy swaps, ability power shown as points
 - [Death recap](moba2d-death-recap.md) — shields reported, engagement-gap window instead of a clock, minions grouped by kind
-- [lol content](moba2d-lol-content.md) — Orianna ball vision (and how to test one), dragon blessings scaling with match time
+- [lol content](moba2d-lol-content.md) — Orianna ball vision (and how to test one), dragon blessings scaling with match time; 2026-09-05 tank shelf (16 items) answering the AP surplus
 - [Bot re-roll rebuild](moba2d-bot-reroll-rebuild.md) — death+new champion refunds the bag at cost and re-buys in one trip; the missing sellRefund on the bot's ShopHost
 - [Fog hard path](moba2d-fog-hard-path.md) — Thấp-quality fog re-fogged overlapping vision and cut square holes; clip groups + circle cut; revealMap is minimap-only
 - [Announcer smoothing](moba2d-announcer-smoothing.md) — banner stacking/judder in 1v10: priority + min hold, reserved feed height, pinned ghosts; p5 ruled out
