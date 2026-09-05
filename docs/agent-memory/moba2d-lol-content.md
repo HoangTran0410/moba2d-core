@@ -123,3 +123,29 @@ HP.
 
 3. takeHeal clamp + the whole rearm/scale sweep is live on pages.dev; the
 user's PWA needed its update cycle before the slot countdown showed.
+
+
+## The meal/snack doctrine for kill-stackers (2026-09-06)
+
+The user caught the whole family in one session: Cho'Gath R (+75 max HP per
+feast, minion or champion), Nasus Q (+5 damage per last hit, 3s cd), Veigar
+Q (+20 max mana per kill through a PIERCING orb — one wave-clear = +60-80),
+each uncapped and each out-growing Heartsteel (~18 HP/min) off creep waves.
+
+**The doctrine, applied to all three + Heartsteel** (lol `21468ae`,
+`233c4e6`, Veigar next commit; Heartsteel `f7d7594`): per-stack value cut to
+~1/5 (Cho 75→10 HP + 6→2 size, Nasus 5→2 dmg, Veigar 20→5 mana), and a
+slain CHAMPION banks **6 stacks** where everything else banks 1 — told
+apart by `killCredit === 'champion'` (the codebase's champion test; Pet is
+'none' so pets are snacks). Champion meals end up slightly richer than the
+old flat bite. Veigar's instant 20-mana refund stays flat (sustain is feel;
+permanent room was the runaway). Heartsteel: uncapped by the owner's call
+(+3/proc), stacks park per-champion through death, lost only on sale
+(alive-at-deactivate = sale, dead = death).
+
+**Sweep notes:** the kill-stacking grep is `wasAlive.*isDead` in pack
+spells; Darius_W and Irelia_Q match but are transient cooldown resets —
+fine. Test traps paid: the `spell-runtime-drive` seam bans calling
+`.onSpellCast()` in tests (drive via `pressSpell`), and fixture victims are
+Champions (killCredit 'champion') — a "minion" test must set
+`victim.killCredit = 'minion'` by hand.
