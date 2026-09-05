@@ -2927,8 +2927,11 @@ button.practice-roster-item {
   /* One row's box and the air under it, in one place, because the reserved
      height below is arithmetic on them and a row that grew past its number
      would put the jump back. `.kill-feed-row` is pinned to `--feed-row-h`:
-     26px of face, 3px of padding and a 1px border on each side. */
-  --feed-row-h: 34px;
+     a 30px face (26px plus its own 2px borders — the first version of this
+     sum forgot those and pinned the row at 34px, which crushed the vertical
+     padding to 1px and sat the avatars on the row's border), 3px of padding
+     and a 1px border on each side. */
+  --feed-row-h: 38px;
   --feed-gap: 5px;
   /* Room for the whole stack whether or not the stack is there.
      `.kill-banner` sits at `top: 100%` of the column this closes, so every row
@@ -3365,19 +3368,21 @@ body.touch-ui .kill-callouts {
   gap: 6px;
 }
 
-/* Two rows of a 390px-tall screen, and no more; 22px of face, 2px of padding
+/* Two rows of a 390px-tall screen, and no more; a 26px face (22px plus its
+   own 2px borders — count them, or the row pins shut and the avatars sit on
+   its border, which is how the first 28px version shipped), 2px of padding
    and a 1px border make the row.
 
    But only *one* of them is reserved, unlike the desktop block above, and the
    arithmetic is why. `drive-kill-feed.mjs` holds the banner to the top 40% of
    the screen so the fight stays visible under it, which on a 390px-tall phone
    is 156px. The Legendary banner is 63px tall and hangs 12px under this box,
-   which starts 36px down: one row reserved puts its foot at 139px, two puts it
-   at 171px. So the phone buys back the 0↔1 change — which is most of them,
+   which starts 36px down: one row reserved puts its foot at 143px, two puts it
+   at 179px. So the phone buys back the 0↔1 change — which is most of them,
    since a phone's feed spends most of a fight empty or holding one row — and
    keeps the fight. A desktop has the room and reserves the lot. */
 body.touch-ui .kill-feed {
-  --feed-row-h: 28px;
+  --feed-row-h: 32px;
   --feed-gap: 4px;
   min-height: var(--feed-row-h);
 }
