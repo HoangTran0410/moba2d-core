@@ -12,6 +12,7 @@ import { MINION_Z_INDEX, PredefinedFilters } from '@/game/managers/ObjectManager
 import MissileSpellObject, { STALLED_CHASE_MS } from '@/game/gameObject/MissileSpellObject';
 import TrailSystem from '@/game/gameObject/helpers/TrailSystem';
 import SpellObject from '@/game/gameObject/SpellObject';
+import type GameObject from '@/game/gameObject/GameObject';
 import AttackableUnit from './AttackableUnit';
 import type { HitPresentationOptions } from './AttackableUnit';
 import type {
@@ -586,6 +587,23 @@ export default class Minion extends AttackableUnit {
     current: AttackableUnit | null = null,
     currentRank = Infinity
   ): AggroChoice<AttackableUnit> | null {
+    // One walk of the tree for both sides of the question. The hostile scan
+    // and the ally scan used to be two `queryObjects` calls over the *same*
+    // circle — identical area, different filters — so a wave in combat paid
+    // the tree retrieval twice per scan, and lane aggro is already the top
+    // consumer of `queryObjects` in a teamfight (~55% of ~30 calls/tick).
+    // One query takes everything the circle holds that either side wants; the
+    // partition below is the two old filter lists verbatim.
+    //
+    // The vision gate deliberately is NOT in the query filter any more. It is
+    // the expensive predicate here — `canSee` raycasts walls, and on a miss
+    // walks the team's borrowed eyes — and inside the filter list it ran
+    // before the bounding-box and true-distance checks, i.e. it was paid for
+    // corner hits the circle then threw away. It gates the same acquisition,
+    // after the cheap geometry has said the unit is actually in range.
+    const enemyGate = PredefinedFilters.canTakeDamageFromTeam(this.teamId);
+    const allyGate = (o: GameObject): boolean =>
+      (o instanceof Champion || o instanceof Minion) && o.teamId === this.teamId && !o.isDead;
     const found = this.game.objectManager.queryObjects({
       area: new Circle({
         x: this.position.x,
@@ -593,26 +611,39 @@ export default class Minion extends AttackableUnit {
         r: this.aggroRange,
       }),
       filters: [
-        PredefinedFilters.canTakeDamageFromTeam(this.teamId),
-        PredefinedFilters.excludeType(Monster),
-        // a champion in a bush is not a target a minion can pick — see the
-        // filter's own comment for the rule and its one deliberate looseness
-        PredefinedFilters.excludeStealthed,
-        PredefinedFilters.visibleTo(this),
+        (o: GameObject) =>
+          allyGate(o) ||
+          (enemyGate(o) &&
+            !(o instanceof Monster) &&
+            // a champion in a bush is not a target a minion can pick — see the
+            // filter's own comment for the rule and its one deliberate looseness
+            PredefinedFilters.excludeStealthed(o)),
       ],
     }) as AttackableUnit[];
 
+    // The allied champions and minions near enough for this one to answer for.
+    //
+    // No vision gate on this half: you always see your own team, and an ally
+    // taking hits from something *this* minion cannot see is still an ally
+    // taking hits — the ladder refuses that attacker anyway, because a rung
+    // only counts when the attacker is in the candidate set. And no distance
+    // re-check either, exactly as the old ally query had none.
+    const allies: AttackableUnit[] = [];
     // The quadtree answers by bounding box, so the circle is re-checked here.
     const candidates: AttackableUnit[] = [];
+    const seenBy = PredefinedFilters.visibleTo(this);
     for (const unit of found) {
-      if (unit === this) continue;
+      if (unit.teamId === this.teamId) {
+        allies.push(unit);
+        continue;
+      }
       if (p5.Vector.dist(this.position, unit.position) > this.aggroRange) continue;
+      if (!seenBy(unit)) continue;
       candidates.push(unit);
     }
 
     // Nothing in range is the state a minion spends most of its walk in, and
-    // it means there is nothing to defend either — so the ally query below
-    // never runs for a wave with an empty lane in front of it.
+    // it means there is nothing to defend either.
     if (candidates.length === 0) return null;
 
     const held = !!current && candidates.includes(current);
@@ -623,28 +654,9 @@ export default class Minion extends AttackableUnit {
       held,
       currentRank,
       candidates,
-      allies: this.alliesInRange(),
+      allies,
       ladder: Minion.LADDER,
     });
-  }
-
-  /**
-   * The allied champions and minions near enough for this one to answer for.
-   *
-   * No vision filter, unlike the hostile query: you always see your own team,
-   * and an ally taking hits from something *this* minion cannot see is still
-   * an ally taking hits — the ladder refuses that attacker anyway, because a
-   * rung only counts when the attacker is in the candidate set.
-   */
-  private alliesInRange(): AttackableUnit[] {
-    return this.game.objectManager.queryObjects({
-      area: new Circle({ x: this.position.x, y: this.position.y, r: this.aggroRange }),
-      filters: [
-        PredefinedFilters.includeTypes([Champion, Minion]),
-        PredefinedFilters.teamId(this.teamId),
-        PredefinedFilters.excludeDead,
-      ],
-    }) as AttackableUnit[];
   }
 
   /**

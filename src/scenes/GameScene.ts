@@ -496,16 +496,22 @@ export default class GameScene extends Scene {
   }
 
   /**
-   * The simulation's own timer, polled at twice the step so a step is never
-   * more than half an interval late.
+   * Repays whatever simulation steps are due right now, against the shared
+   * tick clock. Idempotent by that clock: whichever of its two callers gets
+   * there first runs the steps, and the other finds `run = 0`.
    *
-   * A poll used to run *one* tick however far behind it was, and move the clock
-   * on as if it had run them all — so every step lost to a GC pause, a long
-   * frame or a backgrounded tab was lost for good, and the match quietly ran
-   * slower than real time. `stepsToRun` repays a hitch up to a ceiling instead;
-   * see `simulationClock.ts` for why the ceiling is not optional.
+   * Two callers on purpose. The timer below is the one that survives a hidden
+   * tab (a LAN host must keep serving); `draw` is the one that actually gets
+   * scheduled on a machine that is struggling. A 19ms draw starves an 8ms
+   * `setTimeout` — measured in a ten-champion fight at 6x CPU throttle, the
+   * timer alone delivered 43.9 ticks/sec on a machine whose arithmetic
+   * (6.25ms/tick × 60Hz + 19.12ms × 28.9fps = 927ms/s) could afford all 60.
+   * The frame loop, by contrast, runs exactly when the thread is free, so
+   * pumping from the top of `draw` turns the loss back into ticks — same
+   * fixed step, same catch-up ceiling, nothing about the simulation changes
+   * but *when* the due steps get their turn on the thread.
    */
-  updateLoop() {
+  private pumpSimulation() {
     if (!this.game) return;
 
     const interval = 1000 / this.game.fps;
@@ -518,14 +524,37 @@ export default class GameScene extends Scene {
       previousTime += advanceMs;
       for (let step = 0; step < run; step++) this.runTick();
     }
+  }
 
-    this._animationFrameId = window.setTimeout(() => {
-      this.updateLoop();
-    }, interval / 2);
+  /**
+   * The simulation's own timer, polled at twice the step so a step is never
+   * more than half an interval late.
+   *
+   * A poll used to run *one* tick however far behind it was, and move the clock
+   * on as if it had run them all — so every step lost to a GC pause, a long
+   * frame or a backgrounded tab was lost for good, and the match quietly ran
+   * slower than real time. `stepsToRun` repays a hitch up to a ceiling instead;
+   * see `simulationClock.ts` for why the ceiling is not optional.
+   */
+  updateLoop() {
+    if (!this.game) return;
+
+    this.pumpSimulation();
+
+    this._animationFrameId = window.setTimeout(
+      () => {
+        this.updateLoop();
+      },
+      1000 / this.game.fps / 2
+    );
   }
 
   draw() {
     if (this.game) {
+      // First repay any due simulation steps — see `pumpSimulation` for why
+      // the frame loop is a tick pump as well as the timer. Before `alpha` is
+      // computed, so the frame interpolates against the newest tick.
+      this.pumpSimulation();
       // The phase the render loop has reached inside the current simulation
       // step. `previousTime` is the notional time of the last tick and
       // `interval` its length — the two clocks this scene deliberately keeps
