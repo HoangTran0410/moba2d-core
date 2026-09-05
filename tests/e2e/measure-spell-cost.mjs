@@ -77,11 +77,34 @@ const BUDGET_US = flag('budget', 150);
  */
 const DELTA_BUDGET_MS = flag('delta-budget', 3);
 /**
- * Where the aggregate stops being advice and becomes a refusal. Twice the warn
- * line, which is ~3x the population's 90th percentile: nothing ordinary reaches
- * it, and nothing that reaches it is ordinary.
+ * Where the aggregate stops being advice and becomes a refusal — applied to the
+ * cost a *team* can really put on the board, not to the saturated figure.
+ *
+ * The saturated figure cannot carry a refusal, and checking why is what settled
+ * it. `reach` works out to `lifetime / cooldown`: under saturation the
+ * population settles at `lifetime / FIRE_INTERVAL_MS`, so scaling it back by
+ * the real firing rate leaves exactly the effect's own duty cycle. Which means
+ * the saturated aggregate is `perInstance x lifetime / 90ms` — it grows with
+ * **how long an effect lasts**, and a long cheap effect and a short expensive
+ * one are indistinguishable in it.
+ *
+ * That is not a theory about the harness. The ability this gate was *built*
+ * for — cheap per instance at 95us and ruinous in aggregate at 5.4ms — measures
+ * a reach of **1.1**: sixty of them on the board here, and a five-second
+ * cooldown means a caster keeps one. Its real cost is 0.14ms. The founding case
+ * was itself unreachable, so the gate has been refusing on a number the game
+ * cannot produce since the day it was written.
+ *
+ * So the aggregate that refuses is `perInstance x reach x TEAM`, and the
+ * saturated one only ever warns.
  */
-const DELTA_FAIL_MS = flag('delta-fail', 6);
+const DELTA_FAIL_MS = flag('delta-fail', 3);
+/**
+ * How many champions might bring the same ability. Five is a side, and it is an
+ * assumption about the match rather than a measurement — which is why it is a
+ * flag and is named here instead of being folded into the threshold.
+ */
+const TEAM = flag('team', 5);
 /**
  * Below this many live instances, us-per-instance is a ratio with a rounding
  * error on the bottom, not a measurement — one ability measured 257us/instance
@@ -182,12 +205,17 @@ page.on('pageerror', error => pageErrors.push(error.message));
  */
 const verdictFor = row => {
   const overPer = row.enough && row.perInstance > BUDGET_US;
-  const overFail = row.delta > DELTA_FAIL_MS;
-  const reason = [overPer && 'per-instance', overFail && 'total'].filter(Boolean).join(' + ');
+  // What a full side bringing this actually puts on the frame.
+  const teamMs = (row.perInstance * row.reach * TEAM) / 1000;
+  const overTeam = teamMs > DELTA_FAIL_MS;
+  const reason = [overPer && 'per-instance', overTeam && `${TEAM} casters = ${teamMs.toFixed(1)}ms`]
+    .filter(Boolean)
+    .join(' + ');
   return {
-    fails: overPer || overFail,
-    warns: !overPer && !overFail && row.delta > DELTA_BUDGET_MS,
+    fails: overPer || overTeam,
+    warns: !overPer && !overTeam && row.delta > DELTA_BUDGET_MS,
     reason,
+    teamMs,
   };
 };
 
@@ -424,8 +452,8 @@ try {
 
 console.log(
   `\n=== spell draw cost (CPU throttle ${THROTTLE}x, ` +
-    `fails over ${BUDGET_US}us/instance or ${DELTA_FAIL_MS}ms/frame, ` +
-    `warns over ${DELTA_BUDGET_MS}ms/frame) ===`
+    `fails over ${BUDGET_US}us/instance or ${DELTA_FAIL_MS}ms/frame across ${TEAM} casters; ` +
+    `warns over ${DELTA_BUDGET_MS}ms/frame saturated) ===`
 );
 console.log(
   'spell'.padEnd(24) +
@@ -456,13 +484,13 @@ for (const row of results) {
       row.reach.toFixed(1).padStart(8) +
       (verdict.fails ? `   OVER (${verdict.reason})${confirmed}` : verdict.warns ? '   heavy' : '')
   );
-  // Only worth saying when the two disagree enough to change what you would do
-  // about the row — a saturated aggregate that the cooldown cannot pay for.
-  if (verdict.fails && row.reach < row.instances / 4) {
+  // The saturated column is the loudest number on the row and the least
+  // meaningful one, so say what the cooldown allows whenever the two disagree.
+  if ((verdict.fails || verdict.warns) && row.reach < row.instances / 4) {
     console.log(
       `${' '.repeat(24)}a ${(row.coolDownMs / 1000).toFixed(1)}s cooldown keeps about ` +
         `${row.reach.toFixed(1)} of these up per caster, not ${row.instances.toFixed(0)} — ` +
-        `so one caster's real cost is nearer ${((row.perInstance * row.reach) / 1000).toFixed(2)}ms.`
+        `so ${TEAM} casters cost about ${verdict.teamMs.toFixed(2)}ms a frame.`
     );
   }
 }
@@ -474,13 +502,14 @@ if (heavy > 0) {
   console.log(
     `${heavy} ability(s) marked heavy — over ${DELTA_BUDGET_MS}ms a frame under saturation,\n` +
       'which is roughly three times what an ordinary ability in these packs costs.\n' +
-      'Not a refusal: worth a look, not worth blocking a push over.\n'
+      'Not a refusal. The saturated figure grows with how long an effect lasts as\n' +
+      'much as with what it costs, so read it beside the reach column.\n'
   );
 }
 if (over > 0) {
   console.error(
     `${over} ability(s) over budget — ${BUDGET_US}us per live instance, ` +
-      `or ${DELTA_FAIL_MS}ms a frame all told,\n` +
+      `or ${DELTA_FAIL_MS}ms a frame with ${TEAM} casters bringing it,\n` +
       'and measured twice so that a noisy run is not what refused you.\n' +
       'One of these is fine and forty are not — that is how every expensive\n' +
       'effect in this game has been expensive. Cut the primitive count, or make\n' +

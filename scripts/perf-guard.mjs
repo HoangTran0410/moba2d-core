@@ -29,12 +29,18 @@
  *
  * What it refuses on is calibrated against a sampled population of the packs'
  * own abilities rather than picked: the median ability costs ~0.7ms a frame
- * under saturation, the 90th percentile ~2.2ms. Over 3ms is called heavy and
- * reported; a refusal needs 150us per live instance or twice that aggregate,
- * *and* a second measurement agreeing — because the same ability measured
- * twice moved by up to 68%, and a gate decided by one noisy run refuses good
- * work. It did: a branch that made three abilities 35-64% cheaper was blocked
- * by this.
+ * under saturation, the 90th percentile ~2.2ms, and over 3ms is called heavy
+ * and reported.
+ *
+ * A refusal needs more than that. It needs 150us per live instance, or 3ms once
+ * the population is scaled back to what a cooldown actually sustains across a
+ * side of five — because the saturated aggregate turns out to grow with how
+ * *long* an effect lasts as much as with what it costs, and the ability this
+ * aggregate gate was built for keeps 1.1 of itself alive in play, not the sixty
+ * the harness stacks up. And it needs a second measurement to agree, because
+ * the same ability measured twice moved by up to 68%, and a gate decided by one
+ * noisy run refuses good work. It did, twice: a branch that made three
+ * abilities 35-64% cheaper, and then a totem whose art had just been cut 42%.
  *
  * They disagree usefully, which is why both are here. A summoned pet reads as
  * the third-heaviest body in three packs and measures fine, because there is
@@ -174,7 +180,7 @@ const run = spawnSync(
     '--delta-budget',
     String(valueOf('delta-budget', 3)),
     '--delta-fail',
-    String(valueOf('delta-fail', 6)),
+    String(valueOf('delta-fail', 3)),
   ],
   { cwd: CORE, stdio: 'inherit' }
 );
