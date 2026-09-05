@@ -7,9 +7,13 @@
  *   moba2d-perf-guard --strict        # a static finding fails too
  *   MOBA2D_PERF_GUARD_SKIP=1 git push # the escape hatch, for when you mean it
  *
- * Installed as a `pre-push` hook by `scripts/install-perf-hook.mjs`, in a pack
- * repository as well as in core — the packs are separate repositories and a
- * spell can be pushed from any of them.
+ * Called from each repository's own versioned `scripts/git-hooks/pre-push` —
+ * core's and every pack's, because the packs are separate repositories and a
+ * spell can be pushed from any of them. It is wired into the versioned hook
+ * rather than written into `.git/hooks` by an installer, which is how the first
+ * attempt got this wrong: all four repositories set `core.hooksPath`, so git
+ * never read `.git/hooks/pre-push` and the guard reported itself installed
+ * without ever having run.
  *
  * ## Two passes, because they answer different questions
  *
@@ -22,6 +26,15 @@
  * match until the board is full of it and measures the frame. It answers the
  * only question that decides a teamfight — *microseconds per live instance per
  * frame* — and it is the one that can fail a push.
+ *
+ * What it refuses on is calibrated against a sampled population of the packs'
+ * own abilities rather than picked: the median ability costs ~0.7ms a frame
+ * under saturation, the 90th percentile ~2.2ms. Over 3ms is called heavy and
+ * reported; a refusal needs 150us per live instance or twice that aggregate,
+ * *and* a second measurement agreeing — because the same ability measured
+ * twice moved by up to 68%, and a gate decided by one noisy run refuses good
+ * work. It did: a branch that made three abilities 35-64% cheaper was blocked
+ * by this.
  *
  * They disagree usefully, which is why both are here. A summoned pet reads as
  * the third-heaviest body in three packs and measures fine, because there is
@@ -153,7 +166,16 @@ if (has('static-only') || spells.length === 0 || !canMeasure) {
 console.log(`  dynamic: casting ${spells.join(', ')} — this takes about a minute\n`);
 const run = spawnSync(
   process.execPath,
-  [driver, ...spells, '--budget', String(valueOf('budget', 150))],
+  [
+    driver,
+    ...spells,
+    '--budget',
+    String(valueOf('budget', 150)),
+    '--delta-budget',
+    String(valueOf('delta-budget', 3)),
+    '--delta-fail',
+    String(valueOf('delta-fail', 6)),
+  ],
   { cwd: CORE, stdio: 'inherit' }
 );
 

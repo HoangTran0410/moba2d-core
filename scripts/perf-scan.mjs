@@ -589,9 +589,16 @@ const invokedDirectly =
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
-  const targets = process.argv.slice(2).filter(a => !a.startsWith('--'));
-  const maxArg = process.argv.indexOf('--max');
-  const max = maxArg === -1 ? null : Number(process.argv[maxArg + 1]);
+  const argv = process.argv.slice(2);
+  // A flag's *value* is not a path: `--max 20` used to leave "20" in the target
+  // list, and the scan then died trying to read a directory called 20.
+  const consumed = new Set();
+  argv.forEach((arg, i) => {
+    if (arg.startsWith('--')) consumed.add(i).add(i + 1);
+  });
+  const targets = argv.filter((arg, i) => !consumed.has(i));
+  const maxArg = argv.indexOf('--max');
+  const max = maxArg === -1 ? null : Number(argv[maxArg + 1]);
 
   const roots = targets.length
     ? targets.map(t => resolve(t))
