@@ -148,9 +148,8 @@ onUnmounted(disarm);
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  background: rgba(2, 6, 14, 0.78);
-  backdrop-filter: blur(2px);
-}
+  background: rgba(2, 6, 14, 0.88);
+  }
 
 .net-link-box {
   max-width: min(92vw, 30rem);

@@ -37,7 +37,6 @@
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
 }
 
 .lan-header {
@@ -418,7 +417,6 @@
 
 .lan-primary:hover {
   border-color: rgba(192, 252, 253, 0.75);
-  box-shadow: 0 0 10px 2px rgba(192, 252, 253, 0.25);
 }
 
 /* Undo, not a second offer: it has to be reachable and must not read as a

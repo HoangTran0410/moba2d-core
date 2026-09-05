@@ -194,7 +194,6 @@
    icon, and "this is working right now" has to be the opposite of that. */
 .spells .spell.sustaining {
   background: #7fd7a4;
-  box-shadow: 0 0 8px 1px #4bd08688;
 }
 
 /* Top-right — the one corner `.stacks` (top-left), `.mana-cost` (bottom-left)
@@ -237,7 +236,6 @@
   left: 0;
   height: 3px;
   background: #4bd086;
-  box-shadow: 0 0 4px #4bd086;
   z-index: 11;
 }
 
@@ -251,7 +249,7 @@
   z-index: 10;
 
   /* text shadow */
-  text-shadow: #000 1px 0 10px;
+  text-shadow: 0 1px 0 #000;
 }
 
 /* =============== Hồi Thành =============== */
@@ -341,7 +339,7 @@
   color: #fff;
   font-size: 1.05em;
   font-weight: bold;
-  text-shadow: #000 1px 0 6px;
+  text-shadow: 0 1px 0 #000;
 }
 
 .cooldown {
@@ -400,7 +398,7 @@
   position: fixed;
   padding: 10px;
   background-color: #111;
-  box-shadow: 0px 0px 10px 0px #999b;
+  border: 1px solid #555;
   color: #eee;
   font-size: 1em;
   width: 300px;
@@ -609,7 +607,6 @@
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   width: min(760px, 92vw);
@@ -780,11 +777,9 @@
    map. */
 .practice-team--blue .practice-team-dot {
   background: #4a9eff;
-  box-shadow: 0 0 6px rgba(74, 158, 255, 0.6);
 }
 .practice-team--red .practice-team-dot {
   background: #e0564f;
-  box-shadow: 0 0 6px rgba(224, 86, 79, 0.6);
 }
 
 .practice-team-name {
@@ -2195,7 +2190,6 @@ body.touch-ui .corner-btn {
   overflow: hidden;
   border: 2px solid #c8a15e;
   background: #14100a;
-  box-shadow: 0 0 6px #0009;
   cursor: help;
   z-index: 12;
 }
@@ -2268,7 +2262,6 @@ body.touch-ui .corner-btn {
    than a colour change alone so it reads at a glance in a fight. */
 .item-slot.drop-target {
   border-color: #ffd98a;
-  box-shadow: 0 0 8px #ffd98a88;
   transform: translateY(-2px);
 }
 
@@ -2285,7 +2278,6 @@ body.touch-ui .corner-btn {
    that is running is the identical question about a different row. */
 .item-slot.sustaining {
   border-color: #4bd086;
-  box-shadow: 0 0 6px #4bd08677;
 }
 
 .item-slot img {
@@ -2301,7 +2293,7 @@ body.touch-ui .corner-btn {
   color: #e8c17d;
   font-size: 0.72em;
   font-weight: bold;
-  text-shadow: #000 1px 0 6px;
+  text-shadow: 0 1px 0 #000;
   z-index: 10;
 }
 
@@ -2351,7 +2343,6 @@ body.touch-ui .corner-btn {
 .gold-pill.at-shop {
   border-color: #e3c078;
   color: #ffe2a3;
-  box-shadow: 0 0 8px #e3c07855;
 }
 
 .gold-pill:hover {
@@ -2389,7 +2380,6 @@ body.touch-ui .corner-btn {
 .shop-btn.at-shop {
   color: #ffe2a3;
   border-color: #e3c07899;
-  box-shadow: 0 0 8px #e3c07844;
 }
 
 .shop-btn:hover {
@@ -2449,7 +2439,6 @@ body.touch-ui .corner-btn {
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
   font-size: 13px;
   pointer-events: auto;
   /* see-through enough to watch the fight it is narrating; solid when the
@@ -3592,7 +3581,6 @@ body.touch-ui .kill-banner-sub {
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
   opacity: 0.94;
   animation: scoreboard-in 0.14s ease-out;
 }
@@ -3784,7 +3772,7 @@ body.touch-ui .kill-banner-sub {
   font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 4px #000;
+  text-shadow: 0 1px 0 #000;
 }
 
 .scoreboard-close {
@@ -3885,7 +3873,6 @@ body.touch-ui .kill-banner-sub {
 .scoreboard-item.filled:hover,
 .scoreboard-item.active {
   border-color: var(--hextech-teal, #4cc9c0);
-  box-shadow: 0 0 6px #4cc9c088;
 }
 
 /* Over the board (z 115), where the inventory's own card (z 100) would sit under it. */
@@ -3925,7 +3912,6 @@ body.touch-ui .kill-banner-sub {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 2px 8px #0008;
 }
 
 .score-strip:hover,

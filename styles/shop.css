@@ -54,7 +54,6 @@
   background: #0d1117f2;
   border: 2px solid var(--hextech-gold-dim, #785a28);
   border-radius: 8px;
-  box-shadow: 0 8px 40px #000a;
   z-index: 120;
   color: var(--hextech-text, #f0e6d2);
 }
@@ -925,7 +924,6 @@
    it reads at a glance under a thumb that is covering half of it. */
 .shop-bag-slot.shop-drop-target {
   border-color: var(--hextech-teal, #08abac);
-  box-shadow: 0 0 8px #08abac88;
   transform: translateY(-2px);
 }
 

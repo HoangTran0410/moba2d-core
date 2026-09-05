@@ -27,7 +27,6 @@
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
 }
 
 .about-header {

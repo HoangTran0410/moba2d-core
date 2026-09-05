@@ -223,13 +223,12 @@
   transition: all ease 0.5s;
 }
 
+/* No CDN texture and no glow any more: the old hover pulled btn.jpg from
+   jsdelivr — a network fetch on first hover, and a hole in the offline PWA —
+   and stacked two blurred shadows on top. A brighter frame over a lifted
+   panel colour says "this one" just as well, flat. */
 .hextech-btn:hover {
-  background-image: url(https://cdn.jsdelivr.net/gh/pxlucasf/hextech-css@master/dist/img/btn.jpg);
-  background-position: center center;
-  background-size: cover;
-  box-shadow:
-    0 0 10px 4px rgba(192, 252, 253, 0.4),
-    inset 0 0 5px 2px rgba(192, 252, 253, 0.3);
+  background: #252c33;
   border: 3px solid rgba(192, 252, 253, 0.75);
   cursor: pointer;
 }
@@ -290,16 +289,21 @@
   font-family: Verdana, Geneva, Tahoma, sans-serif;
   font-size: 0.74em;
   transform: rotate(-9deg) translate(-0.06em, -0.28em);
+  /* Only the hard extrusion steps — the two blurred drop layers under them
+     were soft-shadow atmosphere, gone with the rest of the glow effects. */
   text-shadow:
     1px 1px 0 #8d99ae,
     1px 2px 0 #8d99ae,
     1px 3px 0 #8d99ae,
     1px 4px 0 #8d99ae,
-    1px 5px 0 #8d99ae,
-    1px 8px 6px rgba(16, 16, 16, 0.45),
-    1px 14px 22px rgba(16, 16, 16, 0.35);
+    1px 5px 0 #8d99ae;
 }
 
+/* The sweep rides `transform`, not `top`/`left`: this runs on an infinite
+   loop on the menu, and animating layout properties re-lays-out and repaints
+   every frame where a translate stays on the compositor. Same path as the
+   old keyframes — the element is 200% of its box, so a 110% self-translate
+   covers the old -120% → 100% parent-relative run. */
 .shiny:before {
   content: '';
   position: absolute;
@@ -314,25 +318,18 @@
     rgba(255, 255, 255, 0.1) 55%,
     transparent 100%
   );
-  transition: all 2s;
-  transform: rotate(-45deg);
-  animation: shine 5s infinite forwards;
+  transform: translate(0, 0) rotate(-45deg);
+  animation: shine 5s infinite;
 }
 
 @keyframes shine {
   0% {
-    top: -120%;
-    left: -120%;
+    transform: translate(0, 0) rotate(-45deg);
   }
 
-  40% {
-    left: 100%;
-    top: 100%;
-  }
-
+  40%,
   100% {
-    left: 100%;
-    top: 100%;
+    transform: translate(110%, 110%) rotate(-45deg);
   }
 }
 
@@ -566,8 +563,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.66);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.82);
 }
 
 .pack-nudge-box {

@@ -16,7 +16,6 @@
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
   padding: 1.5rem 2rem 2rem;
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
 }
 
 .pregame-header {
@@ -692,7 +691,6 @@
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
   padding: 1rem 1.2rem 1.2rem;
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
 }
@@ -870,20 +868,14 @@
   padding: 0.3rem 0.9rem;
 }
 
-@keyframes hextechConfirmPulse {
-  0%, 100% {
-    box-shadow: 0 0 6px 1px rgba(200, 170, 110, 0.4), inset 0 0 8px rgba(200, 170, 110, 0.2);
-    border-color: var(--hextech-gold);
-  }
-  50% {
-    box-shadow: 0 0 16px 4px rgba(200, 170, 110, 0.85), inset 0 0 12px rgba(200, 170, 110, 0.45);
-    border-color: #ffd700;
-  }
-}
-
+/* Static, not the keyframed box-shadow pulse it used to be: an infinite
+   animation on a blurred shadow re-rasterizes the button every frame for as
+   long as changes sit unsaved, which can be the whole editing session. The
+   state change itself (gold frame + wash appearing the moment you edit) is
+   what draws the eye; it does not need to keep moving afterwards. */
 .kit-bar-btn.has-changes {
-  animation: hextechConfirmPulse 1.8s ease-in-out infinite;
-  border-color: var(--hextech-gold);
+  border-color: #ffd700;
+  background: var(--hextech-gold-wash);
   color: var(--hextech-gold);
   font-weight: bold;
 }
@@ -1027,8 +1019,7 @@
 .kit-unsaved-dialog-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(4, 10, 15, 0.84);
-  backdrop-filter: blur(3px);
+  background: rgba(4, 10, 15, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1042,7 +1033,6 @@
   background: var(--hextech-bg);
   border: 2px solid transparent;
   border-image: linear-gradient(var(--hextech-gold), var(--hextech-teal)) 1;
-  box-shadow: 0 0 25px 5px rgba(0, 0, 0, 0.75), 0 0 15px rgba(200, 170, 110, 0.25);
   padding: 1.2rem 1.4rem;
   text-align: center;
   display: flex;
@@ -1297,7 +1287,6 @@
   grid-column: 1 / -1;
   border-color: var(--hextech-gold);
   background: linear-gradient(180deg, rgba(200, 170, 110, 0.08) 0%, var(--hextech-panel) 100%);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 10px rgba(200, 170, 110, 0.15);
 }
 
 .kit-roster .kit-shelf.open .catalog-group-row {
@@ -1363,7 +1352,7 @@
 
 .kit-roster .kit-shelf {
   padding: 0.5rem 0.35rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .catalog-avatar-wrap {
@@ -1391,7 +1380,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
 }
 
 /* The sentence behind the badge, on the opened shelf. */
@@ -1425,7 +1413,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(0, 0, 0, 0.4);
 }
 
@@ -1491,7 +1478,6 @@
   background: rgba(200, 170, 110, 0.22);
   border-color: var(--hextech-gold);
   color: var(--hextech-gold);
-  box-shadow: 0 0 8px rgba(200, 170, 110, 0.25);
 }
 
 .kit-keys-preview {
@@ -1554,7 +1540,6 @@
   background: rgba(200, 170, 110, 0.15);
   border: 1px solid var(--hextech-gold);
   border-radius: 2px;
-  box-shadow: 0 0 6px rgba(200, 170, 110, 0.3);
 }
 
 .kit-guide-arrow {
@@ -1763,7 +1748,6 @@
   padding: 0.6rem 0.8rem;
   background: var(--hextech-bg);
   border: 2px solid var(--hextech-gold-dim);
-  box-shadow: 0 0 20px 4px rgba(0, 0, 0, 0.6);
   color: var(--hextech-text);
 }
 
@@ -1851,7 +1835,7 @@
   cursor: pointer;
   color: var(--hextech-text);
   line-height: 0;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .catalog-spell-card:hover {
@@ -1862,7 +1846,6 @@
 .catalog-spell-card.selected {
   border-color: var(--hextech-gold);
   background: var(--hextech-gold-wash);
-  box-shadow: 0 0 8px rgba(200, 170, 110, 0.3);
 }
 
 .catalog-spell-card.matches-slot {
@@ -1883,7 +1866,6 @@
   color: var(--hextech-gold);
   border: 1px solid rgba(200, 170, 110, 0.4);
   pointer-events: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .catalog-spell-card img {
@@ -2579,9 +2561,6 @@ body.touch-ui .spell-peek .spell-detail-body {
 
 .map-picker-restart:hover {
   border: 2px solid rgba(226, 190, 120, 0.75);
-  box-shadow:
-    0 0 10px 4px rgba(226, 190, 120, 0.25),
-    inset 0 0 5px 2px rgba(226, 190, 120, 0.2);
 }
 
 /* One column under a thumb: the list, then the picture, then the rules — the

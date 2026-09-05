@@ -22,7 +22,6 @@
   border: 3px solid transparent;
   border-image: linear-gradient(var(--hextech-teal), var(--hextech-teal-deep)) 1;
   color: var(--hextech-text);
-  box-shadow: 0 0 30px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* Padding kept to what the row needs rather than to what looks roomy: the
@@ -861,7 +860,6 @@
   background: var(--hextech-bg);
   border: 2px solid var(--hextech-teal);
   padding: 1.1rem 1.2rem;
-  box-shadow: 0 0 24px 4px rgba(0, 0, 0, 0.6);
 }
 
 /* 1. The origin — largest type on the whole screen, on purpose, and never
