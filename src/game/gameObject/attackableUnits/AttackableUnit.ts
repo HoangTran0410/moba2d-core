@@ -1651,8 +1651,15 @@ export default class AttackableUnit extends GameObject {
    * `this.buffs` out from under this loop.
    */
   private clearBuffs(): void {
-    for (const buff of this.buffs.slice()) buff.deactivateBuff();
-    this.buffs = [];
+    // A permanent growth stack (`Buff.survivesDeath`) rides through — the
+    // modern source game does not let death eat a Feast. Everything else is
+    // unwound exactly as before.
+    const surviving: Buff[] = [];
+    for (const buff of this.buffs.slice()) {
+      if (buff.survivesDeath && !buff.toRemove) surviving.push(buff);
+      else buff.deactivateBuff();
+    }
+    this.buffs = surviving;
   }
 
   respawn() {

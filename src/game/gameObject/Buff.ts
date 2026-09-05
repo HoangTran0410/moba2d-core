@@ -213,6 +213,20 @@ export default class Buff {
   rearmMsLeft = 0;
   rearmTotalMs = 0;
 
+  /**
+   * Whether this buff rides through its wearer's death instead of being
+   * cleared with everything else.
+   *
+   * Default false — a stun, a shield, a poison on a corpse is nonsense, and
+   * `AttackableUnit.clearBuffs` (death's sweep, and only death's) unwinds
+   * them all. Set true on a **permanent growth stack** — a Feast, a dark
+   * seal, an eaten heart — whose whole promise is the word "vĩnh viễn": the
+   * first version let death eat a devourer's every stack, which the modern
+   * source game does not do. Meant for pure stat carriers; a buff that holds
+   * status flags or draws combat state should never set it.
+   */
+  survivesDeath = false;
+
   startRearm(windowMs: number): void {
     // The match's cooldown setting reaches rearm windows the same way it
     // reaches every cast — the same live read `Spell.cooldownMultiplier`
