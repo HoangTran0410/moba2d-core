@@ -63,17 +63,31 @@ const git = (...a) =>
 /**
  * What this push is actually adding.
  *
- * Against the upstream branch when there is one, else the last commit — a
- * branch that has never been pushed has no upstream, and "everything since the
- * beginning of the repository" is not a useful answer at 4am.
+ * Upstream when the branch has one. When it does not — the case that matters,
+ * because a *first* push of a branch is exactly when a whole feature's worth of
+ * spells arrives at once — fall back to where it left the trunk, not to
+ * `HEAD~1`. That was the original fallback and it was close to useless: it saw
+ * the last commit only, so a branch of a dozen commits was gated on whichever
+ * one happened to be on top, and putting an unrelated commit last was enough to
+ * walk the guard past everything before it.
  */
-let range;
-try {
-  git('rev-parse', '--abbrev-ref', '@{u}');
-  range = '@{u}...HEAD';
-} catch {
-  range = 'HEAD~1..HEAD';
-}
+const range = (() => {
+  try {
+    git('rev-parse', '--abbrev-ref', '@{u}');
+    return '@{u}...HEAD';
+  } catch {
+    /* no upstream yet — this branch has never been pushed */
+  }
+  for (const trunk of ['origin/main', 'origin/master', 'main', 'master']) {
+    try {
+      const base = git('merge-base', trunk, 'HEAD');
+      if (base) return `${base}..HEAD`;
+    } catch {
+      /* that trunk does not exist here */
+    }
+  }
+  return 'HEAD~1..HEAD';
+})();
 
 let changed = [];
 try {

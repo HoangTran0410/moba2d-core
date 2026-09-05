@@ -29,6 +29,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 done
 [ -n "$pairs" ] || exit 0
 
+# The performance guard, ahead of the linked/not-linked split below because
+# whether a pack is linked has nothing to do with whether this push adds a
+# spell that eats the frame. It looks only at the spell files the push adds
+# and exits in milliseconds when there are none.
+#   MOBA2D_PERF_GUARD_SKIP=1 git push   # bypass, on purpose
+if [ -f "scripts/perf-guard.mjs" ]; then
+  node scripts/perf-guard.mjs --repo "$(pwd)" || exit 1
+fi
+
 if npm run --silent links:check >/dev/null 2>&1; then
   # Not linked: the full gate.
   echo "pre-push: running npm run verify (git push --no-verify skips this once)"
