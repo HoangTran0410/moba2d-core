@@ -1,5 +1,5 @@
-import ColorUtils from '@/utils/color.utils';
 import SpellObject from '@/game/gameObject/SpellObject';
+import { cssColor } from '@/game/render/cssColor';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { damageTextScale, hitFraction } from '@/game/render/hitFeedback';
@@ -224,6 +224,17 @@ const ARC_QUADRATIC_PX = 90;
 
 /** Peak sideways drift once the arc completes, so two numbers on one unit don't sit on identical x. */
 const DRIFT_MAX_PX = 40;
+
+/**
+ * The outline every number wears — dark, not the yellow this used to draw.
+ * Every floating number was red or green then, and yellow read as a rim on
+ * both; the moment damage split into amber, violet and cyan
+ * (`DAMAGE_TEXT_COLOR`) the same yellow started muddying the two warm ones
+ * into each other, which is exactly the distinction it now has to keep.
+ * Near-black instead of pure black so it still reads as an outline rather
+ * than a shadow.
+ */
+const OUTLINE_CSS = 'rgb(16, 12, 20)';
 
 /** Screen-space size of a number nothing has made bigger. */
 const BASE_TEXT_SIZE = 20;
@@ -505,17 +516,19 @@ export default class CombatText extends SpellObject {
     }
   }
 
+  /**
+   * Native context, not p5 — these are the most numerous drawn things in any
+   * fight, and each one used to spend thirteen p5 calls per frame. The fade
+   * rides `globalAlpha` rather than being baked into per-frame rgba strings:
+   * alpha changes every frame, so composing it into the colour would defeat
+   * `cssColor`'s cache — and `globalAlpha` also applies unchanged to a
+   * `textColor` that arrives as a css string instead of an rgb triple.
+   */
   draw(): void {
-    push();
-    const alpha = map(this.age, 0, this.lifeTime, 255, 10);
-    // A dark outline, not the yellow this used to draw. Every floating number
-    // was red or green then, and yellow read as a rim on both; the moment
-    // damage split into amber, violet and white (`DAMAGE_TEXT_COLOR`) the same
-    // yellow started muddying the two warm ones into each other, which is
-    // exactly the distinction it now has to keep. Near-black instead of pure
-    // black so it still reads as an outline rather than a shadow.
-    const strokeColor = ColorUtils.applyColorAlpha([16, 12, 20], alpha);
-    const colorAlpha = ColorUtils.applyColorAlpha(this.textColor, alpha);
+    const ctx = drawingContext;
+    // The p5 version was `map(age, 0, lifeTime, 255, 10)` — a fade that ends
+    // near-invisible rather than at zero, kept exactly.
+    const alpha = Math.max(0, 255 - (245 * this.age) / this.lifeTime);
     const size = this.owner.stats.size.value;
     const zoomFactor = this.game?.camera?.constantSize?.(1) ?? 1;
     // Rest point above the health bar, not the character model — see
@@ -528,43 +541,52 @@ export default class CombatText extends SpellObject {
     const x = this.owner.position.x + this.offsetX;
     const y = restY + this.offsetY;
 
+    ctx.save();
+    ctx.globalAlpha = alpha / 255;
+    // p5's defaults, stated: nothing in the draw loop leaves another
+    // alignment behind, but this must not depend on that staying true.
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     // A heavier outline is the crit's second tell, beside its size.
-    strokeWeight(this.crit ? 3 : 2);
-    stroke(strokeColor);
-    fill(colorAlpha);
-    textStyle(BOLD);
+    ctx.lineWidth = this.crit ? 3 : 2;
+    ctx.strokeStyle = OUTLINE_CSS;
+    ctx.fillStyle = Array.isArray(this.textColor)
+      ? cssColor(this.textColor[0], this.textColor[1], this.textColor[2])
+      : this.textColor;
     // Lands oversized and settles — see PUNCH_MS.
     const punch = this.punchMs > 0 ? 1 + PUNCH_SCALE * Math.min(1, this.punchMs / PUNCH_MS) : 1;
     // An overlay, not the world: a damage number is the same size on screen at
     // every zoom. See Camera.constantSize.
     const headlineSize = this.textSize * punch * zoomFactor;
-    textSize(headlineSize);
-    text(this.text, x, y);
+    ctx.font = `bold ${headlineSize}px sans-serif`;
+    // Outline first, glyph over it — the order p5 painted the two in.
+    ctx.strokeText(this.text, x, y);
+    ctx.fillText(this.text, x, y);
 
     if (this.showsTotal) {
       // The footnote: above the headline (the arc carries both away from the
       // bar, so above is the side with room), smaller, quieter, never punched
       // and never in the crit's heavy outline — the total is context, and the
       // headline is the news.
-      const totalSize = BASE_TEXT_SIZE * TOTAL_TEXT_SCALE * zoomFactor;
-      strokeWeight(2);
-      stroke(ColorUtils.applyColorAlpha([16, 12, 20], alpha * TOTAL_TEXT_ALPHA));
-      fill(ColorUtils.applyColorAlpha(this.textColor, alpha * TOTAL_TEXT_ALPHA));
-      textSize(totalSize);
-      text(TOTAL_PREFIX + this.totalText, x, y - headlineSize * 0.95);
+      ctx.globalAlpha = (alpha * TOTAL_TEXT_ALPHA) / 255;
+      ctx.lineWidth = 2;
+      ctx.font = `bold ${BASE_TEXT_SIZE * TOTAL_TEXT_SCALE * zoomFactor}px sans-serif`;
+      const totalY = y - headlineSize * 0.95;
+      ctx.strokeText(TOTAL_PREFIX + this.totalText, x, totalY);
+      ctx.fillText(TOTAL_PREFIX + this.totalText, x, totalY);
     }
-    pop();
+    ctx.restore();
   }
 
   /**
    * The total line earns its place only once there is more than one headline to
    * sum — and only on a machine that can afford the footnote.
    *
-   * It is five of a number's thirteen p5 calls (its own stroke, fill, textSize
-   * and `text`, plus the alpha maths), so dropping it is nearly half the cost of
-   * every floating number on screen. What is lost is context, not news: the
-   * headline still says what the last hit did, and the running total is the
-   * thing a player reconstructs anyway from a health bar that is already there.
+   * It is the second stroke-and-fill pair of the draw, with its own font and
+   * alpha — roughly half of what a floating number costs. What is lost is
+   * context, not news: the headline still says what the last hit did, and the
+   * running total is the thing a player reconstructs anyway from a health bar
+   * that is already there.
    */
   get showsTotal(): boolean {
     return this.groups >= 2 && tierOf(this.owner) < 2;

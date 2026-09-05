@@ -184,24 +184,25 @@ describe('CombatText arc stays bounded under sustained merges', () => {
 describe('CombatText anchors above the unit and its health bar', () => {
   let textMock: ReturnType<typeof vi.fn>;
 
+  // The numbers draw on the native context now, not through p5 — the stub is
+  // the context, and the assertion reads `fillText` (the glyph pass; the
+  // outline's `strokeText` lands at the same coordinates).
   beforeEach(() => {
     installSpellObjectGlobals();
     textMock = vi.fn();
-    vi.stubGlobal('push', vi.fn());
-    vi.stubGlobal('pop', vi.fn());
-    vi.stubGlobal('stroke', vi.fn());
-    vi.stubGlobal('fill', vi.fn());
-    vi.stubGlobal('strokeWeight', vi.fn());
-    vi.stubGlobal('textStyle', vi.fn());
-    vi.stubGlobal('textSize', vi.fn());
-    vi.stubGlobal('BOLD', 'bold');
-    vi.stubGlobal('color', () => ({ setAlpha: () => undefined }));
-    vi.stubGlobal(
-      'map',
-      (value: number, a: number, b: number, c: number, d: number) =>
-        c + ((value - a) / (b - a)) * (d - c)
-    );
-    vi.stubGlobal('text', textMock);
+    vi.stubGlobal('drawingContext', {
+      globalAlpha: 1,
+      fillStyle: '#000',
+      strokeStyle: '#000',
+      lineWidth: 1,
+      font: '10px sans-serif',
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      save: vi.fn(),
+      restore: vi.fn(),
+      strokeText: vi.fn(),
+      fillText: textMock,
+    });
   });
   afterEach(() => vi.unstubAllGlobals());
 

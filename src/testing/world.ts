@@ -262,6 +262,7 @@ export function stubGameGlobals(): Record<string, ReturnType<typeof vi.fn>> {
     fill: vi.fn(),
     stroke: vi.fn(),
     fillText: vi.fn(),
+    strokeText: vi.fn(),
   });
 
   const spies: Record<string, ReturnType<typeof vi.fn>> = {};
