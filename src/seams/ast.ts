@@ -90,3 +90,96 @@ export function propertyWrites(sourceFile: ts.SourceFile, property: string): Pro
   });
   return found;
 }
+
+/**
+ * The number an expression amounts to, or `null` when it is not knowable from
+ * this file alone.
+ *
+ * Constants declared here are followed, and so is plain arithmetic on them —
+ * `30 * 1000` and `8 * SECOND` are how a readable file writes a duration. A
+ * name imported from elsewhere is *not* followed: that needs a program, and a
+ * syntactic seam that suddenly required a `tsconfig` would cost a second per
+ * pack to catch a case the packs do not currently write.
+ */
+export function numericValueOf(
+  node: ts.Node | undefined,
+  constants: Map<string, ts.Expression>,
+  depth = 0
+): number | null {
+  if (!node || depth > 8) return null;
+  if (ts.isNumericLiteral(node)) return Number(node.text.replaceAll('_', ''));
+  if (ts.isParenthesizedExpression(node)) return numericValueOf(node.expression, constants, depth + 1);
+  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
+    const inner = numericValueOf(node.operand, constants, depth + 1);
+    return inner === null ? null : -inner;
+  }
+  if (ts.isIdentifier(node)) {
+    const declared = constants.get(node.text);
+    return declared ? numericValueOf(declared, constants, depth + 1) : null;
+  }
+  if (ts.isBinaryExpression(node)) {
+    const left = numericValueOf(node.left, constants, depth + 1);
+    const right = numericValueOf(node.right, constants, depth + 1);
+    if (left === null || right === null) return null;
+    switch (node.operatorToken.kind) {
+      case ts.SyntaxKind.PlusToken:
+        return left + right;
+      case ts.SyntaxKind.MinusToken:
+        return left - right;
+      case ts.SyntaxKind.AsteriskToken:
+        return left * right;
+      case ts.SyntaxKind.SlashToken:
+        return right === 0 ? null : left / right;
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+
+/** Every `const name = <expression>` in a file, for `numericValueOf` to follow. */
+export function constantsOf(sourceFile: ts.SourceFile): Map<string, ts.Expression> {
+  const constants = new Map<string, ts.Expression>();
+  walkAst(sourceFile, node => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      if (!constants.has(node.name.text)) constants.set(node.name.text, node.initializer);
+    }
+  });
+  return constants;
+}
+
+/** Every value a named property is initialised or assigned to, with its line. */
+export function propertyValues(
+  sourceFile: ts.SourceFile,
+  property: string
+): { expression: ts.Expression; line: number }[] {
+  const found: { expression: ts.Expression; line: number }[] = [];
+  walkAst(sourceFile, node => {
+    if (ts.isPropertyDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+      if (node.name.text === property && node.initializer) {
+        found.push({ expression: node.initializer, line: lineOf(sourceFile, node) });
+      }
+      return;
+    }
+    // `x.coolDown = …`, and a bare `coolDown = …` — the second is what a
+    // minimal fixture writes, and what a plain assignment outside a class is.
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ((ts.isPropertyAccessExpression(node.left) && node.left.name.text === property) ||
+        (ts.isIdentifier(node.left) && node.left.text === property))
+    ) {
+      found.push({ expression: node.right, line: lineOf(sourceFile, node) });
+      return;
+    }
+    // `{ coolDown: … }` — the shape a config object uses.
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === property
+    ) {
+      found.push({ expression: node.initializer, line: lineOf(sourceFile, node) });
+    }
+  });
+  return found;
+}
