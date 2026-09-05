@@ -915,10 +915,21 @@ export default class AttackableUnit extends GameObject {
     heal = Math.round(heal);
     if (heal <= 0) return;
 
-    CombatText.show(this, 'heal', heal, [0, 255, 0]);
+    // What lands is bounded by the room left in the pool, and the floating
+    // number reports THAT — the landed heal, exactly as takeDamage's number is
+    // the landed hit. It used to report the requested amount before the clamp,
+    // so a Heart-style "regenerate out of combat" passive ticking on a
+    // full-health champion floated a green number every second while healing
+    // nothing. `ceil` on the room so a fraction of a point left still heals
+    // (and prints the whole point it rounds to) rather than being dropped.
+    const room = Math.ceil(this.stats.maxHealth.value - this.stats.health.baseValue);
+    const landed = Math.min(heal, room);
+    if (landed <= 0) return;
+
+    CombatText.show(this, 'heal', landed, [0, 255, 0]);
 
     this.stats.health.baseValue = constrain(
-      this.stats.health.baseValue + heal,
+      this.stats.health.baseValue + landed,
       0,
       this.stats.maxHealth.value
     );

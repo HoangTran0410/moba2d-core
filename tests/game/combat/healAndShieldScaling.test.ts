@@ -8,6 +8,7 @@ import {
   resetAttributionForTests,
 } from '@/game/combat/DamageAttribution';
 import { amplifiedDamageText } from '@/game/combat/Amplification';
+import CombatText from '@/game/gameObject/helpers/CombatText';
 
 /**
  * The other two thirds of what a build does to a kit.
@@ -208,6 +209,43 @@ describe('a build reaches heals and shields', () => {
       const text = 'chậm <span class="buff">30%</span> trong <span class="time">4 giây</span>';
 
       expect(amplifiedDamageText(text, source)).toBe(text);
+    });
+  });
+
+  /**
+   * A heal lands only into missing health, and the floating number reports
+   * what landed — exactly as takeDamage's number is the landed hit.
+   *
+   * Reported from a real match: a Heart-style "regenerate after 5s out of
+   * combat" item passive ticks `takeHeal` every second, and on a full-health
+   * champion the old code showed the requested amount before the clamp — a
+   * green number every second, forever, healing nothing.
+   */
+  describe('a heal against a full or nearly full pool', () => {
+    const liveTexts = () =>
+      [...game.objectManager.objects, ...game.objectManager._objectToBeAdd].filter(
+        (object): object is CombatText => object instanceof CombatText
+      );
+
+    it('shows nothing and changes nothing on a full-health unit', () => {
+      const { ally, caster } = duo();
+      ally.stats.health.baseValue = ally.stats.maxHealth.value;
+
+      ally.takeHeal(20, caster);
+
+      expect(ally.stats.health.baseValue).toBe(ally.stats.maxHealth.value);
+      expect(liveTexts()).toHaveLength(0);
+    });
+
+    it('floats the landed amount, not the requested one, when the pool almost has room', () => {
+      const { ally, caster } = duo();
+      ally.stats.health.baseValue = ally.stats.maxHealth.value - 5;
+
+      ally.takeHeal(20, caster);
+
+      expect(ally.stats.health.baseValue).toBe(ally.stats.maxHealth.value);
+      const [text] = liveTexts();
+      expect(text.amount).toBe(5);
     });
   });
 });
