@@ -23,7 +23,7 @@
 - [Damage text helpers](moba2d-damage-text-helpers.md) — api.text.dmg replaced parsing prose for numbers; core 1.22.0, all 3 packs migrated
 - [Bot toggles](moba2d-bot-toggles.md) — autoBuy/autoReroll flags, sell-to-rebuy swaps, ability power shown as points
 - [Death recap](moba2d-death-recap.md) — shields reported, engagement-gap window instead of a clock, minions grouped by kind
-- [lol content](moba2d-lol-content.md) — Orianna ball vision (and how to test one), dragon blessings scaling with match time; 2026-09-05 tank shelf (16 items) answering the AP surplus
+- [lol content](moba2d-lol-content.md) — Orianna ball vision (and how to test one), dragon blessings scaling with match time; 2026-09-05 tank shelf + round two (lol at 95, dota at 26 finished); the engine-gap list for items that cannot be built honestly yet
 - [Bot re-roll rebuild](moba2d-bot-reroll-rebuild.md) — death+new champion refunds the bag at cost and re-buys in one trip; the missing sellRefund on the bot's ShopHost
 - [Fog hard path](moba2d-fog-hard-path.md) — Thấp-quality fog re-fogged overlapping vision and cut square holes; clip groups + circle cut; revealMap is minimap-only
 - [Announcer smoothing](moba2d-announcer-smoothing.md) — banner stacking/judder in 1v10: priority + min hold, reserved feed height, pinned ghosts; p5 ruled out

@@ -62,3 +62,29 @@ Answered with items, not nerfs — agent-built, both packs:
 
 Nobody has PLAYED with any of these yet — per-fight feel (barrier rearm
 windows, Heartsteel pacing, Pipe teamfight value) is unreviewed.
+
+
+## Round two of the shelves (2026-09-05 late, lol `bf92cac` + dota `2e426dd`)
+
+~30 more, agent-built. **lol 77 -> 95**: fighter shelf (Black Cleaver — shred
+as `percentBonus` -5%x3 so armor can never go negative; Sundered Sky,
+Shojin, Stridebreaker = first item with BOTH passive and active, Hullbreaker
+swap-modifier), marksman middle (Phantom Dancer, Collector's TRUE execute
+<5% — gold half omitted, no pack gold API; RFC's +90 range armed-while-idle,
+Shieldbow, Navori refunding 300ms/swing), enchanter shelf off new kindlegem
+(Ardent, Moonstone never-self heal via takeHeal, Zeke, Wardstone = first
+visionRadius item), Guardian Angel = clamp-to-1-HP + 50s rearm via
+modifyIncomingDamage. Ratio 2.08 -> 2.06 (band 1.5-2.1); zero new AP.
+**dota 26 finished / 15 components**: Force Staff (self-push only, full 480
+always), Blink Dagger (needs a hidden sensor buff to hear onDamageTaken —
+arming on press would leak the first blink), Mekansm, Drum, Radiance +
+Vladmir auras, Skadi/Basher(4th hit)/Maelstrom(3rd hit, skips echo hits)/
+Daedalus-from-Crystalys/Halberd's Disarm/Octarine (first spellVamp).
+
+**Engine gaps the agents hit honestly (worth knowing before promising an
+item):** `modifyIncomingDamage` is not told the source spell -> no honest
+"block the next ability" (Edge of Night, Linken's); `Spell` carries no slot
+info -> no on-ultimate-cast triggers (Hexplate); no pack-side gold API ->
+no Collector bounty/Midas; no evasion model; no cooldown-reset/polymorph/
+death-defiance hooks (Refresher/Hex/Aeon Disk). Nobody has played any of
+round two yet.
