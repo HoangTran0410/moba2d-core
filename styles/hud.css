@@ -2961,7 +2961,6 @@ button.practice-roster-item {
 
 .kill-feed-row {
   --feed-edge: #ffffff26;
-  --feed-glow: transparent;
   /* The fade arrives as a custom property rather than as `style="opacity"`,
      because an inline declaration outranks every class in this file: the
      `.kill-feed-leave-to` rule below was dead, and a row evicted while still
@@ -2979,9 +2978,6 @@ button.practice-roster-item {
   /* see-through enough to fight under: it narrates the fight, it must not hide it */
   background: linear-gradient(90deg, #0b0f14a6 0%, #141b24c9 50%, #0b0f14a6 100%);
   border: 1px solid var(--feed-edge);
-  box-shadow:
-    0 2px 8px #0008,
-    0 0 12px var(--feed-glow);
   color: #e6ebf0;
   font-size: 12px;
   /* 1.2, not 1: the `overflow: hidden` below clips the box in both directions,
@@ -3065,40 +3061,23 @@ button.practice-roster-item {
 
 .kill-feed-row.accent-first {
   --feed-edge: #d63a44;
-  --feed-glow: #d63a4455;
 }
 
 .kill-feed-row.accent-multi {
   --feed-edge: #f2c14e;
-  --feed-glow: #f2c14e55;
 }
 
 .kill-feed-row.accent-shutdown {
   --feed-edge: #9b7bff;
-  --feed-glow: #9b7bff55;
 }
 
-/* A run burns: warm ground, ember edge, a slow breathing glow — kept narrow,
-   so it marks the row without lighting the fight under it. */
+/* A run burns: warm ground, ember edge — static, and that is the point. This
+   row used to breathe a keyframed box-shadow for as long as the streak lived,
+   and an animated shadow is a blurred repaint of the row every frame, running
+   through exactly the fight it narrates. The ember ground is painted once. */
 .kill-feed-row.accent-streak {
   --feed-edge: #ff8a3d;
-  --feed-glow: #ff6a2a77;
   background: linear-gradient(90deg, #1c0b06b8 0%, #3a1608d9 50%, #1c0b06b8 100%);
-  animation: kill-feed-ember 1.6s ease-in-out infinite;
-}
-
-@keyframes kill-feed-ember {
-  0%,
-  100% {
-    box-shadow:
-      0 2px 8px #0008,
-      0 0 8px #ff6a2a55;
-  }
-  50% {
-    box-shadow:
-      0 2px 8px #0008,
-      0 0 16px #ff8a3d99;
-  }
 }
 
 .kill-feed-face {
@@ -3235,8 +3214,6 @@ button.practice-roster-item {
    words do; the title is the news, the subtitle the names. */
 .kill-banner {
   --banner-a: #ffe08a;
-  --banner-b: #e2a72e;
-  --banner-glow: #f2c14e88;
   /* Out of the column for good, not only while it leaves.
      Going absolute *at* leave-time is what made the big text jump: with
      `top: auto` the used value is the static position, and a box already out
@@ -3268,7 +3245,12 @@ button.practice-roster-item {
      origin does not move one. */
   transform-origin: 50% 0;
   text-align: center;
-  filter: drop-shadow(0 0 14px var(--banner-glow)) drop-shadow(0 2px 2px #000);
+  /* No drop-shadow filters here any more. Two of them rode this box — a 14px
+     glow and a contact shadow — and `filter` on an element that scale-animates
+     (`kill-banner-pop`) is re-rasterized every frame of the pop, which is a
+     teamfight's most banner-heavy moment on exactly the machines with the
+     least to spare. Contrast against the fight is the title's own crisp
+     shadow now: one offset, zero blur, painted once. */
 }
 
 .kill-banner-title {
@@ -3276,11 +3258,13 @@ button.practice-roster-item {
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: linear-gradient(180deg, var(--banner-a) 20%, var(--banner-b) 80%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-stroke: 0.6px #0008;
+  /* Flat: one solid colour per family instead of a gradient clipped through
+     the glyphs. The kind is still told by the colour; what went was the
+     background-clip rasterization and the neon around it. The crisp offset
+     shadow is the whole legibility budget — blur-free, so it costs one extra
+     fill, not a convolution. */
+  color: var(--banner-a);
+  text-shadow: 0 2px 0 #000c;
 }
 
 .kill-banner-sub {
@@ -3288,53 +3272,37 @@ button.practice-roster-item {
   font-size: 13px;
   font-weight: 700;
   color: #eef2f6;
-  text-shadow:
-    0 0 8px #000,
-    0 1px 1px #000;
+  text-shadow: 0 1px 1px #000;
 }
 
 .kill-banner.banner-kill {
   --banner-a: #f4f7fa;
-  --banner-b: #aab6c3;
-  --banner-glow: #ffffff55;
 }
 
 .kill-banner.banner-first {
   --banner-a: #ff8a90;
-  --banner-b: #c0262f;
-  --banner-glow: #d63a4488;
 }
 
 .kill-banner.banner-multi {
   --banner-a: #ffe08a;
-  --banner-b: #e2a72e;
-  --banner-glow: #f2c14e99;
 }
 
 .kill-banner.banner-streak {
   --banner-a: #ffb56b;
-  --banner-b: #e5501c;
-  --banner-glow: #ff6a2aaa;
 }
 
 .kill-banner.banner-shutdown {
   --banner-a: #cdbcff;
-  --banner-b: #6f4bd8;
-  --banner-glow: #9b7bff99;
 }
 
 /* Objectives get their own family: teal, which is nobody's team colour here
    and is already the HUD's word for "structure" (`--hextech-teal`). */
 .kill-banner.banner-objective {
   --banner-a: #b8f3ee;
-  --banner-b: #33a79e;
-  --banner-glow: #4cc9c088;
 }
 
 .kill-banner.banner-death {
   --banner-a: #ff9a94;
-  --banner-b: #b12a2a;
-  --banner-glow: #ff5a5a66;
 }
 
 .kill-banner-enter-active {
@@ -3527,12 +3495,11 @@ body.touch-ui .kill-feed-badge {
   padding: 2px 6px;
 }
 
-/* A run gets louder as it climbs: two steps of type and one of glow per tier,
-   stopping at `MAX_MULTI_TIER` where the words stop changing too.
+/* A run gets louder as it climbs: two steps of type per tier, stopping at
+   `MAX_MULTI_TIER` where the words stop changing too.
 
-   Type size, letter-spacing and the existing `drop-shadow` only — all three
-   are things the compositor already does for this element every frame it is
-   on screen. No second element, no keyframed filter, no shadow *count* that
+   Type size and letter-spacing only — values the layout already computes for
+   this element. No second element, no keyframed filter, no shadow count that
    grows: a phone renders the Legendary banner for the same cost as the Double
    one, which is why the tiers scale a value rather than add a layer. */
 .kill-banner.tier-3 .kill-banner-title {
@@ -3559,18 +3526,12 @@ body.touch-ui .kill-feed-badge {
   letter-spacing: 0.16em;
 }
 
-/* The glow rides the same tier. `--banner-glow` is already in the `filter` on
-   `.kill-banner`, so brightening it costs nothing new. */
-.kill-banner.tier-4 {
-  --banner-glow: #f2c14ebb;
-}
-
+/* The top tiers brighten the family colour itself — a value swap the
+   compositor never notices, where the old glow escalation was a bigger blur. */
 .kill-banner.tier-5,
 .kill-banner.tier-6,
 .kill-banner.tier-7 {
-  --banner-glow: #ffd76aee;
   --banner-a: #fff3c4;
-  --banner-b: #f0a81e;
 }
 
 body.touch-ui .kill-banner-title {
