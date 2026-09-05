@@ -20,19 +20,13 @@ const TRAIL = { widths: [0.6, 0.7, 0.55, 0.35, 0.18], spacing: 0.5 };
 const trailOf = (champion: Champion): Spine | undefined =>
   (champion as unknown as { trail?: Spine }).trail;
 
-const stubDrawingContext = () =>
-  vi.stubGlobal('drawingContext', {
-    save: vi.fn(),
-    restore: vi.fn(),
-    beginPath: vi.fn(),
-    arc: vi.fn(),
-    clip: vi.fn(),
-    globalAlpha: 1,
-  });
+// No local drawingContext override: `stubGameGlobals` ships the full context
+// stub, and a hand-rolled subset here is exactly what broke in CI when the
+// champion frame moved onto the native context — the minimal stub lacked
+// `fillRect`, and this file is pack-dependent so a local `verify` never ran it.
 
 beforeEach(() => {
   stubGameGlobals();
-  stubDrawingContext();
   game = createGame();
   game.setPlayer(new Champion({ game, teamId: 'player-uuid' }));
 });
