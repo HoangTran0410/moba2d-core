@@ -221,16 +221,30 @@
    chip row that wrapped to three lines would otherwise eat the grid.
 
    The compact block at the foot of this file stands it on its end. */
-.shop-chips {
+/* The two-tier filter: the family row, and the open family's stat chips
+   under it. One wrapper, because the compact grid below places it as a
+   single rail (`grid-area: rail`) and the tiers must travel together. */
+.shop-filters {
   flex: none;
+  border-bottom: 1px solid #fff1;
+}
+
+.shop-groups {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding: 7px 8px;
-  border-bottom: 1px solid #fff1;
 }
 
-.shop-chip {
+.shop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 7px;
+}
+
+.shop-chip,
+.shop-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -245,12 +259,14 @@
   white-space: nowrap;
 }
 
-.shop-chip:hover {
+.shop-chip:hover,
+.shop-group:hover {
   border-color: #ffffff33;
   color: #dfe4ec;
 }
 
-.shop-chip.is-on {
+.shop-chip.is-on,
+.shop-group.is-on {
   border-color: #c8aa6e;
   background: #2a2314;
   color: #e6cc8f;
@@ -271,7 +287,9 @@
 }
 
 .shop-chip:hover .shop-chip-icon,
-.shop-chip.is-on .shop-chip-icon {
+.shop-group:hover .shop-chip-icon,
+.shop-chip.is-on .shop-chip-icon,
+.shop-group.is-on .shop-chip-icon {
   opacity: 1;
 }
 
@@ -290,7 +308,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.shop-chip.is-clear {
+.shop-chip.is-clear,
+.shop-group.is-clear {
   border-color: #ff8a6a44;
   color: #ffab90;
 }
@@ -1043,24 +1062,23 @@
     grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
   }
 
-  /* The chips, stood on their end: a scrolling icon rail down the left of the
-     grid instead of a row of pills above it. Seventeen wrapped chips took a
-     third of the sheet before a single item was drawn; a rail takes 48px of
-     width, which is the axis this screen has to spare.
+  /* The filter, stood on its end: a scrolling icon rail down the left of the
+     grid instead of rows of pills above it. Wrapped pill rows took a third of
+     the sheet before a single item was drawn; a rail takes 48px of width,
+     which is the axis this screen has to spare. The wrapper is the rail —
+     both tiers ride inside it, families first, the open family's stats under
+     a divider.
 
      The word goes — see `.shop-chip-label` below — and the count stays under
      the icon, because "armour: 11 items" is what tells you a chip is worth
      tapping. `pan-y` for the reason `.shop-shelf` needs it: `GameScene`
      cancels every touch on the page, so this scrolls only because the
      property says it may. */
-  .shop-chips {
+  .shop-filters {
     grid-area: rail;
+    display: flex;
     flex-direction: column;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 3px;
     width: 48px;
-    padding: 6px 5px;
     border-bottom: none;
     border-right: 1px solid #fff1;
     overflow-y: auto;
@@ -1071,11 +1089,28 @@
     scrollbar-width: none;
   }
 
-  .shop-chips::-webkit-scrollbar {
+  .shop-filters::-webkit-scrollbar {
     display: none;
   }
 
-  .shop-chip {
+  .shop-groups,
+  .shop-chips {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 3px;
+    padding: 6px 5px;
+  }
+
+  /* The divider between the tiers — present only when a family is open,
+     because the chips row itself only exists then. */
+  .shop-chips {
+    padding-top: 6px;
+    border-top: 1px solid #fff1;
+  }
+
+  .shop-chip,
+  .shop-group {
     flex-direction: column;
     gap: 0;
     padding: 5px 0 4px;
@@ -1102,14 +1137,10 @@
     font-size: 0.9em;
   }
 
-  /* The clear button is the one chip that must not be scrolled past — it is
-     the way out of a filter that emptied the grid. Last in the rail, so
-     `bottom` is the edge it pins itself to. */
-  .shop-chip.is-clear {
-    position: sticky;
-    bottom: 0;
-    background: #161b25;
-  }
+  /* No sticky pin any more: the seventeen-chip rail guaranteed an overflow
+     and the clear button had to survive it; two tiers top out around a dozen
+     cells, and the way out of a filter that emptied the grid is the grid's
+     own `.shop-empty-clear`, which cannot scroll away. */
 
   /* Trimmed, not removed. Six slots is the answer to "is there room for what
      I am about to buy", and `NO_SLOT` is a refusal a player should see coming

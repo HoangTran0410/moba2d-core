@@ -5,6 +5,7 @@ import {
   REFUSAL_TEXT,
   bagSlotOf,
   heldItemIds,
+  packSections,
   priceLabel,
   recipeTree,
   sellRows,
@@ -554,5 +555,50 @@ describe('a bag row’s refusal', () => {
     for (const refusal of ['NOT_AT_FOUNTAIN', 'EMPTY'] as const) {
       expect(REFUSAL_TEXT[refusal], refusal).toBeTruthy();
     }
+  });
+});
+
+describe('packSections', () => {
+  const nameOf = (id: string) => ({ riot: 'LMHT', dota: 'Dota' })[id] ?? id;
+
+  it('shelves each pack under its own heading, in the registry order handed in', () => {
+    const sections = packSections(
+      [
+        shelfRow({ id: 'dota:vanguard' }),
+        shelfRow({ id: 'riot:sword' }),
+        shelfRow({ id: 'riot:cloak' }),
+      ],
+      ['riot', 'dota'],
+      nameOf
+    );
+    expect(sections.map(section => section.key)).toEqual(['riot', 'dota']);
+    expect(sections.map(section => section.title)).toEqual(['LMHT', 'Dota']);
+    expect(sections[0].rows.map(row => row.id)).toEqual(['riot:sword', 'riot:cloak']);
+  });
+
+  it('keeps the arrival order inside a pack — cheapest-first is shopRows business', () => {
+    const sections = packSections(
+      [shelfRow({ id: 'riot:a', cost: 200 }), shelfRow({ id: 'riot:b', cost: 900 })],
+      ['riot'],
+      nameOf
+    );
+    expect(sections[0].rows.map(row => row.cost)).toEqual([200, 900]);
+  });
+
+  it('still shelves a pack the order never mentioned, after the ordered ones', () => {
+    // A fixture pack, or one installed after the order was read: dropping it
+    // would be a shelf that quietly sells less than the shop owns.
+    const sections = packSections(
+      [shelfRow({ id: 'mystery:rock' }), shelfRow({ id: 'riot:sword' })],
+      ['riot'],
+      nameOf
+    );
+    expect(sections.map(section => section.key)).toEqual(['riot', 'mystery']);
+    expect(sections[1].title).toBe('mystery');
+  });
+
+  it('prints no heading over an empty shelf', () => {
+    const sections = packSections([shelfRow({ id: 'riot:sword' })], ['riot', 'dota'], nameOf);
+    expect(sections.map(section => section.key)).toEqual(['riot']);
   });
 });

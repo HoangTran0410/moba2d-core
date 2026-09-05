@@ -118,3 +118,19 @@ export const STAT_ICON: Record<StatIconKey, string> = {
   damageDealt: 'fa-hand-fist',
   damageTaken: 'fa-heart-crack',
 };
+
+/**
+ * The shop filter's five stat families — concepts, not stats, so none of the
+ * entries above can stand in for them. They live in this table for the same
+ * reason everything above does: `statIcons.test.ts` holds every surface that
+ * draws stats to reading its icons from here, and a family button is exactly
+ * such a surface. Keys are `shopFilter.ts`'s `StatGroupKey`, spelled as plain
+ * strings so this file stays importable without a cycle.
+ */
+export const STAT_GROUP_ICON: Record<string, string> = {
+  attack: 'fa-hand-fist',
+  magic: 'fa-wand-magic-sparkles',
+  defense: 'fa-shield-halved',
+  mobility: 'fa-person-running',
+  other: 'fa-ellipsis',
+};

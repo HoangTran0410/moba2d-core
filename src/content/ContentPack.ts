@@ -61,6 +61,12 @@ export type ContentPackFactory = (api: ContentApi) => ContentPackCode;
 export interface PackManifest {
   /** A bare identifier. It becomes the prefix in every `<packId>:<localId>`. */
   id: string;
+  /**
+   * What the pack calls itself where a human reads it — the shop's per-pack
+   * shelf headings. Optional, and the id stands in when absent, so no
+   * existing pack owed an edit the day this field appeared.
+   */
+  name?: string;
   version: string;
   /** Which core versions this pack was built against. */
   coreRange: string;

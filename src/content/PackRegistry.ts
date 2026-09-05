@@ -505,6 +505,17 @@ export class PackRegistry {
     return this.packs.map(pack => pack.manifest.id);
   }
 
+  /**
+   * What a pack calls itself, for a surface that shows one — the shop's
+   * per-pack shelf headings. The manifest's `name` is optional prose and the
+   * id is the identity, so an unnamed pack answers with its id rather than
+   * with an empty heading.
+   */
+  packName(packId: string): string {
+    const pack = this.packs.find(candidate => candidate.manifest.id === packId);
+    return pack?.manifest.name || packId;
+  }
+
   champions(): readonly QualifiedChampion[] {
     return [...this.championList];
   }

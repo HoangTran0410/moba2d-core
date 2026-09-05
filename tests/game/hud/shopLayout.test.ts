@@ -114,19 +114,22 @@ describe('the shop panel', () => {
   });
 
   /**
-   * The search box has to be a child of the header, and the chips a child of
-   * the panel, or the compact grid cannot put either where it needs them:
-   * CSS grid places children, and it cannot reach inside a wrapper to hoist
-   * one out. A band of its own is exactly what was costing the shelf its
-   * height, so the wrapper that used to hold both must stay gone.
+   * The search box has to be a child of the header, and the two filter tiers
+   * children of ONE panel-level wrapper, or the compact grid cannot place
+   * them: CSS grid places direct children, and the wrapper (`.shop-filters`)
+   * is what it places as the rail — both tiers must travel inside it or one
+   * of them auto-places into an implicit row on a phone.
    */
-  it('keeps the search in the header and the chips at panel level', () => {
+  it('keeps the search in the header and both filter tiers in one panel-level wrapper', () => {
     const source = markup();
     const header = source.slice(source.indexOf('<header class="shop-header">'), source.indexOf('</header>'));
     expect(header, 'the search box left the header').toContain('class="shop-search"');
 
-    expect(source, 'the filter band came back').not.toContain('class="shop-filter"');
-    expect(source).toMatch(/^ {4}<div v-if="chips\.length" class="shop-chips">$/m);
+    expect(source).toMatch(/^ {4}<div v-if="groups\.length" class="shop-filters">$/m);
+    expect(source, 'the family row left the wrapper').toMatch(/^ {6}<div class="shop-groups">$/m);
+    expect(source, 'the chips row left the wrapper').toMatch(
+      /^ {6}<div v-if="chips\.length" class="shop-chips">$/m
+    );
   });
 
   /**
@@ -142,7 +145,7 @@ describe('the shop panel', () => {
     // everything inside `.shop-main` is at six or more.
     const children = [...source.matchAll(/^ {4}<\w+[^>]*?\bclass="([a-z-]+)/gm)].map(m => m[1]);
     expect(new Set(children)).toEqual(
-      new Set(['shop-header', 'shop-warning', 'shop-chips', 'shop-main', 'shop-bag'])
+      new Set(['shop-header', 'shop-warning', 'shop-filters', 'shop-main', 'shop-bag'])
     );
 
     const compact = shortBlock();
@@ -172,6 +175,8 @@ describe('the shop panel', () => {
    */
   it('keeps the chip’s word when the rail hides it', () => {
     const source = markup();
+    expect(source).toContain(':title="group.label"');
+    expect(source).toContain(':aria-label="group.label"');
     expect(source).toContain(':title="chip.label"');
     expect(source).toContain(':aria-label="chip.label"');
     expect(source).toContain('<span class="shop-chip-label">{{ chip.label }}</span>');
@@ -185,9 +190,9 @@ describe('the shop panel', () => {
    * shipped three times. The chip rail turned vertical, so its axis had to
    * turn with it.
    */
-  it('lets the compact chip rail scroll on the axis it now runs on', () => {
+  it('lets the compact filter rail scroll on the axis it now runs on', () => {
     const compact = shortBlock();
-    const rail = compact.slice(compact.indexOf('.shop-chips {'));
+    const rail = compact.slice(compact.indexOf('.shop-filters {'));
     const rule = rail.slice(0, rail.indexOf('}'));
     expect(rule).toContain('flex-direction: column;');
     expect(rule).toContain('touch-action: pan-y;');

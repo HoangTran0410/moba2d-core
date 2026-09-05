@@ -66,6 +66,9 @@ function checkManifest(value: unknown, errors: string[]): void {
   if (value.assets !== undefined && typeof value.assets !== 'string') {
     errors.push('manifest.assets: must be a string when present');
   }
+  if (value.name !== undefined && typeof value.name !== 'string') {
+    errors.push('manifest.name: must be a string when present');
+  }
 }
 
 function checkSpells(pack: Record<string, unknown>, errors: string[]): void {

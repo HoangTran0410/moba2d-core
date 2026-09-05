@@ -8,8 +8,12 @@ import {
   loadShopFilter,
   saveShopFilter,
   statChips,
+  groupChips,
+  groupStatChips,
+  STAT_GROUPS,
 } from '@/game/hud/shop/shopFilter';
 import { STAT_LABEL } from '@/game/hud/itemStatLines';
+import { ITEM_STAT_KEYS } from '@/game/items/itemStats';
 import { STAT_ICON } from '@/game/hud/statIcons';
 import type { ShopRow } from '@/game/hud/shop/shopState';
 
@@ -90,21 +94,21 @@ describe('folding text for the search box', () => {
 
 describe('the search box', () => {
   it('matches an unaccented query against an accented name', () => {
-    expect(filterRows(SHELF, { text: 'giay', stats: [] }).map(r => r.id)).toEqual(['ref:boots']);
+    expect(filterRows(SHELF, { text: 'giay', group: null, stats: [] }).map(r => r.id)).toEqual(['ref:boots']);
   });
 
   it('matches the description too, not only the name', () => {
     // "hồi máu" is a thing a player searches for and not a stat any of these
     // items is labelled with — the prose is where that lives.
-    expect(filterRows(SHELF, { text: 'hoi mau', stats: [] }).map(r => r.id)).toEqual(['ref:tome']);
+    expect(filterRows(SHELF, { text: 'hoi mau', group: null, stats: [] }).map(r => r.id)).toEqual(['ref:tome']);
   });
 
   it('never matches inside the markup of a description', () => {
     // Descriptions carry spans (`<span class="damage">`), and a search for
     // "span" or "class" returning every item on the shelf would be nonsense.
     const tagged = row({ id: 'ref:tagged', description: '<span class="damage">40</span> sát thương' });
-    expect(filterRows([tagged], { text: 'span', stats: [] })).toEqual([]);
-    expect(filterRows([tagged], { text: 'sat thuong', stats: [] })).toHaveLength(1);
+    expect(filterRows([tagged], { text: 'span', group: null, stats: [] })).toEqual([]);
+    expect(filterRows([tagged], { text: 'sat thuong', group: null, stats: [] })).toHaveLength(1);
   });
 
   it('returns the whole shelf, in its own order, when nothing is filtered', () => {
@@ -156,12 +160,12 @@ describe('the stat chips', () => {
     // `or`, not `and`. "Armour or attack damage" is a real shopping question;
     // "both in one item" is a rarer one, and with `and` the second tap usually
     // empties the grid, which reads as the filter being broken.
-    const ids = filterRows(SHELF, { text: '', stats: ['armor', 'speed'] }).map(r => r.id);
+    const ids = filterRows(SHELF, { text: '', group: null, stats: ['armor', 'speed'] }).map(r => r.id);
     expect(ids).toEqual(['ref:boots', 'ref:cloth', 'ref:brute']);
   });
 
   it('drops an item that grants no stats at all when any chip is on', () => {
-    expect(filterRows(SHELF, { text: '', stats: ['armor'] }).map(r => r.id)).toEqual([
+    expect(filterRows(SHELF, { text: '', group: null, stats: ['armor'] }).map(r => r.id)).toEqual([
       'ref:cloth',
       'ref:brute',
     ]);
@@ -169,18 +173,18 @@ describe('the stat chips', () => {
 
   it('applies the box and the chips together', () => {
     // Both narrow: `and` between the two controls, `or` inside the chips.
-    expect(filterRows(SHELF, { text: 'dao', stats: ['armor'] }).map(r => r.id)).toEqual([
+    expect(filterRows(SHELF, { text: 'dao', group: null, stats: ['armor'] }).map(r => r.id)).toEqual([
       'ref:brute',
     ]);
-    expect(filterRows(SHELF, { text: 'giay', stats: ['armor'] })).toEqual([]);
+    expect(filterRows(SHELF, { text: 'giay', group: null, stats: ['armor'] })).toEqual([]);
   });
 });
 
 describe('whether anything is filtered', () => {
   it('ignores a box holding only whitespace', () => {
-    expect(isFiltering({ text: '   ', stats: [] })).toBe(false);
-    expect(isFiltering({ text: 'g', stats: [] })).toBe(true);
-    expect(isFiltering({ text: '', stats: ['armor'] })).toBe(true);
+    expect(isFiltering({ text: '   ', group: null, stats: [] })).toBe(false);
+    expect(isFiltering({ text: 'g', group: null, stats: [] })).toBe(true);
+    expect(isFiltering({ text: '', group: null, stats: ['armor'] })).toBe(true);
   });
 });
 
@@ -202,13 +206,13 @@ describe('the filter outliving the panel', () => {
     // closes — and the shop is opened and shut several times on one trip to
     // the fountain. Re-picking three chips each time is the friction this
     // whole feature exists to remove.
-    saveShopFilter({ text: 'giay', stats: ['armor', 'speed'] });
-    expect(loadShopFilter()).toEqual({ text: 'giay', stats: ['armor', 'speed'] });
+    saveShopFilter({ text: 'giay', group: null, stats: ['armor', 'speed'] });
+    expect(loadShopFilter()).toEqual({ text: 'giay', group: null, stats: ['armor', 'speed'] });
   });
 
   it('stores nothing at all once the filter is cleared', () => {
-    saveShopFilter({ text: 'giay', stats: ['armor'] });
-    saveShopFilter({ text: '', stats: [] });
+    saveShopFilter({ text: 'giay', group: null, stats: ['armor'] });
+    saveShopFilter({ text: '', group: null, stats: [] });
 
     expect(store.has(SHOP_FILTER_KEY)).toBe(false);
     expect(loadShopFilter()).toEqual(EMPTY_FILTER);
@@ -218,8 +222,8 @@ describe('the filter outliving the panel', () => {
     // A stale key from an older build, or a hand-edited store, would otherwise
     // filter every item out and leave a player looking at an empty shop with a
     // chip they cannot see selected.
-    store.set(SHOP_FILTER_KEY, JSON.stringify({ text: 'x', stats: ['armor', 'thorns'] }));
-    expect(loadShopFilter()).toEqual({ text: 'x', stats: ['armor'] });
+    store.set(SHOP_FILTER_KEY, JSON.stringify({ text: 'x', group: null, stats: ['armor', 'thorns'] }));
+    expect(loadShopFilter()).toEqual({ text: 'x', group: null, stats: ['armor'] });
   });
 
   it('reads a corrupt store as no filter rather than throwing', () => {
@@ -243,6 +247,82 @@ describe('the filter outliving the panel', () => {
     });
 
     expect(loadShopFilter()).toEqual(EMPTY_FILTER);
-    expect(() => saveShopFilter({ text: 'giay', stats: [] })).not.toThrow();
+    expect(() => saveShopFilter({ text: 'giay', group: null, stats: [] })).not.toThrow();
+  });
+});
+
+describe('the family tier', () => {
+  it('sorts every stat key into exactly one family', () => {
+    // The guard for the next stat key (a percent variant, say): a key in no
+    // family never appears in any refinement row, and a key in two makes the
+    // same chip answer to two buttons. Both are silent in the UI.
+    const seen = new Map<string, number>();
+    for (const group of STAT_GROUPS)
+      for (const key of group.stats) seen.set(key, (seen.get(key) ?? 0) + 1);
+    for (const key of ITEM_STAT_KEYS) expect(seen.get(key), key).toBe(1);
+    expect([...seen.values()].every(count => count === 1)).toBe(true);
+  });
+
+  it('offers a family button only when the shelf stocks it, with its count', () => {
+    const chips = groupChips(SHELF);
+    const byKey = new Map(chips.map(chip => [chip.key, chip.count]));
+    // boots (speed) -> mobility; cloth + brute (armor) -> defense; brute (AD) -> attack.
+    expect(byKey.get('mobility')).toBe(1);
+    expect(byKey.get('defense')).toBe(2);
+    expect(byKey.get('attack')).toBe(1);
+    // Nothing on this shelf grants a magic or an "other" stat.
+    expect(byKey.has('magic')).toBe(false);
+    expect(byKey.has('other')).toBe(false);
+  });
+
+  it('cuts the refinement row down to the open family', () => {
+    const keys = groupStatChips(SHELF, 'defense').map(chip => chip.key);
+    expect(keys).toEqual(['armor']);
+    expect(groupStatChips(SHELF, 'magic')).toEqual([]);
+  });
+
+  it('filters by the whole family while nothing in it is picked', () => {
+    const ids = filterRows(SHELF, { text: '', group: 'defense', stats: [] }).map(r => r.id);
+    expect(ids).toEqual(['ref:cloth', 'ref:brute']);
+  });
+
+  it('lets a picked stat narrow past its family', () => {
+    // brute grants armor AND attackDamage; picking armor inside defense must
+    // not widen back out to the family.
+    const ids = filterRows(SHELF, { text: '', group: 'attack', stats: ['attackDamage'] }).map(
+      r => r.id
+    );
+    expect(ids).toEqual(['ref:brute']);
+  });
+
+  it('counts an open family as a live filter', () => {
+    expect(isFiltering({ text: '', group: 'defense', stats: [] })).toBe(true);
+  });
+
+  it('comes back from the store, and drops stats the stored family does not own', () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    });
+    try {
+      saveShopFilter({ text: '', group: 'defense', stats: ['armor'] });
+      expect(loadShopFilter()).toEqual({ text: '', group: 'defense', stats: ['armor'] });
+
+      // A hand edit, or a build that moved a stat between families: a lit
+      // chip inside a family that does not show it filters invisibly.
+      store.set(
+        SHOP_FILTER_KEY,
+        JSON.stringify({ text: '', group: 'defense', stats: ['armor', 'attackDamage'] })
+      );
+      expect(loadShopFilter()).toEqual({ text: '', group: 'defense', stats: ['armor'] });
+
+      // An unknown family reads as none at all.
+      store.set(SHOP_FILTER_KEY, JSON.stringify({ text: '', group: 'petting-zoo', stats: [] }));
+      expect(loadShopFilter()).toEqual(EMPTY_FILTER);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -249,8 +249,11 @@ export function sellRows(champion: Champion, host: ShopHost, mode: ShopMode = 'P
  * only answer to that, and it still comes from `ItemShop.refusalFor`.
  * ------------------------------------------------------------------------ */
 
-/** The two shelves a player browses by. */
-export type ShopSectionKey = 'basic' | 'combined';
+/**
+ * What a section is keyed by: the two fixed shelves when one pack stocks the
+ * shop, or a pack id per shelf when several do (`packSections`).
+ */
+export type ShopSectionKey = string;
 
 export interface ShopSection {
   key: ShopSectionKey;
@@ -280,6 +283,47 @@ const SECTION_TITLE: Record<ShopSectionKey, string> = {
  * Order inside a section is whatever `shopRows` chose (cheapest first), never
  * re-sorted: that ordering is what makes a browse read as a build order.
  */
+/**
+ * The shelf split by which pack sells each row — the grouping the shop shows
+ * once more than one pack stocks it.
+ *
+ * A `ShopRow.id` is the qualified id, `<packId>:<localId>`, so the pack is
+ * already in every row; what this adds is the *order* (the registry's install
+ * order, the same order every other content surface lists packs in) and the
+ * heading (`nameOf`, normally `PackRegistry.packName`). Both arrive as
+ * arguments so this stays a pure function a test can drive without a
+ * registry. Within a pack the rows keep the order they arrived in —
+ * `shopRows` sorts cheapest first, and that ordering is what makes a shelf
+ * read as a build order.
+ *
+ * A pack the order never mentions (a test fixture, a row installed after the
+ * order was read) still shows, after the ordered ones — dropping it would be
+ * a shelf that quietly sells less than the shop owns.
+ */
+export function packSections(
+  rows: readonly ShopRow[],
+  packOrder: readonly string[],
+  nameOf: (packId: string) => string
+): ShopSection[] {
+  const byPack = new Map<string, ShopRow[]>();
+  for (const row of rows) {
+    const packId = row.id.split(':')[0] ?? '';
+    const bucket = byPack.get(packId);
+    if (bucket) bucket.push(row);
+    else byPack.set(packId, [row]);
+  }
+
+  const ordered = [...packOrder.filter(id => byPack.has(id)), ...byPack.keys()];
+  const sections: ShopSection[] = [];
+  const seen = new Set<string>();
+  for (const packId of ordered) {
+    if (seen.has(packId)) continue;
+    seen.add(packId);
+    sections.push({ key: packId, title: nameOf(packId), rows: byPack.get(packId)! });
+  }
+  return sections;
+}
+
 export function shopSections(rows: readonly ShopRow[]): ShopSection[] {
   const basic: ShopRow[] = [];
   const combined: ShopRow[] = [];

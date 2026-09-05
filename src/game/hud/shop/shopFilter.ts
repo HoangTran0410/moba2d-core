@@ -1,6 +1,6 @@
 import { ITEM_STAT_KEYS, type ItemStatKey } from '@/game/items/itemStats';
 import { STAT_LABEL } from '@/game/hud/itemStatLines';
-import { STAT_ICON } from '@/game/hud/statIcons';
+import { STAT_GROUP_ICON, STAT_ICON } from '@/game/hud/statIcons';
 import type { ShopRow } from './shopState';
 
 /**
@@ -44,6 +44,74 @@ import type { ShopRow } from './shopState';
  * match would make the box useless for precisely the player it is for.
  */
 
+/**
+ * The five families the stats sort into — the top tier of a two-tier filter.
+ *
+ * One chip per stat was the original control, and it aged badly on purpose:
+ * a chip exists exactly when the shelf grants that stat, so every shelf the
+ * packs grew pushed the row closer to all ~20 keys — three wrapped rows of
+ * pills on a screen that measures its height in tile rows. Nobody shops by
+ * scanning twenty pills; they think "đồ chống chịu" first and "giáp hay
+ * kháng phép" second. So the top row is these five, and picking one unfolds
+ * only its own stats as the refinement row.
+ *
+ * Every `ITEM_STAT_KEYS` member belongs to exactly one family —
+ * `shopFilter.test.ts` holds the partition, so a future stat key (a percent
+ * variant, say) fails a test instead of silently never appearing in any
+ * group's refinement row.
+ */
+export type StatGroupKey = 'attack' | 'magic' | 'defense' | 'mobility' | 'other';
+
+export interface StatGroup {
+  key: StatGroupKey;
+  label: string;
+  /** From `STAT_GROUP_ICON` — the same table every stat surface reads. */
+  icon: string;
+  stats: readonly ItemStatKey[];
+}
+
+export const STAT_GROUPS: readonly StatGroup[] = [
+  {
+    key: 'attack',
+    label: 'Tấn Công',
+    icon: STAT_GROUP_ICON.attack,
+    stats: [
+      'attackDamage',
+      'attackSpeed',
+      'critChance',
+      'critDamage',
+      'armorPenetration',
+      'lifesteal',
+      'onHitDamage',
+      'attackRange',
+    ],
+  },
+  {
+    key: 'magic',
+    label: 'Phép Thuật',
+    icon: STAT_GROUP_ICON.magic,
+    stats: ['abilityPower', 'abilityHaste', 'magicPenetration', 'spellVamp', 'maxMana', 'manaRegen'],
+  },
+  {
+    key: 'defense',
+    label: 'Phòng Thủ',
+    icon: STAT_GROUP_ICON.defense,
+    stats: ['maxHealth', 'armor', 'magicResist', 'tenacity', 'healthRegen', 'healingReceived'],
+  },
+  { key: 'mobility', label: 'Cơ Động', icon: STAT_GROUP_ICON.mobility, stats: ['speed', 'speedPercent'] },
+  { key: 'other', label: 'Khác', icon: STAT_GROUP_ICON.other, stats: ['omnivamp', 'visionRadius'] },
+];
+
+const GROUP_BY_KEY = new Map(STAT_GROUPS.map(group => [group.key, group] as const));
+
+/** One family button above the grid, with how many items on this shelf it covers. */
+export interface GroupChip {
+  key: StatGroupKey;
+  label: string;
+  icon: string;
+  count: number;
+}
+
 /** One toggle above the grid. */
 export interface StatChip {
   key: ItemStatKey;
@@ -65,10 +133,13 @@ export interface StatChip {
 
 export interface ShopFilter {
   text: string;
+  /** The open family, or `null` for the whole shelf. Picking one clears `stats`. */
+  group: StatGroupKey | null;
+  /** Refinements within `group` — always a subset of the open family's stats. */
   stats: readonly ItemStatKey[];
 }
 
-export const EMPTY_FILTER: ShopFilter = { text: '', stats: [] };
+export const EMPTY_FILTER: ShopFilter = { text: '', group: null, stats: [] };
 
 /**
  * Lowercase, accent-stripped, whitespace-collapsed.
@@ -119,6 +190,28 @@ const KEY_BY_LABEL = new Map<string, ItemStatKey>(
   ITEM_STAT_KEYS.map(key => [STAT_LABEL[key], key] as const)
 );
 
+/**
+ * The five family buttons, each counting the items it would show. A family
+ * nothing on this shelf belongs to grows no button — the same rule the stat
+ * chips have always followed, for the same reason: a control that filters to
+ * an empty grid reads as broken, not as thorough.
+ */
+export function groupChips(rows: readonly ShopRow[]): GroupChip[] {
+  const chips: GroupChip[] = [];
+  for (const group of STAT_GROUPS) {
+    let count = 0;
+    for (const row of rows) if (grantsAny(row, group.stats)) count++;
+    if (count) chips.push({ key: group.key, label: group.label, icon: group.icon, count });
+  }
+  return chips;
+}
+
+/** The open family's own stat chips — `statChips` cut down to its members. */
+export function groupStatChips(rows: readonly ShopRow[], group: StatGroupKey): StatChip[] {
+  const members = GROUP_BY_KEY.get(group)?.stats ?? [];
+  return statChips(rows).filter(chip => members.includes(chip.key));
+}
+
 /** Whether `row` grants any of `stats`. */
 const grantsAny = (row: ShopRow, stats: readonly ItemStatKey[]): boolean => {
   for (const line of row.stats) {
@@ -134,7 +227,15 @@ const grantsAny = (row: ShopRow, stats: readonly ItemStatKey[]): boolean => {
  */
 export function filterRows(rows: readonly ShopRow[], filter: ShopFilter): ShopRow[] {
   const needle = foldText(filter.text);
-  const stats = filter.stats;
+  // A refinement narrows further than its family, so when both are set the
+  // stats answer alone; the open family matters only while nothing in it has
+  // been picked yet ("đồ chống chịu, cái nào cũng được").
+  const stats =
+    filter.stats.length > 0
+      ? filter.stats
+      : filter.group !== null
+        ? (GROUP_BY_KEY.get(filter.group)?.stats ?? [])
+        : [];
   if (!needle && stats.length === 0) return [...rows];
 
   return rows.filter(row => {
@@ -146,7 +247,7 @@ export function filterRows(rows: readonly ShopRow[], filter: ShopFilter): ShopRo
 
 /** Whether anything is being filtered — what the clear button is shown for. */
 export const isFiltering = (filter: ShopFilter): boolean =>
-  filter.text.trim().length > 0 || filter.stats.length > 0;
+  filter.text.trim().length > 0 || filter.group !== null || filter.stats.length > 0;
 
 /* ------------------------------------------------------------- persistence */
 
@@ -172,10 +273,26 @@ export function loadShopFilter(): ShopFilter {
     if (!raw) return EMPTY_FILTER;
     const parsed = JSON.parse(raw) as Partial<ShopFilter>;
     const known = new Set<string>(ITEM_STAT_KEYS);
+    // A store written before the family tier existed carries no `group` —
+    // that reads as `null`, which is exactly what it meant then.
+    const group =
+      typeof parsed.group === 'string' && GROUP_BY_KEY.has(parsed.group as StatGroupKey)
+        ? (parsed.group as StatGroupKey)
+        : null;
+    const members = group === null ? null : new Set(GROUP_BY_KEY.get(group)!.stats);
     return {
       text: typeof parsed.text === 'string' ? parsed.text : '',
+      group,
+      // Stats are refinements OF the open family, so beyond being real keys
+      // they must belong to it — a stray pair (an old store, a hand edit)
+      // would otherwise filter by a stat no visible chip is lit for.
       stats: Array.isArray(parsed.stats)
-        ? (parsed.stats.filter(key => typeof key === 'string' && known.has(key)) as ItemStatKey[])
+        ? (parsed.stats.filter(
+            key =>
+              typeof key === 'string' &&
+              known.has(key) &&
+              (members === null || members.has(key as ItemStatKey))
+          ) as ItemStatKey[])
         : [],
     };
   } catch {
@@ -191,7 +308,7 @@ export function saveShopFilter(filter: ShopFilter): void {
     }
     localStorage.setItem(
       SHOP_FILTER_KEY,
-      JSON.stringify({ text: filter.text, stats: filter.stats })
+      JSON.stringify({ text: filter.text, group: filter.group, stats: filter.stats })
     );
   } catch {
     // a blocked store loses the filter, never the shelf

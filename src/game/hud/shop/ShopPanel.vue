@@ -109,15 +109,18 @@
 import { computed, inject, ref } from 'vue';
 import ShopDetail from './ShopDetail.vue';
 import ShopItemTile from './ShopItemTile.vue';
-import { heldItemIds, shopSections, type SellRow } from './shopState';
+import { heldItemIds, packSections, shopSections, type SellRow } from './shopState';
 import {
   filterRows,
+  groupChips,
+  groupStatChips,
   isFiltering,
   loadShopFilter,
   saveShopFilter,
-  statChips,
   type ShopFilter,
+  type StatGroupKey,
 } from './shopFilter';
+import { contentRegistry } from '@/content/registry';
 import type { ItemStatKey } from '@/game/items/itemStats';
 import { vTap } from '../tapGuard';
 import { InventoryDrag } from '../inventoryDrag';
@@ -218,23 +221,50 @@ const toggleStat = (key: ItemStatKey): void => {
   setFilter({ ...filter.value, stats });
 };
 
-const clearFilter = (): void => setFilter({ text: '', stats: [] });
+/**
+ * One family open at a time. Re-tapping the open one closes it; switching
+ * families drops the picked stats with the family they were refining — a
+ * lit armour chip inside a closed Phòng Thủ would filter the grid by a
+ * control that is no longer on screen.
+ */
+const toggleGroup = (key: StatGroupKey): void => {
+  const group = filter.value.group === key ? null : key;
+  setFilter({ ...filter.value, group, stats: [] });
+};
+
+const clearFilter = (): void => setFilter({ text: '', group: null, stats: [] });
 
 const filtering = computed(() => isFiltering(filter.value));
 
 /**
- * The chips come off the **whole** shelf, never off the filtered one.
+ * Both tiers come off the **whole** shelf, never off the filtered one.
  *
  * Built from `filtered` they would rearrange themselves under the pointer as
  * soon as anything was picked — the chip just tapped might vanish, since
  * nothing left on the shelf grants a second stat — which is a control that
  * fights the person using it.
  */
-const chips = computed(() => statChips(stock.value));
+const groups = computed(() => groupChips(stock.value));
+const chips = computed(() =>
+  filter.value.group === null ? [] : groupStatChips(stock.value, filter.value.group)
+);
 
 const filtered = computed(() => filterRows(stock.value, filter.value));
 
-const sections = computed(() => shopSections(filtered.value));
+/**
+ * One pack stocking the shop keeps the classic split (buy whole / combined);
+ * two or more switch the headings to the packs themselves — "which game is
+ * this item from" became the harder question the day a second pack's shelf
+ * mixed into the grid, and the registry's install order keeps the shelves
+ * where a player left them.
+ */
+const sections = computed(() => {
+  const rows = filtered.value;
+  const registry = contentRegistry();
+  const stocked = new Set(stock.value.map(row => row.id.split(':')[0] ?? ''));
+  if (stocked.size <= 1) return shopSections(rows);
+  return packSections(rows, registry.packIds(), id => registry.packName(id));
+});
 const owned = computed(() => heldItemIds(bag.value));
 
 /**
@@ -434,62 +464,87 @@ const lifted = (slot: number): boolean => {
     </p>
 
     <!--
-      The chips: "something with armour", for the player who knows what they
-      want and not what it is called. They come off `stats`, the same list the
-      detail pane prints, so a chip exists exactly when some item on this shelf
-      grants that stat. They stay put when the panel closes (`shopFilter.ts`),
-      which is what makes them worth having: the shop is opened and shut
-      several times on one trip to the fountain.
+      The filter, in two tiers: five family buttons, and — only while one is
+      open — that family's own stat chips beneath them. One chip per stat was
+      the whole control once, and the packs outgrew it: every shelf they added
+      pushed the row toward all ~20 keys, three wrapped rows of pills before
+      the first tile. Nobody shops by scanning twenty pills; they think "đồ
+      chống chịu" first and "giáp hay kháng phép" second, so the control asks
+      in that order. Both tiers stay put when the panel closes
+      (`shopFilter.ts`) — the shop is opened and shut several times on one
+      trip to the fountain.
 
-      One wrapping row above the grid where there is height for it, and a
-      vertical icon rail down the left of the grid where there is not — the
-      same trade every phone MOBA's shop makes, because a landscape phone is
-      wide and short and a band across the top is the most expensive place to
-      put anything. `styles/shop.css` decides which; the markup is one.
+      Two rows above the grid where there is height for them, and one vertical
+      icon rail down the left of the grid where there is not — the same trade
+      every phone MOBA's shop makes, because a landscape phone is wide and
+      short and a band across the top is the most expensive place to put
+      anything. `styles/shop.css` decides which; the markup is one, and this
+      wrapper is what the compact grid places (`grid-area: rail`), so the two
+      tiers travel together.
 
-      The word is in the DOM either way. The rail hides `.shop-chip-label` and
-      the button carries the same word as its `title` and its `aria-label`, so
-      on a phone the label is a tooltip and an accessible name rather than
-      something that was never written — which is the difference between a
-      compressed control and a row of pills nobody can read.
+      The word is in the DOM either way. The rail hides the labels and every
+      button carries the same word as its `title` and `aria-label`, so on a
+      phone the label is a tooltip and an accessible name rather than
+      something that was never written.
     -->
-    <div v-if="chips.length" class="shop-chips">
-      <button
-        v-for="chip of chips"
-        :key="chip.key"
-        type="button"
-        class="shop-chip"
-        :class="{ 'is-on': filter.stats.includes(chip.key) }"
-        :title="chip.label"
-        :aria-label="chip.label"
-        :aria-pressed="filter.stats.includes(chip.key)"
-        @click="toggleStat(chip.key)"
-        v-tap="() => toggleStat(chip.key)"
-      >
-        <!-- The stat's own icon, from the table the roster's stat sheet reads
-             too (`statIcons.ts`) — an anchor to find a chip by without reading
-             the whole row, and the only thing left of the chip once the rail
-             takes the word away. -->
-        <i class="fa-solid shop-chip-icon" :class="chip.icon" aria-hidden="true"></i>
-        <span class="shop-chip-label">{{ chip.label }}</span>
-        <span class="shop-chip-count">{{ chip.count }}</span>
-      </button>
+    <div v-if="groups.length" class="shop-filters">
+      <div class="shop-groups">
+        <button
+          v-for="group of groups"
+          :key="group.key"
+          type="button"
+          class="shop-group"
+          :class="{ 'is-on': filter.group === group.key }"
+          :title="group.label"
+          :aria-label="group.label"
+          :aria-pressed="filter.group === group.key"
+          @click="toggleGroup(group.key)"
+          v-tap="() => toggleGroup(group.key)"
+        >
+          <i class="fa-solid shop-chip-icon" :class="group.icon" aria-hidden="true"></i>
+          <span class="shop-chip-label">{{ group.label }}</span>
+          <span class="shop-chip-count">{{ group.count }}</span>
+        </button>
 
-      <!-- Only while something is on. A permanently visible clear button is a
-           control that does nothing most of the time, and it would push the
-           chips it clears off the end of the row. -->
-      <button
-        v-if="filtering"
-        type="button"
-        class="shop-chip is-clear"
-        title="Bỏ hết bộ lọc"
-        aria-label="Bỏ hết bộ lọc"
-        @click="clearFilter()"
-        v-tap="() => clearFilter()"
-      >
-        <i class="fa-solid fa-xmark shop-chip-icon" aria-hidden="true"></i>
-        <span class="shop-chip-label">Xoá lọc</span>
-      </button>
+        <!-- Only while something is on. A permanently visible clear button is
+             a control that does nothing most of the time. -->
+        <button
+          v-if="filtering"
+          type="button"
+          class="shop-group is-clear"
+          title="Bỏ hết bộ lọc"
+          aria-label="Bỏ hết bộ lọc"
+          @click="clearFilter()"
+          v-tap="() => clearFilter()"
+        >
+          <i class="fa-solid fa-xmark shop-chip-icon" aria-hidden="true"></i>
+          <span class="shop-chip-label">Xoá lọc</span>
+        </button>
+      </div>
+
+      <!-- The open family's refinement: "something with armour", for the
+           player who knows what they want and not what it is called. A chip
+           exists exactly when some item on this shelf grants that stat, and
+           each wears the stat's own icon from `statIcons.ts` — the same one
+           the roster's stat sheet draws. -->
+      <div v-if="chips.length" class="shop-chips">
+        <button
+          v-for="chip of chips"
+          :key="chip.key"
+          type="button"
+          class="shop-chip"
+          :class="{ 'is-on': filter.stats.includes(chip.key) }"
+          :title="chip.label"
+          :aria-label="chip.label"
+          :aria-pressed="filter.stats.includes(chip.key)"
+          @click="toggleStat(chip.key)"
+          v-tap="() => toggleStat(chip.key)"
+        >
+          <i class="fa-solid shop-chip-icon" :class="chip.icon" aria-hidden="true"></i>
+          <span class="shop-chip-label">{{ chip.label }}</span>
+          <span class="shop-chip-count">{{ chip.count }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="shop-main">
