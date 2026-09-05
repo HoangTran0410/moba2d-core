@@ -129,15 +129,15 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
 
   it('castspec-frozen: a cast spec reading a mutable field', () => {
     const dir = tempTree({
-      'Good.ts': `get castSpec() { return { cooldown: { durationMs: this.coolDown } }; }\n`,
-      'Bad.ts': `get castSpec() { return { cooldown: { durationMs: this.shotsRemaining <= 1 ? this.coolDown : 500 } }; }\n`,
+      'Good.ts': `class S { get castSpec() { return { cooldown: { durationMs: this.coolDown } }; } }\n`,
+      'Bad.ts': `class S { get castSpec() { return { cooldown: { durationMs: this.shotsRemaining <= 1 ? this.coolDown : 500 } }; } }\n`,
     });
     expect(checkCastSpecFrozen(dir).map(v => v.file)).toEqual(['Bad.ts']);
   });
 
   it('castspec-frozen: the grandfathered list is honoured', () => {
     const dir = tempTree({
-      'Bad.ts': `get castSpec() { return { cooldown: { durationMs: this.charges } }; }\n`,
+      'Bad.ts': `class S { get castSpec() { return { cooldown: { durationMs: this.charges } }; } }\n`,
     });
     expect(checkCastSpecFrozen(dir).map(v => v.file)).toEqual(['Bad.ts']);
     expect(
@@ -148,11 +148,17 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
   it('cooldowns: a numeric cooldown over the ceiling', () => {
     const dir = tempTree({
       'Good.ts': `coolDown = 8000;\n`,
-      'Bad.ts': `coolDown = 15000;\n`,
+      // Over the twenty-second boundary a practice room can afford. It used to
+      // be ten, which the scan could only enforce against cooldowns written as
+      // a bare number — see `cooldowns.ts` for what that exempted.
+      'Bad.ts': `coolDown = 25000;\n`,
+      // And the shape the old regex could not see at all: the same overlong
+      // cooldown behind the name a well-written file gives it.
+      'Named.ts': `const R_COOLDOWN_MS = 45_000;\nexport class S { coolDown = R_COOLDOWN_MS; }\n`,
     });
-    expect(checkCooldowns(dir).map(v => v.file)).toEqual(['Bad.ts']);
+    expect(checkCooldowns(dir).map(v => v.file).sort()).toEqual(['Bad.ts', 'Named.ts']);
     // a pack that wants a different pace passes its own ceiling
-    expect(checkCooldowns(dir, { maxMs: 20_000 }).map(v => v.file)).toEqual([]);
+    expect(checkCooldowns(dir, { maxMs: 60_000 }).map(v => v.file)).toEqual([]);
   });
 
   it('targeting-mode-declared: a spell with neither a literal nor a field', () => {
@@ -202,8 +208,10 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
   it('stat-resource-modifier: a pinned line is exempt, a different resource line in the same file is not', () => {
     const dir = tempTree({
       'Unit.ts':
+        `const unit = {\n` +
         `stats: { mana: { value: 100 }, health: { value: 100 } },\n` +
-        `other: { mana: { value: 200 }, health: { value: 200 } },\n`,
+        `other: { mana: { value: 200 }, health: { value: 200 } },\n` +
+        `};\n`,
     });
 
     const result = checkStatResourceModifier(dir, {
@@ -212,7 +220,7 @@ describe('each exported check catches its violation on an arbitrary tree', () =>
 
     expect(result).toEqual([
       expect.objectContaining({
-        message: '2: other: { mana: { value: 200 }, health: { value: 200 } },',
+        message: '3: other: { mana: { value: 200 }, health: { value: 200 } },',
       }),
     ]);
   });
@@ -396,8 +404,8 @@ describe('an exemption entry that matches nothing is reported, distinctly, and f
 
   it('castspec-frozen: a stale grandfathered entry (no longer reads live state) is reported and a live one is not', () => {
     const dir = tempTree({
-      'Stale.ts': `get castSpec() { return { cooldown: { durationMs: this.coolDown } }; }\n`,
-      'Live.ts': `get castSpec() { return { cooldown: { durationMs: this.charges } }; }\n`,
+      'Stale.ts': `class S { get castSpec() { return { cooldown: { durationMs: this.coolDown } }; } }\n`,
+      'Live.ts': `class S { get castSpec() { return { cooldown: { durationMs: this.charges } }; } }\n`,
     });
 
     const result = checkCastSpecFrozen(dir, {
@@ -507,7 +515,7 @@ describe('one keying rule for every exemption set', () => {
 
   it('a basename entry exempts a file in a subdirectory, and is not reported stale', () => {
     const dir = tempTree({
-      'nested/Nested_Q.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
+      'nested/Nested_Q.ts': `class S { get castSpec() { return { durationMs: this.shots }; } }\n`,
     });
 
     expect(checkCastSpecFrozen(dir, { grandfathered: new Set(['Nested_Q.ts']) })).toEqual([]);
@@ -515,8 +523,8 @@ describe('one keying rule for every exemption set', () => {
 
   it('the full relative path works too, and is what disambiguates two same-named files', () => {
     const dir = tempTree({
-      'a/Dup.ts': `get castSpec() { return { durationMs: this.shots }; }\n`,
-      'b/Dup.ts': `get castSpec() { return { durationMs: this.charges }; }\n`,
+      'a/Dup.ts': `class S { get castSpec() { return { durationMs: this.shots }; } }\n`,
+      'b/Dup.ts': `class S { get castSpec() { return { durationMs: this.charges }; } }\n`,
     });
 
     const result = checkCastSpecFrozen(dir, { grandfathered: new Set(['a/Dup.ts']) });

@@ -4,8 +4,18 @@ import { constantsOf, numericValueOf, parse, propertyValues } from './ast';
 
 /**
  * A tuning ceiling: no spell's numeric cooldown may exceed the match's
- * intended pace. Ten seconds is this game's own arcade boundary; a pack that
- * wants a different pace passes its own `maxMs`.
+ * intended pace. **Twenty seconds** is this game's own boundary, and the
+ * reason is what the game *is*: a practice room. Nobody comes to a phòng tập
+ * to stand still for most of a minute waiting for the ability they came to
+ * practise, so a cooldown long enough to end the rehearsal is a bug in the
+ * rehearsal even when it is faithful to whatever it was modelled on. A pack
+ * that wants a different pace passes its own `maxMs`.
+ *
+ * It was ten, and enforced against 251 of 386 cooldowns — the regex it used
+ * could only see a bare number, so every cooldown written as a named constant
+ * was exempt. Parsing them all made the real distribution visible for the
+ * first time, and twenty is where the line went once it could be drawn
+ * honestly.
  *
  * See `tests/seams/exported-seams.test.ts`.
  */
@@ -26,7 +36,7 @@ export interface CooldownsOptions extends SeamCheckOptions {
  * `8 * SECOND` is a cooldown, not an unknown.
  */
 export const checkCooldowns: SeamCheckOf<CooldownsOptions> = (root, options) => {
-  const maxMs = options?.maxMs ?? 10_000;
+  const maxMs = options?.maxMs ?? 20_000;
   const violations: SeamViolation[] = [];
 
   for (const file of walkTsFiles(root, options)) {

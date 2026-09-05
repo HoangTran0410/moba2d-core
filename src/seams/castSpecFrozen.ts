@@ -1,5 +1,7 @@
+import type ts from 'typescript';
 import type { SeamCheckOf, SeamCheckOptions, SeamViolation } from './types';
-import { exemptionFor, readSource, stripComments, walkTsFiles } from './shared';
+import { exemptionFor, readSource, walkTsFiles } from './shared';
+import { getAccessorsNamed, parse, thisPropertyReads } from './ast';
 
 /**
  * `castSpec` is read once, on the first cast, and never again — `Spell.runtime`
@@ -37,29 +39,45 @@ const CONSTANT_FIELDS = new Set([
   'name',
 ]);
 
-/** The body of `get castSpec() { … }`, brace-matched so nested objects survive. */
-function castSpecBody(source: string): string | null {
-  const opener = /get castSpec\([^)]*\)[^{]*\{/.exec(source);
-  if (!opener) return null;
-
-  let index = opener.index + opener[0].length;
-  let depth = 1;
-  const start = index;
-  while (index < source.length && depth > 0) {
-    const char = source[index];
-    if (char === '{') depth += 1;
-    else if (char === '}') depth -= 1;
-    index += 1;
-  }
-  return source.slice(start, index - 1);
-}
-
-function liveStateReads(body: string): string[] {
+/**
+ * Parsed, not matched. This used to find the getter's own body with a
+ * regex opener plus hand-rolled brace counting, then scan that text with
+ * `/\bthis\.(\w+)/g`. Both steps were text, and both had a hole:
+ *
+ *   class First extends Spell {
+ *     get castSpec() { return { cooldown: { durationMs: this.coolDown } }; }
+ *   }
+ *   class Second extends Spell {
+ *     get castSpec() { return { cooldown: { durationMs: this.shotsRemaining } }; }
+ *   }
+ *
+ * The opener regex is `.exec`'d once, so only `First`'s getter was ever
+ * found — `Second`'s live read was invisible however carefully the *inner*
+ * regex was written, because the outer step never handed it that text.
+ * Even granted the right getter, the brace counter has no idea a `{` or `}`
+ * can sit inside a string: a `castSpec` returning `{ name: "}", ... }`
+ * closes the counted body on the character inside the quotes, and whatever
+ * came after — including the live-state read this rule exists to catch —
+ * was silently never scanned. And the inner regex itself missed bracket
+ * access (`this['shotsRemaining']`), a line break or `?.` between `this`
+ * and the dot, and a destructured `const { shotsRemaining } = this;`, which
+ * never puts the substring `this.shotsRemaining` in the source at all.
+ *
+ * `getAccessorsNamed` finds every `castSpec` getter in the file by walking
+ * the tree, not the first one a regex happens to match, and
+ * `thisPropertyReads` sees all four spellings of a read because it asks
+ * what a node's object part is, the same question `propertyWrites` and
+ * `methodCalls` ask for an assignment and a call.
+ */
+function liveStateReadsOf(sourceFile: ts.SourceFile): string[] {
   const seen = new Set<string>();
-  for (const [, field] of body.matchAll(/\bthis\.(\w+)/g)) {
-    if (!CONSTANT_FIELDS.has(field)) seen.add(`this.${field}`);
+  for (const accessor of getAccessorsNamed(sourceFile, 'castSpec')) {
+    if (!accessor.body) continue;
+    for (const field of thisPropertyReads(accessor.body)) {
+      if (!CONSTANT_FIELDS.has(field)) seen.add(field);
+    }
   }
-  return [...seen].sort();
+  return [...seen].sort().map(field => `this.${field}`);
 }
 
 export const checkCastSpecFrozen: SeamCheckOf<CastSpecFrozenOptions> = (root, options) => {
@@ -73,9 +91,7 @@ export const checkCastSpecFrozen: SeamCheckOf<CastSpecFrozenOptions> = (root, op
     // Computed regardless of the exemption, unlike the old `if
     // (grandfathered.has(file)) continue;` short-circuit — the exemption's
     // own staleness depends on knowing whether it would have mattered.
-    const body = castSpecBody(stripComments(readSource(root, file)));
-    if (body === null) continue;
-    const reads = liveStateReads(body);
+    const reads = liveStateReadsOf(parse(readSource(root, file), file));
     if (reads.length === 0) continue;
 
     const exemption = exemptionFor(grandfathered, file);

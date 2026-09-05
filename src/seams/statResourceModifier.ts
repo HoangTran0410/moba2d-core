@@ -1,5 +1,7 @@
+import ts from 'typescript';
 import type { SeamCheckOf, SeamCheckOptions, SeamViolation } from './types';
-import { codeOnly, pinnedLedger, readSource, walkTsFiles } from './shared';
+import { pinnedLedger, readSource, walkTsFiles } from './shared';
+import { objectLiteralPropertiesNamed, parse, unwrapExpression } from './ast';
 
 /**
  * Current health and current mana are resources, not stats. `Stats` exposes
@@ -15,7 +17,45 @@ import { codeOnly, pinnedLedger, readSource, walkTsFiles } from './shared';
  * comment used to name was deleted once the CLI covered the same
  * population from the side that owns it.
  */
-const RESOURCE_AS_STAT = /(?<![A-Za-z])(?:health|mana)\s*:\s*\{/;
+const RESOURCE_PROPERTY_NAMES = new Set(['health', 'mana']);
+
+/**
+ * Parsed, not matched. The regex this replaced was
+ * `/(?<![A-Za-z])(?:health|mana)\s*:\s*\{/`, run against each line on its
+ * own, and it needs the literal text `health` (or `mana`), then only
+ * whitespace, then `:`, then only whitespace, then `{` — all on the same
+ * line. Given four ordinary ways to write the same bonus config, it caught
+ * one:
+ *
+ *   { health: { baseBonus: 50 } }             // caught
+ *   { "health": { baseBonus: 50 } }           // missed — the quote sits
+ *                                              //   between the name and
+ *                                              //   the colon, which the
+ *                                              //   regex requires to be
+ *                                              //   whitespace only
+ *   { ['health']: { baseBonus: 50 } }         // missed — same reason,
+ *                                              //   for a computed name
+ *   { health: ({ baseBonus: 50 } as Bonus) }  // missed — the value isn't
+ *                                              //   `{` right after the
+ *                                              //   colon, it's `(`
+ *   { health                                  // missed — the name and the
+ *       : { baseBonus: 50 } }                 //   colon are on different
+ *                                              //   lines, which a per-line
+ *                                              //   scan cannot join
+ *
+ * None of those is exotic — a quoted key, a computed key, a cast on the
+ * value, and a line break are all ordinary TypeScript. `memberNameOf` reads
+ * a property's name however it is spelled and `unwrapExpression` peels a
+ * cast or parentheses off its value, the same two questions `propertyWrites`
+ * and `methodCalls` already ask about a name and a receiver.
+ */
+function resourceAsStatLines(sourceFile: ts.SourceFile): Set<number> {
+  const lines = new Set<number>();
+  for (const { value, line } of objectLiteralPropertiesNamed(sourceFile, RESOURCE_PROPERTY_NAMES)) {
+    if (ts.isObjectLiteralExpression(unwrapExpression(value))) lines.add(line);
+  }
+  return lines;
+}
 
 export interface StatResourceModifierOptions extends SeamCheckOptions {
   /**
@@ -48,15 +88,16 @@ export const checkStatResourceModifier: SeamCheckOf<StatResourceModifierOptions>
   const violations: SeamViolation[] = [];
 
   for (const file of walkTsFiles(root, options)) {
-    const lines = readSource(root, file).split('\n');
-    lines.forEach((line, index) => {
-      const code = codeOnly(line);
-      if (!RESOURCE_AS_STAT.test(code)) return;
+    const source = readSource(root, file);
+    const lines = source.split('\n');
+    const offendingLines = [...resourceAsStatLines(parse(source, file))].sort((a, b) => a - b);
+    for (const lineNumber of offendingLines) {
+      const line = lines[lineNumber - 1] ?? '';
       // Computed regardless of the exemption: the exemption's own staleness
       // depends on knowing whether it would have mattered.
-      if (ledger.claim(file, line)) return;
-      violations.push({ file, message: `${index + 1}: ${line.trim()}` });
-    });
+      if (ledger.claim(file, line)) continue;
+      violations.push({ file, message: `${lineNumber}: ${line.trim()}` });
+    }
   }
 
   for (const { entry, reason } of ledger.unspent()) {
