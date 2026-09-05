@@ -630,17 +630,21 @@ export default class ObjectManager {
       (this.game.camera.currentScale ?? Infinity) <= MOBILE_COMPACT_UNIT_SCALE &&
       attackableCount >= MOBILE_COMPACT_UNIT_COUNT
     );
-    // **Stress does not compact a unit.** It used to, and that was the wrong
-    // thing to give up: the compact body drops the health numbers, the buff
-    // icons and the status text, which is the information a player needs to
-    // decide anything — reported as "the bar shrank and I could no longer read
-    // my health or my buffs". Compact art answers a different question, and
-    // only one: is this body about twelve screen pixels wide, on a phone,
-    // in a crowd. A frame arriving late is not that question.
-    //
-    // What stress gives up is particles, which is what the budget was built
-    // for and what a fight actually spends its frame on.
-    const compactUnits = quality === 'low' || (quality === 'auto' && automaticCompact);
+    // **Neither stress nor Thấp compacts a unit.** Both used to, and both were
+    // the wrong thing to give up: the compact frame drops the score, the tick
+    // marks and the status text, which is information a player decides from —
+    // stress doing it was reported as "the bar shrank and I could no longer
+    // read my health or my buffs", and Thấp doing it was reported again as a
+    // champion bar that is one bare strip on a desktop that merely asked for
+    // the cheap picture. Compact art answers exactly one question: is this
+    // body about twelve screen pixels wide, on a phone, in a crowd — a
+    // *layout* answer for a frame the full bar physically does not fit. A late
+    // frame is not that question, and neither is a quality setting; since the
+    // frame paints through the native context (~65us for a full side of
+    // champions) there is no budget argument left either. What Thấp and
+    // stress give up instead: particles, trails, thin minion bodies — see
+    // `stressTier`, which Thấp turns to the deep rung.
+    const compactUnits = (quality === 'low' || quality === 'auto') && automaticCompact;
     const crowded = drawables.length > MOBILE_CROWDED_DRAWABLE_COUNT;
     const particleBudget =
       quality === 'high'

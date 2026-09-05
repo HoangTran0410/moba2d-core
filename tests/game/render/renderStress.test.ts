@@ -163,8 +163,14 @@ describe('what stress is allowed to take away', () => {
     ).toBe(false);
   });
 
-  it('still compacts under an explicit Thấp, which is the player asking for it', () => {
-    expect(compactAsked({ renderQuality: 'low', renderStressed: false })).toBe(true);
+  it('does not compact under an explicit Thấp either — quality is not a layout question', () => {
+    // Thấp used to force the compact frame, on the reasoning that the player
+    // asked for the cheapest picture. What the player actually got, reported
+    // as a bug, was a champion bar reduced to one bare strip on a desktop.
+    // The full frame paints through the native context now and costs ~65us a
+    // side, so no quality setting needs to take information away; compact is
+    // the phone-zoom crowd *layout* (`automaticCompact`) and nothing else.
+    expect(compactAsked({ renderQuality: 'low', renderStressed: false })).toBe(false);
   });
 });
 

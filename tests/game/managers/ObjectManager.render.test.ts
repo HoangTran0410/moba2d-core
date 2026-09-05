@@ -225,7 +225,7 @@ describe('ObjectManager mobile rendering', () => {
     });
   });
 
-  it('lets low quality force compact rendering without a crowd', () => {
+  it('keeps full frames on low quality — Thấp thins the crowd, never the information', () => {
     const host = { mapSize: 1_000, camera, touchUi: true, renderQuality: 'low' } as any;
     const manager = new ObjectManager(host);
     host.objectManager = manager;
@@ -238,9 +238,13 @@ describe('ObjectManager mobile rendering', () => {
     manager.draw();
 
     // Thấp is the player asking for the cheapest picture there is, so it turns
-    // on the deep rung too — see `stressTier`.
+    // on the deep rung — thin minion bodies, rationed particles. What it no
+    // longer does is compact the champion frame: that was reported as a bare
+    // strip of a health bar on a desktop, and the native-context frame is
+    // cheap enough that no quality setting needs to take information away.
+    // Compact stays what it is — the phone-zoom crowd layout.
     expect(unit.draw).toHaveBeenCalledWith({
-      compactUnits: true,
+      compactUnits: false,
       thinCrowd: true,
     });
   });
