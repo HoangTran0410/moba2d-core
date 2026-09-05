@@ -88,3 +88,38 @@ info -> no on-ultimate-cast triggers (Hexplate); no pack-side gold API ->
 no Collector bounty/Midas; no evasion model; no cooldown-reset/polymorph/
 death-defiance hooks (Refresher/Hex/Aeon Disk). Nobody has played any of
 round two yet.
+
+
+## Rearm is core's + effect numbers scale (2026-09-06 small hours)
+
+Three user reports in one night, all landed:
+
+1. **`Buff.startRearm(ms)` / `rearmed`** (core `f09f0ad`) — the whole rearm
+mechanism for once-in-a-while item passives: base update ticks it, the item
+slot draws it (hudState pours it into the slot's cooldown fields; touch grid
+shows a dim uncastable disc only while re-arming), the match's
+cooldownMultiplier shortens it, and deactivation PARKS the remainder under
+**(wearer, spell.name)** so neither death nor a sell-and-rebuy resets it —
+keying by spell instance was the first version and selling destroyed the key
+(a cooldown reset for 30% of the price; the user called it a cheat, LMHT
+refuses it too). lol lifelines (GA/Banshee/Maw/Sterak/Shieldbow) + dota
+barriers (Vanguard/Hood) all ride it; a barrier's purchase-time raise checks
+`rearmed` first. GA revival got its own render (wings unfold + progress ring
++ motes — NOT Stasis's hourglass, user complaint). Trap paid: `\bany\b`
+comment gate caught "any of this" in a Buff doc comment; and test `age()`
+helpers that jump time in ONE update need one 16ms detection frame before a
+rebuild window.
+
+2. **Fixed effect numbers rot into late game** (user: "15 giáp của Pipe cuối
+game ko chống chọi đc gì"). Doctrine applied across both packs (lol
+`57cdcab`, dota `e2a87d4`): shields/heals -> share of the RECIPIENT's max
+HP; tank-item damage -> base + share of wearer max HP; weapon procs -> share
+of AD; spellblades -> share of BASE AD (AP is closed to items, total-AD
+would repoint mage fangs at marksmen); flat resists -> percentBonus
+multiplier. Anchored so mid-game ≈ old flat. Honest skips recorded per file
+(Everfrost's payload is the root; Heartsteel's permanent +HP would compound
+on itself). Anchors: MARKSMAN 125 / MAGE 135 / BRUISER 190 / TANK 220 base
+HP.
+
+3. takeHeal clamp + the whole rearm/scale sweep is live on pages.dev; the
+user's PWA needed its update cycle before the slot countdown showed.
