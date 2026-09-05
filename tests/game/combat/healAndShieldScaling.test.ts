@@ -222,10 +222,14 @@ describe('a build reaches heals and shields', () => {
    * green number every second, forever, healing nothing.
    */
   describe('a heal against a full or nearly full pool', () => {
-    const liveTexts = () =>
-      [...game.objectManager.objects, ...game.objectManager._objectToBeAdd].filter(
-        (object): object is CombatText => object instanceof CombatText
-      );
+    // A plain loop, not `.filter(predicate)` — the polyfilled prototypes put
+    // the non-narrowing overload first, the CLAUDE.md trap.
+    const liveTexts = (): CombatText[] => {
+      const texts: CombatText[] = [];
+      for (const object of [...game.objectManager.objects, ...game.objectManager._objectToBeAdd])
+        if (object instanceof CombatText) texts.push(object);
+      return texts;
+    };
 
     it('shows nothing and changes nothing on a full-health unit', () => {
       const { ally, caster } = duo();

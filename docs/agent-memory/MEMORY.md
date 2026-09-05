@@ -3,7 +3,7 @@
 - [Monster attack VFX](moba2d-monster-attack-vfx.md) — claw/spit/breath/lash objects; only melee+ranged are derived; comment-scan gate bans pack names in core
 - [HUD effective numbers](moba2d-hud-effective-numbers.md) — tooltips rescale tagged damage by AP; class="damage" is a claim; regex backtracking trap
 - [Aggro ladder + jungle states](moba2d-aggro-and-jungle-states.md) — turret/minion priority, camp wander, 7-drake pit; excluded-test trap
-- [Shop + map-editor seams](moba2d-shop-and-editor-seams.md) — item prose vs stat list, undo/redo, AreaSpellObject position, editor slot-stats drop
+- [Shop + map-editor seams](moba2d-shop-and-editor-seams.md) — item prose vs stat list, undo/redo, editor slot-stats drop; 2026-09-05 two-tier filter + per-pack shelves + the full-HP heal-text fix
 - [Core subpath exports + map rules](moba2d-core-subpath-and-map-rules.md) — a new @moba2d/core/* export means five edits; where mapRules.js lives and the two rules that were wrong first
 - [Creature rig](moba2d-creature-leg-rig.md) — legs, spines, two-ended chains; lash/beam/limp/decor/trail; on main UNPUSHED; the clamp-don't-refuse and no-sag-in-top-down traps
 - [Vamp stats + Vết Thương Sâu](moba2d-vamp-and-heal-cut.md) — core 1.16 stat model (counters, haste, share-of-wearer grants + the AS_PERCENT display half); lol shop at 77 items, record-parity sweep, Janna fixes; dota 1.2.0 after being silently refused; all committed, unpushed

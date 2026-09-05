@@ -45,3 +45,33 @@ libs. Ten places in the repo still asserted the old fact (TRAPS, CLAUDE.md,
 MAP_EDITOR.md, README, four source comments, two scripts) and were corrected on
 2026-08-31. `withStats` now copies the whole `stats` object, so a **nested** new
 slot field flows through export/import/emitter with no hand-listing to update.
+
+
+## The shop UI's second shape (2026-09-05)
+
+The user's complaint after the tank shelves: "dùng chips để filter thì nó
+hơi... nhiều chips" and no pack separation. The rebuild:
+
+- **Two-tier filter** (`shopFilter.ts`): `STAT_GROUPS` — five families
+  (attack/magic/defense/mobility/other), each stat key in EXACTLY one
+  (partition held by `shopFilter.test.ts`; a new ITEM_STAT_KEYS member that
+  joins no family fails that test — this is the hook for the planned percent
+  stat keys). `ShopFilter` is now `{text, group, stats}`; stats are
+  refinements of the open group, group-only filters family-wide (or),
+  persistence validates both. Family icons live in `statIcons.ts`'s
+  `STAT_GROUP_ICON` because `statIcons.test.ts` bans `fa-` literals in any
+  stat-drawing surface (paid for once already).
+- **Per-pack shelves** (`shopState.packSections`): pure function over rows —
+  pack id = qualified-id prefix; order + heading arrive as arguments
+  (registry.packIds / new `PackRegistry.packName`). The panel switches to it
+  only when ≥2 packs stock the shop, else the classic basic/combined split
+  stays. `PackManifest` grew optional `name` (id stands in); registry is NOT
+  on the api surface so none of this was a contract bump.
+- The phone rail trick is one wrapper now: `.shop-filters` is the grid child
+  (`grid-area: rail`), both tiers inside; `shopLayout.test.ts`'s structural
+  pins were updated with it. `ShopSectionKey` widened to string.
+
+Same day, same area: `takeHeal` now floats the LANDED amount (clamped by the
+room left in the pool) and shows nothing at full health — a Heart-style
+out-of-combat regen passive used to float a green number every second on a
+full-health champion. Fixed at the funnel in core, no pack edits.
