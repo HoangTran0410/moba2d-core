@@ -9,7 +9,7 @@ import { HotKeys, ItemHotKeys, SpellHotKeys } from './constants';
 import { withSimulationStep } from './simulationClock';
 import { contentRegistry } from '@/content/registry';
 import { randomMatchSeed } from './matchSeed';
-import { freshRenderStress, nextStressState } from './render/renderStress';
+import { freshRenderStress, nextStressState, stressTier } from './render/renderStress';
 import { resolveEconomy } from './config/mapTuning';
 import { matchModeFor, mergeTuning, type MatchModeId } from './config/matchModes';
 import { clearActiveLanes, setActiveLanes } from './lanes';
@@ -21,7 +21,14 @@ import { teamBodyColor } from './gameObject/attackableUnits/Minion';
 import Camera, { zoomFactorPreference } from './gameObject/map/Camera';
 import FogOfWar from './gameObject/map/FogOfWar';
 import TerrainMap from './gameObject/map/TerrainMap';
-import Minimap, { hitTest, type MinimapBlip, type MinimapHost } from './gameObject/map/Minimap';
+import Minimap, {
+  hitTest,
+  MINIMAP_LIVE_INTERVAL_MS,
+  MINIMAP_LIVE_INTERVAL_DROWNING_MS,
+  MINIMAP_LIVE_INTERVAL_STRESSED_MS,
+  type MinimapBlip,
+  type MinimapHost,
+} from './gameObject/map/Minimap';
 import Fountain from './gameObject/structures/Fountain';
 import Turret from './gameObject/structures/Turret';
 import { turretPassivesFor } from './gameObject/structures/turretPassives';
@@ -225,6 +232,16 @@ export default class Game {
    * parked in the degraded state by one hitch.
    */
   renderStressed = false;
+  /**
+   * And the deeper rung: not merely missing the target but a long way under it.
+   *
+   * Separate from `renderStressed` because what the two are allowed to take
+   * away is different. The first gives up decoration; this one is permitted to
+   * make the *fight itself* simpler — a thinner crowd, shorter-lived numbers,
+   * a fog that recomputes less often — which is only an acceptable trade when
+   * the alternative is fifteen frames a second.
+   */
+  deeplyStressed = false;
   private stressState = freshRenderStress();
   renderQuality: RenderQuality = renderQualityPreference();
 
@@ -892,6 +909,7 @@ export default class Game {
       deltaTime
     );
     this.renderStressed = this.stressState.stressed;
+    this.deeplyStressed = this.stressState.deeplyStressed;
     background(MAP_BACKGROUND_GREY);
 
     // Substitute the interpolated camera around the *whole* body: the minimap
@@ -1359,6 +1377,20 @@ export default class Game {
       visionCircles: () => (this.director.revealMap ? null : this.fogOfWar.visionCircles()),
       playerPosition: () => this.player.position,
       cameraBox: () => this.camera.getBoundingBox(),
+      // The moving layer is held longer on a machine that is missing frames.
+      // A dot that steps instead of sliding is a cheap thing to trade for a
+      // fight that does not stutter, and it is only traded on a machine that
+      // is already dropping frames — see `MINIMAP_LIVE_INTERVAL_STRESSED_MS`.
+      liveRepaintIntervalMs: () => {
+        switch (stressTier(this.renderQuality, this.renderStressed, this.deeplyStressed)) {
+          case 2:
+            return MINIMAP_LIVE_INTERVAL_DROWNING_MS;
+          case 1:
+            return MINIMAP_LIVE_INTERVAL_STRESSED_MS;
+          default:
+            return MINIMAP_LIVE_INTERVAL_MS;
+        }
+      },
     };
   }
 

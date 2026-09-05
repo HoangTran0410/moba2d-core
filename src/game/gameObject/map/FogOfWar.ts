@@ -6,6 +6,7 @@ import { PredefinedFilters } from '@/game/managers/ObjectManager';
 import { Circle } from '@/libs/quadtree';
 import { removeGraphics } from '@/utils/graphics.utils';
 import { hasLineOfSight } from '@/game/combat/Vision';
+import { stressTier } from '@/game/render/renderStress';
 import { revealedTo } from '@/game/combat/AttackReveal';
 import { resolveVisionTuning } from '@/game/config/mapTuning';
 
@@ -85,6 +86,28 @@ const GRANTED_SIGHT_TOLERANCE_PX = 12;
  * ticks a dash starts to visibly drag its own fog behind it.
  */
 export const FOG_SIGHT_TICK_INTERVAL = 2;
+
+/**
+ * **Raising this under stress was tried, measured, and reverted.** Four ticks
+ * on the deep stress rung is the obvious next move — the note above even names
+ * four as where the wall is — and the arithmetic for it is sound: the sight
+ * pass caches on `ObjectManager.revision`, a drowning machine runs about 1.6
+ * ticks per drawn frame, so doubling the interval should take the recompute
+ * rate from roughly 0.64 per frame to 0.24.
+ *
+ * It did not measure that way. Same board, same throttle: `calculateSight`'s
+ * total went **4.6ms -> 8.6ms per frame** and `computeSightPoly` ran *more*
+ * often per frame, not less. The likely reason is that the count is dominated
+ * by the ungated `getSightPoly` calls that granted sight makes when a turret or
+ * a minion attacks (`GRANTED_SIGHT_TOLERANCE_PX` below), which the tick
+ * interval does not gate at all — so the interval is simply not the lever it
+ * looks like, and holding sight staler made the per-unit position cache miss
+ * more.
+ *
+ * Do not re-try it without first measuring where `computeSightPoly` is called
+ * from. Left as a comment rather than as code, because this is the second most
+ * expensive subsystem in the frame and it will look like an easy win again.
+ */
 
 /**
  * Slack on the "is this revealer worth painting" camera test, in world px.
@@ -262,8 +285,17 @@ export default class FogOfWar {
    * moment the stress does.
    */
   hardEdged(): boolean {
-    const quality = this.game.renderQuality ?? 'auto';
-    return quality === 'low' || (quality === 'auto' && this.game.renderStressed === true);
+    return this.stressTier() >= 1;
+  }
+
+  /**
+   * How much this fog may give up — the player's choice and the measurement
+   * together. See `render/renderStress.ts`; the rule lives there so that the
+   * fog, the draw pass, the minimap and the combat text cannot drift apart on
+   * what Cao and Thấp mean.
+   */
+  private stressTier(): 0 | 1 | 2 {
+    return stressTier(this.game.renderQuality, this.game.renderStressed, this.game.deeplyStressed);
   }
 
   /**

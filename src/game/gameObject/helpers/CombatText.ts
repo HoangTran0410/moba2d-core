@@ -3,9 +3,27 @@ import SpellObject from '@/game/gameObject/SpellObject';
 import type AttackableUnit from '@/game/gameObject/attackableUnits/AttackableUnit';
 import type { DamageType } from '@/game/combat/Mitigation';
 import { damageTextScale, hitFraction } from '@/game/render/hitFeedback';
+import { stressTier } from '@/game/render/renderStress';
 
 /** How long a floating number stays on screen once nothing is refreshing it. */
 export const COMBAT_TEXT_LIFETIME_MS = 1000;
+
+/**
+ * And how long it stays on a machine that is drowning (`render/renderStress.ts`).
+ *
+ * This is the lever, and it is worth saying why it is *this* one. The obvious
+ * idea is to merge harder — widen `HEADLINE_WINDOW_MS` so more hits fold into
+ * one number. That saves nothing: a merge updates a number **already on the
+ * board** (see `show` below), so it never changes how many are drawn, and the
+ * cost here is per live object. What decides how many are alive at once is how
+ * long each one lasts. Ten numbers at 24us each was 2.3ms of a 34ms frame.
+ *
+ * 650ms still reads: it is longer than the 400ms between two basic attacks at
+ * the attack-speed cap, so a number is still on screen when its successor
+ * arrives, and the arc (`COMBAT_TEXT_ARC_MS`) is unchanged — a number that dies
+ * early dies mid-rise, which looks like it faded, not like it was cut off.
+ */
+export const COMBAT_TEXT_LIFETIME_DROWNING_MS = 650;
 
 /**
  * How long the rise-then-fall motion takes to play out, from creation.
@@ -134,6 +152,19 @@ const mergeTargets = new WeakMap<AttackableUnit, Map<string, CombatText>>();
 export const MINOR_TEXT_BUDGET = 12;
 
 /**
+ * The same budget on a machine that is drowning (`render/renderStress.ts`).
+ *
+ * Champions stay **unbudgeted** even here, which was not the first plan. A cap
+ * for them was written and then dropped once it was costed: a ten-champion
+ * fight puts at most ten major numbers on screen, so a cap of eight removes
+ * two of them — about 0.05ms of a 34ms frame, which is noise, in exchange for a
+ * second tracking set and a second way for `isMajor` to be wrong. The two
+ * levers below carry the whole saving, and a champion's numbers are the ones
+ * the fight is actually read from.
+ */
+export const MINOR_TEXT_BUDGET_DROWNING = 6;
+
+/**
  * Live numbers currently spending that budget, per match.
  *
  * A `Set`, not a count, so a text removed by any path is caught by re-reading
@@ -143,6 +174,19 @@ export const MINOR_TEXT_BUDGET = 12;
  * a `WeakMap` retires each set with the `Game` that owns it.
  */
 const minorTexts = new WeakMap<object, Set<CombatText>>();
+
+/**
+ * How much the combat text may give up, read off the owner's game.
+ *
+ * Tolerant of a game that is not a real one: the sight and hit-feedback suites
+ * build owners by hand, and a number that refuses to appear in a fixture is a
+ * worse bug than one that is drawn too richly on a machine nobody is playing on.
+ */
+function tierOf(owner: AttackableUnit): 0 | 1 | 2 {
+  const game = owner.game as { renderQuality?: never; renderStressed?: boolean; deeplyStressed?: boolean } | undefined;
+  if (!game) return 0;
+  return stressTier(game.renderQuality, game.renderStressed, game.deeplyStressed);
+}
 
 function minorTextsOf(owner: AttackableUnit): Set<CombatText> {
   const game = owner.game as unknown as object;
@@ -354,7 +398,11 @@ export default class CombatText extends SpellObject {
 
   constructor(owner: AttackableUnit) {
     super(owner);
-    this.lifeTime = COMBAT_TEXT_LIFETIME_MS;
+    // Read once, at birth: a number that changed its own remaining life halfway
+    // through because the machine hiccuped would fade at a rate that has nothing
+    // to do with the hit it is reporting.
+    this.lifeTime =
+      tierOf(owner) >= 2 ? COMBAT_TEXT_LIFETIME_DROWNING_MS : COMBAT_TEXT_LIFETIME_MS;
     this.age = 0;
     this.elapsedMs = 0;
     this.offsetX = 0;
@@ -407,10 +455,11 @@ export default class CombatText extends SpellObject {
     const major = isMajor(owner);
     const live = major ? null : minorTextsOf(owner);
     if (live) {
-      if (live.size >= MINOR_TEXT_BUDGET) {
+      const budget = tierOf(owner) >= 2 ? MINOR_TEXT_BUDGET_DROWNING : MINOR_TEXT_BUDGET;
+      if (live.size >= budget) {
         for (const text of live) if (text.toRemove) live.delete(text);
       }
-      if (live.size >= MINOR_TEXT_BUDGET) return;
+      if (live.size >= budget) return;
     }
 
     const combatText = new CombatText(owner);
@@ -507,8 +556,17 @@ export default class CombatText extends SpellObject {
     pop();
   }
 
-  /** The total line earns its place only once there is more than one headline to sum. */
+  /**
+   * The total line earns its place only once there is more than one headline to
+   * sum — and only on a machine that can afford the footnote.
+   *
+   * It is five of a number's thirteen p5 calls (its own stroke, fill, textSize
+   * and `text`, plus the alpha maths), so dropping it is nearly half the cost of
+   * every floating number on screen. What is lost is context, not news: the
+   * headline still says what the last hit did, and the running total is the
+   * thing a player reconstructs anyway from a health bar that is already there.
+   */
   get showsTotal(): boolean {
-    return this.groups >= 2;
+    return this.groups >= 2 && tierOf(this.owner) < 2;
   }
 }

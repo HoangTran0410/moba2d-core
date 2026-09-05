@@ -770,7 +770,7 @@ export default class Minion extends AttackableUnit {
    * most one per wave per lane — three on the board in an ordinary minute
    * against forty of the others — so it is the one body that can afford them.
    */
-  draw({ compactUnits = false }: AttackableUnitRenderOptions = {}) {
+  draw({ compactUnits = false, thinCrowd = false }: AttackableUnitRenderOptions = {}) {
     if (this.isDead) return;
 
     const size = this.stats.size.value;
@@ -780,7 +780,8 @@ export default class Minion extends AttackableUnit {
     rotate(this.aimAngle());
     noStroke();
 
-    if (this.style === 'cannon') this.drawCart(size);
+    if (thinCrowd) this.drawThinBody(size);
+    else if (this.style === 'cannon') this.drawCart(size);
     else if (this.style === 'ranged') this.drawCaster(size);
     else this.drawSoldier(size);
     // In the rotated frame, over the body: the base's `drawAvatar` is not
@@ -805,6 +806,36 @@ export default class Minion extends AttackableUnit {
    *
    * Drawn in the rotated frame, so `+x` is forward.
    */
+  /**
+   * The same minion with the detail taken out, for a machine that is drowning.
+   *
+   * Only reached through `thinCrowd` — the deep stress rung, or an explicit
+   * Thấp. Fifty-three minion bodies are on screen in a teamfight and each full
+   * one is eight or nine p5 calls; this is four, and p5 charges 6-10x the raw
+   * canvas call underneath every one of them.
+   *
+   * What it keeps is what a minion is *for*: the team colour, so you know whose
+   * it is, and the blade out front, so you know which way it faces. Those two
+   * facts are the whole of what a player reads off a body in a wave. What goes
+   * is the trim ring, the shield boss and the caster's orb — decoration that
+   * distinguishes one anonymous body from another anonymous body.
+   *
+   * The three styles collapse into one shape here on purpose. Telling a caster
+   * from a soldier matters at a glance in an ordinary frame and it is *not*
+   * what a player is deciding on at fifteen frames a second; the cannon keeps
+   * its own size (`stats.size`) so the body worth three times the gold is still
+   * the biggest thing in the wave.
+   */
+  private drawThinBody(size: number): void {
+    const { body } = this.colors;
+    fill(body[0], body[1], body[2]);
+    circle(0, 0, size);
+    // the blade, unanimated: `windupReach` is the swing, and a swing is motion
+    // nobody can see at this frame rate
+    fill(238, 242, 250, 235);
+    triangle(size * 0.34, -size * 0.11, size * 0.34, size * 0.11, size * 0.82, 0);
+  }
+
   private drawSoldier(size: number): void {
     const { body, trim } = this.colors;
 

@@ -262,7 +262,14 @@ describe('what a tower shows about its own passives', () => {
 
     const wave = minion('solo', 120);
     indexObjects(game as never, [tower, wave] as never);
+    // The floor is swept, not continuous — see `REINFORCED_CHECK_MS`. It used
+    // to ask every tick, which was 22% of every spatial query the simulation
+    // made. One tick is no longer enough to notice a wave that arrived since
+    // the last sweep, so this steps past the interval, exactly as the true
+    // sight case below already does for the same reason.
+    vi.stubGlobal('deltaTime', 300);
     tower.update();
+    vi.stubGlobal('deltaTime', 16);
 
     expect(armour.structureMark, 'a wave is standing under it').toBeNull();
   });

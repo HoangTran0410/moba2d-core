@@ -219,7 +219,11 @@ describe('ObjectManager mobile rendering', () => {
 
     manager.draw();
 
-    expect(units[0].draw).toHaveBeenCalledWith({ compactUnits: true });
+    expect(units[0].draw).toHaveBeenCalledWith({
+      compactUnits: true,
+      thinCrowd: false,
+      plainFrames: false,
+    });
   });
 
   it('lets low quality force compact rendering without a crowd', () => {
@@ -234,7 +238,13 @@ describe('ObjectManager mobile rendering', () => {
 
     manager.draw();
 
-    expect(unit.draw).toHaveBeenCalledWith({ compactUnits: true });
+    // Thấp is the player asking for the cheapest picture there is, so it turns
+    // on the deep rung too — see `stressTier`.
+    expect(unit.draw).toHaveBeenCalledWith({
+      compactUnits: true,
+      thinCrowd: true,
+      plainFrames: true,
+    });
   });
 
   it('lets high quality disable automatic compact rendering', () => {
@@ -258,7 +268,11 @@ describe('ObjectManager mobile rendering', () => {
 
     manager.draw();
 
-    expect(units[0].draw).toHaveBeenCalledWith({ compactUnits: false });
+    expect(units[0].draw).toHaveBeenCalledWith({
+      compactUnits: false,
+      thinCrowd: false,
+      plainFrames: false,
+    });
   });
 
   it('keeps state-changing buff VFX but skips cosmetic buff VFX in compact mode', () => {

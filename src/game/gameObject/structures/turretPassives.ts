@@ -74,6 +74,24 @@ export const REINFORCED_REARM_MS = 3_000;
 const EYE_SWEEP_MS = 250;
 
 /**
+ * How often the tower asks whether anything hostile is standing under it.
+ *
+ * It used to ask **every tick**, and it was the only completely ungated
+ * per-tick `queryObjects` in the codebase. Profiled in a ten-champion fight at
+ * 10x CPU throttle, the whole simulation issued about 36 spatial queries a tick
+ * and eight of them were this — one per tower, **22% of the traffic**, to
+ * answer a yes/no question by materialising an array.
+ *
+ * A quarter second is the cadence everything else near a tower already uses
+ * (`EYE_SWEEP_MS` above it, `AGGRO_SCAN_INTERVAL_MS` for who it shoots), and
+ * the thing it gates is a **three second** rearm — so the worst error this can
+ * introduce is a 6% slip in when that window starts, on a timer whose whole
+ * purpose is to be slow enough to dive into. The countdown itself still runs
+ * every tick; only the question is asked less often.
+ */
+const REINFORCED_CHECK_MS = 250;
+
+/**
  * The half of a turret these passives read.
  *
  * `Buff.targetUnit` is an `AttackableUnit` — the base every buff is written
@@ -182,8 +200,26 @@ class TurretReinforcedArmor extends Buff {
     return { filled: 1, total: 1, color: REINFORCED_MARK };
   }
 
+  /**
+   * Starts at the interval so the very first update asks rather than assuming —
+   * a tower that spent its first quarter second wrong would be a wall in a lane
+   * that already has a wave in it. Same reason `TurretWardensEye` seeds its own
+   * sweep clock full.
+   */
+  private sinceCheck = REINFORCED_CHECK_MS;
+  /** The last answer, held between checks. See `REINFORCED_CHECK_MS`. */
+  private minionsNear = false;
+
   onUpdate(): void {
-    if (this.enemyMinionsNear()) this.rearmMs = REINFORCED_REARM_MS;
+    this.sinceCheck += deltaTime;
+    if (this.sinceCheck >= REINFORCED_CHECK_MS) {
+      this.sinceCheck = 0;
+      this.minionsNear = this.enemyMinionsNear();
+    }
+    // Deliberately outside the gate: the rearm countdown is what a diver is
+    // timing against, and running it at a quarter of the rate would make the
+    // three seconds mean something different depending on the frame rate.
+    if (this.minionsNear) this.rearmMs = REINFORCED_REARM_MS;
     else if (this.rearmMs > 0) this.rearmMs -= deltaTime;
   }
 

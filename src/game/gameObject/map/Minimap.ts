@@ -157,6 +157,16 @@ export interface MinimapHost {
   playerPosition(): Point;
   /** `Camera.getBoundingBox()`: the one element that answers "where am I looking". */
   cameraBox(): { x: number; y: number; w: number; h: number };
+  /**
+   * How long the moving layer may be held before it is repainted, in ms.
+   *
+   * Asked of the host rather than read off a game, because this object has no
+   * game — `MinimapHost` is the whole of what it knows, and that is what makes
+   * it testable without one. Optional: a host that does not answer gets
+   * `MINIMAP_LIVE_INTERVAL_MS`, which is every host that existed before the
+   * quality tiers did.
+   */
+  liveRepaintIntervalMs?(): number;
 }
 
 /** What a press on the screen means to the minimap. See `Minimap.route`. */
@@ -255,12 +265,30 @@ const BLIP_SCALE_MIN = 0.85;
 export const MINIMAP_LIVE_INTERVAL_MS = 50;
 
 /**
+ * And the same number for a machine that is missing its frame target, then for
+ * one missing it badly (`render/renderStress.ts`).
+ *
+ * 100ms is the threshold the note above names as where a moving dot starts to
+ * read as stepping rather than sliding — so this is deliberately spending the
+ * exact thing 50ms was chosen to protect, and only on a machine that is already
+ * dropping half its frames. A dot that steps is a small price against a fight
+ * that stutters; at 150ms it is visibly stepping, which is why that tier is
+ * reserved for the machine at fifteen frames a second, where the *whole
+ * picture* is stepping anyway.
+ */
+export const MINIMAP_LIVE_INTERVAL_STRESSED_MS = 100;
+export const MINIMAP_LIVE_INTERVAL_DROWNING_MS = 150;
+
+/**
  * Whether the moving layer is due a repaint. Pure, and deliberately written so
  * that a first frame (`paintedAtMs` of `-Infinity`) and a clock that has gone
  * backwards both repaint rather than freeze.
  */
-export const liveLayerIsStale = (nowMs: number, paintedAtMs: number): boolean =>
-  !(nowMs - paintedAtMs >= 0 && nowMs - paintedAtMs < MINIMAP_LIVE_INTERVAL_MS);
+export const liveLayerIsStale = (
+  nowMs: number,
+  paintedAtMs: number,
+  intervalMs: number = MINIMAP_LIVE_INTERVAL_MS
+): boolean => !(nowMs - paintedAtMs >= 0 && nowMs - paintedAtMs < intervalMs);
 
 /**
  * Pixel density of the moving layer's buffer.
@@ -407,7 +435,7 @@ export class Minimap {
       this.liveDrawnAtMs = -Infinity;
     }
     const now = performance.now();
-    if (liveLayerIsStale(now, this.liveDrawnAtMs)) {
+    if (liveLayerIsStale(now, this.liveDrawnAtMs, this.host.liveRepaintIntervalMs?.())) {
       this.liveDrawnAtMs = now;
       this.paintLiveLayer(this.liveBuffer, bounds.size);
     }

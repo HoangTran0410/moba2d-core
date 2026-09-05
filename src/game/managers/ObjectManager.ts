@@ -9,6 +9,7 @@ import GameObject from '@/game/gameObject/GameObject';
 import UnitCollisionSystem from './UnitCollisionSystem';
 import { canSee, type Seeable as VisionObserver } from '@/game/combat/Vision';
 import { blend, isContinuousStep } from '@/game/render/Interpolation';
+import { stressTier } from '@/game/render/renderStress';
 import {
   beginAttribution,
   endAttribution,
@@ -33,6 +34,12 @@ export interface ObjectManagerGameContext {
    * them back.
    */
   readonly renderStressed?: boolean;
+  /**
+   * And whether it is missing it *badly* — the second rung of the same state
+   * machine. Read under `auto` like the first, and additionally implied by an
+   * explicit Thấp: a player who asks for low quality is asking for all of it.
+   */
+  readonly deeplyStressed?: boolean;
   camera: {
     getBoundingBox(): Rectangle;
     constantSize?(pixels: number): number;
@@ -127,6 +134,13 @@ const Z_INDEX_MAP = new Map<Function, number>([
 const DEFAULT_Z_INDEX = UNIT_Z_INDEX;
 export const MOBILE_PARTICLE_DRAW_BUDGET = 800;
 export const MOBILE_CROWDED_PARTICLE_DRAW_BUDGET = 400;
+/**
+ * And what is left for a machine that is drowning rather than merely late —
+ * see `STRESS_DEEP_ENTER_SHARE`. Half the crowded ration again: at fifteen
+ * frames a second the choice is not between a pretty fight and a plain one, it
+ * is between a plain fight and a slideshow.
+ */
+export const MOBILE_DROWNING_PARTICLE_DRAW_BUDGET = 200;
 export const MOBILE_CROWDED_DRAWABLE_COUNT = 40;
 export const MOBILE_COMPACT_UNIT_COUNT = 8;
 export const MOBILE_COMPACT_UNIT_SCALE = 0.45;
@@ -605,7 +619,12 @@ export default class ObjectManager {
     // missing frames, whatever kind of machine it is; before it existed, a
     // struggling laptop got the full-quality path forever because the only
     // question `auto` asked was whether it had a touchscreen.
-    const stressed = quality === 'auto' && this.game.renderStressed === true;
+    // What the frame may give up, player's choice and measurement together —
+    // see `render/renderStress.ts`. `compactUnits` below is deliberately NOT
+    // derived from it.
+    const tier = stressTier(quality, this.game.renderStressed, this.game.deeplyStressed);
+    const stressed = tier >= 1;
+    const deeplyStressed = tier >= 2;
     const automaticCompact = Boolean(
       this.game.touchUi &&
       (this.game.camera.currentScale ?? Infinity) <= MOBILE_COMPACT_UNIT_SCALE &&
@@ -626,11 +645,13 @@ export default class ObjectManager {
     const particleBudget =
       quality === 'high'
         ? Infinity
-        : quality === 'low' || ((compactUnits || stressed) && crowded)
-          ? MOBILE_CROWDED_PARTICLE_DRAW_BUDGET
-          : MOBILE_PARTICLE_DRAW_BUDGET;
+        : deeplyStressed && crowded
+          ? MOBILE_DROWNING_PARTICLE_DRAW_BUDGET
+          : quality === 'low' || ((compactUnits || stressed) && crowded)
+            ? MOBILE_CROWDED_PARTICLE_DRAW_BUDGET
+            : MOBILE_PARTICLE_DRAW_BUDGET;
     const limitParticles =
-      quality === 'low' || stressed || (quality === 'auto' && this.game.touchUi);
+      quality === 'low' || stressed || deeplyStressed || (quality === 'auto' && this.game.touchUi);
     const particleScale =
       limitParticles && particleCount > particleBudget ? particleBudget / particleCount : 1;
 
@@ -666,7 +687,15 @@ export default class ObjectManager {
         // to one segment. Its shape is decoration; where it points is not.
         o.draw(compactUnits || stressed);
       } else if (o instanceof AttackableUnit) {
-        o.draw({ compactUnits });
+        // `thinCrowd` is deliberately **not** `compactUnits`. Compact art
+        // answers "is this body twelve screen pixels wide, on a phone, in a
+        // crowd", and it takes away health numbers, buff icons and status text
+        // — information a player decides from, and taking it away was reported
+        // as a bug the last time stress did it. `thinCrowd` asks a different
+        // question: "may the anonymous bodies in this fight be drawn with
+        // fewer strokes". A minion has no information to lose. See
+        // `renderStress.test.ts`, which pins that stress alone never compacts.
+        o.draw({ compactUnits, thinCrowd: deeplyStressed, plainFrames: stressed || deeplyStressed });
       } else {
         o.draw?.();
       }

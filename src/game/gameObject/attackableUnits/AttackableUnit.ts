@@ -50,6 +50,37 @@ export interface AttackableUnitOptions extends Omit<GameObjectOptions, 'game'> {
 
 export interface AttackableUnitRenderOptions {
   compactUnits?: boolean;
+  /**
+   * The machine is a long way under its frame target and the anonymous bodies
+   * in the fight may be drawn with fewer strokes.
+   *
+   * Deliberately not `compactUnits`, which it would be easy to mistake it for.
+   * Compact art is about *size* — a body twelve screen pixels wide on a phone
+   * — and it drops health numbers, buff icons and status text, which is
+   * information a player decides from; taking that away on a late frame was
+   * reported as a bug and `renderStress.test.ts` pins that it no longer
+   * happens. This is about *anonymity*: a minion in a wave of a hundred and
+   * sixty carries nothing but its team colour and which way it faces, so it can
+   * lose detail without anybody losing a decision. Bodies that carry
+   * information — champions above all — must ignore it.
+   */
+  thinCrowd?: boolean;
+  /**
+   * The machine is missing its frame target and the health frame may drop its
+   * *pure decoration* — nothing a player reads a number off.
+   *
+   * The first stress rung, and the narrowest of the three flags on purpose. It
+   * takes the tick marks, the frame's border stroke and the shield-overflow
+   * flag; it leaves the bars themselves, the mana strip, the buff icons, the
+   * score and the status line. That division is not arbitrary — it is exactly
+   * the feedback from the last time a late frame took information away
+   * ("thanh máu rút gọn thì ko xem đc rõ buffs + máu đang bao nhiêu").
+   *
+   * The tick marks are why this exists: `MAX_TICKS` is 20, so a champion frame
+   * can pay for twenty `line()` calls a frame, which is about half of what the
+   * whole frame costs.
+   */
+  plainFrames?: boolean;
 }
 
 export interface UnitDeathData {
@@ -524,11 +555,11 @@ export default class AttackableUnit extends GameObject {
   // hook for units colliding with the map edge (old JS: super.onCollideMapEdge?.())
   onCollideMapEdge() {}
 
-  draw({ compactUnits = false }: AttackableUnitRenderOptions = {}) {
+  draw({ compactUnits = false, plainFrames = false }: AttackableUnitRenderOptions = {}) {
     this.drawAvatar();
     if (!compactUnits) this.drawDir();
     this.drawBuffs(compactUnits);
-    this.drawHealthBar(compactUnits);
+    this.drawHealthBar(compactUnits, plainFrames);
   }
 
   drawAvatar() {
@@ -627,7 +658,7 @@ export default class AttackableUnit extends GameObject {
     }
   }
 
-  drawHealthBar(_compact = false) {
+  drawHealthBar(_compact = false, _plain = false) {
     push();
     let pos = this.position;
     let { displaySize: size, alpha } = this.animatedValues;

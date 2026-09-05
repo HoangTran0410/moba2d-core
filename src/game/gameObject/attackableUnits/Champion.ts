@@ -1019,7 +1019,7 @@ export default class Champion extends AttackableUnit {
   protected compactBarWidth = 88;
   protected compactShowsBuffIcons = true;
 
-  drawHealthBar(compact = false) {
+  drawHealthBar(compact = false, plain = false) {
     let pos = this.position;
     let { displaySize: size, alpha } = this.animatedValues;
     let health = this.stats.health.value;
@@ -1110,9 +1110,16 @@ export default class Champion extends AttackableUnit {
       y: pos.y - size / 2 - barHeight - 15 * k,
     };
 
+    // The backing, and on a healthy machine the pewter border around it. Under
+    // stress the border goes and the backing stays: the backing is what the
+    // bars are read *against*, the border is trim.
     fill(2, 15, 21, alpha);
-    stroke(91, 92, 87, alpha);
-    strokeWeight(3);
+    if (plain) {
+      noStroke();
+    } else {
+      stroke(91, 92, 87, alpha);
+      strokeWeight(3);
+    }
     rect(
       topleft.x - borderWidth * 0.5,
       topleft.y - borderWidth * 0.5,
@@ -1141,8 +1148,9 @@ export default class Champion extends AttackableUnit {
       rect(topleft.x + barHeight + shieldX, topleft.y, shieldW, healthRowH);
 
       // The bar cannot grow, so a shield larger than the whole health pool is
-      // flagged instead of drawn past the end.
-      if (shieldOverflows) {
+      // flagged instead of drawn past the end. The flag is a refinement of a
+      // shield that is already fully drawn, so stress can have it.
+      if (shieldOverflows && !plain) {
         fill(255, 246, 200, alpha);
         rect(topleft.x + barHeight + healthContainerW - 2 * k, topleft.y, 2 * k, healthRowH);
       }
@@ -1151,12 +1159,27 @@ export default class Champion extends AttackableUnit {
     // Ticks every `tickStep` health. The frame is fixed, so a champion with a
     // bigger pool simply shows more of them — that is what makes two bars
     // comparable at a glance, and it also reads the shield against real health.
-    const tickStep = healthTickStep(maxHealth);
-    stroke(2, 15, 21, alpha * 0.6);
-    strokeWeight(1);
-    for (let mark = tickStep; mark < maxHealth; mark += tickStep) {
-      const tickX = topleft.x + barHeight + (mark / maxHealth) * healthContainerW;
-      line(tickX, topleft.y + 1 * k, tickX, topleft.y + healthRowH - 1 * k);
+    //
+    // The single most expensive thing on this frame, and the first thing stress
+    // takes: `MAX_TICKS` is 20, so this loop can be **twenty `line()` calls per
+    // champion per frame**, about half of what the whole health frame costs.
+    // Nothing numeric is lost — the bar, the score and the status line all
+    // still say what they said; what goes is the ruler behind the bar.
+    //
+    // Note for anyone tempted to optimise these instead of dropping them:
+    // batching the twenty lines into one path was tried and measured *inside
+    // the noise* (0.276 -> 0.270 ms/call), because it does not reduce the p5
+    // call count at all — it trades 20 `line()` for a `beginShape` plus 40
+    // `vertex` plus an `endShape`, which is more. Dropping them is a different
+    // thing from batching them.
+    if (!plain) {
+      const tickStep = healthTickStep(maxHealth);
+      stroke(2, 15, 21, alpha * 0.6);
+      strokeWeight(1);
+      for (let mark = tickStep; mark < maxHealth; mark += tickStep) {
+        const tickX = topleft.x + barHeight + (mark / maxHealth) * healthContainerW;
+        line(tickX, topleft.y + 1 * k, tickX, topleft.y + healthRowH - 1 * k);
+      }
     }
     noStroke();
 
