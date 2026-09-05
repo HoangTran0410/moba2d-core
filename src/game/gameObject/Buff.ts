@@ -30,6 +30,20 @@ export interface StructureMark {
   color: readonly [number, number, number];
 }
 
+/**
+ * Running rearm clocks, parked between the lives — and the purchases — of
+ * their wearers. See `Buff.rearmMsLeft`.
+ *
+ * Keyed by the *unit* and the spell's `name`, not by the spell instance:
+ * selling an item destroys its spell, and a clock keyed there died with it —
+ * so selling a spent Guardian Angel and buying it back handed the wings
+ * straight back, which is a cooldown reset for 30% of the price. The source
+ * game refuses exactly that trade, and so does this: the same champion
+ * re-buying the same item finds the clock where they left it. A WeakMap on
+ * the unit so a finished match takes every clock with it.
+ */
+const REARM_PARKED_BY_UNIT = new WeakMap<object, Map<string, { left: number; total: number }>>();
+
 export default class Buff {
   name = this.constructor.name;
 
@@ -175,19 +189,44 @@ export default class Buff {
   statusFlagsToDisable = 0;
 
   /**
-   * Display only: how long until this buff's passive re-arms, and the full
-   * window it counts down from. A rearm-style item passive — a Guardian
-   * Angel's wings, a barrier that rebuilds — keeps its clock in private
-   * fields, which left the HUD unable to say "not yet" the way a spell's
-   * cooldown does; a player could not tell whether the revival was armed.
-   * The buff writes both each update; `hudState.buildItems` and the touch
-   * item grid read them through the item's own `passive`/`active` spell
+   * The re-arm clock — how long until this buff's once-in-a-while passive
+   * may fire again, and the full window it counts down from.
+   *
+   * This is a whole mechanism, not a pair of display fields, because every
+   * rearm-style passive needs the same four things and each pack was about
+   * to hand-roll them again: a Guardian Angel's wings, a spell-block veil, a
+   * barrier that rebuilds. Call `startRearm(windowMs)` when the passive
+   * fires; ask `rearmed` before firing. The base `update` ticks the clock
+   * down (no `onUpdate` bookkeeping owed), `hudState.buildItems` and the
+   * touch item grid read it through the item's own `passive`/`active` spell
    * (matched by `sourceSpell`) and draw the same wedge-and-seconds a
-   * cooldown gets. Nothing in the engine acts on them — a buff that never
-   * writes them (the default 0) simply shows nothing.
+   * cooldown gets — and the clock **survives its wearer's death**:
+   * `deactivateBuff` parks the remainder on `sourceSpell`, and the fresh
+   * buff the respawn's `armPassives` creates picks it back up in
+   * `activateBuff`. Without that, dying re-pressed the passive and every
+   * save came back armed — reported from a real match as a Guardian Angel
+   * that always had its revival ready.
+   *
+   * A buff that never calls `startRearm` never writes these fields and shows
+   * nothing.
    */
   rearmMsLeft = 0;
   rearmTotalMs = 0;
+
+  startRearm(windowMs: number): void {
+    // The match's cooldown setting reaches rearm windows the same way it
+    // reaches every cast — the same live read `Spell.cooldownMultiplier`
+    // makes. An URF-style room shortens the wings' 50s with everything else.
+    const rule = this.game?.matchRules?.cooldownMultiplier ?? 1;
+    const window = windowMs * rule;
+    this.rearmTotalMs = window;
+    this.rearmMsLeft = window;
+  }
+
+  /** Whether the once-in-a-while passive may fire. True until `startRearm`. */
+  get rearmed(): boolean {
+    return this.rearmMsLeft <= 0;
+  }
 
   duration = 0;
   sourceUnit: AttackableUnit;
@@ -220,6 +259,18 @@ export default class Buff {
   }
 
   activateBuff(): void {
+    // The rearm clock coming back from the wearer's last life — or last
+    // purchase of this item — see `rearmMsLeft`. Before `onCreate`, so a
+    // subclass reading its own state there already sees the restored clock.
+    // Only when this instance has not started one of its own: a restore must
+    // never shorten a live window.
+    if (this.sourceSpell && this.rearmMsLeft <= 0) {
+      const parked = REARM_PARKED_BY_UNIT.get(this.targetUnit)?.get(this.sourceSpell.name);
+      if (parked && parked.left > 0) {
+        this.rearmTotalMs = parked.total;
+        this.rearmMsLeft = parked.left;
+      }
+    }
     if (!this._created) {
       this.onCreate();
       // After `onCreate`, because that is the first moment a buff is fully
@@ -240,6 +291,21 @@ export default class Buff {
     if (this._deactivated) return;
     this._deactivated = true;
     this.toRemove = true;
+    // Park a running rearm clock under the wearer and the item's name, so
+    // neither death nor a sell-and-rebuy hands the passive back armed. A
+    // finished clock clears the parking spot.
+    if (this.sourceSpell && this.rearmTotalMs > 0) {
+      let clocks = REARM_PARKED_BY_UNIT.get(this.targetUnit);
+      if (this.rearmMsLeft > 0) {
+        if (!clocks) {
+          clocks = new Map();
+          REARM_PARKED_BY_UNIT.set(this.targetUnit, clocks);
+        }
+        clocks.set(this.sourceSpell.name, { left: this.rearmMsLeft, total: this.rearmTotalMs });
+      } else {
+        clocks?.delete(this.sourceSpell.name);
+      }
+    }
     this.onDeactivate();
     for (const listener of this._deactivateListeners) {
       listener?.();
@@ -256,6 +322,10 @@ export default class Buff {
   }
 
   update(): void {
+    // Before `onUpdate`, so a passive asking `rearmed` there reads a clock
+    // that has already moved this frame.
+    if (this.rearmMsLeft > 0) this.rearmMsLeft = Math.max(0, this.rearmMsLeft - deltaTime);
+
     this.onUpdate();
 
     this.timeElapsed += deltaTime;
