@@ -1225,11 +1225,40 @@ export default class Game {
    * what keeps the six fixed positions from rendering as six dead circles.
    */
   private touchItemView(slot: number): TouchSpellView | null {
-    const active = this.player.items?.[slot]?.active;
-    if (!active?.image) return null;
-
+    const item = this.player.items?.[slot];
+    const active = item?.active;
     const hotKey = ItemHotKeys[slot];
-    return this.touchViewOf(active, hotKey ? String.fromCharCode(hotKey) : String(slot + 1));
+    const label = hotKey ? String.fromCharCode(hotKey) : String(slot + 1);
+    if (active?.image) return this.touchViewOf(active, label);
+
+    // A passive-only item is not a button — except while its passive is
+    // re-arming (`Buff.rearmMsLeft`): a Guardian Angel's wearer has to know
+    // whether the revival is up, and on touch this grid is the only place an
+    // item can say so. The disc appears when the passive is spent, counts
+    // down the same wedge-and-seconds a cooldown draws, and vanishes when the
+    // passive is armed again — never a castable button, so a tap on it does
+    // nothing, which is also the truth.
+    const passive = item?.passive;
+    if (!passive?.image) return null;
+    let msLeft = 0;
+    let total = 0;
+    for (const buff of this.player.buffs ?? []) {
+      if (buff.toRemove || buff.rearmMsLeft <= 0 || buff.sourceSpell !== passive) continue;
+      if (buff.rearmMsLeft > msLeft) {
+        msLeft = buff.rearmMsLeft;
+        total = buff.rearmTotalMs || buff.rearmMsLeft;
+      }
+    }
+    if (msLeft <= 0) return null;
+
+    const view = this.touchViewOf(passive, label);
+    return {
+      ...view,
+      castable: false,
+      onCooldown: true,
+      cooldownRatio: Math.min(1, msLeft / total),
+      remainingSeconds: Math.ceil(msLeft / 1000),
+    };
   }
 
   /**

@@ -174,6 +174,21 @@ export default class Buff {
   statusFlagsToEnable = 0;
   statusFlagsToDisable = 0;
 
+  /**
+   * Display only: how long until this buff's passive re-arms, and the full
+   * window it counts down from. A rearm-style item passive — a Guardian
+   * Angel's wings, a barrier that rebuilds — keeps its clock in private
+   * fields, which left the HUD unable to say "not yet" the way a spell's
+   * cooldown does; a player could not tell whether the revival was armed.
+   * The buff writes both each update; `hudState.buildItems` and the touch
+   * item grid read them through the item's own `passive`/`active` spell
+   * (matched by `sourceSpell`) and draw the same wedge-and-seconds a
+   * cooldown gets. Nothing in the engine acts on them — a buff that never
+   * writes them (the default 0) simply shows nothing.
+   */
+  rearmMsLeft = 0;
+  rearmTotalMs = 0;
+
   duration = 0;
   sourceUnit: AttackableUnit;
   targetUnit: AttackableUnit;

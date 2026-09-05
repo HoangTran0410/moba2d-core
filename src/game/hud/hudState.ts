@@ -531,8 +531,24 @@ function buildItems(player: any): ItemSlotDisplay[] {
     // `effectiveCoolDownMs`, not the spell's own tuning field, for the same
     // reason `buildSpells` uses it: under a cooldown-reduction match the two
     // differ and the icon has to agree with what the cast path actually waits.
-    const coolDown = active?.effectiveCoolDownMs ?? active?.coolDown ?? 0;
-    const currentCooldown = active?.currentCooldown ?? 0;
+    let coolDown = active?.effectiveCoolDownMs ?? active?.coolDown ?? 0;
+    let currentCooldown = active?.currentCooldown ?? 0;
+
+    // A passive that is re-arming counts down on the slot exactly the way an
+    // active's cooldown does — see `Buff.rearmMsLeft`. The active's own
+    // cooldown wins while it runs (it is the one blocking a press); the rearm
+    // fills the slot's silence the rest of the time, which for a passive-only
+    // item like a Guardian Angel is the only clock it has.
+    if (currentCooldown <= 0 && Array.isArray(player.buffs)) {
+      for (const buff of player.buffs) {
+        if (buff?.toRemove || !(buff?.rearmMsLeft > 0) || !buff.sourceSpell) continue;
+        if (buff.sourceSpell !== item.passive && buff.sourceSpell !== item.active) continue;
+        if (buff.rearmMsLeft > currentCooldown) {
+          currentCooldown = buff.rearmMsLeft;
+          coolDown = buff.rearmTotalMs || buff.rearmMsLeft;
+        }
+      }
+    }
 
     slots.push({
       filled: true,
