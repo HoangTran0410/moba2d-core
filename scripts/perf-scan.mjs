@@ -18,260 +18,341 @@
  * ## Every rule below cost a real measurement to learn
  *
  * The numbers in each rule's `why` came off `tests/e2e/measure-frame-cost.mjs`
- * and the deterministic harnesses beside it, on a ten-champion teamfight. They
- * are quoted so nobody has to re-derive them to decide whether a finding is
- * worth acting on — and so a rule that stops being true can be deleted rather
- * than obeyed forever.
+ * and `tests/e2e/measure-spell-cost.mjs`, on a ten-champion teamfight. They are
+ * quoted so nobody has to re-derive them to decide whether a finding is worth
+ * acting on — and so a rule that stops being true can be deleted rather than
+ * obeyed forever.
  *
- * The scan is deliberately textual, the same choice every seam in this repo
- * makes: the mistakes are *shapes*, a real parse buys accuracy this does not
- * need, and a pack is a separate repository that must be scannable without
- * building core first.
+ * ## Why the TypeScript compiler, and not the regex this used to be
+ *
+ * The first version read the source as text. Three agents fixing the ten
+ * abilities it produced found three holes in a day, all of which made it
+ * report *less* than the truth:
+ *
+ *  - It could not follow a call. The three most expensive abilities in the game
+ *    each put their real cost one call below `draw()` — a `_drawWall()` helper,
+ *    a blade imported from a sibling spell, a crescent fanned across nine ribs
+ *    — and all three scanned as **zero findings**.
+ *  - A loop bound written `const links = 24` inside a method read as one pass,
+ *    because the const scan only matched SCREAMING_CASE at module scope.
+ *  - Braceless loops were invisible, and `for (const p of this.particles)
+ *    circle(...)` unbraced is an entire rule's whole shape.
+ *
+ * Every one of those is a thing a parser gets right for free, and patching them
+ * by hand was three fixes into an unbounded list — a barrel export, a default
+ * export, an alias, a helper that lives in core would each have been the next
+ * one. `typescript` is already a dependency of core *and* of every pack (they
+ * all run `tsc`), so the compiler API costs nothing to adopt and resolves what
+ * no amount of regex can: `victim.stopMovement()` to `AttackableUnit.ts`,
+ * `PredefinedFilters.canTakeDamageFromTeam` into core, `super.drawPreview`,
+ * a loop bound imported from another file. A program over a pack builds in
+ * under a second, which is inside a push hook's budget.
  */
-import { readFileSync, readdirSync, statSync, existsSync, realpathSync } from 'node:fs';
+import ts from 'typescript';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CORE = resolve(HERE, '..');
 
-/** Comments go first, or every rule matches its own documentation. */
-const stripComments = source =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-
 const walk = (dir, out = []) => {
   // A path may be one file — the push guard hands over changed files, and a
-  // reader debugging one spell types its path. `readdirSync` on a file throws
-  // ENOTDIR, which is a stack trace where an answer was wanted.
+  // reader debugging one spell types its path.
   if (statSync(dir).isFile()) return /\.ts$/.test(dir) ? [dir] : [];
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === 'dist' || name === 'generated') continue;
     const full = join(dir, name);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.ts$/.test(name) && !/\.d\.ts$/.test(name) && !/\.test\.ts$/.test(name)) out.push(full);
+    else if (/\.ts$/.test(name) && !/\.d\.ts$/.test(name) && !/\.test\.ts$/.test(name)) {
+      out.push(full);
+    }
   }
   return out;
 };
 
-/** The body of `{ ... }` starting at the first brace at or after `from`. */
-const braceBody = (text, from) => {
-  const open = text.indexOf('{', from);
-  if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    else if (text[i] === '}' && --depth === 0) return { start: open + 1, end: i, body: text.slice(open + 1, i) };
+/** p5 calls that put pixels on the canvas, as opposed to setting state. */
+const PAINTS = new Set([
+  'circle', 'ellipse', 'rect', 'arc', 'line', 'triangle', 'quad', 'point',
+  'image', 'text', 'vertex', 'curveVertex', 'bezierVertex', 'square',
+]);
+/** p5 calls that only change state — cheap alone, not in a loop of two hundred. */
+const STATE = new Set([
+  'fill', 'stroke', 'noFill', 'noStroke', 'strokeWeight', 'textSize', 'textAlign',
+  'textStyle', 'tint', 'push', 'pop', 'translate', 'rotate', 'scale',
+]);
+/** Array methods whose callback is a loop body in everything but name. */
+const ITERATORS = new Set(['forEach', 'map', 'filter', 'flatMap', 'reduce', 'some', 'every']);
+
+/** Methods a frame or a tick calls, which is the only place any of this matters. */
+const HOT = /^(draw|drawAvatar|drawBody|drawDir|drawBuffs|drawHealthBar|drawFn|update|onUpdate|onDashUpdate)$/;
+const isDrawName = name => name.startsWith('draw');
+
+const nameOf = node => {
+  if (!node) return null;
+  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  return null;
+};
+
+/**
+ * One program per tsconfig, reused.
+ *
+ * Building it is the expensive part (~0.9s over a pack, which pulls core in
+ * through its own path alias), and every file under one root shares one.
+ */
+const programs = new Map();
+const programFor = startDir => {
+  const configPath = ts.findConfigFile(startDir, ts.sys.fileExists, 'tsconfig.json');
+  if (!configPath) return null;
+  if (programs.has(configPath)) return programs.get(configPath);
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, dirname(configPath));
+  const program = ts.createProgram(parsed.fileNames, {
+    ...parsed.options,
+    // Nothing here reads types, only symbols and syntax, and skipping the lib
+    // check is most of the build time.
+    skipLibCheck: true,
+    noEmit: true,
+  });
+  const entry = { program, checker: program.getTypeChecker() };
+  programs.set(configPath, entry);
+  return entry;
+};
+
+/**
+ * Where a called name is declared, if it is something with a body worth costing.
+ *
+ * The checker answers this properly when there is one: through an import alias,
+ * across a package boundary, up a class hierarchy for a `super` call. Without a
+ * program — `scanSource` on a bare string, which is how the tests drive it —
+ * it falls back to names declared in the same file, which is all a fixture has.
+ */
+const declarationOf = (node, ctx) => {
+  const target = ts.isPropertyAccessExpression(node.expression)
+    ? node.expression.name
+    : node.expression;
+  if (ctx.checker) {
+    let symbol = ctx.checker.getSymbolAtLocation(target);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      // An imported name is an alias; the declaration wanted is what it points at.
+      try {
+        symbol = ctx.checker.getAliasedSymbol(symbol);
+      } catch {
+        /* not resolvable — treat as opaque */
+      }
+    }
+    const decl = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+    if (decl && ts.isFunctionLike(decl) && decl.body) return decl;
+    return null;
+  }
+  const local = ctx.locals?.get(nameOf(target));
+  return local ?? null;
+};
+
+/** Function-ish declarations by name, for the no-program case. */
+const localDeclarations = sourceFile => {
+  const map = new Map();
+  const visit = node => {
+    if ((ts.isMethodDeclaration(node) || ts.isFunctionDeclaration(node)) && node.body) {
+      const name = nameOf(node.name);
+      if (name && !map.has(name)) map.set(name, node);
+    }
+    if (ts.isVariableDeclaration(node) && node.initializer && ts.isArrowFunction(node.initializer)) {
+      const name = nameOf(node.name);
+      if (name && !map.has(name)) map.set(name, node.initializer);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return map;
+};
+
+/** A numeric constant, followed through the checker when there is one. */
+const numericValue = (node, ctx) => {
+  if (!node) return null;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand)) {
+    return node.operator === ts.SyntaxKind.MinusToken
+      ? -Number(node.operand.text)
+      : Number(node.operand.text);
+  }
+  let decl = null;
+  if (ctx.checker) {
+    let symbol = ctx.checker.getSymbolAtLocation(node);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      try {
+        symbol = ctx.checker.getAliasedSymbol(symbol);
+      } catch {
+        /* opaque */
+      }
+    }
+    decl = symbol?.valueDeclaration ?? null;
+  } else {
+    decl = ctx.constants?.get(nameOf(node)) ?? null;
+  }
+  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+    return numericValue(decl.initializer, { ...ctx, checker: null, constants: null });
+  }
+  if (decl && ts.isPropertyDeclaration?.(decl) && decl.initializer) {
+    return numericValue(decl.initializer, { ...ctx, checker: null, constants: null });
   }
   return null;
 };
 
-/** Methods a frame or a tick calls, which is the only place any of this matters. */
-const HOT_METHODS = /(^|\n)\s*(?:public\s+|private\s+|protected\s+|override\s+)*(draw|drawAvatar|drawBody|drawBuffs|drawHealthBar|drawFn|update|onUpdate|onDashUpdate)\s*\(/g;
-
-const methodsOf = text => {
-  const found = [];
-  for (const match of text.matchAll(HOT_METHODS)) {
-    const at = match.index + match[0].length;
-    const block = braceBody(text, at - 1);
-    if (block) found.push({ name: match[2], body: block.body, at: match.index });
-  }
-  return found;
-};
-
-/** The index just past the `)` that closes the `(` at or after `from`. */
-const afterParens = (text, from) => {
-  const open = text.indexOf('(', from);
-  if (open === -1) return -1;
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    if (text[i] === '(') depth++;
-    else if (text[i] === ')' && --depth === 0) return i + 1;
-  }
-  return -1;
-};
-
-/**
- * Loop bodies inside one method, with the trip count when it is knowable.
- *
- * Braces are optional in the language and a one-line loop is exactly where a
- * `circle()` hides — `for (const p of this.particles) circle(p.x, p.y, 4)` is
- * the whole of the mistake the first rule looks for, and a scanner that only
- * matched `{` walked straight past it. So: a braced body when there is one,
- * else the single statement up to the next top-level `;`.
- */
-const loopsOf = (body, consts) => {
-  const loops = [];
-  const head = /\b(for|while)\s*\(|\.forEach\s*\(/g;
-  for (const match of body.matchAll(head)) {
-    const close = afterParens(body, match.index);
-    if (close === -1) continue;
-    const rest = body.slice(close);
-    const lead = rest.match(/^\s*/)[0].length;
-    let block;
-    if (rest[lead] === '{') {
-      block = braceBody(body, close);
-    } else {
-      // Braceless: one statement. Depth-aware, so a `;` inside a nested call
-      // or a string does not end it early.
-      let depth = 0;
-      let end = -1;
-      for (let i = close + lead; i < body.length; i++) {
-        const ch = body[i];
-        if (ch === '(' || ch === '[' || ch === '{') depth++;
-        else if (ch === ')' || ch === ']' || ch === '}') depth--;
-        else if (ch === ';' && depth === 0) {
-          end = i;
-          break;
-        }
-      }
-      if (end === -1) continue;
-      block = { start: close + lead, end, body: body.slice(close + lead, end) };
-    }
-    if (!block) continue;
-    const decl = body.slice(match.index, close);
-    // `i < 22`, `i < AURA_TONGUES`, `k < 4` — a literal or a module const.
-    const bound = /[<>]=?\s*([A-Za-z_$][\w$]*|\d+)/.exec(decl);
-    let trips = null;
-    if (bound) {
-      const raw = bound[1];
-      trips = /^\d+$/.test(raw) ? Number(raw) : (consts.get(raw) ?? null);
-    }
-    loops.push({ ...block, trips, decl });
-  }
-  return loops;
-};
-
-/** Loops in `body` that no other loop in `body` contains. */
-const outermostLoops = (body, consts) => {
-  const all = loopsOf(body, consts);
-  return all.filter(
-    loop => !all.some(other => other !== loop && other.start < loop.start && other.end > loop.end)
-  );
-};
-
-/**
- * Every `const name = 14` in the file, so a loop bound written as a name counts.
- *
- * Case-insensitive and not restricted to module scope, which it used to be: an
- * ability hid a 24-point chain behind `const links = 24;` *inside* the method,
- * and the scan counted that loop as one pass. A lowercase local is the ordinary
- * way to write a loop bound and was exactly the shape being missed.
- */
-const constsOf = text => {
+/** Every `const name = <number>` in the file, for the no-program case. */
+const localConstants = sourceFile => {
   const map = new Map();
-  for (const m of text.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(\d+)\s*[;,\n)]/g)) {
-    map.set(m[1], Number(m[2]));
-  }
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && node.initializer && ts.isNumericLiteral(node.initializer)) {
+      const name = nameOf(node.name);
+      if (name && !map.has(name)) map.set(name, node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return map;
 };
 
-/** Names that look like a call but are the language, not a function. */
-const KEYWORDS = new Set([
-  'if', 'for', 'while', 'switch', 'catch', 'return', 'function', 'constructor',
-  'typeof', 'new', 'await', 'super', 'do', 'else',
-]);
-
 /**
- * Every named body in a file — methods, functions, arrow consts — so cost can
- * be followed out of `draw()` and into whatever it calls.
+ * How many times a loop runs, when that is knowable.
  *
- * This is the gap that mattered most. `heavy-draw` counted the primitives it
- * could see *inside* `draw()` and stopped there, and the three most expensive
- * abilities in the game all put their real cost one call further down: a
- * `_drawWall()` helper invoked ten times a frame, a `drawIreliaBlade()` imported
- * from a sibling spell and fanned across twenty-six blades, a `drawCrescent()`
- * of fourteen segments fanned across nine ribs. All three scanned as **zero
- * findings** and were only in the worklist because an unrelated rule happened
- * to catch them.
+ * `null` means unknown, and an unknown loop is charged **once** — an
+ * underestimate on purpose, so a finding is never an artefact of a guess.
  */
-const namedBodies = text => {
-  const bodies = new Map();
-  const patterns = [
-    // `name(...) {` at the head of a line: a class method.
-    /(?:^|\n)[ \t]*(?:public |private |protected |override |static |async )*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{;]+)?\{/g,
-    /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,
-    /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=]+)?=>\s*\{/g,
-  ];
-  for (const pattern of patterns) {
-    for (const match of text.matchAll(pattern)) {
-      const name = match[1];
-      if (KEYWORDS.has(name) || bodies.has(name)) continue;
-      const block = braceBody(text, match.index + match[0].length - 1);
-      if (block) bodies.set(name, block.body);
-    }
+const tripsOf = (node, ctx) => {
+  if (ts.isForStatement(node)) {
+    const cond = node.condition;
+    if (cond && ts.isBinaryExpression(cond)) return numericValue(cond.right, ctx);
+    return null;
   }
-  return bodies;
+  if (ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+    const target = ts.isForOfStatement(node) ? node.expression : null;
+    if (target && ts.isArrayLiteralExpression(target)) return target.elements.length;
+    return null;
+  }
+  return null;
 };
 
 /**
- * The same, plus every sibling file this one imports a helper from.
+ * Primitives one call of this body puts on the canvas, loops multiplied out and
+ * helpers followed.
  *
- * Spells share drawing helpers with each other — a champion's ultimate borrows
- * the crescent its Q defines — and a scan that stops at the file boundary
- * cannot see the fourteen-segment loop it is fanning nine times. Relative
- * imports only, one level deep: enough for the shape packs actually use, and it
- * cannot wander into `node_modules` looking for `p5`.
- */
-const reachableBodies = (text, file) => {
-  const bodies = namedBodies(text);
-  for (const imp of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](\.[^'"]*)['"]/g)) {
-    const sibling = resolve(dirname(file), imp[2].endsWith('.ts') ? imp[2] : `${imp[2]}.ts`);
-    if (!existsSync(sibling)) continue;
-    const siblingBodies = namedBodies(stripComments(readFileSync(sibling, 'utf8')));
-    for (const name of imp[1].split(',').map(n => n.trim().split(/\s+as\s+/).pop())) {
-      if (siblingBodies.has(name) && !bodies.has(name)) bodies.set(name, siblingBodies.get(name));
-    }
-  }
-  return bodies;
-};
-
-/** p5 calls that put pixels on the canvas, as opposed to setting state. */
-const PAINTS = /\b(circle|ellipse|rect|arc|line|triangle|quad|point|image|text|vertex|curveVertex|bezierVertex|square)\s*\(/g;
-/** p5 calls that only change state — cheap alone, not in a loop of two hundred. */
-const STATE = /\b(fill|stroke|noFill|noStroke|strokeWeight|textSize|textAlign|textStyle|tint|push|pop|translate|rotate|scale)\s*\(/g;
-
-const countCalls = (text, pattern) => (text.match(pattern) ?? []).length;
-
-/**
- * Primitives one call of this method puts on the canvas, loops multiplied out.
- * Unknown trip counts count once — an underestimate on purpose, so a finding
- * is never an artefact of a guess.
- */
-const primitiveCost = (body, consts, bodies = new Map(), seen = new Set()) => {
-  let direct = countCalls(body, PAINTS) + countCalls(body, STATE);
-  let looped = 0;
-  for (const loop of outermostLoops(body, consts)) {
-    // Everything inside this loop was counted in `direct` once; take it back
-    // and charge the loop's own cost instead, recursively — a loop inside a
-    // loop *multiplies*, and adding the two was the bug that made a 112-call
-    // ring read as 34.
-    direct -= countCalls(loop.body, PAINTS) + countCalls(loop.body, STATE);
-    direct -= calledCost(loop.body, consts, bodies, seen);
-    looped += (loop.trips ?? 1) * primitiveCost(loop.body, consts, bodies, seen);
-  }
-  return direct + looped + calledCost(body, consts, bodies, seen);
-};
-
-/**
- * What this body spends inside the helpers it calls.
- *
- * `seen` is per-branch and put back afterwards, so two sister calls to the same
+ * `seen` is per-branch and put back afterwards, so two sister calls to one
  * helper are both charged while a helper that reaches itself is charged once —
- * a cycle here would be an infinite loop in a tool whose whole promise is that
- * it costs a second.
+ * a cycle here would hang a tool whose whole promise is that it costs a second.
  */
-const calledCost = (body, consts, bodies, seen) => {
-  if (bodies.size === 0) return 0;
+const costOf = (node, ctx, seen = new Set()) => {
+  if (!node) return 0;
   let total = 0;
-  for (const call of body.matchAll(/(?:this\.)?\b([A-Za-z_$][\w$]*)\s*\(/g)) {
-    const name = call[1];
-    if (!bodies.has(name) || seen.has(name) || KEYWORDS.has(name)) continue;
-    seen.add(name);
-    total += primitiveCost(bodies.get(name), consts, bodies, seen);
-    seen.delete(name);
+
+  const loopBody = (() => {
+    if (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      return node.statement;
+    }
+    if (ts.isWhileStatement(node) || ts.isDoStatement(node)) return node.statement;
+    return null;
+  })();
+  if (loopBody) return (tripsOf(node, ctx) ?? 1) * costOf(loopBody, ctx, seen);
+
+  if (ts.isCallExpression(node)) {
+    const name = nameOf(node.expression);
+    // `.forEach(cb)` and friends: the callback is a loop body in all but name.
+    if (
+      name &&
+      ITERATORS.has(name) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.arguments.length
+    ) {
+      const cb = node.arguments[0];
+      const body = ts.isArrowFunction(cb) || ts.isFunctionExpression(cb) ? cb.body : null;
+      const target = node.expression.expression;
+      const trips = ts.isArrayLiteralExpression(target) ? target.elements.length : 1;
+      return trips * costOf(body, ctx, seen);
+    }
+    if (name && (PAINTS.has(name) || STATE.has(name))) return 1;
+    const decl = declarationOf(node, ctx);
+    if (decl) {
+      const key = decl.getSourceFile().fileName + ':' + decl.pos;
+      if (!seen.has(key)) {
+        seen.add(key);
+        total += costOf(decl.body, ctx, seen);
+        seen.delete(key);
+      }
+    }
+    for (const arg of node.arguments) total += costOf(arg, ctx, seen);
+    return total;
   }
+
+  ts.forEachChild(node, child => {
+    total += costOf(child, ctx, seen);
+  });
   return total;
 };
+
+/** Every hot method in a file, with its declaration. */
+const hotMethods = sourceFile => {
+  const found = [];
+  const visit = node => {
+    if ((ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) && node.name) {
+      const name = nameOf(node.name);
+      const body = ts.isMethodDeclaration(node)
+        ? node.body
+        : ts.isArrowFunction(node.initializer ?? {}) || ts.isFunctionExpression(node.initializer ?? {})
+          ? node.initializer.body
+          : null;
+      if (name && HOT.test(name) && body) found.push({ name, body, node });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+};
+
+/** Every loop inside a body, shallowly described. */
+const loopsIn = body => {
+  const loops = [];
+  const visit = node => {
+    if (
+      ts.isForStatement(node) ||
+      ts.isForOfStatement(node) ||
+      ts.isForInStatement(node) ||
+      ts.isWhileStatement(node) ||
+      ts.isDoStatement(node)
+    ) {
+      loops.push(node.statement);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ITERATORS.has(nameOf(node.expression) ?? '') &&
+      node.arguments.length &&
+      (ts.isArrowFunction(node.arguments[0]) || ts.isFunctionExpression(node.arguments[0]))
+    ) {
+      loops.push(node.arguments[0].body);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  return loops;
+};
+
+/** Does any node under `root` satisfy `test`? */
+const contains = (root, test) => {
+  let hit = false;
+  const visit = node => {
+    if (hit) return;
+    if (test(node)) {
+      hit = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (root) visit(root);
+  return hit;
+};
+
+const callsNamed = names => node =>
+  ts.isCallExpression(node) && names.has(nameOf(node.expression) ?? '');
 
 export const RULES = [
   {
@@ -281,27 +362,52 @@ export const RULES = [
       "ObjectManager's draw budget cannot ration. DamageOverTime was one: 30 of " +
       "them on a wave took the frame from 4.66ms to 14.29ms, and the ration that " +
       'exists for exactly that was blind to it. Use ParticleSystem (see Speedup).',
-    find: ({ text, methods, consts }) => {
+    find: ctx => {
+      const { source } = ctx;
       // Already one, or already using one — nothing to say.
-      if (/extends\s+ParticleSystem|new\s+(?:api\.helpers\.)?ParticleSystem|PredefinedParticleSystems/.test(text)) return [];
+      if (
+        contains(source, n =>
+          (ts.isIdentifier(n) && /^(ParticleSystem|PredefinedParticleSystems)$/.test(n.text)) ||
+          (ts.isPropertyAccessExpression(n) && /^(ParticleSystem|PredefinedParticleSystems)$/.test(n.name.text))
+        )
+      ) {
+        return [];
+      }
       // Painting a loop over an array is ordinary and usually right — a row of
-      // marks, a chain of segments, a list of positions. What makes it a
-      // *particle system* is that the array is **spawned into and aged out
-      // of**: entries carrying their own clock, born on an interval and reaped
-      // when it runs out. Both halves are required, because either alone is a
-      // shape half the spells in a pack use correctly.
-      const spawnsWithClock = /\.push\(\s*\{[^}]*\b(age|life|lifeTime|ttl|maxAge)\b/s.test(text);
-      const agesThem = /\b(age|life|ttl)\w*\s*(\+=|--|\+\+)/.test(text);
+      // marks, a chain of segments. What makes it a *particle system* is that
+      // the array is spawned into on a clock and aged out of. Both halves are
+      // required; either alone is a shape half the spells use correctly.
+      const spawnsWithClock = contains(
+        source,
+        n =>
+          ts.isCallExpression(n) &&
+          nameOf(n.expression) === 'push' &&
+          n.arguments.some(
+            a =>
+              ts.isObjectLiteralExpression(a) &&
+              a.properties.some(p => /^(age|life|lifeTime|ttl|maxAge)$/.test(nameOf(p.name) ?? ''))
+          )
+      );
+      const agesThem = contains(
+        source,
+        n =>
+          (ts.isBinaryExpression(n) &&
+            n.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
+            /^(age|life|ttl)/.test(nameOf(n.left) ?? '')) ||
+          (ts.isPostfixUnaryExpression(n) && /^(age|life|ttl)/.test(nameOf(n.operand) ?? ''))
+      );
       if (!spawnsWithClock || !agesThem) return [];
       const out = [];
-      for (const method of methods) {
-        if (!/^draw/.test(method.name)) continue;
-        for (const loop of loopsOf(method.body, consts)) {
-          const overField = /\bof\s+this\.\w+|this\.\w+\.length|this\.\w+\[/.test(loop.decl);
-          if (overField && countCalls(loop.body, PAINTS) > 0) {
-            out.push(`${method.name}() paints a spawned-and-aged array of its own`);
-            break;
-          }
+      for (const method of ctx.methods) {
+        if (!isDrawName(method.name)) continue;
+        const over = loopsIn(method.body).some(
+          body =>
+            contains(body, callsNamed(PAINTS)) &&
+            contains(body.parent ?? body, n => ts.isPropertyAccessExpression(n) && n.expression.kind === ts.SyntaxKind.ThisKeyword)
+        );
+        if (over) {
+          out.push(`${method.name}() paints a spawned-and-aged array of its own`);
+          break;
         }
       }
       return out;
@@ -309,18 +415,19 @@ export const RULES = [
   },
   {
     id: 'heavy-draw',
-    threshold: 60,
     why:
       'p5 costs 6-10x the raw canvas call underneath it, so primitive count is ' +
       'the cost. One pet at ~200 primitives a frame measured 388us a call and ' +
       '2.1% of CPU on its own. Cut the count, or bake the static half the way ' +
       'Fountain.bakeArt does.',
-    find: ({ methods, consts, bodies }) => {
+    find: ctx => {
       const out = [];
-      for (const method of methods) {
-        if (!/^draw/.test(method.name)) continue;
-        const cost = primitiveCost(method.body, consts, bodies, new Set([method.name]));
-        if (cost >= 60) out.push({ note: `${method.name}() is ~${cost} p5 calls per frame`, weight: cost });
+      for (const method of ctx.methods) {
+        if (!isDrawName(method.name)) continue;
+        const cost = costOf(method.body, ctx, new Set([method.body.getSourceFile().fileName + ':' + method.node.pos]));
+        if (cost >= 60) {
+          out.push({ note: `${method.name}() is ~${cost} p5 calls per frame`, weight: cost });
+        }
       }
       return out;
     },
@@ -331,20 +438,31 @@ export const RULES = [
       'blendMode() sets globalCompositeOperation, which additive-blends every ' +
       'primitive after it and cannot batch. Two switches per instance per frame ' +
       'is two per *body* once an AoE puts the effect on a whole wave.',
-    find: ({ text, methods, consts }) => {
-      // Additive blending is a legitimate technique and most casts use it once,
-      // on one object, for a moment — flagging those is noise. It becomes a
-      // cost when the switch is paid **per body**: an effect that rides a unit
-      // (a buff, an aura, a mark) is drawn once per wearer, so an AoE that puts
-      // it on a wave pays for it forty times a frame. Inside a loop is the same
-      // mistake one level down.
-      const perTarget = /extends\s+(?:api\.buffs\.)?\w*Buff\b|\bthis\.targetUnit\b/.test(text);
+    find: ctx => {
+      // Additive blending is legitimate and most casts use it once, on one
+      // object, for a moment. It becomes a cost when the switch is paid **per
+      // body**: an effect riding a unit is drawn once per wearer, so an AoE
+      // that puts it on a wave pays for it forty times a frame.
+      const perTarget = contains(
+        ctx.source,
+        n =>
+          (ts.isPropertyAccessExpression(n) &&
+            n.expression.kind === ts.SyntaxKind.ThisKeyword &&
+            n.name.text === 'targetUnit') ||
+          (ts.isHeritageClause(n) && /Buff\b/.test(n.getText()))
+      );
       const out = [];
-      for (const method of methods) {
-        if (!/^draw/.test(method.name) || !/\bblendMode\s*\(/.test(method.body)) continue;
-        const inLoop = loopsOf(method.body, consts).some(l => /\bblendMode\s*\(/.test(l.body));
+      const isBlend = callsNamed(new Set(['blendMode']));
+      for (const method of ctx.methods) {
+        if (!isDrawName(method.name) || !contains(method.body, isBlend)) continue;
+        const inLoop = loopsIn(method.body).some(body => contains(body, isBlend));
         if (!perTarget && !inLoop) continue;
-        const n = countCalls(method.body, /\bblendMode\s*\(/g);
+        let n = 0;
+        const count = node => {
+          if (isBlend(node)) n++;
+          ts.forEachChild(node, count);
+        };
+        count(method.body);
         out.push(
           `${method.name}() switches blendMode ${n}x ${inLoop ? 'inside a loop' : 'per wearer'}`
         );
@@ -357,18 +475,20 @@ export const RULES = [
     why:
       'an allocation inside a per-frame loop is garbage at 60fps, and GC pauses ' +
       'are what a fight feels as a stutter rather than as a lower average.',
-    find: ({ methods, consts }) => {
-      const out = [];
-      for (const method of methods) {
-        for (const loop of loopsOf(method.body, consts)) {
-          const allocs = [];
-          if (/\bnew\s+[A-Z]/.test(loop.body)) allocs.push('new');
-          if (/`[^`]*\$\{/.test(loop.body)) allocs.push('template string');
-          if (/=\s*\[[^\]]/.test(loop.body)) allocs.push('array literal');
-          if (allocs.length) out.push(`${method.name}() allocates in a loop (${allocs.join(', ')})`);
+    find: ctx => {
+      const out = new Set();
+      for (const method of ctx.methods) {
+        for (const body of loopsIn(method.body)) {
+          const kinds = [];
+          if (contains(body, n => ts.isNewExpression(n))) kinds.push('new');
+          if (contains(body, n => ts.isTemplateExpression(n))) kinds.push('template string');
+          if (contains(body, n => ts.isArrayLiteralExpression(n) && n.elements.length > 0)) {
+            kinds.push('array literal');
+          }
+          if (kinds.length) out.add(`${method.name}() allocates in a loop (${kinds.join(', ')})`);
         }
       }
-      return [...new Set(out)];
+      return [...out];
     },
   },
   {
@@ -377,9 +497,9 @@ export const RULES = [
       'queryObjects is the single biggest simulation cost in a teamfight (~7% of ' +
       'CPU, ~37 calls a tick). Issuing one from draw() runs it at frame rate on ' +
       'top of that, and a draw has no business asking the world a question.',
-    find: ({ methods }) =>
-      methods
-        .filter(m => /^draw/.test(m.name) && /queryObjects\s*\(/.test(m.body))
+    find: ctx =>
+      ctx.methods
+        .filter(m => isDrawName(m.name) && contains(m.body, callsNamed(new Set(['queryObjects']))))
         .map(m => `${m.name}() calls queryObjects`),
   },
   {
@@ -388,102 +508,125 @@ export const RULES = [
       'text() is the most expensive p5 primitive there is - 2.275us against 0.30 ' +
       'for the raw fillText, the worst ratio of any call measured. In a loop it ' +
       'is the first thing to move off p5 or out of the frame.',
-    find: ({ methods, consts }) => {
-      const out = [];
-      for (const method of methods) {
-        if (!/^draw/.test(method.name)) continue;
-        for (const loop of loopsOf(method.body, consts)) {
-          if (/\btext\s*\(/.test(loop.body)) out.push(`${method.name}() draws text in a loop`);
+    find: ctx => {
+      const out = new Set();
+      const isText = callsNamed(new Set(['text']));
+      for (const method of ctx.methods) {
+        if (!isDrawName(method.name)) continue;
+        if (loopsIn(method.body).some(body => contains(body, isText))) {
+          out.add(`${method.name}() draws text in a loop`);
         }
       }
-      return [...new Set(out)];
+      return [...out];
     },
   },
 ];
 
-/**
- * Every finding in one source file, without touching the disk.
- *
- * The unit a test drives. `scanTree` below is this plus a walk, and the CLI is
- * that plus a report — kept apart so the rules can be proven against a fixture
- * whose whole point is to be the mistake, which is the only way a scanner
- * stays honest about what it catches.
- */
-export function scanSource(source, file = null) {
-  const text = stripComments(source);
-  const consts = constsOf(text);
-  const methods = methodsOf(text);
-  if (methods.length === 0) return [];
-  const bodies = file ? reachableBodies(text, file) : namedBodies(text);
-  const context = { text, methods, consts, bodies };
+const runRules = ctx => {
   const out = [];
   for (const rule of RULES) {
-    for (const found of rule.find(context)) {
+    for (const found of rule.find(ctx)) {
       const { note, weight = 0 } = typeof found === 'string' ? { note: found } : found;
       out.push({ rule: rule.id, note, weight });
     }
   }
   return out;
+};
+
+/**
+ * Every finding in one source file, without touching the disk.
+ *
+ * The unit a test drives. Parsed standalone, so there is no checker and calls
+ * resolve only to names declared in the same text — which is all a fixture has,
+ * and is exactly the gap `scanTree` closes with a real program.
+ */
+export function scanSource(source, fileName = 'inline.ts') {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const methods = hotMethods(sourceFile);
+  if (methods.length === 0) return [];
+  return runRules({
+    source: sourceFile,
+    methods,
+    checker: null,
+    locals: localDeclarations(sourceFile),
+    constants: localConstants(sourceFile),
+  });
 }
 
 /** Every finding under `root`, each tagged with the file it came from. */
 export function scanTree(root, labelFrom = resolve(CORE, '..')) {
   const out = [];
   if (!existsSync(root)) return out;
-  for (const file of walk(root)) {
-    for (const finding of scanSource(readFileSync(file, 'utf8'), file)) {
-      out.push({ ...finding, file: relative(labelFrom, file) });
+  const files = walk(root);
+  if (files.length === 0) return out;
+  const built = programFor(dirname(files[0]));
+  for (const file of files) {
+    const sourceFile = built?.program.getSourceFile(file);
+    if (!sourceFile) {
+      // Outside the program (not in its tsconfig) — still worth scanning, just
+      // without cross-file resolution.
+      for (const finding of scanSource(readFileSync(file, 'utf8'), file)) {
+        out.push({ ...finding, file: relative(labelFrom, file) });
+      }
+      continue;
     }
+    const methods = hotMethods(sourceFile);
+    if (methods.length === 0) continue;
+    const findings = runRules({
+      source: sourceFile,
+      methods,
+      checker: built.checker,
+      locals: null,
+      constants: null,
+    });
+    for (const finding of findings) out.push({ ...finding, file: relative(labelFrom, file) });
   }
   return out;
 }
 
 const invokedDirectly =
-  process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-if (!invokedDirectly) {
-  // Imported for its rules; the report below is the CLI's job.
-} else {
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
-const targets = process.argv.slice(2).filter(a => !a.startsWith('--'));
-const maxArg = process.argv.indexOf('--max');
-const max = maxArg === -1 ? null : Number(process.argv[maxArg + 1]);
+if (invokedDirectly) {
+  const targets = process.argv.slice(2).filter(a => !a.startsWith('--'));
+  const maxArg = process.argv.indexOf('--max');
+  const max = maxArg === -1 ? null : Number(process.argv[maxArg + 1]);
 
-const roots = targets.length
-  ? targets.map(t => resolve(t))
-  : [
-      join(CORE, 'src/game/gameObject'),
-      ...['lol', 'naruto', 'dota']
-        .map(pack => resolve(CORE, '..', pack, 'spells'))
-        .filter(existsSync),
-    ];
+  const roots = targets.length
+    ? targets.map(t => resolve(t))
+    : [
+        join(CORE, 'src/game/gameObject'),
+        ...['lol', 'naruto', 'dota']
+          .map(pack => resolve(CORE, '..', pack, 'spells'))
+          .filter(existsSync),
+      ];
 
-const findings = roots.flatMap(root => scanTree(root));
+  const findings = roots.flatMap(root => scanTree(root));
+  const byRule = new Map();
+  for (const f of findings) byRule.set(f.rule, [...(byRule.get(f.rule) ?? []), f]);
 
-const byRule = new Map();
-for (const f of findings) byRule.set(f.rule, [...(byRule.get(f.rule) ?? []), f]);
-
-console.log(`\nperf-scan: ${findings.length} finding(s) across ${roots.length} tree(s)\n`);
-for (const rule of RULES) {
-  const n = (byRule.get(rule.id) ?? []).length;
-  console.log(`   ${String(n).padStart(4)}  ${rule.id}`);
-}
-console.log('');
-for (const rule of RULES) {
-  const rows = byRule.get(rule.id) ?? [];
-  if (rows.length === 0) continue;
-  console.log(`── ${rule.id} (${rows.length})`);
-  console.log(`   ${rule.why.replace(/(.{78}\s)/g, '$1\n   ')}\n`);
-  // Worst first where a rule can say what worst means, then alphabetical, so
-  // the top of a section is the place to start and two runs read the same.
-  rows.sort((a, b) => b.weight - a.weight || a.file.localeCompare(b.file));
-  for (const row of rows) console.log(`   ${row.file}\n     ${row.note}`);
+  console.log(`\nperf-scan: ${findings.length} finding(s) across ${roots.length} tree(s)\n`);
+  for (const rule of RULES) {
+    console.log(`   ${String((byRule.get(rule.id) ?? []).length).padStart(4)}  ${rule.id}`);
+  }
   console.log('');
-}
-if (findings.length === 0) console.log('  nothing to report.\n');
 
-if (max !== null && findings.length > max) {
-  console.error(`perf-scan: ${findings.length} findings, over the --max of ${max}`);
-  process.exit(1);
-}
+  for (const rule of RULES) {
+    const rows = byRule.get(rule.id) ?? [];
+    if (rows.length === 0) continue;
+    console.log(`── ${rule.id} (${rows.length})`);
+    console.log(`   ${rule.why.replace(/(.{78}\s)/g, '$1\n   ')}\n`);
+    // Worst first where a rule can say what worst means, then alphabetical, so
+    // the top of a section is the place to start and two runs read the same.
+    rows.sort((a, b) => b.weight - a.weight || a.file.localeCompare(b.file));
+    for (const row of rows) console.log(`   ${row.file}\n     ${row.note}`);
+    console.log('');
+  }
+  if (findings.length === 0) console.log('  nothing to report.\n');
 
+  if (max !== null && findings.length > max) {
+    console.error(`perf-scan: ${findings.length} findings, over the --max of ${max}`);
+    process.exit(1);
+  }
 }
