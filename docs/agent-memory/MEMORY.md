@@ -33,3 +33,5 @@
 - [perf-scan](moba2d-perf-scan.md) — npm run perf:scan; six CPU-pattern rules over core + all packs, each validated against the bug it came from
 - [duty-scan](moba2d-duty-scan.md) — uptime = duration/cooldown; the three ways that ratio lies, and the 4 durations the cooldown cap inflated
 - [Flat UI rule](moba2d-flat-ui.md) — no glows/blur anywhere; allowed vocabulary; hextech-css CDN hover fetch was an offline hole
+- [Practice presets](moba2d-practice-presets.md) — Trận mẫu + Mốc đã lưu; restore-in-place law, buffs don't cross sessions, bag-diff edge
+- [LOL2D handover](moba2d-lol2d-handover.md) — old repo redirects + kill-switch SW + standalone guide; core Cài app button
