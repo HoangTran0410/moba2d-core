@@ -50,6 +50,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import DomUtils from '@/utils/dom.utils';
+import { installReady, iosManualInstall, promptInstall, runningStandalone } from '@/pwa/install';
 import {
   offlineReady,
   requestUpdate,
@@ -336,6 +337,22 @@ const updateState = computed(() => {
  * banner that came back after being dismissed, or a failure list that
  * nothing ever set again, are the two shapes component state would give.
  */
+
+/**
+ * ## The install offer
+ *
+ * Shown only when pressing it can lead somewhere: a parked Chromium prompt,
+ * or an iOS browser where installing is a manual gesture the hint dialog
+ * teaches. Never inside the installed app itself.
+ */
+const installHintOpen = ref(false);
+const installOffered = computed(
+  () => !runningStandalone() && (installReady.value || iosManualInstall())
+);
+async function pressInstall() {
+  if (installReady.value) await promptInstall();
+  else installHintOpen.value = true;
+}
 </script>
 
 <template>
@@ -450,6 +467,13 @@ const updateState = computed(() => {
       <span>Tạo map</span>
     </button>
 
+    <button v-if="installOffered" id="install-btn" class="menu-link"
+      title="Cài game thành app: mở từ màn hình chính, toàn màn hình, chơi được offline" @click="pressInstall"
+      @touchend.prevent="pressInstall">
+      <i class="fas fa-download" aria-hidden="true"></i>
+      <span>Cài app</span>
+    </button>
+
     <button id="about-btn" class="menu-link" title="Giới thiệu" @click="emit('openAbout')"
       @touchend.prevent="emit('openAbout')">
       <i class="fas fa-circle-info" aria-hidden="true"></i>
@@ -477,6 +501,26 @@ const updateState = computed(() => {
           @touchend.prevent="answerNudge('packs')">
           <i class="fas fa-cubes" aria-hidden="true"></i>
           <span>Xem pack</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The iOS answer to the install button: no prompt event exists there, so
+       the button opens the recipe instead. Wears the pack-nudge dress — the
+       same kind of thing, a small modal choice over the menu. -->
+  <div v-if="installHintOpen" id="install-hint" class="pack-nudge" role="dialog" aria-modal="true">
+    <div class="pack-nudge-box">
+      <h2>Cài app trên iPhone/iPad</h2>
+      <p>
+        Mở trang này bằng <b>Safari</b>, bấm nút <b>Chia sẻ</b>
+        <i class="fas fa-arrow-up-from-bracket" aria-hidden="true"></i>, rồi chọn
+        <b>Thêm vào MH chính</b>.
+      </p>
+      <div class="pack-nudge-actions">
+        <button id="install-hint-close" type="button" class="hextech-btn" @click="installHintOpen = false"
+          @touchend.prevent="installHintOpen = false">
+          Đã hiểu
         </button>
       </div>
     </div>

@@ -13,6 +13,7 @@ import { every, fastHypot, filter, forEach, map, some } from './utils/optimized.
 import SceneManager from './managers/SceneManager';
 import LoadingScene from './scenes/LoadingScene';
 import { registerServiceWorker } from './pwa/updates';
+import { watchInstallPrompt } from './pwa/install';
 import AssetManager from './managers/AssetManager';
 import { contentRegistry } from './content/registry';
 import { installGlobalErrorReporter } from './managers/RenderGuard';
@@ -148,4 +149,8 @@ Math.hypot = fastHypot;
   // Last, and fire-and-forget: caching the app must never be on the path
   // between the player and a running game. See src/pwa/updates.ts.
   registerServiceWorker();
+
+  // Same fire-and-forget posture: parks Chromium's install prompt so the
+  // menu can offer a visible "Cài app" button. See src/pwa/install.ts.
+  watchInstallPrompt();
 };
