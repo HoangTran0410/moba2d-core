@@ -33,6 +33,7 @@
   "bin": {
     "moba2d-check-seams": "./scripts/check-seams.mjs",
     "moba2d-perf-scan": "./scripts/perf-scan.mjs",
+    "moba2d-duty-scan": "./scripts/duty-scan.mjs",
     "moba2d-perf-guard": "./scripts/perf-guard.mjs",
     "moba2d-generate-spell-catalog": "./scripts/generate-spell-catalog.mjs",
     "moba2d-pack-new": "./scripts/pack-new.mjs",
@@ -52,6 +53,7 @@
     "public",
     "scripts/check-seams.mjs",
     "scripts/perf-scan.mjs",
+    "scripts/duty-scan.mjs",
     "scripts/perf-guard.mjs",
     "scripts/generate-spell-catalog.mjs",
     "scripts/pack-webp.mjs",
@@ -130,6 +132,7 @@
     "e2e:render": "node tests/e2e/verify-render-guard.mjs",
     "e2e:frame-cost": "node tests/e2e/measure-frame-cost.mjs",
     "perf:scan": "node scripts/perf-scan.mjs",
+    "duty:scan": "node scripts/duty-scan.mjs",
     "perf:spell": "node tests/e2e/measure-spell-cost.mjs",
     "perf:guard": "node scripts/perf-guard.mjs",
     "e2e:sim-clock": "node tests/e2e/measure-sim-clock.mjs",

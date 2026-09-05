@@ -258,7 +258,7 @@ describe('package.json public surface', () => {
     expect(pkg.name).toBe('@moba2d/core');
   });
 
-  it('declares exactly thirteen bins, the eight below plus the five a pack no longer copies', () => {
+  it('declares exactly fourteen bins, the nine below plus the five a pack no longer copies', () => {
     // The scaffold (content-pack-and-repo-split batch 6 task 8) widened this
     // from two to four: `moba2d-pack-new` scaffolds a fresh, runnable pack
     // into an empty directory, and `moba2d-pack-add` adds one piece of
@@ -283,6 +283,14 @@ describe('package.json public surface', () => {
       // in `files` beside these entries; the dynamic half lives in `tests/`,
       // is not shipped, and the guard says so rather than failing without one.
       'moba2d-perf-scan': './scripts/perf-scan.mjs',
+      // Fourteen, not thirteen. `moba2d-duty-scan` is the balance-side sibling
+      // of `perf-scan`: it reads how much of the time an ability's own power
+      // state is up. It exists because capping twenty-four cooldowns to the
+      // practice room's pace raised every one of those abilities' uptime
+      // without anyone deciding it should, and reading the files by hand found
+      // two of the four that mattered. A pack is its own repository and owns
+      // its own balance, so it has to be able to run this from inside one.
+      'moba2d-duty-scan': './scripts/duty-scan.mjs',
       'moba2d-perf-guard': './scripts/perf-guard.mjs',
       'moba2d-generate-spell-catalog': './scripts/generate-spell-catalog.mjs',
       'moba2d-pack-new': './scripts/pack-new.mjs',
