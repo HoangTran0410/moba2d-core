@@ -51,12 +51,29 @@ import {
   readMatchHistory,
   type MatchRecord,
 } from '@/game/config/matchHistory';
+import {
+  MATCH_TEMPLATE_NAME_MAX,
+  deleteMatchTemplate,
+  loadMatchTemplates,
+  renameMatchTemplate,
+  saveMatchTemplate,
+  type MatchTemplate,
+} from '@/game/config/matchTemplates';
+import { describeTemplateGaps, templateGaps } from './templateGaps';
 import { vTap } from '../tapGuard';
 import MapPickerModal from './MapPickerModal.vue';
 import PanelSection from './PanelSection.vue';
 import { mapRuleCount, mapRuleGroups } from './mapRuleLines';
 
-const emit = defineEmits<{ close: [] }>();
+/**
+ * `canStart` is the shell's knowledge, not this tab's: whether pressing a
+ * template can boot the match right here — true only where the Bắt Đầu footer
+ * itself renders (the menu's start screen; not the LAN lobby, whose start is
+ * Vào trận, and never in a match). The `start` emit is forwarded by
+ * `MatchConfigPanel` to the same host handler that footer uses.
+ */
+const props = defineProps<{ canStart?: boolean }>();
+const emit = defineEmits<{ close: []; start: [] }>();
 
 const panel = inject(CONFIG_PANEL)!;
 const source = panel.source;
@@ -158,6 +175,129 @@ const restartForMode = (): void => {
   }
   confirmingModeRestart.value = false;
   live?.restart();
+};
+
+/**
+ * ## Trận mẫu
+ *
+ * The saved-setup library (`config/matchTemplates.ts`): the whole match —
+ * roster, per-bot switches, bags, rules, world, map choice — under a name,
+ * so an evening's setup is one press next session instead of rebuilding
+ * every bot by hand.
+ *
+ * Saving reads `source.templateSetup()` — in a match that is the live match,
+ * bags included; on the menu it is the configured setup with empty bags.
+ * Applying goes back through `source.applyTemplateSetup()`: on the start
+ * screen it writes the config and boots (`emit('start')`, the footer's own
+ * door), in a match it applies on the spot the way Đặt lại mặc định does —
+ * and confirms the same way, because it replaces a match that exists.
+ */
+const templates = ref<MatchTemplate[]>(loadMatchTemplates());
+const templatesSummary = computed(() =>
+  templates.value.length ? `${templates.value.length} mẫu` : 'chưa có mẫu'
+);
+
+/**
+ * What a template cannot deliver on *this* install — a champion, bag id or
+ * map from a pack that is gone. Said on the row, before the press, because
+ * downstream the policy is skip-quietly (`templateGaps.ts`'s file comment).
+ */
+const templateGapLines = computed(() => {
+  const lines = new Map<string, string | null>();
+  for (const template of templates.value)
+    lines.set(template.id, describeTemplateGaps(templateGaps(template.setup)));
+  return lines;
+});
+
+const templateMeta = (template: MatchTemplate): string => {
+  const config = template.setup.config;
+  return `${config.ai.count} bot · ${matchModeFor(config.mode).name} · ${mapNameOf(config.mapId)}`;
+};
+
+const templateName = ref('');
+const saveTemplate = (): void => {
+  const name = templateName.value.trim();
+  if (!name) return;
+  saveMatchTemplate(name, source.templateSetup());
+  templateName.value = '';
+  // Re-read rather than splice: storage sanitized the entry, and the list on
+  // screen must be the list that was written.
+  templates.value = loadMatchTemplates();
+};
+
+const renamingId = ref<string | null>(null);
+const renameDraft = ref('');
+const startRename = (template: MatchTemplate): void => {
+  renamingId.value = template.id;
+  renameDraft.value = template.name;
+};
+const cancelRename = (): void => {
+  renamingId.value = null;
+};
+const commitRename = (): void => {
+  if (renamingId.value && renameDraft.value.trim())
+    renameMatchTemplate(renamingId.value, renameDraft.value);
+  renamingId.value = null;
+  templates.value = loadMatchTemplates();
+};
+
+/** Two-step per row, armed independently of every other confirm on the tab. */
+const confirmingDeleteId = ref<string | null>(null);
+const removeTemplate = (template: MatchTemplate): void => {
+  if (confirmingDeleteId.value !== template.id) {
+    confirmingDeleteId.value = template.id;
+    return;
+  }
+  confirmingDeleteId.value = null;
+  deleteMatchTemplate(template.id);
+  templates.value = loadMatchTemplates();
+};
+
+const applyingTemplate = ref(false);
+const confirmingApplyId = ref<string | null>(null);
+
+/** The one-press start: write the setup, then leave through the footer's door. */
+const startTemplate = async (template: MatchTemplate): Promise<void> => {
+  if (!props.canStart || !canEdit || applyingTemplate.value) return;
+  applyingTemplate.value = true;
+  try {
+    await source.applyTemplateSetup(template.setup);
+    emit('start');
+  } finally {
+    applyingTemplate.value = false;
+  }
+};
+
+/**
+ * Apply without booting: the LAN lobby's shape (configure, then Vào trận) and
+ * the in-match shape — where it confirms first, because unlike every other
+ * control on this tab it replaces the roster standing on the map.
+ */
+const applyTemplate = async (template: MatchTemplate): Promise<void> => {
+  if (!canEdit || applyingTemplate.value) return;
+  if (live && confirmingApplyId.value !== template.id) {
+    confirmingApplyId.value = template.id;
+    return;
+  }
+  confirmingApplyId.value = null;
+  applyingTemplate.value = true;
+  try {
+    await source.applyTemplateSetup(template.setup);
+    // Every control on this tab is seeded from the source at mount, the same
+    // situation resetDefaults is in — re-read what the template moved.
+    rules.value = source.getRules();
+    world.value = source.getWorld();
+    modeId.value = source.getMode();
+    // In a match `getMap()` reports the running map, unmoved (see the map
+    // block below) — the *choice* the template just made is its own mapId,
+    // resolved the way the mount resolves a stored one.
+    selectedMapId.value = live
+      ? (resolveMapId(maps, template.setup.config.mapId) ?? template.setup.config.mapId)
+      : (resolveMapId(maps, source.getMap()) ?? source.getMap());
+    panel.invalidate();
+  } finally {
+    applyingTemplate.value = false;
+  }
 };
 
 /**
@@ -484,6 +624,126 @@ const resetLabel = computed(() =>
               {{ modePending }} của chế độ này áp dụng cho trận sau — luật và bot đã đổi ngay.
             </template>
           </span>
+        </p>
+      </div>
+    </PanelSection>
+
+    <!-- The whole match under a name. Right after the mode, because it is the
+         same kind of press — "give me this evening" — with the player's own
+         evenings on the shelf instead of the game's. -->
+    <PanelSection id="match-templates" title="Trận mẫu" :summary="templatesSummary">
+      <div class="template-field" id="practice-templates">
+        <p v-if="!templates.length" class="practice-note">
+          Chưa có trận mẫu nào. Đặt tên rồi bấm lưu để giữ đội hình, cài đặt từng bot, trang bị và
+          luật của thiết lập hiện tại — lần sau mở lại trong một lần bấm.
+        </p>
+
+        <ul v-if="templates.length" class="template-list">
+          <li v-for="(template, i) in templates" :key="template.id" class="template-row">
+            <template v-if="renamingId === template.id">
+              <input
+                type="text"
+                class="template-name-input"
+                :id="`practice-template-rename-input-${i}`"
+                v-model="renameDraft"
+                :maxlength="MATCH_TEMPLATE_NAME_MAX"
+                @keydown.enter="commitRename"
+                @keydown.esc="cancelRename"
+              />
+              <div class="template-actions">
+                <button type="button" class="template-chip" :id="`practice-template-rename-commit-${i}`"
+                  @click="commitRename" v-tap="commitRename">Lưu tên</button>
+                <button type="button" class="template-chip" @click="cancelRename" v-tap="cancelRename">
+                  Huỷ
+                </button>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="template-main">
+                <span class="template-title">
+                  <strong class="template-name">{{ template.name }}</strong>
+                  <span class="template-when">{{ formatWhen(template.savedAt, historyNow) }}</span>
+                </span>
+                <span class="template-meta">{{ templateMeta(template) }}</span>
+                <!-- What this install cannot supply, before the press — the
+                     apply itself skips these pieces quietly. -->
+                <span v-if="templateGapLines.get(template.id)" class="template-gap" :id="`practice-template-gap-${i}`">
+                  <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                  {{ templateGapLines.get(template.id) }}
+                </span>
+              </div>
+              <div class="template-actions">
+                <!-- On the start screen the press is the whole point: apply and
+                     boot. Everywhere else it is an apply — confirmed in a match,
+                     where it replaces the roster standing on the map. -->
+                <button
+                  v-if="canStart && !live"
+                  type="button"
+                  class="template-chip template-start"
+                  :id="`practice-template-start-${i}`"
+                  :disabled="!canEdit || applyingTemplate"
+                  @click="startTemplate(template)"
+                  v-tap="() => startTemplate(template)"
+                >
+                  Bắt đầu
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="template-chip template-start"
+                  :class="{ confirming: confirmingApplyId === template.id }"
+                  :id="`practice-template-apply-${i}`"
+                  :disabled="!canEdit || applyingTemplate"
+                  @click="applyTemplate(template)"
+                  v-tap="() => applyTemplate(template)"
+                >
+                  {{ live && confirmingApplyId === template.id ? 'Chắc chưa?' : 'Áp dụng' }}
+                </button>
+                <button type="button" class="template-chip" :id="`practice-template-rename-${i}`"
+                  @click="startRename(template)" v-tap="() => startRename(template)">Đổi tên</button>
+                <button
+                  type="button"
+                  class="template-chip"
+                  :class="{ confirming: confirmingDeleteId === template.id }"
+                  :id="`practice-template-delete-${i}`"
+                  @click="removeTemplate(template)"
+                  v-tap="() => removeTemplate(template)"
+                >
+                  {{ confirmingDeleteId === template.id ? 'Chắc chưa?' : 'Xoá' }}
+                </button>
+              </div>
+            </template>
+          </li>
+        </ul>
+
+        <div class="template-save">
+          <input
+            type="text"
+            class="template-name-input"
+            id="practice-template-name"
+            v-model="templateName"
+            :maxlength="MATCH_TEMPLATE_NAME_MAX"
+            placeholder="Tên trận mẫu…"
+            @keydown.enter="saveTemplate"
+          />
+          <button
+            type="button"
+            class="template-chip template-save-btn"
+            id="practice-template-save"
+            :disabled="!templateName.trim()"
+            @click="saveTemplate"
+            v-tap="saveTemplate"
+          >
+            <i class="fas fa-floppy-disk" aria-hidden="true"></i>
+            Lưu thành trận mẫu
+          </button>
+        </div>
+
+        <!-- Same vocabulary as the world switches' note: say what applies when.
+             Only in a match — on the menu the apply and the boot are one press. -->
+        <p v-if="live && canEdit && templates.length" class="practice-note">
+          Áp dụng đổi ngay bot, cài đặt và trang bị; bản đồ của mẫu dành cho trận sau.
         </p>
       </div>
     </PanelSection>

@@ -1030,7 +1030,18 @@ export default class MatchDirector {
    * without a half-reset match or partial storage writes.
    */
   async resetToDefaults(): Promise<boolean> {
-    const config = DEFAULT_PREGAME_CONFIG;
+    return this.applyConfig(DEFAULT_PREGAME_CONFIG);
+  }
+
+  /**
+   * The reset's machinery with the destination as a parameter: everything the
+   * comment above promises about the defaults holds for whatever config is
+   * handed in, which is what lets a saved "Trận mẫu"
+   * (`config/matchTemplates.ts`) be applied to a running match through the
+   * same one door. The caller is responsible for sanitizing a config that
+   * came from storage; the two call sites both do.
+   */
+  async applyConfig(config: PregameConfig): Promise<boolean> {
     const generation = ++this.resetGeneration;
     // Pending panel work belongs to the match the player is discarding.
     this.addGeneration++;

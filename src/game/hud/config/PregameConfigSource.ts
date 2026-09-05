@@ -35,6 +35,7 @@ import {
   type WorldConfig,
 } from '@/game/config/PregameConfig';
 import { applyMode, matchModeFor, type MatchModeId } from '@/game/config/matchModes';
+import { stashTemplateItems, type MatchTemplateSetup } from '@/game/config/matchTemplates';
 import type { MatchTeamId } from '@/game/config/MatchTeams';
 import {
   renderFpsPreference,
@@ -367,6 +368,30 @@ export default class PregameConfigSource implements MatchConfigSource {
     const botInvulnerable = this.config.cheats.botInvulnerable.slice();
     botInvulnerable[index] = on;
     this.setCheats({ botInvulnerable });
+  }
+
+  // --------------------------------------------------------------- templates
+
+  /**
+   * The stored config, whole, and empty bags: there is no match out here and
+   * so nothing anyone is holding. `sanitizePregameConfig` doubles as the deep
+   * copy, the same way `saveMatchTemplate` uses it — the caller keeps a
+   * snapshot, not a live reference into this source's draft.
+   */
+  templateSetup(): MatchTemplateSetup {
+    return { config: sanitizePregameConfig(this.config), items: { player: [], bots: [] } };
+  }
+
+  /**
+   * A config write — the same act as every other setter here, just all of them
+   * at once — plus the bags parked for the boot that follows. `Game`'s
+   * constructor is what takes the stash and fills the bags, because the units
+   * do not exist until then.
+   */
+  async applyTemplateSetup(setup: MatchTemplateSetup): Promise<void> {
+    this.config = sanitizePregameConfig(setup.config);
+    this.persist();
+    stashTemplateItems(setup.items);
   }
 
   // ------------------------------------------------------------------ device

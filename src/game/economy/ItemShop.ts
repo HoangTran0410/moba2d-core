@@ -5,6 +5,7 @@ import { packAsset } from '@/game/config/packAsset';
 import type { AssetHandle } from '@/managers/AssetManager';
 import type Spell from '@/game/gameObject/Spell';
 import type { QualifiedItem } from '@/content/PackRegistry';
+import { contentCatalog } from '@/content/catalog';
 import { clearShopHistory, recordShopStep } from '@/game/economy/ShopHistory';
 
 /**
@@ -356,6 +357,25 @@ export function grantItem(champion: Champion, def: QualifiedItem): boolean {
 
   champion.equipItem(held, slot);
   return true;
+}
+
+/**
+ * Replaces `champion`'s bag with a stored one — a "Trận mẫu"'s
+ * (`config/matchTemplates.ts`), granted free through `grantItem` above
+ * because that is what it is: the same cheat, replayed from a save.
+ *
+ * A qualified id that resolves to nothing installed is skipped, not thrown
+ * on: a template outlives its packs, and a boot that dies on a stale id
+ * would turn an uninstall into a bricked save. The visible half of the skip
+ * is the panel's job (`hud/config/templateGaps.ts` says what is missing
+ * before the press); this half just quietly grants what still resolves.
+ */
+export function grantTemplateBag(champion: Champion, itemIds: readonly string[]): void {
+  for (let slot = 0; slot < (champion.items?.length ?? 0); slot++) champion.unequipItem(slot);
+  for (const id of itemIds) {
+    const def = contentCatalog().item(id);
+    if (def) grantItem(champion, def);
+  }
 }
 
 /**

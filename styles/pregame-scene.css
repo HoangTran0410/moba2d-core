@@ -502,6 +502,140 @@
   cursor: pointer;
 }
 
+/* Trận mẫu — the saved-setup shelf on the Trận đấu tab. Same flat vocabulary
+   as the history list above it: hairline separators, muted meta lines, pill
+   buttons that arm to red for the destructive press. No depth anywhere. */
+.template-field {
+  font-size: 0.85em;
+}
+
+.template-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.template-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.18));
+}
+
+.template-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.template-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.template-name {
+  color: var(--hextech-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-when {
+  color: var(--hextech-muted);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.template-meta {
+  color: var(--hextech-muted);
+  font-size: 0.9em;
+}
+
+/* The missing-content line: warning-coloured like the pending notes, because
+   it is the same kind of fact — a promise this install can only part-keep. */
+.template-gap {
+  color: rgba(226, 190, 120, 0.95);
+  font-size: 0.9em;
+}
+
+.template-gap i {
+  margin-right: 0.25rem;
+}
+
+.template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.template-chip {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--hextech-line);
+  background: none;
+  color: var(--hextech-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.template-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The row's primary press — Bắt đầu on the start screen, Áp dụng elsewhere. */
+.template-start {
+  border-color: var(--hextech-gold-dim);
+  color: var(--hextech-gold);
+}
+
+/* Both confirming states arm the same way `.history-clear` does: in a match
+   Áp dụng replaces the roster on the map, and Xoá is Xoá. */
+.template-chip.confirming {
+  border-color: rgba(226, 120, 120, 0.9);
+  color: rgba(240, 150, 150, 0.95);
+}
+
+.template-save {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+/* Borrows `.saved-kit-input`'s sizing so the two text boxes of the panel read
+   as one control drawn twice. */
+.template-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.3rem 0.6rem;
+  background: var(--hextech-sunken);
+  border: 2px solid var(--hextech-line);
+  color: var(--hextech-text);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+.template-name-input:focus {
+  outline: none;
+  border-color: var(--hextech-teal);
+}
+
+.template-save-btn {
+  flex-shrink: 0;
+  min-height: 38px;
+}
+
+.template-save-btn i {
+  margin-right: 0.3rem;
+}
+
 /* The restart inside the pending note — a link-shaped button, not a third
    block button: it is one clause of a sentence. Arms to gold on the first
    press like `.practice-exit`. */

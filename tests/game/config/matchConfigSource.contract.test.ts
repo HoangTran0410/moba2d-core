@@ -10,8 +10,10 @@ import {
   DEFAULT_MAP_ID,
   DEFAULT_PREGAME_CONFIG,
   loadPregameConfig,
+  sanitizePregameConfig,
   savePregameConfig,
 } from '../../../src/game/config/PregameConfig';
+import { takeTemplateItems } from '../../../src/game/config/matchTemplates';
 import { MatchTeam, type MatchTeamId } from '../../../src/game/config/MatchTeams';
 import { INVENTORY_SIZE } from '../../../src/game/items/Item';
 import { context as practiceContext } from '../practice/helpers';
@@ -862,6 +864,132 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
     });
   });
 
+  /**
+   * The "Trận mẫu" seam: the whole setup out (`templateSetup`) and back in
+   * (`applyTemplateSetup`), through both backends — which is the promise the
+   * feature stands on. A template saved from a live evening must reboot from
+   * the menu, and one saved on the menu must land on a running match.
+   */
+  describe('templates', () => {
+    beforeEach(() => {
+      // The bag stash is module state, not storage: drain whatever an earlier
+      // test parked, so a park asserted below is provably this test's own.
+      takeTemplateItems();
+    });
+
+    it('captures the roster, the per-bot switches, the rules and the world', async () => {
+      await source.addBot(MatchTeam.RED);
+      source.setBotBehaviour(source.roster()[1].id, {
+        autoCast: false,
+        autoBuy: false,
+        difficulty: 'hard',
+      });
+      source.setRules({ cooldownReductionPercent: 30, manaFree: true, recall: false }, true);
+      source.setWorld({ jungle: false });
+      source.setTeam(source.roster()[0].id, MatchTeam.RED);
+
+      const setup = source.templateSetup();
+
+      expect(setup.config.ai.count).toBe(2);
+      expect(setup.config.playerTeam).toBe(MatchTeam.RED);
+      expect(setup.config.ai.botTeams[1]).toBe(MatchTeam.RED);
+      expect(setup.config.ai.botBehaviours[0]).toMatchObject({
+        autoCast: false,
+        autoBuy: false,
+        difficulty: 'hard',
+      });
+      expect(setup.config.rules).toEqual({
+        cooldownReductionPercent: 30,
+        manaFree: true,
+        recall: false,
+      });
+      expect(setup.config.world.jungle).toBe(false);
+      expect(setup.items.bots.length).toBe(source.live ? 2 : 0);
+    });
+
+    it('applies a saved setup: count, sides, switches, rules, world, storage', async () => {
+      const setup = {
+        config: sanitizePregameConfig({
+          ...DEFAULT_PREGAME_CONFIG,
+          playerTeam: MatchTeam.RED,
+          ai: {
+            ...DEFAULT_PREGAME_CONFIG.ai,
+            count: 2,
+            botTeams: [MatchTeam.RED, MatchTeam.RED],
+            botBehaviours: [
+              { ...DEFAULT_PREGAME_CONFIG.ai.botBehaviours[0], autoMove: false },
+              { ...DEFAULT_PREGAME_CONFIG.ai.botBehaviours[1], autoAttack: false },
+            ],
+          },
+          rules: { cooldownReductionPercent: 60, manaFree: true, recall: false },
+          world: { jungle: false, minions: false },
+        }),
+        items: { player: [], bots: [] },
+      };
+
+      await source.applyTemplateSetup(setup);
+
+      expect(source.botCount()).toBe(2);
+      expect(source.roster()[0].team).toBe(MatchTeam.RED);
+      expect(source.roster()[1].team).toBe(MatchTeam.RED);
+      expect(source.roster()[1].behaviour).toMatchObject({ autoMove: false });
+      expect(source.roster()[2].behaviour).toMatchObject({ autoAttack: false });
+      expect(source.getRules()).toEqual({
+        cooldownReductionPercent: 60,
+        manaFree: true,
+        recall: false,
+      });
+      expect(source.getWorld()).toEqual({ jungle: false, minions: false });
+      // Both backends persist the applied setup — the boot after a reload is
+      // the template's match, whichever surface applied it.
+      expect(loadPregameConfig().rules.cooldownReductionPercent).toBe(60);
+      expect(loadPregameConfig().ai.count).toBe(2);
+    });
+
+    it('saves the bags and grants them back on apply, skipping an id nothing installs', async () => {
+      if (!source.live) return;
+      const [boots] = seedItems();
+      source.live.giveItem(source.roster()[0].id, boots.id);
+      source.live.giveItem(source.roster()[1].id, boots.id);
+
+      const setup = source.templateSetup();
+      expect(setup.items.player).toEqual([boots.id]);
+      expect(setup.items.bots[0]).toEqual([boots.id]);
+
+      // Reapply with one id that resolves and one from a pack that is gone:
+      // the grant takes what it can and drops the rest on the floor.
+      await source.applyTemplateSetup({
+        config: setup.config,
+        items: { player: [boots.id, 'gonepack:ghost'], bots: [['gonepack:ghost', boots.id]] },
+      });
+
+      const playerSlots = source.live.itemsOf(source.roster()[0].id);
+      expect(playerSlots[0].filled).toBe(true);
+      expect(playerSlots[0].name).toBe(boots.name);
+      expect(playerSlots[1].filled, 'a stale id must be skipped, not granted blank').toBe(false);
+      const botSlots = source.live.itemsOf(source.roster()[1].id);
+      expect(botSlots[0].name).toBe(boots.name);
+      expect(botSlots[1].filled).toBe(false);
+      // In a match the bags are granted directly; nothing is parked for a boot.
+      expect(takeTemplateItems()).toBeNull();
+    });
+
+    it('parks the bags for the boot that follows, on the menu', async () => {
+      if (source.live) return;
+      await source.applyTemplateSetup({
+        config: sanitizePregameConfig(DEFAULT_PREGAME_CONFIG),
+        items: { player: ['somepack:boots'], bots: [['somepack:ward']] },
+      });
+
+      // `Game`'s constructor is the taker; here the park itself is the contract.
+      expect(takeTemplateItems()).toEqual({
+        player: ['somepack:boots'],
+        bots: [['somepack:ward']],
+      });
+      expect(takeTemplateItems(), 'the stash is one-shot').toBeNull();
+    });
+  });
+
   describe('reset', () => {
     it('puts the config back to the defaults', async () => {
       source.setRules({ cooldownReductionPercent: 50, manaFree: true, recall: true }, true);
@@ -894,5 +1022,83 @@ describe.each(SOURCES)('MatchConfigSource contract — %s', (name, make) => {
 
       expect(loadPregameConfig().mapId).toBe(DEFAULT_MAP_ID);
     });
+  });
+});
+
+/**
+ * The round trip the feature was asked for, end to end: an evening configured
+ * in one running world, saved, and rebooted into a **different** world — new
+ * director, new units, storage wiped in between. Everything the owner set by
+ * hand (bots, sides, per-bot switches, bags, rules) must arrive; everything a
+ * departed pack owned must degrade to a skip rather than a crash.
+ */
+describe('template round trip across worlds', () => {
+  beforeEach(() => {
+    stubBrowser(new MemoryStorage());
+    hostNet = null;
+    takeTemplateItems();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rebuilds a configured match in a fresh world', async () => {
+    const boots = seedItems()[0];
+
+    // The configured world: a second bot on Red, tuned switches, tuned rules,
+    // no minions, and two bags bought for the fight.
+    const a = (await makeDirector()).source;
+    await a.addBot(MatchTeam.RED);
+    a.setBotBehaviour(a.roster()[2].id, { autoMove: false, autoReroll: false });
+    a.setRules({ cooldownReductionPercent: 70, manaFree: true, recall: false }, true);
+    a.setWorld({ minions: false });
+    a.live!.giveItem(a.roster()[0].id, boots.id);
+    a.live!.giveItem(a.roster()[2].id, boots.id);
+
+    const setup = a.templateSetup();
+
+    // A fresh world: `makeDirector` rewrites storage to the defaults and
+    // boots a new context, so nothing of the evening above survives on its
+    // own — what arrives is what the template carried.
+    const b = (await makeDirector()).source;
+    expect(b.botCount()).toBe(1);
+
+    await b.applyTemplateSetup(setup);
+
+    expect(b.botCount()).toBe(2);
+    expect(b.roster()[2].team).toBe(MatchTeam.RED);
+    expect(b.roster()[2].behaviour).toMatchObject({ autoMove: false, autoReroll: false });
+    expect(b.getRules()).toEqual({ cooldownReductionPercent: 70, manaFree: true, recall: false });
+    expect(b.getWorld().minions).toBe(false);
+    expect(b.live!.itemsOf(b.roster()[0].id)[0].name).toBe(boots.name);
+    expect(b.live!.itemsOf(b.roster()[2].id)[0].name).toBe(boots.name);
+    expect(loadPregameConfig().rules.cooldownReductionPercent).toBe(70);
+  });
+
+  it('degrades to the pieces that still resolve when a pack is gone', async () => {
+    const b = (await makeDirector()).source;
+    const setup = {
+      config: sanitizePregameConfig({
+        ...DEFAULT_PREGAME_CONFIG,
+        ai: {
+          ...DEFAULT_PREGAME_CONFIG.ai,
+          count: 1,
+          bots: [{ ...DEFAULT_PREGAME_CONFIG.player, championName: 'Không Còn Trong Máy' }],
+        },
+        mapId: 'gonepack:mất-rồi',
+      }),
+      items: { player: ['gonepack:ghost'], bots: [['gonepack:ghost']] },
+    };
+
+    // Never throws: the champion resolves through the loader's own fallback,
+    // the map is the next boot's problem (`GameScene` falls back), and the
+    // bag ids are dropped by the grant.
+    await b.applyTemplateSetup(setup);
+
+    expect(b.botCount()).toBe(1);
+    expect(b.live!.itemsOf(b.roster()[0].id)[0].filled).toBe(false);
+    expect(b.live!.itemsOf(b.roster()[1].id)[0].filled).toBe(false);
+    expect(loadPregameConfig().mapId).toBe('gonepack:mất-rồi');
   });
 });

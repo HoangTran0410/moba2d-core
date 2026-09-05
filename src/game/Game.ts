@@ -54,6 +54,8 @@ import {
   type ChampionLoadout,
   type MatchRules,
 } from './config/PregameConfig';
+import { takeTemplateItems } from './config/matchTemplates';
+import { grantTemplateBag } from './economy/ItemShop';
 import ObjectManager from './managers/ObjectManager';
 import type { RenderQuality } from './managers/ObjectManager';
 import MinionSpawner from './managers/MinionSpawner';
@@ -631,6 +633,20 @@ export default class Game {
       );
       this.objectManager.addObject(bot);
       loadoutsInPlay.push({ unit: bot, loadout: botLoadout });
+    }
+
+    // A "Trận mẫu" applied on the menu parks its bags in the config module,
+    // because the menu cannot reach units that do not exist yet — this is the
+    // other end of `PregameConfigSource.applyTemplateSetup`. Taken once, so a
+    // plain restart re-rolls an ordinary match instead of re-granting a stale
+    // template's build; skipped on a net client, whose units belong to the
+    // host. `loadoutsInPlay` is player-then-bots in slot order, the exact
+    // alignment `TemplateItems` stores.
+    const templateItems = takeTemplateItems();
+    if (templateItems && !isNetClient()) {
+      grantTemplateBag(this.player, templateItems.player);
+      for (let i = 1; i < loadoutsInPlay.length; i++)
+        grantTemplateBag(loadoutsInPlay[i].unit, templateItems.bots[i - 1] ?? []);
     }
 
     // anything reading `isAllied` needs this.player, so these come after it.

@@ -27,6 +27,7 @@ import type Spell from '@/game/gameObject/Spell';
 import {
   AI_COUNT_MAX,
   DEFAULT_CHAMPION_LOADOUT,
+  sanitizePregameConfig,
   type BotBehaviour,
   type ChampionLoadout,
   type CheatConfig,
@@ -34,6 +35,7 @@ import {
   type MatchRulesConfig,
   type WorldConfig,
 } from '@/game/config/PregameConfig';
+import { sanitizeTemplateItems, type MatchTemplateSetup } from '@/game/config/matchTemplates';
 import type { MatchModeId } from '@/game/config/matchModes';
 import type { MatchTeamId } from '@/game/config/MatchTeams';
 import { isNetClient } from '@/game/net/netRole';
@@ -52,7 +54,7 @@ import {
   type ScoreLine,
   type StatGroup,
 } from '../practice/participantStats';
-import { grantItem } from '@/game/economy/ItemShop';
+import { grantItem, grantTemplateBag } from '@/game/economy/ItemShop';
 import { INVENTORY_SIZE } from '@/game/items/Item';
 import { shopItems } from '@/game/economy/itemCatalog';
 import { contentCatalog } from '@/content/catalog';
@@ -574,6 +576,65 @@ export default class MatchDirectorSource implements MatchConfigSource {
 
   setInvulnerable(id: string, on: boolean): void {
     this.cheatOnUnit(id, unit => this.director.setInvulnerable(unit, on));
+  }
+
+  // --------------------------------------------------------------- templates
+
+  /**
+   * One participant's bag as stored ids. The ids are already qualified —
+   * everything a bag can hold arrived through the shop or `grantItem`, both
+   * of which take a `QualifiedItem` — so this is a read, not a translation.
+   */
+  private bagOf(unit: Champion): string[] {
+    const ids: string[] = [];
+    for (const held of unit.items ?? []) {
+      const id = held?.def?.id;
+      if (typeof id === 'string' && id.length > 0) ids.push(id);
+    }
+    return ids;
+  }
+
+  /**
+   * `toPregameConfig()` — the exact blob `persist()` writes, i.e. this match
+   * as the config that would boot it again — plus what everyone is holding.
+   * Bags are read in roster order, which is bot-slot order (`bots()` and the
+   * per-slot arrays in the config are index-aligned by construction).
+   */
+  templateSetup(): MatchTemplateSetup {
+    let player: Champion | null = null;
+    for (const entry of this.entries()) if (entry.isPlayer) player = entry.unit;
+    return {
+      config: this.director.toPregameConfig(),
+      items: {
+        player: player ? this.bagOf(player) : [],
+        bots: this.director.bots().map(bot => this.bagOf(bot)),
+      },
+    };
+  }
+
+  /**
+   * Applies on the spot through the reset's own machinery
+   * (`MatchDirector.applyConfig`): bots respawned on the template's roster,
+   * rules and world moved, storage written — then the bags, granted onto the
+   * fresh roster the way the give-item cheat grants. Gated like
+   * `resetToDefaults` below and for the same reason: it is the rules, the
+   * world, the roster and the cheats in one press.
+   */
+  async applyTemplateSetup(setup: MatchTemplateSetup): Promise<void> {
+    if (!this.canEditMatchSettings) return;
+    const config = sanitizePregameConfig(setup.config);
+    // False when a newer reset or roster edit superseded this apply while its
+    // kits were loading — the match then belongs to that newer edit, and
+    // granting this template's bags onto it would mix two setups.
+    const applied = await this.director.applyConfig(config);
+    if (!applied) return;
+
+    const items = sanitizeTemplateItems(setup.items);
+    for (const entry of this.entries()) {
+      if (entry.isPlayer) grantTemplateBag(entry.unit, items.player);
+    }
+    const bots = this.director.bots();
+    for (let i = 0; i < bots.length; i++) grantTemplateBag(bots[i], items.bots[i] ?? []);
   }
 
   // ------------------------------------------------------------------ device

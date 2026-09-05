@@ -78,6 +78,10 @@ const ALLOWED_GAME_MODULES = [
   // The match history: `localStorage` only, read by the picker for its
   // mastery badges and by the match tab for the recent-matches list.
   '@/game/config/matchHistory',
+  // The Trận mẫu library: `localStorage` plus a parked-bags handoff, read by
+  // the match tab's template shelf and written through both sources. Same
+  // directory, same carve-out, same purity check as `matchHistory` above.
+  '@/game/config/matchTemplates',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

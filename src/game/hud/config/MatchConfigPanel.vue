@@ -136,7 +136,15 @@ defineExpose({ closeInnerLayer: (): boolean => roster.value?.closeEditor() ?? fa
     </div>
 
     <RosterTab v-if="tab === 'roster'" ref="roster" />
-    <MatchTab v-if="tab === 'rules'" @close="emit('close')" />
+    <!-- `can-start` mirrors the footer's own render condition: a Trận mẫu row
+         may boot the match exactly where Bắt Đầu may, and nowhere else. Its
+         `start` is forwarded to the same host handler. -->
+    <MatchTab
+      v-if="tab === 'rules'"
+      :can-start="pregame && !hideStart"
+      @close="emit('close')"
+      @start="emit('start')"
+    />
     <SettingsTab v-if="tab === 'settings'" />
 
     <!-- Only outside a match, and only here: the one control the menu opened

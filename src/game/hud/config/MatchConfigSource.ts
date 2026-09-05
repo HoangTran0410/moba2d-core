@@ -63,6 +63,7 @@ import type { SpellDisplay } from '@/game/config/spellCatalog';
 import type { QualifiedMapSummary } from '@/content/PackRegistry';
 import type { StatLine } from '@/game/hud/itemStatLines';
 import type { MapGeometry } from '@/content/ContentPack';
+import type { MatchTemplateSetup } from '@/game/config/matchTemplates';
 
 /** One Q/W/E/R icon on a roster row. */
 export interface RosterAbility {
@@ -443,6 +444,27 @@ export interface MatchConfigSource {
   getCheats(): CheatConfig;
   setCheats(cheats: Partial<CheatConfig>): void;
   setInvulnerable(id: string, on: boolean): void;
+
+  // --------------------------------------------------------------- templates
+  /**
+   * The setup this source currently describes, whole, for saving as a named
+   * "Trận mẫu" (`config/matchTemplates.ts`): the config that would boot it
+   * again, plus every participant's bag as qualified item ids. Outside a
+   * match the bags are empty — there are no bags on the menu, and inventing
+   * some would save a scenario nobody built.
+   */
+  templateSetup(): MatchTemplateSetup;
+  /**
+   * Make a saved setup the one this source describes. On the menu it is a
+   * config write plus a one-shot bag stash for the boot that follows; in a
+   * running match it applies on the spot the way `resetToDefaults` does —
+   * bots respawned on the template's roster, rules and world moved, bags
+   * granted (the map, as ever, waits for the next boot). Refused on a LAN
+   * client like every other whole-match write. A template piece naming
+   * content nothing installed is skipped, never thrown on — the panel says
+   * so beside the row (`templateGaps.ts`).
+   */
+  applyTemplateSetup(setup: MatchTemplateSetup): Promise<void>;
 
   // ------------------------------------------------------------------ device
   /**
