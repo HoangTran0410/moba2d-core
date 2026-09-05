@@ -2089,6 +2089,123 @@ body.touch-ui .corner-btn {
   font-size: 1.25em;
 }
 
+/* ---------------------------------------------------------------- Mốc đã lưu
+
+   The fight-save-point surface: a second corner cluster in the one region
+   both layouts leave empty (top-left — `TouchLayout.CORNER_BUTTON_BOX` holds
+   the right corner at two buttons), and the modal it opens over the paused
+   match. Same flat vocabulary as the practice panel and the Trận mẫu shelf:
+   hairline separators, muted meta lines, pill buttons that arm for the
+   destructive press. No glows, no shadows, no depth. */
+.corner-cluster-left {
+  position: fixed;
+  top: calc(6px + var(--safe-top));
+  left: calc(6px + var(--safe-left));
+  z-index: 120;
+
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+
+/* Teal, not gold: gold is the practice panel's colour and two gold corners
+   would read as two doors to one room. */
+.checkpoint-btn {
+  color: var(--hextech-teal);
+}
+
+.checkpoint-btn:hover {
+  color: var(--hextech-text);
+  border-color: rgba(110, 190, 200, 0.53);
+}
+
+.checkpoint-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, 92vw);
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--hextech-bg);
+  border: 1px solid var(--hextech-border);
+  color: var(--hextech-text);
+  z-index: 120;
+  font-size: 0.9em;
+}
+
+.checkpoint-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--hextech-line);
+}
+
+.checkpoint-title {
+  color: var(--hextech-gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* The scrolling half, so a long shelf never grows the box past the phone. */
+.checkpoint-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem 0.8rem;
+}
+
+.checkpoint-save-btn {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 38px;
+  margin-bottom: 0.4rem;
+}
+
+.checkpoint-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkpoint-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--hextech-border, rgba(200, 170, 110, 0.18));
+}
+
+/* The automatic rows announce themselves, so a player never wonders who
+   pressed save. */
+.checkpoint-auto-tag {
+  flex: none;
+  color: var(--hextech-muted);
+  font-size: 0.8em;
+  border: 1px solid var(--hextech-line);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+/* The death screen's retry pill rides the spectate pill's own styling; only
+   the flex accounting differs. The shared `margin-left: auto` pushes the
+   first pill right — with two pills the second must not open a second gap. */
+.death-recap-live .death-recap-retry {
+  margin-left: auto;
+}
+
+.death-recap-live .death-recap-retry ~ .death-recap-spectate {
+  margin-left: 0;
+}
+
 /* ---------------------------------------------------------------- Xoay ngang
 
    The portrait hint (`OrientationHint.vue`). Covers everything, including the

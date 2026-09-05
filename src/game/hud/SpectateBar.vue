@@ -23,6 +23,8 @@ defineProps<{
   /** The ally on screen, or null while the camera lingers on the corpse. */
   spectating: string | null;
   touch: boolean;
+  /** Whether a fight save point exists to rewind to — never true in a LAN match. */
+  canRetry?: boolean;
 }>();
 
 const hud = inject<HudInteractions>('hud')!;
@@ -33,6 +35,20 @@ const hud = inject<HudInteractions>('hud')!;
     <span class="spectate-revive">
       Hồi sinh sau <strong id="spectate-revive-seconds">{{ reviveAfter }}</strong>s
     </span>
+    <!-- The practice room's retry: back to the newest save point without
+         waiting the clock out. Same pill as the ally control beside it. -->
+    <button
+      v-if="canRetry"
+      type="button"
+      class="spectate-next spectate-retry"
+      id="spectate-retry-checkpoint"
+      title="Quay lại mốc gần nhất"
+      @click="hud.rewindToLatestCheckpoint()"
+      v-tap="() => hud.rewindToLatestCheckpoint()"
+    >
+      <i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+      <span class="spectate-name">Thử lại từ mốc</span>
+    </button>
     <button
       v-if="spectating"
       type="button"

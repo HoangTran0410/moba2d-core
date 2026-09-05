@@ -55,6 +55,8 @@ import {
   type MatchRules,
 } from './config/PregameConfig';
 import { takeTemplateItems } from './config/matchTemplates';
+import { takeMomentBoot, type MomentBoot } from './config/savedMoments';
+import { applyMomentOverlay, captureCheckpoint, type Checkpoint } from './checkpoint/Checkpoint';
 import { grantTemplateBag } from './economy/ItemShop';
 import ObjectManager from './managers/ObjectManager';
 import type { RenderQuality } from './managers/ObjectManager';
@@ -377,6 +379,14 @@ export default class Game {
    * practice panel holding the match does not age anyone's memory.
    */
   matchTimeMs = 0;
+  /**
+   * This session's fight save points — "Mốc đã lưu" — newest first. Held in
+   * memory only (live references inside; see `checkpoint/Checkpoint.ts`);
+   * the persisted, cross-session shape lives in `config/savedMoments.ts` and
+   * is written when a row is kept to the library. Managed by the HUD
+   * (`hudInteractions`), which also refuses every entry point in a LAN match.
+   */
+  checkpoints: Checkpoint[] = [];
   touchUi: boolean;
 
   /**
@@ -442,6 +452,14 @@ export default class Game {
     // whole of how a mode changes the economy, respawn or champion speed.
     this.mapTuning = mergeTuning(map.tuning, mode.tuning);
     this.sellRefund = resolveEconomy(this.mapTuning).sellRefund;
+    // A "Mốc đã lưu" opened on the menu, parked for this boot — the seed is
+    // taken here, before the jungle spawns further down, because seeded
+    // content derives its rotation from it; the overlay waits until the
+    // world stands (the bottom of this constructor). One-shot like the
+    // template bag stash below, and skipped on a net client for the same
+    // reason: its world belongs to the host.
+    const momentBoot: MomentBoot | null = isNetClient() ? null : takeMomentBoot();
+    if (momentBoot) this.matchSeed = momentBoot.matchSeed;
     this.minionMuster = minionMusterSlotsFrom(map.slots.minion, map.factions);
     this.neutralSlots = map.slots.neutral;
     // Before anything queues a wave or builds a blackboard: `MinionSpawner`,
@@ -698,6 +716,17 @@ export default class Game {
 
     this.camera.target = this.player.position;
     this.camera.position = this.player.position.copy();
+
+    // The opened moment's numbers, laid over the world the template path
+    // just built — after the director, the spawner and every unit exist.
+    if (momentBoot) applyMomentOverlay(this, momentBoot.overlay);
+    // "Đầu trận": the anchor save, so rewind always has somewhere to go —
+    // and after a reopened moment it IS that moment, which is what "thử lại
+    // từ đầu" should mean there. Skipped on a net client, whose match cannot
+    // be rewound at all.
+    if (!isNetClient()) {
+      this.checkpoints.push(captureCheckpoint(this, 'Đầu trận', true));
+    }
   }
 
   /**

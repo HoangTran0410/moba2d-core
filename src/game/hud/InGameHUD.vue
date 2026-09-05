@@ -52,6 +52,7 @@ import MobileHudView from './MobileHudView.vue';
 import OrientationHint from './OrientationHint.vue';
 import NetLinkOverlay from './NetLinkOverlay.vue';
 import MatchConfigPanel from './config/MatchConfigPanel.vue';
+import CheckpointPanel from './CheckpointPanel.vue';
 import ShopPanel from './shop/ShopPanel.vue';
 import MatchDirectorSource from './config/MatchDirectorSource';
 
@@ -172,7 +173,29 @@ defineExpose({
     its own close button, and a control underneath one is a control that cannot
     be pressed.
   -->
-  <div v-if="!hud.showSpellsPicker && !hud.showShop" class="corner-cluster">
+  <!--
+    The opposite corner, and its own cluster: the way into "Mốc đã lưu". It
+    cannot join the row above — `TouchLayout.CORNER_BUTTON_BOX` holds that at
+    two buttons so the canvas recall clears the expanded minimap on a 667px
+    phone — and top-left is the one region empty in both layouts. Hidden with
+    the rest of the chrome behind every modal, and gone entirely in a LAN
+    match, where rewinding is refused wholesale.
+  -->
+  <div
+    v-if="!hud.net && !hud.showSpellsPicker && !hud.showShop && !hud.showCheckpoints"
+    class="corner-cluster corner-cluster-left"
+  >
+    <button
+      class="corner-btn checkpoint-btn"
+      @click="hud.openCheckpoints()"
+      v-tap="() => hud.openCheckpoints()"
+      title="Mốc đã lưu"
+    >
+      <i class="fa-solid fa-clock-rotate-left"></i>
+    </button>
+  </div>
+
+  <div v-if="!hud.showSpellsPicker && !hud.showShop && !hud.showCheckpoints" class="corner-cluster">
     <!--
       Touch only. On a phone the gold pill and the six inventory tiles do not
       render at all and `P` is not a key a thumb can press, so without this the
@@ -236,6 +259,7 @@ defineExpose({
     :is-dead="state.isDead"
     :revive-after="state.reviveAfter"
     :spectating="state.spectating"
+    :can-retry="state.hasCheckpoint"
   />
   <!-- The countdown and the ally being watched, while dead. Bottom-centre:
        the recap owns the top, the callouts own the space under the strip, and
@@ -245,6 +269,7 @@ defineExpose({
     :revive-after="state.reviveAfter"
     :spectating="state.spectating"
     :touch="hud.touchUi"
+    :can-retry="state.hasCheckpoint"
   />
   <DesktopHudView v-if="state && !hud.touchUi" :state="state" />
   <MobileHudView v-if="state && hud.touchUi" />
@@ -260,6 +285,11 @@ defineExpose({
     :source="openPanel()"
     @close="hud.closeSpellPicker()"
   />
+
+  <!-- Over the paused match, the practice panel's own pattern — a sibling
+       modal, never stacked with the two above (`openCheckpoints` closes
+       them, and they close it). -->
+  <CheckpointPanel v-if="hud.showCheckpoints" />
 
   <!-- Unconditional on purpose: it decides for itself whether to show, and a
        `v-if` here would remount it — and reset its dismissal — on every turn

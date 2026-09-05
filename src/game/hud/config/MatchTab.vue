@@ -59,6 +59,14 @@ import {
   saveMatchTemplate,
   type MatchTemplate,
 } from '@/game/config/matchTemplates';
+import {
+  SAVED_MOMENT_NAME_MAX,
+  deleteSavedMoment,
+  loadSavedMoments,
+  renameSavedMoment,
+  stashMomentBoot,
+  type SavedMoment,
+} from '@/game/config/savedMoments';
 import { describeTemplateGaps, templateGaps } from './templateGaps';
 import { vTap } from '../tapGuard';
 import MapPickerModal from './MapPickerModal.vue';
@@ -298,6 +306,85 @@ const applyTemplate = async (template: MatchTemplate): Promise<void> => {
   } finally {
     applyingTemplate.value = false;
   }
+};
+
+/**
+ * ## Mốc đã lưu
+ *
+ * The cross-session save points (`config/savedMoments.ts`): a moment of a
+ * fight kept from inside a match — "Lưu vào thư viện" on the in-game modal
+ * is the only way rows get here — reopened from the menu in one press. A
+ * row's Mở lại is the template shelf's Bắt đầu with one extra act: the
+ * moment's numbers and seed are parked (`stashMomentBoot`) for the boot the
+ * footer's own `start` event triggers, and `Game`'s constructor lays them
+ * over the freshly built world.
+ *
+ * Mở lại renders only where the Bắt Đầu footer does (`canStart`), exactly
+ * like a template row's boot press: in a running match and in the LAN lobby
+ * the shelf is manage-only — rename and delete. Missing content degrades the
+ * template way, and the same `templateGaps` line says so before the press.
+ */
+const moments = ref<SavedMoment[]>(loadSavedMoments());
+const momentsSummary = computed(() =>
+  moments.value.length ? `${moments.value.length} mốc` : 'chưa có mốc'
+);
+
+const momentGapLines = computed(() => {
+  const lines = new Map<string, string | null>();
+  for (const moment of moments.value) lines.set(moment.id, describeTemplateGaps(templateGaps(moment.setup)));
+  return lines;
+});
+
+const momentClock = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+const momentMeta = (moment: SavedMoment): string => {
+  const config = moment.setup.config;
+  return `phút ${momentClock(moment.overlay.matchTimeMs)} · ${config.ai.count} bot · ${mapNameOf(config.mapId)}`;
+};
+
+const openingMoment = ref(false);
+/** The one-press reopen: write the setup, park the overlay, leave through the footer's door. */
+const openMoment = async (moment: SavedMoment): Promise<void> => {
+  if (!props.canStart || !canEdit || openingMoment.value) return;
+  openingMoment.value = true;
+  try {
+    await source.applyTemplateSetup(moment.setup);
+    stashMomentBoot({ matchSeed: moment.matchSeed, overlay: moment.overlay });
+    emit('start');
+  } finally {
+    openingMoment.value = false;
+  }
+};
+
+const renamingMomentId = ref<string | null>(null);
+const momentRenameDraft = ref('');
+const startMomentRename = (moment: SavedMoment): void => {
+  renamingMomentId.value = moment.id;
+  momentRenameDraft.value = moment.name;
+};
+const cancelMomentRename = (): void => {
+  renamingMomentId.value = null;
+};
+const commitMomentRename = (): void => {
+  if (renamingMomentId.value && momentRenameDraft.value.trim())
+    renameSavedMoment(renamingMomentId.value, momentRenameDraft.value);
+  renamingMomentId.value = null;
+  moments.value = loadSavedMoments();
+};
+
+/** Two-step per row, armed independently of every other confirm on the tab. */
+const confirmingMomentDeleteId = ref<string | null>(null);
+const removeMoment = (moment: SavedMoment): void => {
+  if (confirmingMomentDeleteId.value !== moment.id) {
+    confirmingMomentDeleteId.value = moment.id;
+    return;
+  }
+  confirmingMomentDeleteId.value = null;
+  deleteSavedMoment(moment.id);
+  moments.value = loadSavedMoments();
 };
 
 /**
@@ -744,6 +831,115 @@ const resetLabel = computed(() =>
              Only in a match — on the menu the apply and the boot are one press. -->
         <p v-if="live && canEdit && templates.length" class="practice-note">
           Áp dụng đổi ngay bot, cài đặt và trang bị; bản đồ của mẫu dành cho trận sau.
+        </p>
+      </div>
+    </PanelSection>
+
+    <!-- A moment of a fight, next to the whole-setup shelf above it: same
+         rows, same presses, one narrower promise — Mở lại boots the setup and
+         lays the saved numbers over it. Rows are made in-game ("Lưu vào thư
+         viện" on the Mốc đã lưu modal); out here they are opened, renamed,
+         deleted. -->
+    <PanelSection id="match-moments" title="Mốc đã lưu" :summary="momentsSummary">
+      <div class="template-field" id="practice-moments">
+        <p v-if="!moments.length" class="practice-note">
+          Chưa có mốc nào trong thư viện. Trong trận, mở nút ⟲ ở góc trái để lưu một khoảnh khắc
+          rồi bấm «Lưu vào thư viện» — lần sau mở lại đúng khoảnh khắc đó từ đây.
+        </p>
+
+        <ul v-if="moments.length" class="template-list">
+          <li v-for="(moment, i) in moments" :key="moment.id" class="template-row">
+            <template v-if="renamingMomentId === moment.id">
+              <input
+                type="text"
+                class="template-name-input"
+                :id="`practice-moment-rename-input-${i}`"
+                v-model="momentRenameDraft"
+                :maxlength="SAVED_MOMENT_NAME_MAX"
+                @keydown.enter="commitMomentRename"
+                @keydown.esc="cancelMomentRename"
+              />
+              <div class="template-actions">
+                <button
+                  type="button"
+                  class="template-chip"
+                  :id="`practice-moment-rename-commit-${i}`"
+                  @click="commitMomentRename"
+                  v-tap="commitMomentRename"
+                >
+                  Lưu tên
+                </button>
+                <button
+                  type="button"
+                  class="template-chip"
+                  @click="cancelMomentRename"
+                  v-tap="cancelMomentRename"
+                >
+                  Huỷ
+                </button>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="template-main">
+                <span class="template-title">
+                  <strong class="template-name">{{ moment.name }}</strong>
+                  <span class="template-when">{{ formatWhen(moment.savedAt, historyNow) }}</span>
+                </span>
+                <span class="template-meta">{{ momentMeta(moment) }}</span>
+                <!-- What this install cannot supply, before the press — the
+                     apply itself skips these pieces quietly. -->
+                <span
+                  v-if="momentGapLines.get(moment.id)"
+                  class="template-gap"
+                  :id="`practice-moment-gap-${i}`"
+                >
+                  <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                  {{ momentGapLines.get(moment.id) }}
+                </span>
+              </div>
+              <div class="template-actions">
+                <button
+                  v-if="canStart && !live"
+                  type="button"
+                  class="template-chip template-start"
+                  :id="`practice-moment-open-${i}`"
+                  :disabled="!canEdit || openingMoment"
+                  @click="openMoment(moment)"
+                  v-tap="() => openMoment(moment)"
+                >
+                  Mở lại
+                </button>
+                <button
+                  type="button"
+                  class="template-chip"
+                  :id="`practice-moment-rename-${i}`"
+                  @click="startMomentRename(moment)"
+                  v-tap="() => startMomentRename(moment)"
+                >
+                  Đổi tên
+                </button>
+                <button
+                  type="button"
+                  class="template-chip"
+                  :class="{ confirming: confirmingMomentDeleteId === moment.id }"
+                  :id="`practice-moment-delete-${i}`"
+                  @click="removeMoment(moment)"
+                  v-tap="() => removeMoment(moment)"
+                >
+                  {{ confirmingMomentDeleteId === moment.id ? 'Chắc chưa?' : 'Xoá' }}
+                </button>
+              </div>
+            </template>
+          </li>
+        </ul>
+
+        <!-- The one honest limitation, said before the press rather than
+             discovered after it. Spell-held state (điểm cộng dồn của chiêu)
+             does cross; running timed effects do not. -->
+        <p v-if="moments.length" class="practice-note">
+          Mở lại dựng đúng đội hình, trang bị, vàng, máu, hồi chiêu và thời gian trận — buff tạm
+          thời không theo mốc qua phiên.
         </p>
       </div>
     </PanelSection>

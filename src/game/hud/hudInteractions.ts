@@ -31,6 +31,8 @@ import type { AssetKey } from '@/managers/AssetManager';
 import type Champion from '@/game/gameObject/attackableUnits/Champion';
 import type { NetGameHooks } from '@/game/net/hooks';
 import { atOwnFountain, buyItem, sellItem, type ShopMode } from '@/game/economy/ItemShop';
+import { captureCheckpoint, restoreCheckpoint } from '@/game/checkpoint/Checkpoint';
+import { SAVED_MOMENT_NAME_MAX, saveSavedMoment } from '@/game/config/savedMoments';
 import {
   canRedoShop,
   canUndoShop,
@@ -69,6 +71,25 @@ export function filterSpells(spells: SpellItemDisplay[], searchText: string): Sp
     const desc = removeAccents(spell.description.toLowerCase());
     return name.includes(search) || desc.includes(search);
   });
+}
+
+/**
+ * One save point as the "Mốc đã lưu" modal lists it. A bare view model —
+ * name, stamps, one summary line — so the modal never holds a live
+ * `Checkpoint`, whose unit and constructor references belong to the game
+ * graph.
+ */
+export interface CheckpointRow {
+  id: string;
+  name: string;
+  /** True for rows the match saved on its own. */
+  auto: boolean;
+  /** Match time at capture, m:ss. */
+  clock: string;
+  /** "72% máu · 1450 vàng · 3 trang bị" — built at capture. */
+  summary: string;
+  /** Already kept to the cross-session library this session. */
+  kept: boolean;
 }
 
 export interface HudInteractions {
@@ -233,6 +254,50 @@ export interface HudInteractions {
    */
   spectateNext(): void;
   /**
+   * The "Mốc đã lưu" modal is open over the paused match.
+   *
+   * A pausing layer like `showSpellsPicker` and unlike the shop: rewinding
+   * writes half the world back and nothing may tick between the reads and
+   * the writes. Mutually exclusive with both other modals for the same
+   * full-width reason they are with each other.
+   *
+   * In a LAN match this whole surface does not exist: the corner button and
+   * the death shortcut hide (`HudState.hasCheckpoint`), every method below
+   * refuses, and `restoreCheckpoint` itself refuses again underneath — the
+   * protocol is forward-only and a rewind under a session would desync it.
+   */
+  showCheckpoints: boolean;
+  /** The corner button's entry point. Pauses; closes the other modals first. */
+  openCheckpoints(): void;
+  closeCheckpoints(): void;
+  /**
+   * This match's save points as rows, newest first — plain view models, no
+   * live references, so the modal renders without touching the game graph.
+   */
+  checkpointRows(): CheckpointRow[];
+  /**
+   * Write the moment down, named "Mốc N". Cheap enough to spam — scalars and
+   * references, no cloning — which is the point of the button being one
+   * press with no dialog.
+   */
+  saveCheckpoint(): void;
+  /** Rewind the running match to this save point and close the modal. */
+  rewindToCheckpoint(id: string): void;
+  /**
+   * The death screen's shortcut: rewind to the newest save point without
+   * opening the modal. Rendered only while `HudState.hasCheckpoint`.
+   */
+  rewindToLatestCheckpoint(): void;
+  renameCheckpoint(id: string, name: string): void;
+  deleteCheckpoint(id: string): void;
+  /**
+   * Persist this save point to the cross-session library
+   * (`config/savedMoments.ts`), so the menu can reopen the moment in a later
+   * session. Answers whether it was written. Transient buffs stay behind —
+   * the library's own header says why — and the shelf's row says so.
+   */
+  keepCheckpoint(id: string): boolean;
+  /**
    * The shop is open over the match.
    *
    * A separate layer from `showSpellsPicker`, and the two are mutually
@@ -392,6 +457,25 @@ export function createHudInteractions(game: Game): HudInteractions {
     state.editPlayerSlot = null;
   };
 
+  /**
+   * Which save points were already kept to the library, so the row's button
+   * can say "Đã lưu" instead of writing a twin on a double press. Session
+   * state like the checkpoints themselves — a fresh match starts clean.
+   */
+  const keptCheckpointIds = new Set<string>();
+  /** "Mốc 1", "Mốc 2", … — never reused within a match, deletions included. */
+  let nextCheckpointOrdinal = 1;
+
+  const checkpointById = (id: string) => {
+    for (const checkpoint of game.checkpoints) if (checkpoint.id === id) return checkpoint;
+    return null;
+  };
+
+  const checkpointClock = (ms: number): string => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  };
+
   const state = reactive({
     /**
      * Resolved on first read, not here: `Game` constructs its `InGameHUD` —
@@ -500,6 +584,9 @@ export function createHudInteractions(game: Game): HudInteractions {
       // from under someone who meant to leave the shop is the same mis-hit
       // `onEscapeInner` exists for.
       if (state.showShop) return state.closeShop();
+      // Same rung as the shop: a layer over the match, dropped before the
+      // panel underneath would toggle.
+      if (state.showCheckpoints) return state.closeCheckpoints();
       if (state.showSpellsPicker) state.closeSpellPicker();
       else state.openSpellPicker();
     },
@@ -509,6 +596,7 @@ export function createHudInteractions(game: Game): HudInteractions {
       // about to be torn down.
       state.showSpellsPicker = false;
       state.showShop = false;
+      state.showCheckpoints = false;
       state.editPlayerSlot = null;
       game.onExitRequested?.();
     },
@@ -519,6 +607,7 @@ export function createHudInteractions(game: Game): HudInteractions {
       // would be a panel over a match that no longer exists.
       state.showSpellsPicker = false;
       state.showShop = false;
+      state.showCheckpoints = false;
       state.editPlayerSlot = null;
       game.onRestartRequested?.();
     },
@@ -532,6 +621,7 @@ export function createHudInteractions(game: Game): HudInteractions {
       // The two modals are mutually exclusive: both are full-width, and
       // stacking them leaves the player looking at two close buttons.
       leaveConfigPanel();
+      if (state.showCheckpoints) state.closeCheckpoints();
       // Opened from the HUD, so there is nothing to go back to — and saying so
       // here is what stops a stale flag from an earlier roster shop reopening
       // the panel behind this one.
@@ -550,6 +640,7 @@ export function createHudInteractions(game: Game): HudInteractions {
       // Read before the panel is closed, or it is always false.
       state.shopReturnsToPanel = state.showSpellsPicker;
       leaveConfigPanel();
+      if (state.showCheckpoints) state.closeCheckpoints();
       state.shopSubjectId = id;
       state.showShop = true;
       state.spellHover = null;
@@ -666,6 +757,7 @@ export function createHudInteractions(game: Game): HudInteractions {
     },
 
     openSpellPicker(): void {
+      if (state.showCheckpoints) state.closeCheckpoints();
       state.showShop = false;
       state.editPlayerSlot = null;
       state.showSpellsPicker = true;
@@ -675,6 +767,7 @@ export function createHudInteractions(game: Game): HudInteractions {
 
     /** See the interface: the tab is the point. */
     openRoster(): void {
+      if (state.showCheckpoints) state.closeCheckpoints();
       activePanelTab.value = 'roster';
       state.showShop = false;
       state.editPlayerSlot = null;
@@ -691,6 +784,7 @@ export function createHudInteractions(game: Game): HudInteractions {
      * reads `editPlayerSlot` once on mount and clears it.
      */
     openPlayerLoadout(index: number): void {
+      if (state.showCheckpoints) state.closeCheckpoints();
       state.editPlayerSlot = index;
       state.showSpellsPicker = true;
       game.pause();
@@ -710,6 +804,91 @@ export function createHudInteractions(game: Game): HudInteractions {
 
     spectateNext(): void {
       game.deathCamera?.next();
+    },
+
+    showCheckpoints: false,
+
+    openCheckpoints(): void {
+      // No surface at all in a LAN match — see the interface.
+      if (game.net) return;
+      leaveConfigPanel();
+      state.showShop = false;
+      state.shopSubjectId = null;
+      state.showCheckpoints = true;
+      state.spellHover = null;
+      game.pause();
+    },
+
+    closeCheckpoints(): void {
+      state.showCheckpoints = false;
+      game.unpause();
+    },
+
+    checkpointRows(): CheckpointRow[] {
+      const rows: CheckpointRow[] = [];
+      for (const checkpoint of game.checkpoints) {
+        rows.push({
+          id: checkpoint.id,
+          name: checkpoint.name,
+          auto: checkpoint.auto,
+          clock: checkpointClock(checkpoint.matchTimeMs),
+          summary: checkpoint.summary,
+          kept: keptCheckpointIds.has(checkpoint.id),
+        });
+      }
+      return rows;
+    },
+
+    saveCheckpoint(): void {
+      if (game.net) return;
+      // Newest first, so "mốc gần nhất" is always index 0 and the anchor
+      // "Đầu trận" sinks to the bottom of the shelf.
+      game.checkpoints.unshift(captureCheckpoint(game, `Mốc ${nextCheckpointOrdinal++}`));
+    },
+
+    rewindToCheckpoint(id: string): void {
+      if (game.net) return;
+      const checkpoint = checkpointById(id);
+      if (!checkpoint) return;
+      if (restoreCheckpoint(game, checkpoint)) state.closeCheckpoints();
+    },
+
+    rewindToLatestCheckpoint(): void {
+      if (game.net) return;
+      const checkpoint = game.checkpoints[0];
+      if (checkpoint) restoreCheckpoint(game, checkpoint);
+    },
+
+    renameCheckpoint(id: string, name: string): void {
+      const trimmed = name.trim().slice(0, SAVED_MOMENT_NAME_MAX);
+      if (!trimmed) return;
+      const checkpoint = checkpointById(id);
+      if (checkpoint) checkpoint.name = trimmed;
+    },
+
+    deleteCheckpoint(id: string): void {
+      const index = game.checkpoints.findIndex(checkpoint => checkpoint.id === id);
+      if (index >= 0) game.checkpoints.splice(index, 1);
+    },
+
+    keepCheckpoint(id: string): boolean {
+      if (game.net) return false;
+      const checkpoint = checkpointById(id);
+      if (!checkpoint) return false;
+      try {
+        saveSavedMoment(
+          checkpoint.name,
+          checkpoint.matchSeed,
+          checkpoint.setup,
+          checkpoint.overlay
+        );
+      } catch {
+        // A blank name cannot happen from the modal, and a full storage
+        // costs this save, nothing more.
+        return false;
+      }
+      keptCheckpointIds.add(id);
+      return true;
     },
 
     mouseover(spellProxy: any, event: any): void {

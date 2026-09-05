@@ -391,6 +391,13 @@ export interface HudState {
    * one match, where a button that silently refuses says nothing.
    */
   canShop: boolean;
+  /**
+   * Whether a fight save point exists to rewind to — false in a LAN match,
+   * where rewinding is refused wholesale. Drives the death screen's "Thử lại
+   * từ mốc gần nhất" shortcut, which must not render a button that would do
+   * nothing.
+   */
+  hasCheckpoint: boolean;
 }
 
 function buildStats(player: any): StatsDisplay {
@@ -1040,5 +1047,6 @@ export function computeHudState(game: Game | undefined | null): HudState | null 
     items: buildItems(player),
     passive: buildPassive(player),
     canShop: atOwnFountain(player, { fountains: (game as any)?.fountains ?? [] }),
+    hasCheckpoint: !(game as any)?.net && ((game as any)?.checkpoints?.length ?? 0) > 0,
   };
 }

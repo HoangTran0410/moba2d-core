@@ -82,6 +82,10 @@ const ALLOWED_GAME_MODULES = [
   // the match tab's template shelf and written through both sources. Same
   // directory, same carve-out, same purity check as `matchHistory` above.
   '@/game/config/matchTemplates',
+  // The Mốc đã lưu library: `localStorage` plus a parked-overlay handoff for
+  // the boot that reopens a saved moment. Same directory, same carve-out,
+  // same purity check as `matchTemplates` above.
+  '@/game/config/savedMoments',
   '@/game/constants',
   '@/game/input/touchPreferences',
   // The panel itself, which lives under `src/game/hud/config/` because it is

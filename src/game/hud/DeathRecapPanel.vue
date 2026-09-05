@@ -53,6 +53,11 @@ const props = defineProps<{
   reviveAfter: number;
   /** The ally the death camera is on, or null while it lingers on the corpse. */
   spectating: string | null;
+  /**
+   * Whether a fight save point exists to rewind to — `HudState.hasCheckpoint`.
+   * False in a LAN match, so the retry shortcut never renders there.
+   */
+  canRetry?: boolean;
 }>();
 
 const hud = inject<HudInteractions>('hud')!;
@@ -112,6 +117,20 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
         Hồi sinh sau <b id="recap-revive-seconds">{{ reviveAfter }}</b
         >s
       </span>
+      <!-- The practice room's own answer to dying: back to the last save
+           point, this instant. Rendered only when one exists to go to. -->
+      <button
+        v-if="canRetry"
+        type="button"
+        class="death-recap-spectate death-recap-retry"
+        id="recap-retry-checkpoint"
+        title="Quay lại mốc gần nhất"
+        @click="hud.rewindToLatestCheckpoint()"
+        v-tap="() => hud.rewindToLatestCheckpoint()"
+      >
+        <i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+        <span class="death-recap-spectate-name">Thử lại từ mốc gần nhất</span>
+      </button>
       <button
         v-if="spectating"
         type="button"
